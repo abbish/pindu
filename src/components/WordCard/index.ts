@@ -1,0 +1,1 @@
+export { WordCard, type WordCardProps, type WordData } from './WordCard';

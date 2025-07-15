@@ -1,0 +1,1 @@
+export { AddWords, type AddWordsProps, type AddWordsMethod } from './AddWords';

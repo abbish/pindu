@@ -1,0 +1,150 @@
+/* Theme Selector Component Styles */
+.container {
+  margin-bottom: var(--spacing-lg);
+}
+
+.label {
+  display: block;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-md);
+}
+
+.themesGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.themeButton {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+
+.themeButton:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.themeButton.selected {
+  color: white;
+}
+
+/* Color variants */
+.themeButton.primary.selected {
+  background-color: var(--color-primary);
+}
+
+.themeButton.primary:hover:not(.selected) {
+  background-color: rgba(78, 205, 196, 0.1);
+  color: var(--color-primary);
+}
+
+.themeButton.orange.selected {
+  background-color: var(--color-orange);
+}
+
+.themeButton.orange:hover:not(.selected) {
+  background-color: rgba(255, 149, 0, 0.1);
+  color: var(--color-orange);
+}
+
+.themeButton.green.selected {
+  background-color: var(--color-green);
+}
+
+.themeButton.green:hover:not(.selected) {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: var(--color-green);
+}
+
+.themeButton.purple.selected {
+  background-color: var(--color-purple);
+}
+
+.themeButton.purple:hover:not(.selected) {
+  background-color: rgba(156, 39, 176, 0.1);
+  color: var(--color-purple);
+}
+
+.themeButton.blue.selected {
+  background-color: var(--color-blue);
+}
+
+.themeButton.blue:hover:not(.selected) {
+  background-color: rgba(33, 150, 243, 0.1);
+  color: var(--color-blue);
+}
+
+.themeButton.pink.selected {
+  background-color: var(--color-pink);
+}
+
+.themeButton.pink:hover:not(.selected) {
+  background-color: rgba(233, 30, 99, 0.1);
+  color: var(--color-pink);
+}
+
+.themeButton.yellow.selected {
+  background-color: var(--color-yellow);
+}
+
+.themeButton.yellow:hover:not(.selected) {
+  background-color: rgba(255, 179, 0, 0.1);
+  color: var(--color-yellow);
+}
+
+.icon {
+  font-size: var(--font-size-sm);
+}
+
+.themeName {
+  white-space: nowrap;
+}
+
+.description {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-relaxed);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .themesGrid {
+    gap: var(--spacing-sm);
+  }
+  
+  .themeButton {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-xs);
+  }
+  
+  .icon {
+    font-size: var(--font-size-xs);
+  }
+}
+
+@media (max-width: 480px) {
+  .themesGrid {
+    justify-content: center;
+  }
+  
+  .themeButton {
+    flex: 0 0 auto;
+    min-width: 80px;
+    justify-content: center;
+  }
+}

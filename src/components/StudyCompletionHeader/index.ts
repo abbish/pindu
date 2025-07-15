@@ -1,0 +1,1 @@
+export { StudyCompletionHeader, type StudyCompletionHeaderProps } from './StudyCompletionHeader';

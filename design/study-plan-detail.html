@@ -1,0 +1,667 @@
+<html><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学习计划详情 - 儿童背单词程序</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <style>
+        ::-webkit-scrollbar { display: none;}
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+    <script>tailwind.config = {
+  "theme": {
+    "extend": {
+      "colors": {
+        "primary": "#4ECDC4",
+        "orange": "#FF9500",
+        "yellow": "#FFB300",
+        "green": "#4CAF50",
+        "purple": "#9C27B0",
+        "pink": "#E91E63",
+        "blue": "#2196F3",
+        "darkgray": "#2D3436",
+        "midgray": "#636E72"
+      },
+      "fontFamily": {
+        "sans": [
+          "Inter",
+          "sans-serif"
+        ]
+      }
+    }
+  }
+};</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;500;600;700;800;900&amp;display=swap"><style>
+  .highlighted-section {
+    outline: 2px solid #3F20FB;
+    background-color: rgba(63, 32, 251, 0.1);
+  }
+
+  .edit-button {
+    position: absolute;
+    z-index: 1000;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  html, body {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  </style></head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="w-full bg-white border-b border-gray-100" id="header">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+                        <i class="fas fa-book text-white text-lg"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold text-darkgray">单词学习</h1>
+                </div>
+                <nav class="flex items-center space-x-8">
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-home text-lg"></i>
+                        <span>首页</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-primary font-semibold">
+                        <i class="fas fa-tasks text-lg"></i>
+                        <span>学习计划</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-bookmark text-lg"></i>
+                        <span>单词本</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-calendar text-lg"></i>
+                        <span>日历</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-chart-bar text-lg"></i>
+                        <span>统计</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-cog text-lg"></i>
+                        <span>设置</span>
+                    </button>
+                </nav>
+                <div class="flex items-center space-x-4">
+                    <button class="p-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-bell text-xl"></i>
+                    </button>
+                    <div class="w-10 h-10 rounded-full overflow-hidden">
+                        <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg" alt="用户头像" class="w-full h-full object-cover">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="max-w-7xl mx-auto px-6 py-8">
+        <!-- Breadcrumb -->
+        <section id="breadcrumb-section" class="mb-6">
+            <div class="flex items-center space-x-2 text-sm">
+                <span class="text-midgray cursor-pointer hover:text-primary transition-colors">首页</span>
+                <i class="fas fa-chevron-right text-midgray text-xs"></i>
+                <span class="text-midgray cursor-pointer hover:text-primary transition-colors">学习计划</span>
+                <i class="fas fa-chevron-right text-midgray text-xs"></i>
+                <span class="text-darkgray font-semibold">我的动物世界计划</span>
+            </div>
+        </section>
+
+        <!-- Plan Header -->
+        <section id="plan-header" class="mb-8">
+            <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-100">
+                <div class="flex items-start justify-between mb-6">
+                    <div class="flex-1">
+                        <div class="flex items-center space-x-3 mb-3">
+                            <h2 class="text-3xl font-bold text-darkgray">我的动物世界计划</h2>
+                            <span class="px-3 py-1 bg-green/10 text-green text-sm font-semibold rounded-full">进行中</span>
+                        </div>
+                        <p class="text-midgray text-lg mb-4">通过学习动物相关的英语单词，让孩子认识更多可爱的动物朋友</p>
+                        <div class="flex items-center space-x-6 text-sm">
+                            <div class="flex items-center space-x-2">
+                                <i class="fas fa-calendar text-primary"></i>
+                                <span class="text-midgray">2024-01-15 至 2024-02-15</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <i class="fas fa-clock text-primary"></i>
+                                <span class="text-midgray">已学习 12 天</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button class="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors">
+                            <i class="fas fa-play text-sm"></i>
+                            <span>继续学习</span>
+                        </button>
+                        <button class="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-midgray rounded-xl hover:bg-gray-200 transition-colors">
+                            <i class="fas fa-edit text-sm"></i>
+                            <span>编辑计划</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Progress Bar -->
+                <div class="mb-4" id="overall-progress">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-darkgray font-semibold">总体进度</span>
+                        <span class="text-darkgray font-bold">68%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3">
+                        <div class="bg-primary h-3 rounded-full" style="width: 68%"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Statistics Cards -->
+        <section id="stats-cards" class="mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Total Words -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="total-words-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-book text-primary text-lg"></i>
+                        </div>
+                        <span class="text-xs text-midgray">总单词数</span>
+                    </div>
+                    <div class="text-2xl font-bold text-darkgray mb-1">280</div>
+                    <div class="text-sm text-midgray">个单词</div>
+                </div>
+
+                <!-- Learned Words -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="learned-words-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-green/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-check text-green text-lg"></i>
+                        </div>
+                        <span class="text-xs text-midgray">已学单词</span>
+                    </div>
+                    <div class="text-2xl font-bold text-darkgray mb-1">190</div>
+                    <div class="text-sm text-midgray">个单词</div>
+                </div>
+
+                <!-- Study Days -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="study-days-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-orange/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-calendar-check text-orange text-lg"></i>
+                        </div>
+                        <span class="text-xs text-midgray">学习天数</span>
+                    </div>
+                    <div class="text-2xl font-bold text-darkgray mb-1">12</div>
+                    <div class="text-sm text-midgray">天</div>
+                </div>
+
+                <!-- Accuracy -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="accuracy-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-yellow/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-star text-yellow text-lg"></i>
+                        </div>
+                        <span class="text-xs text-midgray">平均正确率</span>
+                    </div>
+                    <div class="text-2xl font-bold text-darkgray mb-1">85%</div>
+                    <div class="text-sm text-midgray">正确率</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Column -->
+            <div class="lg:col-span-2 space-y-8">
+                <!-- Vocabulary Books -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="vocabulary-books">
+                    <h3 class="text-xl font-bold text-darkgray mb-6">单词本进度</h3>
+                    <div class="space-y-4">
+                        <div class="border border-gray-200 rounded-xl p-4" id="vocab-progress-1">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-lg font-semibold text-darkgray">动物世界</h4>
+                                <span class="text-sm text-midgray">85/120</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+                                <div class="bg-primary h-2 rounded-full" style="width: 71%"></div>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-midgray">已完成 71%</span>
+                                <span class="text-green font-semibold">进行中</span>
+                            </div>
+                        </div>
+
+                        <div class="border border-gray-200 rounded-xl p-4" id="vocab-progress-2">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-lg font-semibold text-darkgray">基础生活词汇</h4>
+                                <span class="text-sm text-midgray">95/120</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+                                <div class="bg-orange h-2 rounded-full" style="width: 79%"></div>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-midgray">已完成 79%</span>
+                                <span class="text-green font-semibold">进行中</span>
+                            </div>
+                        </div>
+
+                        <div class="border border-gray-200 rounded-xl p-4" id="vocab-progress-3">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-lg font-semibold text-darkgray">家庭成员</h4>
+                                <span class="text-sm text-midgray">10/40</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+                                <div class="bg-yellow h-2 rounded-full" style="width: 25%"></div>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-midgray">已完成 25%</span>
+                                <span class="text-midgray">待开始</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="recent-activity">
+    <h3 class="text-xl font-bold text-darkgray mb-6">学习记录</h3>
+    
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-3 px-4 font-semibold text-darkgray">学习周期</th>
+                    <th class="text-center py-3 px-4 font-semibold text-darkgray">学习时间</th>
+                    <th class="text-center py-3 px-4 font-semibold text-darkgray">学习单词</th>
+                    <th class="text-center py-3 px-4 font-semibold text-darkgray">正确率</th>
+                    <th class="text-center py-3 px-4 font-semibold text-darkgray">学习时长</th>
+                    <th class="text-center py-3 px-4 font-semibold text-darkgray">状态</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                <tr class="hover:bg-gray-50" id="activity-row-1">
+                    <td class="py-4 px-4">
+                        <div class="font-semibold text-darkgray">第3次完整学习周期</div>
+                        <div class="text-sm text-midgray">涵盖动物世界、基础生活词汇</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-sm text-midgray">2024-01-27</div>
+                        <div class="text-sm text-midgray">14:30</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-lg font-bold text-darkgray">45</div>
+                        <div class="text-sm text-midgray">个</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-lg font-bold text-green">92%</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-lg font-bold text-orange">35</div>
+                        <div class="text-sm text-midgray">分钟</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <span class="px-3 py-1 bg-green/10 text-green text-sm rounded-full">已完成</span>
+                    </td>
+                </tr>
+                
+                <tr class="hover:bg-gray-50" id="activity-row-2">
+                    <td class="py-4 px-4">
+                        <div class="font-semibold text-darkgray">第2次完整学习周期</div>
+                        <div class="text-sm text-midgray">主要复习动物世界词汇</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-sm text-midgray">2024-01-25</div>
+                        <div class="text-sm text-midgray">16:15</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-lg font-bold text-darkgray">38</div>
+                        <div class="text-sm text-midgray">个</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-lg font-bold text-green">88%</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-lg font-bold text-orange">28</div>
+                        <div class="text-sm text-midgray">分钟</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <span class="px-3 py-1 bg-green/10 text-green text-sm rounded-full">已完成</span>
+                    </td>
+                </tr>
+                
+                <tr class="hover:bg-gray-50" id="activity-row-3">
+                    <td class="py-4 px-4">
+                        <div class="font-semibold text-darkgray">第1次完整学习周期</div>
+                        <div class="text-sm text-midgray">初次学习，建立基础</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-sm text-midgray">2024-01-23</div>
+                        <div class="text-sm text-midgray">10:45</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-lg font-bold text-darkgray">32</div>
+                        <div class="text-sm text-midgray">个</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-lg font-bold text-yellow">75%</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <div class="text-lg font-bold text-orange">42</div>
+                        <div class="text-sm text-midgray">分钟</div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <span class="px-3 py-1 bg-green/10 text-green text-sm rounded-full">已完成</span>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+                <!-- Word List -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="word-list">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-bold text-darkgray">单词列表</h3>
+                        <div class="relative">
+                            <input type="text" placeholder="搜索单词..." class="w-64 pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" id="word-search">
+                            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-midgray"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="border-b border-gray-200">
+                                    <th class="text-left py-3 px-4 font-semibold text-darkgray">单词</th>
+                                    <th class="text-center py-3 px-4 font-semibold text-darkgray">词性</th>
+                                    <th class="text-center py-3 px-4 font-semibold text-darkgray">中文意思</th>
+                                    <th class="text-center py-3 px-4 font-semibold text-darkgray">自然拼读</th>
+                                    <th class="text-center py-3 px-4 font-semibold text-darkgray">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="py-4 px-4">
+                                        <div class="font-semibold text-darkgray text-lg">elephant</div>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="px-2 py-1 bg-blue/10 text-blue text-sm rounded-full">n.</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-darkgray">大象</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-primary font-mono">/'elɪfənt/</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <button class="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                                            <i class="fas fa-info-circle"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-gray-50">
+                                    <td class="py-4 px-4">
+                                        <div class="font-semibold text-darkgray text-lg">lion</div>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="px-2 py-1 bg-blue/10 text-blue text-sm rounded-full">n.</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-darkgray">狮子</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-primary font-mono">/'laɪən/</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <button class="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                                            <i class="fas fa-info-circle"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-gray-50">
+                                    <td class="py-4 px-4">
+                                        <div class="font-semibold text-darkgray text-lg">tiger</div>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="px-2 py-1 bg-blue/10 text-blue text-sm rounded-full">n.</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-darkgray">老虎</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-primary font-mono">/'taɪgə/</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <button class="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                                            <i class="fas fa-info-circle"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-gray-50">
+                                    <td class="py-4 px-4">
+                                        <div class="font-semibold text-darkgray text-lg">monkey</div>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="px-2 py-1 bg-blue/10 text-blue text-sm rounded-full">n.</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-darkgray">猴子</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-primary font-mono">/'mʌŋki/</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <button class="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                                            <i class="fas fa-info-circle"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-gray-50">
+                                    <td class="py-4 px-4">
+                                        <div class="font-semibold text-darkgray text-lg">rabbit</div>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="px-2 py-1 bg-blue/10 text-blue text-sm rounded-full">n.</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-darkgray">兔子</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-primary font-mono">/'ræbɪt/</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <button class="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                                            <i class="fas fa-info-circle"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-gray-50">
+                                    <td class="py-4 px-4">
+                                        <div class="font-semibold text-darkgray text-lg">bear</div>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="px-2 py-1 bg-blue/10 text-blue text-sm rounded-full">n.</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-darkgray">熊</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="text-primary font-mono">/beə/</span>
+                                    </td>
+                                    <td class="py-4 px-4 text-center">
+                                        <button class="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                                            <i class="fas fa-info-circle"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="flex justify-between items-center mt-6 pt-4 border-t border-gray-100">
+                        <div class="text-sm text-midgray">
+                            显示 1-6 条，共 280 条记录
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button class="px-3 py-1 text-midgray hover:text-primary transition-colors">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <button class="px-3 py-1 bg-primary text-white rounded-lg">1</button>
+                            <button class="px-3 py-1 text-midgray hover:text-primary transition-colors">2</button>
+                            <button class="px-3 py-1 text-midgray hover:text-primary transition-colors">3</button>
+                            <button class="px-3 py-1 text-midgray hover:text-primary transition-colors">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="lg:col-span-1 space-y-6">
+                <!-- Study Calendar -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="study-calendar">
+                    <h3 class="text-lg font-bold text-darkgray mb-4">学习日历</h3>
+                    <div class="grid grid-cols-7 gap-1 text-xs mb-4">
+                        <div class="text-center py-2 text-midgray">日</div>
+                        <div class="text-center py-2 text-midgray">一</div>
+                        <div class="text-center py-2 text-midgray">二</div>
+                        <div class="text-center py-2 text-midgray">三</div>
+                        <div class="text-center py-2 text-midgray">四</div>
+                        <div class="text-center py-2 text-midgray">五</div>
+                        <div class="text-center py-2 text-midgray">六</div>
+                        <div class="text-center py-2 text-midgray">1</div>
+                        <div class="text-center py-2 text-midgray">2</div>
+                        <div class="text-center py-2 bg-green/10 text-green rounded">3</div>
+                        <div class="text-center py-2 bg-green/10 text-green rounded">4</div>
+                        <div class="text-center py-2 bg-green/10 text-green rounded">5</div>
+                        <div class="text-center py-2 text-midgray">6</div>
+                        <div class="text-center py-2 text-midgray">7</div>
+                        <div class="text-center py-2 bg-green/10 text-green rounded">8</div>
+                        <div class="text-center py-2 bg-green/10 text-green rounded">9</div>
+                        <div class="text-center py-2 bg-green/10 text-green rounded">10</div>
+                        <div class="text-center py-2 bg-green/10 text-green rounded">11</div>
+                        <div class="text-center py-2 bg-green/10 text-green rounded">12</div>
+                        <div class="text-center py-2 text-midgray">13</div>
+                        <div class="text-center py-2 text-midgray">14</div>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-3 h-3 bg-green rounded-full"></div>
+                            <span class="text-midgray">已完成</span>
+                        </div>
+                        <span class="text-darkgray font-semibold">连续学习 7 天</span>
+                    </div>
+                </div>
+
+                <!-- Study Records -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="study-records">
+                    <h3 class="text-lg font-bold text-darkgray mb-4">学习记录</h3>
+                    <div class="space-y-3">
+                        <div class="border border-gray-200 rounded-xl p-4" id="record-1">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="font-semibold text-darkgray text-sm">第3次学习周期</div>
+                                <span class="px-2 py-1 bg-green/10 text-green text-xs rounded-full">已完成</span>
+                            </div>
+                            <div class="text-xs text-midgray mb-2">2024-01-27 14:30</div>
+                            <div class="grid grid-cols-3 gap-2 text-xs">
+                                <div class="text-center">
+                                    <div class="font-bold text-darkgray">45</div>
+                                    <div class="text-midgray">单词</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="font-bold text-green">92%</div>
+                                    <div class="text-midgray">正确率</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="font-bold text-orange">35</div>
+                                    <div class="text-midgray">分钟</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="border border-gray-200 rounded-xl p-4" id="record-2">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="font-semibold text-darkgray text-sm">第2次学习周期</div>
+                                <span class="px-2 py-1 bg-green/10 text-green text-xs rounded-full">已完成</span>
+                            </div>
+                            <div class="text-xs text-midgray mb-2">2024-01-25 16:15</div>
+                            <div class="grid grid-cols-3 gap-2 text-xs">
+                                <div class="text-center">
+                                    <div class="font-bold text-darkgray">38</div>
+                                    <div class="text-midgray">单词</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="font-bold text-green">88%</div>
+                                    <div class="text-midgray">正确率</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="font-bold text-orange">28</div>
+                                    <div class="text-midgray">分钟</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="border border-gray-200 rounded-xl p-4" id="record-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="font-semibold text-darkgray text-sm">第1次学习周期</div>
+                                <span class="px-2 py-1 bg-green/10 text-green text-xs rounded-full">已完成</span>
+                            </div>
+                            <div class="text-xs text-midgray mb-2">2024-01-23 10:45</div>
+                            <div class="grid grid-cols-3 gap-2 text-xs">
+                                <div class="text-center">
+                                    <div class="font-bold text-darkgray">32</div>
+                                    <div class="text-midgray">单词</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="font-bold text-yellow">75%</div>
+                                    <div class="text-midgray">正确率</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="font-bold text-orange">42</div>
+                                    <div class="text-midgray">分钟</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Achievements -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="achievements">
+                    <h3 class="text-lg font-bold text-darkgray mb-4">成就徽章</h3>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="text-center p-3 bg-yellow/10 rounded-xl">
+                            <div class="w-8 h-8 bg-yellow rounded-full flex items-center justify-center mx-auto mb-2">
+                                <i class="fas fa-star text-white text-sm"></i>
+                            </div>
+                            <div class="text-xs text-darkgray font-semibold">连续学习</div>
+                            <div class="text-xs text-midgray">7天</div>
+                        </div>
+                        <div class="text-center p-3 bg-green/10 rounded-xl">
+                            <div class="w-8 h-8 bg-green rounded-full flex items-center justify-center mx-auto mb-2">
+                                <i class="fas fa-trophy text-white text-sm"></i>
+                            </div>
+                            <div class="text-xs text-darkgray font-semibold">学习达人</div>
+                            <div class="text-xs text-midgray">100词</div>
+                        </div>
+                        <div class="text-center p-3 bg-primary/10 rounded-xl">
+                            <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center mx-auto mb-2">
+                                <i class="fas fa-medal text-white text-sm"></i>
+                            </div>
+                            <div class="text-xs text-darkgray font-semibold">准确率</div>
+                            <div class="text-xs text-midgray">90%+</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main></body></html>

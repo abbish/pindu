@@ -1,0 +1,1 @@
+export { StudyProgress, type StudyProgressProps } from './StudyProgress';

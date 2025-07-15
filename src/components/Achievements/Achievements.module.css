@@ -1,0 +1,152 @@
+/* Achievements Component Styles */
+.achievements {
+  background-color: var(--color-bg-primary);
+  border-radius: var(--radius-2xl);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border-light);
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-md) 0;
+  line-height: var(--line-height-tight);
+}
+
+.badgesGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-sm);
+}
+
+.badgeItem {
+  text-align: center;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-xl);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.badgeItem:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.badgeItem.earned {
+  background-color: rgba(255, 179, 0, 0.1);
+}
+
+.badgeItem.streak {
+  background-color: rgba(255, 179, 0, 0.1);
+}
+
+.badgeItem.mastery {
+  background-color: rgba(76, 175, 80, 0.1);
+}
+
+.badgeItem.accuracy {
+  background-color: rgba(78, 205, 196, 0.1);
+}
+
+.badgeIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: white;
+}
+
+.badgeIcon.earned {
+  background-color: var(--color-yellow);
+}
+
+.badgeIcon.streak {
+  background-color: var(--color-yellow);
+}
+
+.badgeIcon.mastery {
+  background-color: var(--color-green);
+}
+
+.badgeIcon.accuracy {
+  background-color: var(--color-primary);
+}
+
+.badgeName {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-xs) 0;
+  line-height: var(--line-height-tight);
+}
+
+.badgeValue {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-normal);
+}
+
+/* Empty State */
+.emptyState {
+  text-align: center;
+  padding: var(--spacing-2xl) var(--spacing-sm);
+  color: var(--color-text-secondary);
+}
+
+.emptyIcon {
+  font-size: var(--font-size-xl);
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-sm);
+}
+
+.emptyText {
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+/* Loading State */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+  color: var(--color-text-secondary);
+}
+
+.loadingSpinner {
+  animation: spin 1s linear infinite;
+  margin-right: var(--spacing-sm);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .achievements {
+    padding: var(--spacing-md);
+  }
+  
+  .badgesGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .badgeIcon {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+}

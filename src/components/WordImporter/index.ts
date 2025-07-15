@@ -1,0 +1,1 @@
+export { WordImporter, type WordImporterProps } from './WordImporter';

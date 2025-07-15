@@ -1,0 +1,302 @@
+/* Vocabulary Book Card Component Styles */
+.card {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-lg);
+}
+
+.icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xl);
+}
+
+.icon.primary {
+  background-color: rgba(78, 205, 196, 0.1);
+  color: var(--color-primary);
+}
+
+.icon.orange {
+  background-color: rgba(255, 149, 0, 0.1);
+  color: var(--color-orange);
+}
+
+.icon.yellow {
+  background-color: rgba(255, 179, 0, 0.1);
+  color: var(--color-yellow);
+}
+
+.icon.purple {
+  background-color: rgba(156, 39, 176, 0.1);
+  color: var(--color-purple);
+}
+
+.icon.pink {
+  background-color: rgba(233, 30, 99, 0.1);
+  color: var(--color-pink);
+}
+
+.icon.blue {
+  background-color: rgba(33, 150, 243, 0.1);
+  color: var(--color-blue);
+}
+
+.icon.green {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: var(--color-green);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.actionBtn {
+  padding: var(--spacing-xs);
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  font-size: var(--font-size-sm);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.actionBtn:hover {
+  color: var(--color-primary);
+  background-color: rgba(78, 205, 196, 0.1);
+}
+
+.actionBtn.deleteBtn:hover {
+  color: var(--color-pink);
+  background-color: rgba(233, 30, 99, 0.1);
+}
+
+/* Content */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+  line-height: var(--line-height-tight);
+}
+
+.description {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-relaxed);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Statistics */
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-lg);
+}
+
+.statItem {
+  text-align: center;
+}
+
+.statValue {
+  display: block;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.statValue.primary {
+  color: var(--color-primary);
+}
+
+.statLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Word Types Grid */
+.wordTypes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-xs);
+}
+
+.wordType {
+  text-align: center;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.wordType.noun {
+  background-color: rgba(76, 175, 80, 0.1);
+}
+
+.wordType.verb {
+  background-color: rgba(33, 150, 243, 0.1);
+}
+
+.wordType.adjective {
+  background-color: rgba(156, 39, 176, 0.1);
+}
+
+.wordType.other {
+  background-color: rgba(255, 149, 0, 0.1);
+}
+
+.wordTypeValue {
+  display: block;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--spacing-xs);
+}
+
+.wordType.noun .wordTypeValue {
+  color: var(--color-green);
+}
+
+.wordType.verb .wordTypeValue {
+  color: var(--color-blue);
+}
+
+.wordType.adjective .wordTypeValue {
+  color: var(--color-purple);
+}
+
+.wordType.other .wordTypeValue {
+  color: var(--color-orange);
+}
+
+.wordTypeLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+/* Metadata */
+.metadata {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+  gap: var(--spacing-sm);
+}
+
+.created {
+  color: var(--color-yellow);
+}
+
+.lastUsed {
+  color: var(--color-blue);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .card {
+    padding: var(--spacing-md);
+  }
+  
+  .wordTypes {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .wordType {
+    padding: var(--spacing-xs);
+  }
+}
+
+@media (max-width: 768px) {
+  .metadata {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+  
+  .title {
+    font-size: var(--font-size-lg);
+  }
+  
+  .description {
+    font-size: var(--font-size-xs);
+  }
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: var(--spacing-sm);
+  }
+  
+  .header {
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .icon {
+    width: 40px;
+    height: 40px;
+    font-size: var(--font-size-lg);
+  }
+  
+  .stats {
+    gap: var(--spacing-md);
+  }
+  
+  .statValue {
+    font-size: var(--font-size-xl);
+  }
+  
+  .wordTypes {
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-xs);
+  }
+  
+  .wordType {
+    padding: var(--spacing-xs);
+  }
+  
+  .wordTypeValue {
+    font-size: var(--font-size-md);
+  }
+  
+  .wordTypeLabel {
+    font-size: 10px;
+  }
+}

@@ -1,0 +1,85 @@
+/* Form Input Component Styles */
+.inputGroup {
+  margin-bottom: var(--spacing-lg);
+}
+
+.label {
+  display: block;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-sm);
+  line-height: var(--line-height-tight);
+}
+
+.input {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-primary);
+  transition: all var(--transition-fast);
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.1);
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.textarea {
+  resize: none;
+  min-height: 80px;
+}
+
+.helperText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-xs);
+  line-height: var(--line-height-normal);
+}
+
+.error .input {
+  border-color: var(--color-error);
+}
+
+.error .label {
+  color: var(--color-error);
+}
+
+.error .helperText {
+  color: var(--color-error);
+}
+
+.required .label::after {
+  content: " *";
+  color: var(--color-error);
+}
+
+/* Date Input Specific Styles */
+.input[type="date"] {
+  color-scheme: light;
+}
+
+.input[type="date"]::-webkit-calendar-picker-indicator {
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .label {
+    font-size: var(--font-size-base);
+  }
+  
+  .input {
+    font-size: var(--font-size-base);
+    padding: var(--spacing-sm);
+  }
+}

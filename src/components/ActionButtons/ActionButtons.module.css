@@ -1,0 +1,81 @@
+/* Action Buttons Component Styles */
+.container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-lg);
+}
+
+.actionBtn {
+  background: var(--color-primary);
+  color: white;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-radius: var(--radius-xl);
+  border: none;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-md);
+}
+
+.actionBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.actionBtn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.actionBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.nextBtn {
+  background: var(--color-primary);
+}
+
+.nextBtn:hover:not(:disabled) {
+  background: rgba(78, 205, 196, 0.9);
+}
+
+.retryBtn {
+  background: var(--color-orange);
+}
+
+.retryBtn:hover:not(:disabled) {
+  background: rgba(255, 149, 0, 0.9);
+}
+
+.reportBtn {
+  background: var(--color-text-secondary);
+}
+
+.reportBtn:hover:not(:disabled) {
+  background: rgba(99, 110, 114, 0.9);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .container {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+  }
+  
+  .actionBtn {
+    padding: var(--spacing-md) var(--spacing-lg);
+    font-size: var(--font-size-sm);
+  }
+}
+
+@media (max-width: 480px) {
+  .actionBtn {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-xs);
+    gap: var(--spacing-xs);
+  }
+}

@@ -1,0 +1,128 @@
+.page {
+  min-height: 100vh;
+  background-color: var(--color-bg-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--spacing-2xl) var(--spacing-lg);
+  width: 100%;
+}
+
+/* Page Header */
+.pageHeader {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.headerContent {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+}
+
+.headerInfo {
+  flex: 1;
+}
+
+.pageTitle {
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-xs) 0;
+  line-height: var(--line-height-tight);
+}
+
+.pageSubtitle {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-normal);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-shrink: 0;
+}
+
+/* Statistics Section */
+.statsSection {
+  margin-bottom: var(--spacing-2xl);
+}
+
+/* Plans Section */
+.plansSection {
+  /* Grid sections are managed by StudyPlanSection components */
+}
+
+/* Error State */
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  gap: var(--spacing-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-lg);
+  text-align: center;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .main {
+    padding: var(--spacing-lg) var(--spacing-md);
+  }
+  
+  .headerContent {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-md);
+  }
+  
+  .headerInfo {
+    text-align: center;
+  }
+  
+  .pageTitle {
+    font-size: var(--font-size-2xl);
+  }
+  
+  .pageSubtitle {
+    font-size: var(--font-size-base);
+  }
+  
+  .headerActions {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .main {
+    padding: var(--spacing-md);
+  }
+  
+  .pageHeader {
+    margin-bottom: var(--spacing-lg);
+  }
+  
+  .statsSection {
+    margin-bottom: var(--spacing-lg);
+  }
+  
+  .headerActions {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+  
+  .pageTitle {
+    font-size: var(--font-size-xl);
+  }
+}

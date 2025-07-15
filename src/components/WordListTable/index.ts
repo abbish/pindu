@@ -1,0 +1,1 @@
+export { WordListTable, type WordListTableProps, type WordDetail } from './WordListTable';

@@ -1,0 +1,547 @@
+<html><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>单词本 - 儿童背单词程序</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <style>
+        ::-webkit-scrollbar { display: none;}
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+    <script>tailwind.config = {
+  "theme": {
+    "extend": {
+      "colors": {
+        "primary": "#4ECDC4",
+        "orange": "#FF9500",
+        "yellow": "#FFB300",
+        "green": "#4CAF50",
+        "purple": "#9C27B0",
+        "pink": "#E91E63",
+        "blue": "#2196F3",
+        "darkgray": "#2D3436",
+        "midgray": "#636E72"
+      },
+      "fontFamily": {
+        "sans": [
+          "Inter",
+          "sans-serif"
+        ]
+      }
+    }
+  }
+};</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;500;600;700;800;900&amp;display=swap"><style>
+  .highlighted-section {
+    outline: 2px solid #3F20FB;
+    background-color: rgba(63, 32, 251, 0.1);
+  }
+
+  .edit-button {
+    position: absolute;
+    z-index: 1000;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  html, body {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  </style></head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="w-full bg-white border-b border-gray-100" id="header">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+                        <i class="fas fa-book text-white text-lg"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold text-darkgray">单词学习</h1>
+                </div>
+                <nav class="flex items-center space-x-8">
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-home text-lg"></i>
+                        <span>首页</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-tasks text-lg"></i>
+                        <span>学习计划</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-primary font-semibold">
+                        <i class="fas fa-bookmark text-lg"></i>
+                        <span>单词本</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-calendar text-lg"></i>
+                        <span>日历</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-chart-bar text-lg"></i>
+                        <span>统计</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-cog text-lg"></i>
+                        <span>设置</span>
+                    </button>
+                </nav>
+                <div class="flex items-center space-x-4">
+                    <button class="p-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-bell text-xl"></i>
+                    </button>
+                    <div class="w-10 h-10 rounded-full overflow-hidden">
+                        <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg" alt="用户头像" class="w-full h-full object-cover">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="max-w-7xl mx-auto px-6 py-8">
+        <!-- Breadcrumb -->
+        <section id="breadcrumb-section" class="mb-8">
+            <div class="flex items-center space-x-2 text-sm">
+                <span class="text-midgray cursor-pointer hover:text-primary transition-colors">首页</span>
+                <i class="fas fa-chevron-right text-midgray text-xs"></i>
+                <span class="text-darkgray font-semibold">单词本</span>
+            </div>
+        </section>
+
+        <!-- Page Header -->
+        <section id="page-header" class="mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-3xl font-bold text-darkgray mb-2">我的单词本</h2>
+                    <p class="text-midgray text-lg">管理和学习你的单词收藏</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button class="flex items-center space-x-2 bg-primary text-white px-6 py-3 rounded-xl hover:bg-primary/90 transition-colors">
+                        <i class="fas fa-plus text-lg"></i>
+                        <span>创建单词本</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Statistics Cards -->
+        <section id="statistics-section" class="mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+                <div class="bg-white rounded-2xl p-6 border border-gray-100" id="total-books-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-book text-primary text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold text-darkgray">8</span>
+                    </div>
+                    <h3 class="text-lg font-semibold text-darkgray mb-1">单词本总数</h3>
+                    <p class="text-midgray text-sm">已创建的单词本</p>
+                </div>
+
+                <div class="bg-white rounded-2xl p-6 border border-gray-100" id="total-words-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-orange/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-font text-orange text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold text-darkgray">1,240</span>
+                    </div>
+                    <h3 class="text-lg font-semibold text-darkgray mb-1">单词总数</h3>
+                    <p class="text-midgray text-sm">所有单词本中的单词</p>
+                </div>
+
+                <div class="bg-white rounded-2xl p-6 border border-gray-100" id="noun-words-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-green/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-cube text-green text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold text-darkgray">520</span>
+                    </div>
+                    <h3 class="text-lg font-semibold text-darkgray mb-1">名词</h3>
+                    <p class="text-midgray text-sm">所有名词类单词</p>
+                </div>
+
+                <div class="bg-white rounded-2xl p-6 border border-gray-100" id="verb-words-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-blue/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-running text-blue text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold text-darkgray">342</span>
+                    </div>
+                    <h3 class="text-lg font-semibold text-darkgray mb-1">动词</h3>
+                    <p class="text-midgray text-sm">所有动词类单词</p>
+                </div>
+
+                <div class="bg-white rounded-2xl p-6 border border-gray-100" id="adjective-words-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-purple/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-star text-purple text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold text-darkgray">258</span>
+                    </div>
+                    <h3 class="text-lg font-semibold text-darkgray mb-1">形容词</h3>
+                    <p class="text-midgray text-sm">所有形容词类单词</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Filter and Search -->
+        <section id="filter-section" class="mb-8">
+            <div class="bg-white rounded-2xl p-6 border border-gray-100">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-darkgray">筛选和搜索</h3>
+                    <button class="text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-filter text-lg"></i>
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-midgray"></i>
+                        <input type="text" placeholder="搜索单词本..." class="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:border-primary focus:outline-none">
+                    </div>
+                    <select class="px-4 py-3 border border-gray-200 rounded-xl focus:border-primary focus:outline-none">
+                        <option>选择主题标签</option>
+                        <option>生活词汇</option>
+                        <option>学校用品</option>
+                        <option>动物世界</option>
+                        <option>食物饮料</option>
+                        <option>颜色形状</option>
+                        <option>交通工具</option>
+                        <option>家庭成员</option>
+                        <option>运动健身</option>
+                        <option>天气季节</option>
+                        <option>身体部位</option>
+                        <option>数字时间</option>
+                        <option>服装配饰</option>
+                    </select>
+                    <select class="px-4 py-3 border border-gray-200 rounded-xl focus:border-primary focus:outline-none">
+                        <option>所有状态</option>
+                        <option>学习中</option>
+                        <option>已完成</option>
+                        <option>未开始</option>
+                    </select>
+                    <select class="px-4 py-3 border border-gray-200 rounded-xl focus:border-primary focus:outline-none">
+                        <option>默认排序</option>
+                        <option>按创建时间</option>
+                        <option>按单词数量</option>
+                        <option>按完成度</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- Vocabulary Books Grid -->
+        <section id="vocabulary-books-section">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="vocabulary-books-grid">
+                <!-- Vocabulary Book 1 -->
+                <div class="bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer" id="vocab-book-card-1">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-home text-primary text-xl"></i>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button class="p-2 text-midgray hover:text-primary transition-colors">
+                                <i class="fas fa-edit text-sm"></i>
+                            </button>
+                            <button class="p-2 text-midgray hover:text-pink transition-colors">
+                                <i class="fas fa-trash text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-darkgray mb-2">基础生活词汇</h3>
+                    <p class="text-midgray text-sm mb-4">日常生活中最常用的英语单词，包括家庭、购物、交通等场景</p>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-darkgray">120</span>
+                            <p class="text-sm text-midgray">总单词数</p>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-primary">3</span>
+                            <p class="text-sm text-midgray">关联计划</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 mb-4">
+                        <div class="text-center bg-green/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-green">45</span>
+                            <p class="text-xs text-midgray">名词</p>
+                        </div>
+                        <div class="text-center bg-blue/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-blue">32</span>
+                            <p class="text-xs text-midgray">动词</p>
+                        </div>
+                        <div class="text-center bg-purple/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-purple">28</span>
+                            <p class="text-xs text-midgray">形容词</p>
+                        </div>
+                        <div class="text-center bg-orange/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-orange">15</span>
+                            <p class="text-xs text-midgray">其他</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-yellow">创建时间: 2024-01-15</span>
+                        <span class="text-blue">最近使用: 昨天</span>
+                    </div>
+                </div>
+
+                <!-- Vocabulary Book 2 -->
+                <div class="bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer" id="vocab-book-card-2">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-orange/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-paw text-orange text-xl"></i>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button class="p-2 text-midgray hover:text-primary transition-colors">
+                                <i class="fas fa-edit text-sm"></i>
+                            </button>
+                            <button class="p-2 text-midgray hover:text-pink transition-colors">
+                                <i class="fas fa-trash text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-darkgray mb-2">动物世界</h3>
+                    <p class="text-midgray text-sm mb-4">各种动物的英文名称，包括宠物、野生动物、海洋生物等</p>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-darkgray">80</span>
+                            <p class="text-sm text-midgray">总单词数</p>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-primary">2</span>
+                            <p class="text-sm text-midgray">关联计划</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 mb-4">
+                        <div class="text-center bg-green/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-green">68</span>
+                            <p class="text-xs text-midgray">名词</p>
+                        </div>
+                        <div class="text-center bg-blue/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-blue">5</span>
+                            <p class="text-xs text-midgray">动词</p>
+                        </div>
+                        <div class="text-center bg-purple/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-purple">4</span>
+                            <p class="text-xs text-midgray">形容词</p>
+                        </div>
+                        <div class="text-center bg-orange/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-orange">3</span>
+                            <p class="text-xs text-midgray">其他</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-yellow">创建时间: 2024-01-20</span>
+                        <span class="text-blue">最近使用: 今天</span>
+                    </div>
+                </div>
+
+                <!-- Vocabulary Book 3 -->
+                <div class="bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer" id="vocab-book-card-3">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-yellow/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-utensils text-yellow text-xl"></i>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button class="p-2 text-midgray hover:text-primary transition-colors">
+                                <i class="fas fa-edit text-sm"></i>
+                            </button>
+                            <button class="p-2 text-midgray hover:text-pink transition-colors">
+                                <i class="fas fa-trash text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-darkgray mb-2">食物与饮料</h3>
+                    <p class="text-midgray text-sm mb-4">各种食物和饮料的英文表达，包括水果、蔬菜、主食等</p>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-darkgray">95</span>
+                            <p class="text-sm text-midgray">总单词数</p>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-primary">1</span>
+                            <p class="text-sm text-midgray">关联计划</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 mb-4">
+                        <div class="text-center bg-green/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-green">85</span>
+                            <p class="text-xs text-midgray">名词</p>
+                        </div>
+                        <div class="text-center bg-blue/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-blue">8</span>
+                            <p class="text-xs text-midgray">动词</p>
+                        </div>
+                        <div class="text-center bg-purple/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-purple">2</span>
+                            <p class="text-xs text-midgray">形容词</p>
+                        </div>
+                        <div class="text-center bg-orange/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-orange">2</span>
+                            <p class="text-xs text-midgray">其他</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-yellow">创建时间: 2024-02-01</span>
+                        <span class="text-blue">最近使用: 3天前</span>
+                    </div>
+                </div>
+
+                <!-- Vocabulary Book 4 -->
+                <div class="bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer" id="vocab-book-card-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-purple/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-graduation-cap text-purple text-xl"></i>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button class="p-2 text-midgray hover:text-primary transition-colors">
+                                <i class="fas fa-edit text-sm"></i>
+                            </button>
+                            <button class="p-2 text-midgray hover:text-pink transition-colors">
+                                <i class="fas fa-trash text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-darkgray mb-2">学校用品</h3>
+                    <p class="text-midgray text-sm mb-4">学习用品和教室物品的英文名称，包括文具、书籍等</p>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-darkgray">65</span>
+                            <p class="text-sm text-midgray">总单词数</p>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-primary">4</span>
+                            <p class="text-sm text-midgray">关联计划</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 mb-4">
+                        <div class="text-center bg-green/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-green">58</span>
+                            <p class="text-xs text-midgray">名词</p>
+                        </div>
+                        <div class="text-center bg-blue/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-blue">4</span>
+                            <p class="text-xs text-midgray">动词</p>
+                        </div>
+                        <div class="text-center bg-purple/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-purple">3</span>
+                            <p class="text-xs text-midgray">形容词</p>
+                        </div>
+                        <div class="text-center bg-orange/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-orange">2</span>
+                            <p class="text-xs text-midgray">其他</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-yellow">创建时间: 2024-01-10</span>
+                        <span class="text-blue">最近使用: 1周前</span>
+                    </div>
+                </div>
+
+                <!-- Vocabulary Book 5 -->
+                <div class="bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer" id="vocab-book-card-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-pink/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-palette text-pink text-xl"></i>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button class="p-2 text-midgray hover:text-primary transition-colors">
+                                <i class="fas fa-edit text-sm"></i>
+                            </button>
+                            <button class="p-2 text-midgray hover:text-pink transition-colors">
+                                <i class="fas fa-trash text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-darkgray mb-2">颜色形状</h3>
+                    <p class="text-midgray text-sm mb-4">基础颜色和几何形状的英文表达，帮助认知基础概念</p>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-darkgray">40</span>
+                            <p class="text-sm text-midgray">总单词数</p>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-primary">2</span>
+                            <p class="text-sm text-midgray">关联计划</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 mb-4">
+                        <div class="text-center bg-green/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-green">25</span>
+                            <p class="text-xs text-midgray">名词</p>
+                        </div>
+                        <div class="text-center bg-blue/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-blue">3</span>
+                            <p class="text-xs text-midgray">动词</p>
+                        </div>
+                        <div class="text-center bg-purple/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-purple">12</span>
+                            <p class="text-xs text-midgray">形容词</p>
+                        </div>
+                        <div class="text-center bg-orange/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-orange">1</span>
+                            <p class="text-xs text-midgray">其他</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-yellow">创建时间: 2024-01-25</span>
+                        <span class="text-blue">最近使用: 5天前</span>
+                    </div>
+                </div>
+
+                <!-- Vocabulary Book 6 -->
+                <div class="bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer" id="vocab-book-card-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-blue/10 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-car text-blue text-xl"></i>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button class="p-2 text-midgray hover:text-primary transition-colors">
+                                <i class="fas fa-edit text-sm"></i>
+                            </button>
+                            <button class="p-2 text-midgray hover:text-pink transition-colors">
+                                <i class="fas fa-trash text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-darkgray mb-2">交通工具</h3>
+                    <p class="text-midgray text-sm mb-4">各种交通工具的英文名称，包括陆海空各类载具</p>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-darkgray">55</span>
+                            <p class="text-sm text-midgray">总单词数</p>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-2xl font-bold text-primary">1</span>
+                            <p class="text-sm text-midgray">关联计划</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 mb-4">
+                        <div class="text-center bg-green/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-green">50</span>
+                            <p class="text-xs text-midgray">名词</p>
+                        </div>
+                        <div class="text-center bg-blue/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-blue">3</span>
+                            <p class="text-xs text-midgray">动词</p>
+                        </div>
+                        <div class="text-center bg-purple/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-purple">2</span>
+                            <p class="text-xs text-midgray">形容词</p>
+                        </div>
+                        <div class="text-center bg-orange/10 rounded-lg py-2">
+                            <span class="text-lg font-bold text-orange">1</span>
+                            <p class="text-xs text-midgray">其他</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-yellow">创建时间: 2024-02-05</span>
+                        <span class="text-blue">最近使用: 2天前</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main></body></html>

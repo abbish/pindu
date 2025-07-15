@@ -1,0 +1,117 @@
+/* Stat Card Component Styles */
+.statCard {
+  background-color: var(--color-bg-primary);
+  border-radius: var(--radius-2xl);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border-light);
+  transition: all var(--transition-fast);
+}
+
+.statCard:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+
+.icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-lg);
+  color: white;
+  flex-shrink: 0;
+}
+
+.icon.primary { background-color: rgba(78, 205, 196, 0.1); color: var(--color-primary); }
+.icon.green { background-color: rgba(76, 175, 80, 0.1); color: var(--color-green); }
+.icon.orange { background-color: rgba(255, 149, 0, 0.1); color: var(--color-orange); }
+.icon.yellow { background-color: rgba(255, 179, 0, 0.1); color: var(--color-yellow); }
+.icon.blue { background-color: rgba(33, 150, 243, 0.1); color: var(--color-blue); }
+.icon.purple { background-color: rgba(156, 39, 176, 0.1); color: var(--color-purple); }
+.icon.pink { background-color: rgba(233, 30, 99, 0.1); color: var(--color-pink); }
+
+.label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-align: right;
+  line-height: var(--line-height-normal);
+}
+
+.value {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+  line-height: var(--line-height-tight);
+}
+
+.unit {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-normal);
+}
+
+/* Loading State */
+.loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.loading .icon,
+.loading .value,
+.loading .unit {
+  background: linear-gradient(90deg, var(--color-bg-tertiary) 25%, var(--color-bg-secondary) 50%, var(--color-bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+  color: transparent;
+}
+
+.loading .icon {
+  border-radius: var(--radius-xl);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .statCard {
+    padding: var(--spacing-md);
+  }
+  
+  .icon {
+    width: 40px;
+    height: 40px;
+    font-size: var(--font-size-base);
+  }
+  
+  .value {
+    font-size: var(--font-size-xl);
+  }
+}

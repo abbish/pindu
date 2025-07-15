@@ -1,0 +1,149 @@
+/* Study Calendar Component Styles */
+.calendar {
+  background-color: var(--color-bg-primary);
+  border-radius: var(--radius-2xl);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border-light);
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-md) 0;
+  line-height: var(--line-height-tight);
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+
+.dayHeader {
+  text-align: center;
+  padding: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+.dayCell {
+  text-align: center;
+  padding: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.dayCell.inactive {
+  color: var(--color-text-muted);
+}
+
+.dayCell.active {
+  color: var(--color-text-primary);
+}
+
+.dayCell.studied {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: var(--color-green);
+  font-weight: var(--font-weight-semibold);
+}
+
+.dayCell.today {
+  background-color: var(--color-primary);
+  color: white;
+  font-weight: var(--font-weight-bold);
+}
+
+.dayCell:hover:not(.inactive) {
+  background-color: var(--color-bg-tertiary);
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.legendDot {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.legendDot.studied {
+  background-color: var(--color-green);
+}
+
+.legendDot.today {
+  background-color: var(--color-primary);
+}
+
+.legendText {
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+.streakText {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-normal);
+}
+
+/* Loading State */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+  color: var(--color-text-secondary);
+}
+
+.loadingSpinner {
+  animation: spin 1s linear infinite;
+  margin-right: var(--spacing-sm);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .calendar {
+    padding: var(--spacing-md);
+  }
+  
+  .legend {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+  
+  .dayCell {
+    min-height: 24px;
+    font-size: 10px;
+  }
+}

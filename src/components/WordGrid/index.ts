@@ -1,0 +1,1 @@
+export { WordGrid, type WordGridProps, type ExtractedWord } from './WordGrid';

@@ -1,0 +1,145 @@
+/* Study Statistics Component Styles */
+.container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-xxl);
+}
+
+.statCard {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-2xl);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border-primary);
+  text-align: center;
+}
+
+.iconWrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--spacing-lg) auto;
+}
+
+.iconWrapper i {
+  font-size: var(--font-size-xl);
+}
+
+.icon_primary {
+  background: rgba(78, 205, 196, 0.1);
+}
+
+.icon_primary i {
+  color: var(--color-primary);
+}
+
+.icon_green {
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.icon_green i {
+  color: var(--color-green);
+}
+
+.icon_orange {
+  background: rgba(255, 149, 0, 0.1);
+}
+
+.icon_orange i {
+  color: var(--color-orange);
+}
+
+.icon_blue {
+  background: rgba(33, 150, 243, 0.1);
+}
+
+.icon_blue i {
+  color: var(--color-blue);
+}
+
+.value {
+  font-size: var(--font-size-4xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0 0 var(--spacing-md) 0;
+}
+
+.value_primary {
+  color: var(--color-text-primary);
+}
+
+.value_green {
+  color: var(--color-green);
+}
+
+.value_orange {
+  color: var(--color-orange);
+}
+
+.value_blue {
+  color: var(--color-blue);
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .container {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-md);
+  }
+  
+  .statCard {
+    padding: var(--spacing-md);
+  }
+  
+  .iconWrapper {
+    width: 40px;
+    height: 40px;
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .iconWrapper i {
+    font-size: var(--font-size-lg);
+  }
+  
+  .value {
+    font-size: var(--font-size-3xl);
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+  }
+  
+  .statCard {
+    padding: var(--spacing-sm);
+  }
+  
+  .iconWrapper {
+    width: 36px;
+    height: 36px;
+    margin-bottom: var(--spacing-sm);
+  }
+  
+  .iconWrapper i {
+    font-size: var(--font-size-md);
+  }
+  
+  .value {
+    font-size: var(--font-size-2xl);
+  }
+  
+  .label {
+    font-size: var(--font-size-xs);
+  }
+}

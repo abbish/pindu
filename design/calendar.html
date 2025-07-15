@@ -1,0 +1,401 @@
+<html><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学习日历 - 儿童背单词程序</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <style>
+        ::-webkit-scrollbar { display: none;}
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+    <script>tailwind.config = {
+  "theme": {
+    "extend": {
+      "colors": {
+        "primary": "#4ECDC4",
+        "orange": "#FF9500",
+        "yellow": "#FFB300",
+        "green": "#4CAF50",
+        "purple": "#9C27B0",
+        "pink": "#E91E63",
+        "blue": "#2196F3",
+        "darkgray": "#2D3436",
+        "midgray": "#636E72"
+      },
+      "fontFamily": {
+        "sans": [
+          "Inter",
+          "sans-serif"
+        ]
+      }
+    }
+  }
+};</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;500;600;700;800;900&amp;display=swap"><style>
+  .highlighted-section {
+    outline: 2px solid #3F20FB;
+    background-color: rgba(63, 32, 251, 0.1);
+  }
+
+  .edit-button {
+    position: absolute;
+    z-index: 1000;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  html, body {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  </style></head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="w-full bg-white border-b border-gray-100" id="header">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+                        <i class="fas fa-book text-white text-lg"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold text-darkgray">单词学习</h1>
+                </div>
+                <nav class="flex items-center space-x-8">
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-home text-lg"></i>
+                        <span>首页</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-tasks text-lg"></i>
+                        <span>学习计划</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-bookmark text-lg"></i>
+                        <span>单词本</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-primary font-semibold">
+                        <i class="fas fa-calendar text-lg"></i>
+                        <span>日历</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-chart-bar text-lg"></i>
+                        <span>统计</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-cog text-lg"></i>
+                        <span>设置</span>
+                    </button>
+                </nav>
+                <div class="flex items-center space-x-4">
+                    <button class="p-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-bell text-xl"></i>
+                    </button>
+                    <div class="w-10 h-10 rounded-full overflow-hidden">
+                        <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg" alt="用户头像" class="w-full h-full object-cover">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="max-w-7xl mx-auto px-6 py-8">
+        <!-- Page Header -->
+        <section id="page-header" class="mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-3xl font-bold text-darkgray mb-2">学习日历</h2>
+                    <p class="text-midgray text-lg">查看学习计划和每日完成情况</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button class="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors">
+                        <i class="fas fa-plus text-sm"></i>
+                        <span>新建计划</span>
+                    </button>
+                    <div class="flex items-center space-x-2 bg-white rounded-xl px-4 py-2 border border-gray-200">
+                        <i class="fas fa-calendar-alt text-primary"></i>
+                        <span class="text-darkgray font-semibold">2024年1月</span>
+                        <i class="fas fa-chevron-down text-midgray text-sm"></i>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Calendar Navigation -->
+        <section id="calendar-nav" class="mb-6">
+            <div class="flex items-center justify-between bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                    <i class="fas fa-chevron-left"></i>
+                    <span>上个月</span>
+                </button>
+                <h3 class="text-2xl font-bold text-darkgray">2024年1月</h3>
+                <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                    <span>下个月</span>
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- Calendar Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <!-- Main Calendar -->
+            <div class="lg:col-span-3">
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="calendar-grid">
+                    <!-- Week Headers -->
+                    <div class="grid grid-cols-7 gap-2 mb-4" id="week-headers">
+                        <div class="text-center py-3 text-midgray font-semibold">周一</div>
+                        <div class="text-center py-3 text-midgray font-semibold">周二</div>
+                        <div class="text-center py-3 text-midgray font-semibold">周三</div>
+                        <div class="text-center py-3 text-midgray font-semibold">周四</div>
+                        <div class="text-center py-3 text-midgray font-semibold">周五</div>
+                        <div class="text-center py-3 text-midgray font-semibold">周六</div>
+                        <div class="text-center py-3 text-midgray font-semibold">周日</div>
+                    </div>
+
+                    <!-- Calendar Container with Plans -->
+                    <div class="relative">
+                        <!-- Learning Plan Bars -->
+                        <div class="absolute inset-0 pointer-events-none" id="plan-bars">
+                            <!-- 基础词汇计划 (1-7日) -->
+                            <div class="absolute bg-primary/30 rounded-full h-2 z-10" style="top: 45px; left: 8px; width: calc(100% - 16px); grid-column: 1 / 8;">
+                                <div class="flex items-center justify-center h-full">
+                                    <span class="text-xs font-medium text-primary px-2 py-1 bg-white rounded-full shadow-sm">基础词汇</span>
+                                </div>
+                            </div>
+                            
+                            <!-- 动物世界计划 (3-10日) -->
+                            <div class="absolute bg-orange/30 rounded-full h-2 z-10" style="top: 105px; left: calc(28.57% + 8px); width: calc(57.14% - 16px);">
+                                <div class="flex items-center justify-center h-full">
+                                    <span class="text-xs font-medium text-orange px-2 py-1 bg-white rounded-full shadow-sm">动物世界</span>
+                                </div>
+                            </div>
+                            
+                            <!-- 颜色认知计划 (8-14日) -->
+                            <div class="absolute bg-purple/30 rounded-full h-2 z-10" style="top: 165px; left: calc(14.29% + 8px); width: calc(57.14% - 16px);">
+                                <div class="flex items-center justify-center h-full">
+                                    <span class="text-xs font-medium text-purple px-2 py-1 bg-white rounded-full shadow-sm">颜色认知</span>
+                                </div>
+                            </div>
+                            
+                            <!-- 日常用品计划 (12-18日) -->
+                            <div class="absolute bg-blue/30 rounded-full h-2 z-10" style="top: 225px; left: calc(57.14% + 8px); width: calc(42.86% - 16px);">
+                                <div class="flex items-center justify-center h-full">
+                                    <span class="text-xs font-medium text-blue px-2 py-1 bg-white rounded-full shadow-sm">日常用品</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Calendar Days -->
+                        <div class="grid grid-cols-7 gap-2 relative z-20" id="calendar-days">
+                            <!-- Week 1 -->
+                            <div class="aspect-square p-2 text-midgray/50" id="day-prev-1">
+                                <div class="text-sm">30</div>
+                            </div>
+                            <div class="aspect-square p-2 text-midgray/50" id="day-prev-2">
+                                <div class="text-sm">31</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-1">
+                                <div class="text-sm font-semibold text-darkgray mb-1">1</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-green/20 rounded-full">
+                                    <i class="fas fa-check text-green text-xs"></i>
+                                </div>
+                                <div class="text-xs text-green mt-1">25词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-2">
+                                <div class="text-sm font-semibold text-darkgray mb-1">2</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-green/20 rounded-full">
+                                    <i class="fas fa-check text-green text-xs"></i>
+                                </div>
+                                <div class="text-xs text-green mt-1">30词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-3">
+                                <div class="text-sm font-semibold text-darkgray mb-1">3</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-orange/20 rounded-full">
+                                    <i class="fas fa-clock text-orange text-xs"></i>
+                                </div>
+                                <div class="text-xs text-orange mt-1">15词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-4">
+                                <div class="text-sm font-semibold text-darkgray mb-1">4</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-pink/20 rounded-full">
+                                    <i class="fas fa-times text-pink text-xs"></i>
+                                </div>
+                                <div class="text-xs text-pink mt-1">0词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-5">
+                                <div class="text-sm font-semibold text-darkgray mb-1">5</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-green/20 rounded-full">
+                                    <i class="fas fa-check text-green text-xs"></i>
+                                </div>
+                                <div class="text-xs text-green mt-1">28词</div>
+                            </div>
+
+                            <!-- Week 2 -->
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-6">
+                                <div class="text-sm font-semibold text-darkgray mb-1">6</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-green/20 rounded-full">
+                                    <i class="fas fa-check text-green text-xs"></i>
+                                </div>
+                                <div class="text-xs text-green mt-1">22词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-7">
+                                <div class="text-sm font-semibold text-darkgray mb-1">7</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-green/20 rounded-full">
+                                    <i class="fas fa-check text-green text-xs"></i>
+                                </div>
+                                <div class="text-xs text-green mt-1">35词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-8">
+                                <div class="text-sm font-semibold text-darkgray mb-1">8</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-orange/20 rounded-full">
+                                    <i class="fas fa-clock text-orange text-xs"></i>
+                                </div>
+                                <div class="text-xs text-orange mt-1">18词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-9">
+                                <div class="text-sm font-semibold text-darkgray mb-1">9</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-green/20 rounded-full">
+                                    <i class="fas fa-check text-green text-xs"></i>
+                                </div>
+                                <div class="text-xs text-green mt-1">26词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-10">
+                                <div class="text-sm font-semibold text-darkgray mb-1">10</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-green/20 rounded-full">
+                                    <i class="fas fa-check text-green text-xs"></i>
+                                </div>
+                                <div class="text-xs text-green mt-1">31词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-11">
+                                <div class="text-sm font-semibold text-darkgray mb-1">11</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-pink/20 rounded-full">
+                                    <i class="fas fa-times text-pink text-xs"></i>
+                                </div>
+                                <div class="text-xs text-pink mt-1">0词</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer bg-white" id="day-12">
+                                <div class="text-sm font-semibold text-darkgray mb-1">12</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-green/20 rounded-full">
+                                    <i class="fas fa-check text-green text-xs"></i>
+                                </div>
+                                <div class="text-xs text-green mt-1">29词</div>
+                            </div>
+
+                            <!-- Current Day -->
+                            <div class="aspect-square p-2 border-2 border-primary bg-primary/10 rounded-xl cursor-pointer" id="day-13">
+                                <div class="text-sm font-bold text-primary mb-1">13</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-primary rounded-full">
+                                    <i class="fas fa-play text-white text-xs"></i>
+                                </div>
+                                <div class="text-xs text-primary mt-1 font-semibold">今天</div>
+                            </div>
+
+                            <!-- Future Days -->
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl bg-white" id="day-14">
+                                <div class="text-sm font-semibold text-darkgray mb-1">14</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full">
+                                    <i class="fas fa-calendar text-midgray text-xs"></i>
+                                </div>
+                                <div class="text-xs text-midgray mt-1">计划</div>
+                            </div>
+                            <div class="aspect-square p-2 border border-gray-200 rounded-xl bg-white" id="day-15">
+                                <div class="text-sm font-semibold text-darkgray mb-1">15</div>
+                                <div class="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full">
+                                    <i class="fas fa-calendar text-midgray text-xs"></i>
+                                </div>
+                                <div class="text-xs text-midgray mt-1">计划</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="lg:col-span-1">
+                <!-- Today's Plan -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6" id="today-plan">
+                    <h3 class="text-xl font-bold text-darkgray mb-4">今日计划</h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between p-3 bg-primary/10 rounded-xl">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-book text-white text-sm"></i>
+                                </div>
+                                <div>
+                                    <div class="text-sm font-semibold text-darkgray">基础词汇</div>
+                                    <div class="text-xs text-midgray">目标: 20词</div>
+                                </div>
+                            </div>
+                            <div class="text-primary font-bold">0/20</div>
+                        </div>
+                        <div class="flex items-center justify-between p-3 bg-purple/10 rounded-xl">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-8 h-8 bg-purple rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-palette text-white text-sm"></i>
+                                </div>
+                                <div>
+                                    <div class="text-sm font-semibold text-darkgray">颜色认知</div>
+                                    <div class="text-xs text-midgray">目标: 15词</div>
+                                </div>
+                            </div>
+                            <div class="text-purple font-bold">0/15</div>
+                        </div>
+                    </div>
+                    <button class="w-full mt-4 bg-primary text-white font-semibold py-3 rounded-xl hover:bg-primary/90 transition-colors">
+                        <i class="fas fa-play mr-2"></i>
+                        开始学习
+                    </button>
+                </div>
+
+                <!-- Monthly Stats -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6" id="monthly-stats">
+                    <h3 class="text-xl font-bold text-darkgray mb-4">本月统计</h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between">
+                            <span class="text-midgray">学习天数</span>
+                            <span class="text-darkgray font-bold">9/13天</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-midgray">完成单词</span>
+                            <span class="text-darkgray font-bold">284个</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-midgray">平均每日</span>
+                            <span class="text-darkgray font-bold">31.6词</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-midgray">连续天数</span>
+                            <span class="text-darkgray font-bold">3天</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Legend -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" id="calendar-legend">
+                    <h3 class="text-xl font-bold text-darkgray mb-4">图例说明</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-6 h-6 bg-green/20 rounded-full flex items-center justify-center">
+                                <i class="fas fa-check text-green text-xs"></i>
+                            </div>
+                            <span class="text-sm text-darkgray">已完成目标</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-6 h-6 bg-orange/20 rounded-full flex items-center justify-center">
+                                <i class="fas fa-clock text-orange text-xs"></i>
+                            </div>
+                            <span class="text-sm text-darkgray">部分完成</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-6 h-6 bg-pink/20 rounded-full flex items-center justify-center">
+                                <i class="fas fa-times text-pink text-xs"></i>
+                            </div>
+                            <span class="text-sm text-darkgray">未完成</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                                </div></div></div></div></div></div></main></body></html>

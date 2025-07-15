@@ -1,0 +1,218 @@
+.card {
+  background-color: var(--color-bg-primary);
+  border-radius: var(--radius-2xl);
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-border-light);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  height: 400px;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+
+.status {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.menuBtn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.menuBtn:hover {
+  color: var(--color-text-primary);
+}
+
+/* Content */
+.content {
+  margin-bottom: var(--spacing-md);
+}
+
+.title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-xs) 0;
+  line-height: var(--line-height-tight);
+}
+
+.description {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-normal);
+}
+
+/* Statistics */
+.stats {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.statRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.statLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.statValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.mastery {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.masteryText {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.stars {
+  display: flex;
+  gap: 2px;
+}
+
+.stars i {
+  font-size: var(--font-size-sm);
+}
+
+/* Progress */
+.progress {
+  margin-bottom: var(--spacing-md);
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-xs);
+}
+
+.progressLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.progressValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width var(--transition-normal);
+}
+
+/* Action Button */
+.actionBtn {
+  width: 100%;
+  padding: var(--spacing-sm) 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.actionBtn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.actionBtn:active {
+  transform: translateY(0);
+}
+
+/* Compact Layout Styles - 紧凑版本用于学习计划页面 */
+.cardCompact {
+  /* 保持相同的基础样式，但可以调整尺寸和间距 */
+  
+  /* 调整内部间距，使布局更紧凑 */
+}
+
+.cardCompact .content {
+  margin-bottom: var(--spacing-sm);
+}
+
+.cardCompact .stats {
+  margin-bottom: var(--spacing-sm);
+  gap: var(--spacing-xs);
+}
+
+.cardCompact .progress {
+  margin-bottom: var(--spacing-sm);
+}
+
+.cardCompact .title {
+  font-size: var(--font-size-lg);
+}
+
+.cardCompact .description {
+  font-size: var(--font-size-sm);
+}
+
+/* 在小屏幕上进一步压缩紧凑布局 */
+@media (max-width: 768px) {
+  .cardCompact {
+    padding: var(--spacing-md);
+  }
+  
+  .cardCompact .title {
+    font-size: var(--font-size-base);
+  }
+  
+  .cardCompact .statRow {
+    margin-bottom: var(--spacing-xs);
+  }
+}

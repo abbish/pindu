@@ -1,0 +1,1 @@
+export { SpellingPractice, type SpellingPracticeProps } from './SpellingPractice';

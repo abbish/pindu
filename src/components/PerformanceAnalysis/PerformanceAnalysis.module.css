@@ -1,0 +1,267 @@
+/* Performance Analysis Component Styles */
+.container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-xxl);
+  margin-bottom: var(--spacing-xxl);
+}
+
+.section {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-2xl);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border-primary);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-lg);
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.sectionTitle i {
+  color: var(--color-orange);
+}
+
+.section:last-child .sectionTitle i {
+  color: var(--color-green);
+}
+
+.countBadge {
+  background: rgba(255, 149, 0, 0.1);
+  color: var(--color-orange);
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.countBadge.success {
+  background: rgba(76, 175, 80, 0.1);
+  color: var(--color-green);
+}
+
+.difficultWords {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+.difficultWordCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-lg);
+  background: rgba(255, 149, 0, 0.05);
+  border: 1px solid rgba(255, 149, 0, 0.2);
+  border-radius: var(--radius-xl);
+}
+
+.wordInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.wordImage {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+}
+
+.wordDetails {
+  display: flex;
+  flex-direction: column;
+}
+
+.wordTitle {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.wordError {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.wordActions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.scoreText {
+  color: var(--color-orange);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+}
+
+.retryBtn {
+  padding: var(--spacing-sm);
+  color: var(--color-orange);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.retryBtn:hover {
+  background: rgba(255, 149, 0, 0.1);
+}
+
+.practiceAllBtn {
+  width: 100%;
+  margin-top: var(--spacing-lg);
+  background: rgba(255, 149, 0, 0.1);
+  color: var(--color-orange);
+  padding: var(--spacing-md) 0;
+  border-radius: var(--radius-xl);
+  border: none;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+}
+
+.practiceAllBtn:hover {
+  background: rgba(255, 149, 0, 0.2);
+}
+
+.masteredWords {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.masteredWordCard {
+  background: rgba(76, 175, 80, 0.05);
+  border: 1px solid rgba(76, 175, 80, 0.2);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  text-align: center;
+}
+
+.masteredWordTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.masteredWordScore {
+  font-size: var(--font-size-xs);
+  color: var(--color-green);
+  font-weight: var(--font-weight-semibold);
+}
+
+.viewAllBtn {
+  width: 100%;
+  background: rgba(76, 175, 80, 0.1);
+  color: var(--color-green);
+  padding: var(--spacing-md) 0;
+  border-radius: var(--radius-xl);
+  border: none;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+}
+
+.viewAllBtn:hover {
+  background: rgba(76, 175, 80, 0.2);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .container {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 768px) {
+  .section {
+    padding: var(--spacing-md);
+  }
+  
+  .sectionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+  
+  .sectionTitle {
+    font-size: var(--font-size-lg);
+    gap: var(--spacing-sm);
+  }
+  
+  .difficultWordCard {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+  }
+  
+  .wordActions {
+    align-self: flex-end;
+  }
+  
+  .masteredWords {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .section {
+    padding: var(--spacing-sm);
+  }
+  
+  .sectionTitle {
+    font-size: var(--font-size-md);
+  }
+  
+  .wordImage {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .wordTitle {
+    font-size: var(--font-size-sm);
+  }
+  
+  .wordError {
+    font-size: var(--font-size-xs);
+  }
+  
+  .masteredWords {
+    grid-template-columns: 1fr;
+  }
+  
+  .masteredWordTitle {
+    font-size: var(--font-size-md);
+  }
+}

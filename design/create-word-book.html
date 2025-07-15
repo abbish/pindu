@@ -1,0 +1,440 @@
+<html><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>创建单词本 - 儿童背单词程序</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <style>
+        ::-webkit-scrollbar { display: none;}
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+    <script>tailwind.config = {
+  "theme": {
+    "extend": {
+      "colors": {
+        "primary": "#4ECDC4",
+        "orange": "#FF9500",
+        "yellow": "#FFB300",
+        "green": "#4CAF50",
+        "purple": "#9C27B0",
+        "pink": "#E91E63",
+        "blue": "#2196F3",
+        "darkgray": "#2D3436",
+        "midgray": "#636E72"
+      },
+      "fontFamily": {
+        "sans": [
+          "Inter",
+          "sans-serif"
+        ]
+      }
+    }
+  }
+};</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;500;600;700;800;900&amp;display=swap"><style>
+  .highlighted-section {
+    outline: 2px solid #3F20FB;
+    background-color: rgba(63, 32, 251, 0.1);
+  }
+
+  .edit-button {
+    position: absolute;
+    z-index: 1000;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  html, body {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  </style></head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="w-full bg-white border-b border-gray-100" id="header">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+                        <i class="fas fa-book text-white text-lg"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold text-darkgray">单词学习</h1>
+                </div>
+                <nav class="flex items-center space-x-8">
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-home text-lg"></i>
+                        <span>首页</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-tasks text-lg"></i>
+                        <span>学习计划</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-primary font-semibold">
+                        <i class="fas fa-bookmark text-lg"></i>
+                        <span>单词本</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-calendar text-lg"></i>
+                        <span>日历</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-chart-bar text-lg"></i>
+                        <span>统计</span>
+                    </button>
+                    <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-cog text-lg"></i>
+                        <span>设置</span>
+                    </button>
+                </nav>
+                <div class="flex items-center space-x-4">
+                    <button class="p-2 text-midgray hover:text-primary transition-colors">
+                        <i class="fas fa-bell text-xl"></i>
+                    </button>
+                    <div class="w-10 h-10 rounded-full overflow-hidden">
+                        <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg" alt="用户头像" class="w-full h-full object-cover">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="max-w-7xl mx-auto px-6 py-8">
+        <!-- Breadcrumb -->
+        <section id="breadcrumb-section" class="mb-6">
+            <div class="flex items-center space-x-2 text-sm">
+                <span class="text-midgray cursor-pointer hover:text-primary transition-colors">首页</span>
+                <i class="fas fa-chevron-right text-midgray text-xs"></i>
+                <span class="text-midgray cursor-pointer hover:text-primary transition-colors">单词本</span>
+                <i class="fas fa-chevron-right text-midgray text-xs"></i>
+                <span class="text-darkgray font-semibold">创建单词本</span>
+            </div>
+        </section>
+
+        <!-- Page Header -->
+        <section id="page-header" class="mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-3xl font-bold text-darkgray mb-2">创建单词本</h2>
+                    <p class="text-midgray text-lg">通过文本导入或上传文件创建专属的单词本</p>
+                </div>
+                <button class="flex items-center space-x-2 text-midgray hover:text-primary transition-colors">
+                    <i class="fas fa-arrow-left text-lg"></i>
+                    <span>返回</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Create Vocabulary Form -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Form Section -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Basic Information -->
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-100" id="basic-info-section">
+                    <h3 class="text-2xl font-bold text-darkgray mb-6">基本信息</h3>
+                    
+                    <!-- Vocabulary Name -->
+                    <div class="mb-6" id="vocab-name-field">
+                        <label class="block text-lg font-semibold text-darkgray mb-3">单词本名称</label>
+                        <input type="text" placeholder="请输入单词本名称" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-primary focus:outline-none text-lg">
+                        <p class="text-sm text-midgray mt-2">给你的单词本起一个有意义的名字</p>
+                    </div>
+
+                    <!-- Theme Tags -->
+                    <div class="mb-6" id="theme-tags-field">
+                        <label class="block text-lg font-semibold text-darkgray mb-3">主题标签</label>
+                        <div class="flex flex-wrap gap-3 mb-4">
+                            <button class="px-4 py-2 bg-primary text-white rounded-full text-sm font-medium hover:bg-primary/90 transition-colors">
+                                <i class="fas fa-paw mr-2"></i>动物
+                            </button>
+                            <button class="px-4 py-2 bg-orange text-white rounded-full text-sm font-medium hover:bg-orange/90 transition-colors">
+                                <i class="fas fa-utensils mr-2"></i>食物
+                            </button>
+                            <button class="px-4 py-2 bg-green text-white rounded-full text-sm font-medium hover:bg-green/90 transition-colors">
+                                <i class="fas fa-graduation-cap mr-2"></i>学习
+                            </button>
+                            <button class="px-4 py-2 bg-purple text-white rounded-full text-sm font-medium hover:bg-purple/90 transition-colors">
+                                <i class="fas fa-palette mr-2"></i>颜色
+                            </button>
+                            <button class="px-4 py-2 bg-blue text-white rounded-full text-sm font-medium hover:bg-blue/90 transition-colors">
+                                <i class="fas fa-home mr-2"></i>家庭
+                            </button>
+                            <button class="px-4 py-2 bg-pink text-white rounded-full text-sm font-medium hover:bg-pink/90 transition-colors">
+                                <i class="fas fa-gamepad mr-2"></i>游戏
+                            </button>
+                            <button class="px-4 py-2 bg-yellow text-white rounded-full text-sm font-medium hover:bg-yellow/90 transition-colors">
+                                <i class="fas fa-star mr-2"></i>其他
+                            </button>
+                        </div>
+                        <p class="text-sm text-midgray">选择一个或多个主题标签来分类你的单词本</p>
+                    </div>
+
+                    <!-- Description -->
+                    <div id="description-field">
+                        <label class="block text-lg font-semibold text-darkgray mb-3">描述</label>
+                        <textarea placeholder="描述一下这个单词本的内容和用途" rows="3" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-primary focus:outline-none text-lg resize-none"></textarea>
+                    </div>
+                </div>
+
+                <!-- Content Import -->
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-100" id="content-import-section">
+                    <h3 class="text-2xl font-bold text-darkgray mb-6">导入内容</h3>
+                    
+                    <!-- Import Method Tabs -->
+                    <div class="flex space-x-4 mb-6" id="import-method-tabs">
+                        <button class="px-6 py-3 bg-primary text-white rounded-xl font-semibold" onclick="showTextInput()">
+                            <i class="fas fa-keyboard mr-2"></i>文本输入
+                        </button>
+                        <button class="px-6 py-3 bg-gray-100 text-midgray rounded-xl font-semibold hover:bg-gray-200 transition-colors" onclick="showFileUpload()">
+                            <i class="fas fa-upload mr-2"></i>文件上传
+                        </button>
+                    </div>
+
+                    <!-- Text Input -->
+                    <div id="text-input-section">
+    <label class="block text-lg font-semibold text-darkgray mb-3">输入文本内容</label>
+    <textarea placeholder="在这里输入包含单词的文本内容，系统会自动识别和提取单词..." rows="8" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-primary focus:outline-none text-lg resize-none"></textarea>
+    <div class="flex justify-between items-center mt-3">
+        <p class="text-sm text-midgray">支持英文文本，系统会自动提取单词</p>
+        <div class="flex items-center space-x-3">
+            <div class="relative">
+                <select class="appearance-none bg-white border border-gray-200 rounded-lg px-4 py-2 pr-8 text-sm font-medium text-darkgray hover:border-primary focus:border-primary focus:outline-none cursor-pointer">
+                    <option value="deepseek-r1">DeepSeek R1</option>
+                    <option value="gpt-4">GPT-4</option>
+                    <option value="UX Pilot-3">UX Pilot 3</option>
+                    <option value="gemini-pro">Gemini Pro</option>
+                </select>
+                <i class="fas fa-chevron-down absolute right-3 top-1/2 transform -translate-y-1/2 text-midgray text-xs pointer-events-none"></i>
+            </div>
+            <button class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+                <i class="fas fa-magic mr-2"></i>分析文本
+            </button>
+        </div>
+    </div>
+</div>
+
+                    <!-- File Upload -->
+                    <div id="file-upload-section" class="hidden">
+                        <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-primary transition-colors">
+                            <i class="fas fa-cloud-upload-alt text-4xl text-midgray mb-4"></i>
+                            <p class="text-lg font-semibold text-darkgray mb-2">拖拽文件到这里或点击上传</p>
+                            <p class="text-sm text-midgray mb-4">支持 .txt 和 .md 格式文件</p>
+                            <button class="px-6 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors">
+                                <i class="fas fa-folder-open mr-2"></i>选择文件
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Word Matrix -->
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-100" id="word-matrix-section">
+    <div class="flex items-center justify-between mb-6">
+        <h3 class="text-2xl font-bold text-darkgray">提取的单词</h3>
+        <div class="flex items-center space-x-4">
+            <span class="text-sm text-midgray">已选择 <span class="font-semibold text-primary">12</span> 个单词</span>
+            <button class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+                <i class="fas fa-check-double mr-2"></i>全选
+            </button>
+        </div>
+    </div>
+
+    <!-- Word Grid -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="word-grid">
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" checked="" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">apple</div>
+                <div class="text-sm text-midgray">苹果</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full">n.</span>
+                    <span class="text-xs text-midgray">出现 3 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" checked="" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">banana</div>
+                <div class="text-sm text-midgray">香蕉</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full">n.</span>
+                    <span class="text-xs text-midgray">出现 2 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">orange</div>
+                <div class="text-sm text-midgray">橙子</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full">n.</span>
+                    <span class="text-xs text-midgray">出现 1 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" checked="" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">grape</div>
+                <div class="text-sm text-midgray">葡萄</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full">n.</span>
+                    <span class="text-xs text-midgray">出现 4 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" checked="" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">watermelon</div>
+                <div class="text-sm text-midgray">西瓜</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full">n.</span>
+                    <span class="text-xs text-midgray">出现 1 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">strawberry</div>
+                <div class="text-sm text-midgray">草莓</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full">n.</span>
+                    <span class="text-xs text-midgray">出现 2 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" checked="" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">pineapple</div>
+                <div class="text-sm text-midgray">菠萝</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full">n.</span>
+                    <span class="text-xs text-midgray">出现 1 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" checked="" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">mango</div>
+                <div class="text-sm text-midgray">芒果</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full">n.</span>
+                    <span class="text-xs text-midgray">出现 3 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">eat</div>
+                <div class="text-sm text-midgray">吃</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-green bg-green/10 px-2 py-1 rounded-full">v.</span>
+                    <span class="text-xs text-midgray">出现 5 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" checked="" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">sweet</div>
+                <div class="text-sm text-midgray">甜的</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-purple bg-purple/10 px-2 py-1 rounded-full">adj.</span>
+                    <span class="text-xs text-midgray">出现 4 次</span>
+                </div>
+            </div>
+        </label>
+        <label class="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:border-primary transition-colors cursor-pointer">
+            <input type="checkbox" class="w-5 h-5 text-primary rounded focus:ring-primary">
+            <div class="flex-1">
+                <div class="font-semibold text-darkgray">delicious</div>
+                <div class="text-sm text-midgray">美味的</div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-purple bg-purple/10 px-2 py-1 rounded-full">adj.</span>
+                    <span class="text-xs text-midgray">出现 2 次</span>
+                </div>
+            </div>
+        </label>
+    </div>
+</div>
+            </div>
+
+            <!-- Preview Section -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 sticky top-8" id="vocab-preview">
+                    <h3 class="text-xl font-bold text-darkgray mb-6">单词本预览</h3>
+                    
+                    <!-- Vocabulary Summary -->
+                    <div class="space-y-4 mb-6" id="vocab-summary">
+                        <div class="flex justify-between">
+                            <span class="text-midgray">单词本名称</span>
+                            <span class="text-darkgray font-semibold">水果单词本</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-midgray">主题标签</span>
+                            <span class="px-2 py-1 bg-orange/10 text-orange text-sm rounded-full">食物</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-midgray">单词数量</span>
+                            <span class="text-darkgray font-semibold">12个</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-midgray">预计学习时间</span>
+                            <span class="text-darkgray font-semibold">2-3天</span>
+                        </div>
+                    </div>
+
+                    <!-- Selected Words Preview -->
+                    <div class="mb-6" id="selected-words-preview">
+                        <h4 class="text-lg font-semibold text-darkgray mb-3">已选单词</h4>
+                        <div class="space-y-2 max-h-40 overflow-y-auto">
+                            <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                <span class="text-sm font-medium text-darkgray">apple</span>
+                                <span class="text-xs text-midgray">苹果</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                <span class="text-sm font-medium text-darkgray">banana</span>
+                                <span class="text-xs text-midgray">香蕉</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                <span class="text-sm font-medium text-darkgray">grape</span>
+                                <span class="text-xs text-midgray">葡萄</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                <span class="text-sm font-medium text-darkgray">watermelon</span>
+                                <span class="text-xs text-midgray">西瓜</span>
+                            </div>
+                            <div class="text-center text-sm text-midgray py-2">
+                                还有8个单词...
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="space-y-3" id="action-buttons">
+    <button class="w-full bg-primary text-white font-semibold py-3 rounded-xl hover:bg-primary/90 transition-colors">
+        <i class="fas fa-plus mr-2"></i>
+        创建单词本
+    </button>
+</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer id="footer" class="bg-white border-t border-gray-100 mt-16">
+        <div class="max-w-7xl mx-auto px-6 py-12">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div class="col-span-1 md:col-span-2">
+                    </div></div></div></footer></body></html>

@@ -1,0 +1,1 @@
+export { CongratulationsBanner, type CongratulationsBannerProps } from './CongratulationsBanner';

@@ -1,0 +1,102 @@
+/* Study Progress Component Styles */
+.container {
+  width: 100%;
+  background: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border-primary);
+}
+
+.wrapper {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--spacing-lg);
+}
+
+.textRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.counter {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.counter.primary {
+  color: var(--color-primary);
+}
+
+.counter.green {
+  color: var(--color-green);
+}
+
+.counter.blue {
+  color: var(--color-blue);
+}
+
+.counter.orange {
+  color: var(--color-orange);
+}
+
+.progressBar {
+  width: 100%;
+  height: 12px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width var(--transition-normal);
+}
+
+.progressFill.primary {
+  background: var(--color-primary);
+}
+
+.progressFill.green {
+  background: var(--color-green);
+}
+
+.progressFill.blue {
+  background: var(--color-blue);
+}
+
+.progressFill.orange {
+  background: var(--color-orange);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .wrapper {
+    padding: var(--spacing-md);
+  }
+}
+
+@media (max-width: 480px) {
+  .wrapper {
+    padding: var(--spacing-sm);
+  }
+  
+  .textRow {
+    margin-bottom: var(--spacing-xs);
+  }
+  
+  .label,
+  .counter {
+    font-size: var(--font-size-xs);
+  }
+  
+  .progressBar {
+    height: 8px;
+  }
+}

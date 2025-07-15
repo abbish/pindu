@@ -1,0 +1,93 @@
+/* Congratulations Banner Component Styles */
+.banner {
+  width: 100%;
+  background: linear-gradient(to right, rgba(78, 205, 196, 0.1), rgba(76, 175, 80, 0.1));
+  border-bottom: 1px solid var(--color-border-primary);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--spacing-xxl) var(--spacing-lg);
+  text-align: center;
+}
+
+.iconWrapper {
+  width: 96px;
+  height: 96px;
+  background: var(--color-yellow);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--spacing-lg) auto;
+}
+
+.iconWrapper i {
+  color: white;
+  font-size: var(--font-size-4xl);
+}
+
+.title {
+  font-size: var(--font-size-4xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-md) 0;
+}
+
+.description {
+  font-size: var(--font-size-xl);
+  color: var(--color-text-secondary);
+  margin: 0;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .container {
+    padding: var(--spacing-xl) var(--spacing-md);
+  }
+  
+  .iconWrapper {
+    width: 80px;
+    height: 80px;
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .iconWrapper i {
+    font-size: var(--font-size-3xl);
+  }
+  
+  .title {
+    font-size: var(--font-size-3xl);
+  }
+  
+  .description {
+    font-size: var(--font-size-lg);
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: var(--spacing-lg) var(--spacing-sm);
+  }
+  
+  .iconWrapper {
+    width: 64px;
+    height: 64px;
+  }
+  
+  .iconWrapper i {
+    font-size: var(--font-size-2xl);
+  }
+  
+  .title {
+    font-size: var(--font-size-2xl);
+  }
+  
+  .description {
+    font-size: var(--font-size-md);
+  }
+}

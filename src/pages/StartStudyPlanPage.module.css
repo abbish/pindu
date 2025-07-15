@@ -1,0 +1,485 @@
+/* Start Study Plan Page Styles */
+.page {
+  min-height: 100vh;
+  background: var(--color-bg-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--spacing-2xl) var(--spacing-lg);
+  width: 100%;
+}
+
+.breadcrumbSection {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.studyHeaderSection {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-2xl);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-2xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border-light);
+}
+
+.studyHeaderContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.planInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.planIcon {
+  width: 40px;
+  height: 40px;
+  background: var(--color-primary);
+  border-radius: var(--radius-xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.planIcon i {
+  color: white;
+  font-size: var(--font-size-lg);
+}
+
+.planDetails {
+  display: flex;
+  flex-direction: column;
+}
+
+.planTitle {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.planDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.studyControls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.progressItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 80px;
+}
+
+.progressLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.progressValue {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.progressBarContainer {
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+}
+
+.controlBtn {
+  padding: var(--spacing-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.controlBtn:hover {
+  color: var(--color-primary);
+  background: var(--color-bg-secondary);
+}
+
+.progressSection {
+  background: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border-primary);
+  padding: var(--spacing-lg);
+}
+
+.contentLayout {
+  display: flex;
+  gap: var(--spacing-xl);
+  min-height: 0; /* Enable flex children to shrink */
+}
+
+.leftPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 70vh; /* Ensure content fits in viewport */
+}
+
+.rightPanel {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.wordSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  height: 100%;
+}
+
+.wordCardContainer {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+
+.spellingSection {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-border-primary);
+  margin-top: var(--spacing-lg);
+}
+
+/* Right Panel Components */
+.studyInfoCard {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-border-primary);
+}
+
+.studyInfoHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.studyInfoIcon {
+  width: 24px;
+  height: 24px;
+  color: var(--color-primary);
+}
+
+.studyInfoTitle {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.planInfoSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.planInfoItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.planInfoItem:last-child {
+  border-bottom: none;
+}
+
+.planInfoLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.planInfoValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.timerSection {
+  text-align: center;
+  padding: var(--spacing-lg);
+  background: linear-gradient(135deg, var(--color-primary), rgba(78, 205, 196, 0.8));
+  border-radius: var(--radius-xl);
+  color: white;
+}
+
+.timerDisplay {
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--spacing-sm);
+}
+
+.timerLabel {
+  font-size: var(--font-size-sm);
+  opacity: 0.9;
+}
+
+.studyControls {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: center;
+  margin-top: var(--spacing-md);
+}
+
+.studyControlBtn {
+  padding: var(--spacing-sm);
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: var(--radius-lg);
+  color: white;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.studyControlBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Modal Styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--spacing-lg);
+}
+
+.modalContent {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-xl);
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  animation: slideIn 0.3s ease-out;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border-primary);
+}
+
+.modalTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.modalCloseBtn {
+  padding: var(--spacing-sm);
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-fast);
+}
+
+.modalCloseBtn:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.modalBody {
+  padding: var(--spacing-lg);
+  max-height: calc(80vh - 80px);
+  overflow-y: auto;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .main {
+    flex-direction: column;
+    padding: var(--spacing-lg) var(--spacing-md);
+  }
+  
+  .leftPanel {
+    max-width: none;
+    min-height: auto;
+  }
+  
+  .rightPanel {
+    width: 100%;
+    flex-direction: row;
+    gap: var(--spacing-md);
+  }
+  
+  .rightPanel > * {
+    flex: 1;
+  }
+  
+  .timerSection {
+    padding: var(--spacing-md);
+  }
+  
+  .timerDisplay {
+    font-size: var(--font-size-xl);
+  }
+}
+
+@media (max-width: 768px) {
+  .breadcrumbContainer {
+    padding: var(--spacing-md) var(--spacing-md) 0 var(--spacing-md);
+  }
+  
+  .studyHeaderSection {
+    padding: var(--spacing-md);
+  }
+  
+  .studyHeaderContent {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+  }
+  
+  .planInfo {
+    gap: var(--spacing-sm);
+  }
+  
+  .planIcon {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .planTitle {
+    font-size: var(--font-size-lg);
+  }
+  
+  .studyControls {
+    gap: var(--spacing-md);
+    align-self: flex-end;
+  }
+  
+  .progressSection {
+    padding: var(--spacing-md);
+  }
+  
+  .main {
+    padding: var(--spacing-md);
+  }
+  
+  .rightPanel {
+    flex-direction: column;
+  }
+  
+  .wordSection {
+    gap: var(--spacing-md);
+  }
+  
+  .wordCardContainer {
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 480px) {
+  .breadcrumbContainer {
+    padding: var(--spacing-sm) var(--spacing-sm) 0 var(--spacing-sm);
+  }
+  
+  .studyHeaderSection {
+    padding: var(--spacing-sm);
+  }
+  
+  .planTitle {
+    font-size: var(--font-size-md);
+  }
+  
+  .planDescription {
+    font-size: var(--font-size-xs);
+  }
+  
+  .progressSection {
+    padding: var(--spacing-sm);
+  }
+  
+  .main {
+    padding: var(--spacing-md);
+  }
+  
+  .wordSection {
+    gap: var(--spacing-md);
+  }
+
+  .actionButtons {
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  .detailBtn,
+  .practiceBtn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .modalOverlay {
+    padding: var(--spacing-md);
+  }
+
+  .modalContent {
+    max-height: 90vh;
+  }
+
+  .modalHeader {
+    padding: var(--spacing-md);
+  }
+
+  .modalBody {
+    padding: var(--spacing-md);
+    max-height: calc(90vh - 60px);
+  }
+}
