@@ -1,0 +1,147 @@
+.toast {
+  position: relative;
+  min-width: 320px;
+  max-width: 480px;
+  margin-bottom: 12px;
+  background-color: var(--color-surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow-large);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  transform: translateX(100%);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast.visible {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.toast.leaving {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+}
+
+.icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.message {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.closeButton:hover {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+}
+
+.progressBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.progress {
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  animation: progress linear forwards;
+}
+
+/* Toast类型样式 */
+.success {
+  border-left: 4px solid var(--color-success);
+}
+
+.success .progress {
+  background-color: var(--color-success);
+}
+
+.error {
+  border-left: 4px solid var(--color-error);
+}
+
+.error .progress {
+  background-color: var(--color-error);
+}
+
+.warning {
+  border-left: 4px solid var(--color-warning);
+}
+
+.warning .progress {
+  background-color: var(--color-warning);
+}
+
+.info {
+  border-left: 4px solid var(--color-info);
+}
+
+.info .progress {
+  background-color: var(--color-info);
+}
+
+@keyframes progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .toast {
+    min-width: 280px;
+    max-width: calc(100vw - 32px);
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+}

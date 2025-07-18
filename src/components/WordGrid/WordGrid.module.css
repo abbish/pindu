@@ -348,3 +348,143 @@
     font-size: var(--font-size-xs);
   }
 }
+
+/* 自然拼读信息样式 */
+.phonicsInfo {
+  margin: var(--spacing-sm) 0;
+  padding: var(--spacing-sm);
+  background-color: var(--color-background-secondary);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--color-primary);
+}
+
+.phonicsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+}
+
+.phonicsRow:last-child {
+  margin-bottom: 0;
+}
+
+.phonicsLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  min-width: 40px;
+}
+
+.phonicsValue {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+.phonicsExplanation {
+  margin-top: var(--spacing-xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.explanationText {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  background-color: var(--color-background-tertiary);
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-xs);
+  line-height: 1.4;
+  max-height: 60px;
+  overflow-y: auto;
+}
+
+/* 难度等级样式 */
+.difficulty {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+}
+
+.difficulty.easy {
+  background-color: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.difficulty.medium {
+  background-color: var(--color-warning-light);
+  color: var(--color-warning-dark);
+}
+
+.difficulty.hard {
+  background-color: var(--color-error-light);
+  color: var(--color-error-dark);
+}
+
+/* Quick Selector */
+.quickSelector {
+  margin: var(--spacing-md) 0;
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-secondary);
+}
+
+.selectorHeader {
+  margin-bottom: var(--spacing-sm);
+}
+
+.selectorTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.selectorButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.posButton {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.posButton:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+}
+
+.posButton.fullySelected {
+  background: var(--color-success-light);
+  border-color: var(--color-success);
+  color: var(--color-success-dark);
+}
+
+.posButton.partiallySelected {
+  background: var(--color-warning-light);
+  border-color: var(--color-warning);
+  color: var(--color-warning-dark);
+}
+
+.posLabel {
+  font-weight: var(--font-weight-medium);
+}
+
+.posCount {
+  font-size: var(--font-size-xs);
+  opacity: 0.8;
+}

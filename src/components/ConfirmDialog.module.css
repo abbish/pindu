@@ -1,0 +1,131 @@
+.backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.dialog {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  min-width: 400px;
+  max-width: 500px;
+  margin: 20px;
+}
+
+.header {
+  padding: 20px 20px 0 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.title {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.content {
+  padding: 20px;
+}
+
+.message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #666;
+}
+
+.actions {
+  padding: 0 20px 20px 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.cancelButton {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.cancelButton:hover {
+  background: #f5f5f5;
+  border-color: #ccc;
+}
+
+.confirmButton {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.dangerButton {
+  background: #dc3545;
+  color: white;
+}
+
+.dangerButton:hover {
+  background: #c82333;
+}
+
+.warningButton {
+  background: #ffc107;
+  color: #212529;
+}
+
+.warningButton:hover {
+  background: #e0a800;
+}
+
+.infoButton {
+  background: #007bff;
+  color: white;
+}
+
+.infoButton:hover {
+  background: #0056b3;
+}
+
+/* 危险类型的对话框样式 */
+.danger .title {
+  color: #dc3545;
+}
+
+.danger .header {
+  border-bottom-color: #dc3545;
+}
+
+/* 警告类型的对话框样式 */
+.warning .title {
+  color: #856404;
+}
+
+.warning .header {
+  border-bottom-color: #ffc107;
+}
+
+/* 信息类型的对话框样式 */
+.info .title {
+  color: #004085;
+}
+
+.info .header {
+  border-bottom-color: #007bff;
+}

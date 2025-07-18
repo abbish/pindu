@@ -10,13 +10,18 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "RedLark 单词学习",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
-        "minHeight": 600
+        "minHeight": 600,
+        "visible": false,
+        "center": true,
+        "focus": true,
+        "devtools": true
       }
     ],
     "security": {

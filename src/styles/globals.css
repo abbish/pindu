@@ -14,6 +14,11 @@
   --color-primary-hover: #45b7b8;
   --color-primary-dark: #3da5a0;
   --color-primary-light: #e8f8f7;
+
+  /* Secondary Colors */
+  --color-secondary: #6c757d;       /* gray for secondary actions */
+  --color-secondary-hover: #5a6268; /* darker gray for hover */
+  --color-secondary-light: #e9ecef; /* lighter gray for backgrounds */
   
   /* Accent Colors */
   --color-orange: #FF9500;
@@ -40,6 +45,20 @@
   --color-blue: #2196F3;
   --color-blue-hover: #1e88e5;
   --color-blue-light: #e3f2fd;
+
+  /* Status Colors */
+  --color-success: #4CAF50;
+  --color-success-bg: rgba(76, 175, 80, 0.1);
+  --color-success-border: rgba(76, 175, 80, 0.3);
+  --color-error: #F44336;
+  --color-warning: #FF9800;
+  --color-info: #2196F3;
+  --color-info-bg: rgba(33, 150, 243, 0.1);
+  --color-info-border: rgba(33, 150, 243, 0.3);
+
+  /* Surface Colors */
+  --color-background: #f9fafb;
+  --color-surface: #ffffff;
   
   /* Text Colors */
   --color-text-primary: #2D3436;    /* darkgray from design */
@@ -119,15 +138,26 @@
 
 /* Dark Theme Variables */
 [data-theme="dark"] {
+  /* Secondary Colors for dark theme */
+  --color-secondary: #adb5bd;       /* lighter gray for dark theme */
+  --color-secondary-hover: #ced4da; /* even lighter gray for hover */
+  --color-secondary-light: #495057; /* darker gray for backgrounds */
+
+  /* Status Colors for dark theme */
+  --color-success-bg: rgba(76, 175, 80, 0.15);
+  --color-success-border: rgba(76, 175, 80, 0.4);
+  --color-info-bg: rgba(33, 150, 243, 0.15);
+  --color-info-border: rgba(33, 150, 243, 0.4);
+
   --color-text-primary: #ffffff;
   --color-text-secondary: #adb5bd;
   --color-text-muted: #6c757d;
   --color-text-inverse: #212529;
-  
+
   --color-bg-primary: #1a1a1a;
   --color-bg-secondary: #2d2d2d;
   --color-bg-tertiary: #404040;
-  
+
   --color-border: #404040;
   --color-border-light: #2d2d2d;
   --color-border-dark: #6c757d;

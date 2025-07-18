@@ -33,6 +33,10 @@ export interface WordBook {
   createdAt: string;
   /** 最近使用时间 */
   lastUsed: string;
+  /** 删除时间 */
+  deletedAt?: string;
+  /** 状态 */
+  status: 'normal' | 'draft' | 'deleted';
 }
 
 export interface WordBookCardProps {
@@ -40,10 +44,6 @@ export interface WordBookCardProps {
   book: WordBook;
   /** 点击卡片回调 */
   onClick?: (book: WordBook) => void;
-  /** 编辑回调 */
-  onEdit?: (book: WordBook) => void;
-  /** 删除回调 */
-  onDelete?: (book: WordBook) => void;
 }
 
 /**
@@ -51,49 +51,31 @@ export interface WordBookCardProps {
  */
 export const WordBookCard: React.FC<WordBookCardProps> = ({
   book,
-  onClick,
-  onEdit,
-  onDelete
+  onClick
 }) => {
   const handleCardClick = () => {
     onClick?.(book);
   };
 
-  const handleEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onEdit?.(book);
-  };
-
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDelete?.(book);
-  };
+  const isDeleted = !!book.deletedAt;
 
   return (
-    <div 
-      className={styles.card}
+    <div
+      className={`${styles.card} ${isDeleted ? styles.deleted : ''}`}
       onClick={handleCardClick}
     >
+      {/* Deleted Badge */}
+      {isDeleted && (
+        <div className={styles.deletedBadge}>
+          <i className="fas fa-trash" />
+          <span>已删除</span>
+        </div>
+      )}
+
       {/* Card Header */}
       <div className={styles.header}>
-        <div className={`${styles.icon} ${styles[book.iconColor]}`}>
+        <div className={`${styles.icon} ${styles[book.iconColor]} ${isDeleted ? styles.iconDeleted : ''}`}>
           <i className={`fas fa-${book.icon}`} />
-        </div>
-        <div className={styles.actions}>
-          <button
-            className={styles.actionBtn}
-            onClick={handleEdit}
-            title="编辑单词本"
-          >
-            <i className="fas fa-edit" />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.deleteBtn}`}
-            onClick={handleDelete}
-            title="删除单词本"
-          >
-            <i className="fas fa-trash" />
-          </button>
         </div>
       </div>
 

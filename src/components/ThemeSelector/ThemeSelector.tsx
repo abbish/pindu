@@ -25,6 +25,8 @@ export interface ThemeSelectorProps {
   label?: string;
   /** 描述 */
   description?: string;
+  /** 是否禁用 */
+  disabled?: boolean;
 }
 
 /**
@@ -36,9 +38,12 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
   onSelectionChange,
   multiple = true,
   label = '主题标签',
-  description = '选择一个或多个主题标签来分类你的单词本'
+  description = '选择一个或多个主题标签来分类你的单词本',
+  disabled = false
 }) => {
   const handleThemeToggle = (themeId: string) => {
+    if (disabled) return;
+
     let newSelection: string[];
 
     if (multiple) {
@@ -67,11 +72,12 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
           return (
             <button
               key={theme.id}
-              className={`${styles.themeButton} ${styles[theme.color]} ${isSelected ? styles.selected : ''}`}
+              className={`${styles.themeButton} ${styles[theme.color]} ${isSelected ? styles.selected : ''} ${disabled ? styles.disabled : ''}`}
               onClick={() => handleThemeToggle(theme.id)}
+              disabled={disabled}
               type="button"
             >
-              <i className={`fas fa-${theme.icon} ${styles.icon}`} />
+              <span className={styles.icon}>{theme.icon}</span>
               <span className={styles.themeName}>{theme.name}</span>
             </button>
           );

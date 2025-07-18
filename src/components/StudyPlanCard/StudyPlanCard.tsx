@@ -1,7 +1,6 @@
 import React from 'react';
 import styles from './StudyPlanCard.module.css';
-import { getMasteryDisplay, getStatusDisplay } from '../../utils/database';
-import type { StudyPlanWithProgress } from '../../utils/database';
+import type { StudyPlanWithProgress } from '../../types';
 
 export interface StudyPlanCardProps {
   /** Study plan data */
@@ -14,6 +13,42 @@ export interface StudyPlanCardProps {
   onActionClick?: (planId: number) => void;
   /** Menu action handler */
   onMenuAction?: (planId: number, action: string) => void;
+}
+
+// 辅助函数
+function getStatusDisplay(status: string) {
+  switch (status) {
+    case 'active':
+      return { text: '进行中', color: 'var(--color-green)' };
+    case 'paused':
+      return { text: '已暂停', color: 'var(--color-orange)' };
+    case 'completed':
+      return { text: '已完成', color: 'var(--color-blue)' };
+    default:
+      return { text: '未知', color: 'var(--color-gray)' };
+  }
+}
+
+function getMasteryDisplay(level: number) {
+  const stars = Math.min(Math.max(Math.floor(level / 20), 1), 5);
+  let text = '';
+  let color = '';
+
+  if (level >= 80) {
+    text = '精通';
+    color = 'var(--color-green)';
+  } else if (level >= 60) {
+    text = '熟练';
+    color = 'var(--color-blue)';
+  } else if (level >= 40) {
+    text = '一般';
+    color = 'var(--color-orange)';
+  } else {
+    text = '初学';
+    color = 'var(--color-red)';
+  }
+
+  return { text, color, stars };
 }
 
 /**
@@ -69,9 +104,8 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
       <div className={styles.header}>
         <span 
           className={styles.status}
-          style={{ 
-            color: statusDisplay.color,
-            backgroundColor: statusDisplay.bgColor
+          style={{
+            color: statusDisplay.color
           }}
         >
           {statusDisplay.text}

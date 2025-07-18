@@ -9,6 +9,10 @@ import {
   PlanPreview
 } from '../components';
 import type { PlanFormData, WordBookOption } from '../components';
+import { WordBookService } from '../services/wordbookService';
+import { StudyService } from '../services/studyService';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { showErrorMessage } from '../utils/errorHandler';
 
 export interface CreatePlanPageProps {
   /** Navigation handler */
@@ -26,78 +30,34 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
     endDate: '',
     selectedBooks: []
   });
-  
-  const [wordBooks, setWordBooks] = useState<WordBookOption[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const wordBookService = new WordBookService();
+  const studyService = new StudyService();
+  const { data: rawWordBooks, loading, error: loadError, refresh } = useAsyncData(async () => {
+    const result = await wordBookService.getAllWordBooks();
+    if (result.success) {
+      return result.data;
+    } else {
+      throw new Error(result.error || '获取单词本列表失败');
+    }
+  });
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [, setCreatedPlanId] = useState<number | null>(null);
 
   useEffect(() => {
-    loadWordBooks();
     setDefaultDates();
   }, []);
 
-  const loadWordBooks = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Mock word books data - should be replaced with actual API call
-      const mockBooks: WordBookOption[] = [
-        {
-          id: 1,
-          name: '基础生活词汇',
-          description: '日常生活中常用的基础英语单词',
-          wordCount: 120,
-          category: 'basic'
-        },
-        {
-          id: 2,
-          name: '动物世界',
-          description: '各种动物的英文名称和相关词汇',
-          wordCount: 80,
-          category: 'animals'
-        },
-        {
-          id: 3,
-          name: '食物与饮料',
-          description: '各种食物和饮料的英文表达',
-          wordCount: 95,
-          category: 'food'
-        },
-        {
-          id: 4,
-          name: '学校用品',
-          description: '学习用品和教室物品的英文名称',
-          wordCount: 65,
-          category: 'school'
-        },
-        {
-          id: 5,
-          name: '颜色形状',
-          description: '基础颜色和几何形状的英文表达',
-          wordCount: 45,
-          category: 'colors'
-        },
-        {
-          id: 6,
-          name: '家庭成员',
-          description: '家庭成员称谓和关系词汇',
-          wordCount: 30,
-          category: 'family'
-        }
-      ];
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setWordBooks(mockBooks);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '加载单词本失败');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Convert database word books to component format
+  const wordBooks: WordBookOption[] = (rawWordBooks && Array.isArray(rawWordBooks)) ? rawWordBooks.map(book => ({
+    id: book.id,
+    name: book.title,
+    description: book.description,
+    wordCount: book.total_words,
+    category: book.icon_color // Using icon_color as category for now
+  })) : [];
 
   const setDefaultDates = () => {
     const today = new Date();
@@ -149,19 +109,44 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
   const handleCreatePlan = async () => {
     if (!canCreatePlan()) return;
-    
+
     try {
       setCreating(true);
       setError(null);
-      
-      // Mock API call to create plan
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // TODO: Implement actual plan creation
-      console.log('Creating plan:', formData);
-      
-      setSuccess(true);
+
+      // Collect all words from selected books
+      const allWordIds: number[] = [];
+      for (const bookId of formData.selectedBooks) {
+        const result = await wordBookService.getWordsByBookId(bookId);
+        if (result.success && result.data) {
+          allWordIds.push(...result.data.data.map(word => word.id));
+        }
+      }
+
+      if (allWordIds.length === 0) {
+        throw new Error('所选单词本中没有单词，请选择包含单词的单词本');
+      }
+
+      // Create the study plan using real API
+      const createRequest = {
+        name: formData.name.trim(),
+        description: formData.description?.trim() || '',
+        word_ids: allWordIds,
+        mastery_level: 1, // Default mastery level
+      };
+
+      console.log('Creating study plan:', createRequest);
+      const planResult = await studyService.createStudyPlan(createRequest);
+
+      if (planResult.success) {
+        console.log('Created plan with ID:', planResult.data);
+        setCreatedPlanId(planResult.data);
+        setSuccess(true);
+      } else {
+        throw new Error(planResult.error || '创建学习计划失败');
+      }
     } catch (err) {
+      console.error('Failed to create study plan:', err);
       setError(err instanceof Error ? err.message : '创建计划失败');
     } finally {
       setCreating(false);
@@ -185,6 +170,8 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
   const handleCreateAnother = () => {
     setSuccess(false);
+    setCreatedPlanId(null);
+    setError(null);
     setFormData({
       name: '',
       description: '',
@@ -195,7 +182,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
     setDefaultDates();
   };
 
-  if (error && !loading) {
+  if (loadError && !loading) {
     return (
       <div className={styles.page}>
         <Header activeNav="plans" onNavChange={handleNavChange} />
@@ -204,9 +191,9 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
             <div className={styles.errorIcon}>
               <i className="fas fa-exclamation-triangle" />
             </div>
-            <p className={styles.errorText}>{error}</p>
+            <p className={styles.errorText}>{showErrorMessage(loadError)}</p>
             <div className={styles.errorActions}>
-              <Button onClick={loadWordBooks}>重试</Button>
+              <Button onClick={refresh}>重试</Button>
               <Button variant="secondary" onClick={handleBack}>返回</Button>
             </div>
           </div>
@@ -271,6 +258,16 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
           {/* Form Section */}
           <div className={styles.formSection}>
             <h3 className={styles.sectionTitle}>计划基本信息</h3>
+            
+            {/* Error Message */}
+            {error && (
+              <div className={styles.errorBanner}>
+                <div className={styles.errorIcon}>
+                  <i className="fas fa-exclamation-triangle" />
+                </div>
+                <p>{error}</p>
+              </div>
+            )}
             
             {/* Basic Info */}
             <div className={styles.basicInfo}>

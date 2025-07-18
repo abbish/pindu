@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { TextImport, WordGrid, Button, type ImportMethod, type ExtractedWord } from '../';
+import { WordExtractionMode } from '../../types';
 import styles from './WordImporter.module.css';
+import { AIModelService } from '../../services/aiModelService';
+
 
 export interface WordImporterProps {
   /** 导入方法 */
@@ -13,9 +16,9 @@ export interface WordImporterProps {
   onTextChange: (content: string) => void;
   /** 文件上传回调 */
   onFileUpload: (file: File) => void;
-  /** 选择的AI模型 */
+  /** 选择的AI模型 (向后兼容) */
   selectedModel: string;
-  /** AI模型变化回调 */
+  /** AI模型变化回调 (向后兼容) */
   onModelChange: (model: string) => void;
   /** 提取的单词列表 */
   extractedWords: ExtractedWord[];
@@ -25,6 +28,8 @@ export interface WordImporterProps {
   onWordToggle: (wordId: string) => void;
   /** 全选/取消全选回调 */
   onSelectAll: (selected: boolean) => void;
+  /** 按词性选择回调 */
+  onSelectByPartOfSpeech?: (partOfSpeech: string, selected: boolean) => void;
   /** 保存选中单词回调 */
   onSaveWords?: (words: ExtractedWord[]) => Promise<void>;
   /** 保存状态 */
@@ -39,6 +44,10 @@ export interface WordImporterProps {
   showSaveAction?: boolean;
   /** 选中的单词变化回调（用于外部组件实时获取选中状态） */
   onSelectedWordsChange?: (words: ExtractedWord[]) => void;
+  /** 单词提取模式 */
+  extractionMode?: WordExtractionMode;
+  /** 提取模式变化回调 */
+  onExtractionModeChange?: (mode: WordExtractionMode) => void;
 }
 
 /**
@@ -57,17 +66,156 @@ export const WordImporter: React.FC<WordImporterProps> = ({
   onWordsExtracted,
   onWordToggle,
   onSelectAll,
+  onSelectByPartOfSpeech,
   onSaveWords,
   saving = false,
   title = '导入词汇',
   description = '通过文本分析或文件上传导入新词汇',
   saveButtonText = '保存选中单词',
   showSaveAction = true,
-  onSelectedWordsChange
+  onSelectedWordsChange,
+  extractionMode = 'focus',
+  onExtractionModeChange
 }) => {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<'import' | 'select'>('import');
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; label: string; description?: string }>>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string>('default');
+  const [, setLoadingModels] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  const aiModelService = new AIModelService();
+
+  // 向后兼容性处理：如果传入了 selectedModel，使用它来初始化 selectedModelId
+  useEffect(() => {
+    if (isInitialized && selectedModel && selectedModel !== selectedModelId) {
+      console.log('Setting selectedModelId from prop:', selectedModel);
+      setSelectedModelId(selectedModel);
+    }
+  }, [selectedModel, isInitialized]); // 只在初始化完成后才同步
+
+  // 向后兼容性处理：当 selectedModelId 改变时，通知父组件
+  useEffect(() => {
+    if (isInitialized && onModelChange && selectedModelId !== selectedModel) {
+      console.log('Notifying parent of model change:', selectedModelId);
+      onModelChange(selectedModelId);
+    }
+  }, [selectedModelId, isInitialized]); // 只在初始化完成后才通知
+
+  // 加载可用的AI模型
+  useEffect(() => {
+    const loadModels = async () => {
+      setLoadingModels(true);
+      try {
+        const modelsResult = await aiModelService.getAIModels();
+        let modelOptions: any[] = [];
+
+        if (modelsResult.success) {
+          modelOptions = modelsResult.data.map(model => ({
+            id: model.id.toString(),
+            label: `${model.display_name} (${model.provider?.display_name || '未知提供商'})`,
+            description: model.description || `${model.provider?.display_name || '未知提供商'}提供的${model.display_name}模型`,
+          }));
+        } else {
+          console.error('Failed to load AI models:', modelsResult.error);
+        }
+
+        setAvailableModels(modelOptions);
+
+        // 设置默认选中的模型
+        const defaultModel = modelsResult.success ? modelsResult.data.find(m => m.is_default) : null;
+        if (defaultModel && !selectedModel) {
+          console.log('Setting default model:', defaultModel.id.toString());
+          setSelectedModelId(defaultModel.id.toString());
+        } else if (selectedModel) {
+          console.log('Using model from props:', selectedModel);
+          setSelectedModelId(selectedModel);
+        } else if (modelOptions.length > 0) {
+          // 如果没有默认模型，选择第一个可用模型
+          console.log('No default model found, using first available:', modelOptions[0].id);
+          setSelectedModelId(modelOptions[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to load AI models:', error);
+        // 如果加载失败，设置空的模型列表
+        setAvailableModels([]);
+      } finally {
+        setLoadingModels(false);
+        setIsInitialized(true); // 标记初始化完成
+      }
+    };
+
+    loadModels();
+  }, []);
+
+  // 移除了传统词汇分析的转换函数
+
+  // 转换 PhonicsWord 到 ExtractedWord
+  const convertPhonicsToExtracted = (phonicsWords: any[]): ExtractedWord[] => {
+    return phonicsWords.map((word, index) => ({
+      id: `${index + 1}`,
+      word: word.word,
+      meaning: word.chinese_translation,
+      partOfSpeech: convertPOSAbbreviation(word.pos_abbreviation),
+      frequency: word.frequency || 1,
+      selected: true, // 默认选中所有单词
+      // 添加自然拼读特有的信息
+      phonics: {
+        ipa: word.ipa,
+        syllables: word.syllables,
+        phonics_rule: word.phonics_rule,
+        analysis_explanation: word.analysis_explanation,
+        pos_abbreviation: word.pos_abbreviation,
+        pos_english: word.pos_english,
+        pos_chinese: word.pos_chinese,
+        frequency: word.frequency
+      }
+    }));
+  };
+
+  // 转换词性缩写到标准格式
+  const convertPOSAbbreviation = (pos?: string): ExtractedWord['partOfSpeech'] => {
+    if (!pos) return 'n.';
+
+    const normalizedPos = pos.toLowerCase().replace(/\./g, '').trim();
+    const posMap: Record<string, ExtractedWord['partOfSpeech']> = {
+      'n': 'n.',
+      'noun': 'n.',
+      'nouns': 'n.',
+      'v': 'v.',
+      'verb': 'v.',
+      'verbs': 'v.',
+      'adj': 'adj.',
+      'adjective': 'adj.',
+      'adjectives': 'adj.',
+      'adv': 'adv.',
+      'adverb': 'adv.',
+      'adverbs': 'adv.',
+      'prep': 'prep.',
+      'preposition': 'prep.',
+      'prepositions': 'prep.',
+      'conj': 'conj.',
+      'conjunction': 'conj.',
+      'conjunctions': 'conj.',
+      'int': 'int.',
+      'interjection': 'int.',
+      'interjections': 'int.',
+      'pron': 'pron.',
+      'pronoun': 'pron.',
+      'pronouns': 'pron.',
+      'art': 'art.',
+      'article': 'art.',
+      'articles': 'art.',
+      'det': 'det.',
+      'determiner': 'det.',
+      'determiners': 'det.',
+    };
+
+    return posMap[normalizedPos] || 'n.';
+  };
+
+
 
   const handleAnalyzeText = async () => {
     if (!textContent.trim() && method === 'text') {
@@ -79,110 +227,61 @@ export const WordImporter: React.FC<WordImporterProps> = ({
     setAnalyzing(true);
 
     try {
-      // Simulate AI analysis - should be replaced with actual API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock extracted words based on text content or file
-      const mockWords: ExtractedWord[] = [
-        {
-          id: '1',
-          word: 'apple',
-          meaning: '苹果',
-          partOfSpeech: 'n.',
-          frequency: 3,
-          selected: true
-        },
-        {
-          id: '2',
-          word: 'banana',
-          meaning: '香蕉',
-          partOfSpeech: 'n.',
-          frequency: 2,
-          selected: true
-        },
-        {
-          id: '3',
-          word: 'orange',
-          meaning: '橙子',
-          partOfSpeech: 'n.',
-          frequency: 1,
-          selected: false
-        },
-        {
-          id: '4',
-          word: 'grape',
-          meaning: '葡萄',
-          partOfSpeech: 'n.',
-          frequency: 4,
-          selected: true
-        },
-        {
-          id: '5',
-          word: 'watermelon',
-          meaning: '西瓜',
-          partOfSpeech: 'n.',
-          frequency: 1,
-          selected: true
-        },
-        {
-          id: '6',
-          word: 'strawberry',
-          meaning: '草莓',
-          partOfSpeech: 'n.',
-          frequency: 2,
-          selected: false
-        },
-        {
-          id: '7',
-          word: 'pineapple',
-          meaning: '菠萝',
-          partOfSpeech: 'n.',
-          frequency: 1,
-          selected: true
-        },
-        {
-          id: '8',
-          word: 'mango',
-          meaning: '芒果',
-          partOfSpeech: 'n.',
-          frequency: 3,
-          selected: true
-        },
-        {
-          id: '9',
-          word: 'eat',
-          meaning: '吃',
-          partOfSpeech: 'v.',
-          frequency: 5,
-          selected: false
-        },
-        {
-          id: '10',
-          word: 'sweet',
-          meaning: '甜的',
-          partOfSpeech: 'adj.',
-          frequency: 4,
-          selected: true
-        },
-        {
-          id: '11',
-          word: 'delicious',
-          meaning: '美味的',
-          partOfSpeech: 'adj.',
-          frequency: 2,
-          selected: false
-        }
-      ];
+      console.log('Starting phonics analysis with model:', selectedModelId);
 
-      onWordsExtracted(mockWords);
+      // 使用自然拼读分析API
+      let modelIdToUse: number | undefined;
+
+      if (selectedModelId === '' || !selectedModelId) {
+        // 如果没有选择模型，使用默认模型
+        modelIdToUse = undefined;
+      } else {
+        const parsedId = parseInt(selectedModelId);
+        if (isNaN(parsedId)) {
+          throw new Error(`Invalid model ID: ${selectedModelId}`);
+        }
+        modelIdToUse = parsedId;
+      }
+
+      console.log('Using model ID:', modelIdToUse);
+
+      const phonicsResult = await aiModelService.analyzePhonics(
+        textContent,
+        modelIdToUse,
+        extractionMode
+      );
+
+      console.log('Phonics analysis result:', phonicsResult);
+
+      if (!phonicsResult.success) {
+        throw new Error(phonicsResult.error || '分析失败');
+      }
+
+      // 转换自然拼读分析结果为ExtractedWord格式
+      const extractedWords = convertPhonicsToExtracted(phonicsResult.data.words);
+
+      console.log('Converted extracted words:', extractedWords);
+
+      onWordsExtracted(extractedWords);
       setCurrentStep('select');
-      
     } catch (err) {
-      setError('文本分析失败，请重试');
+      console.error('Phonics analysis failed:', err);
+
+      // AI 分析失败，显示错误信息
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage.includes('XML parsing error') || errorMessage.includes('No valid words found')) {
+        setError('AI 返回的数据格式不正确，请重新点击分析按钮重试。如果问题持续存在，请检查所选模型是否支持自然拼读分析。');
+      } else {
+        setError('分析失败，请检查文本内容、网络连接或重新点击分析按钮重试');
+      }
     } finally {
       setAnalyzing(false);
     }
   };
+
+
+
+
 
   const handleSaveWords = async () => {
     const selectedWords = extractedWords.filter(word => word.selected);
@@ -211,16 +310,32 @@ export const WordImporter: React.FC<WordImporterProps> = ({
     setError(null);
   };
 
-  const selectedCount = extractedWords.filter(word => word.selected).length;
+  // 使用 useMemo 优化选中单词的计算
+  const selectedWords = useMemo(() => {
+    return extractedWords.filter(word => word.selected);
+  }, [extractedWords]);
+
+  const selectedCount = selectedWords.length;
   const canSave = selectedCount > 0 && !saving;
+
+  // 使用 useRef 来跟踪上一次的选中单词，避免不必要的回调
+  const prevSelectedWordsRef = useRef<ExtractedWord[]>([]);
 
   // 监听选中单词变化，通知外部组件
   React.useEffect(() => {
     if (onSelectedWordsChange) {
-      const selectedWords = extractedWords.filter(word => word.selected);
-      onSelectedWordsChange(selectedWords);
+      // 比较选中单词的ID数组，而不是整个对象数组
+      const currentSelectedIds = selectedWords.map(w => w.id).sort();
+      const prevSelectedIds = prevSelectedWordsRef.current.map(w => w.id).sort();
+
+      // 只有当选中的单词ID发生变化时才调用回调
+      if (JSON.stringify(currentSelectedIds) !== JSON.stringify(prevSelectedIds)) {
+        console.log('Selected words changed:', selectedWords.length, 'words selected');
+        prevSelectedWordsRef.current = selectedWords;
+        onSelectedWordsChange(selectedWords);
+      }
     }
-  }, [extractedWords, onSelectedWordsChange]);
+  }, [selectedWords]); // 移除 onSelectedWordsChange 避免循环
 
   return (
     <div className={styles.container}>
@@ -262,6 +377,52 @@ export const WordImporter: React.FC<WordImporterProps> = ({
       {/* Content Import Step */}
       {currentStep === 'import' && (
         <div className={styles.importSection}>
+          {/* 提取模式选择 */}
+          <div className={styles.extractionModeSection}>
+            <h4 className={styles.sectionTitle}>提取模式</h4>
+            <div className={styles.modeOptions}>
+              <label className={`${styles.modeOption} ${extractionMode === 'focus' ? styles.selected : ''}`}>
+                <input
+                  type="radio"
+                  name="extractionMode"
+                  value="focus"
+                  checked={extractionMode === 'focus'}
+                  onChange={(e) => onExtractionModeChange?.(e.target.value as WordExtractionMode)}
+                  className={styles.modeRadio}
+                />
+                <div className={styles.modeContent}>
+                  <div className={styles.modeTitle}>
+                    <i className="fas fa-bullseye" />
+                    重点模式（推荐）
+                  </div>
+                  <div className={styles.modeDescription}>
+                    过滤掉 a、the、is 等简单词汇，专注于有学习价值的单词
+                  </div>
+                </div>
+              </label>
+
+              <label className={`${styles.modeOption} ${extractionMode === 'all' ? styles.selected : ''}`}>
+                <input
+                  type="radio"
+                  name="extractionMode"
+                  value="all"
+                  checked={extractionMode === 'all'}
+                  onChange={(e) => onExtractionModeChange?.(e.target.value as WordExtractionMode)}
+                  className={styles.modeRadio}
+                />
+                <div className={styles.modeContent}>
+                  <div className={styles.modeTitle}>
+                    <i className="fas fa-list" />
+                    全量模式
+                  </div>
+                  <div className={styles.modeDescription}>
+                    提取文本中的所有单词，包括简单的功能词
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
           <TextImport
             method={method}
             onMethodChange={onMethodChange}
@@ -269,9 +430,10 @@ export const WordImporter: React.FC<WordImporterProps> = ({
             onTextChange={onTextChange}
             onFileUpload={onFileUpload}
             onAnalyzeText={handleAnalyzeText}
-            selectedModel={selectedModel}
-            onModelChange={onModelChange}
+            selectedModelId={selectedModelId}
+            onModelChange={setSelectedModelId}
             analyzing={analyzing}
+            availableModels={availableModels}
           />
         </div>
       )}
@@ -296,6 +458,7 @@ export const WordImporter: React.FC<WordImporterProps> = ({
               words={extractedWords}
               onWordToggle={onWordToggle}
               onSelectAll={onSelectAll}
+              onSelectByPartOfSpeech={onSelectByPartOfSpeech}
               loading={analyzing}
             />
           </div>

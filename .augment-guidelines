@@ -1,0 +1,831 @@
+# CLAUDE.md - Tauri + React 项目开发规则
+
+## 项目架构
+- **前端**: React 18 + TypeScript + Vite
+- **后端**: Tauri (Rust)
+- **数据库**: SQLite + SQLx
+- **构建工具**: Vite + Tauri CLI
+- **包管理**: pnpm + Cargo
+
+## 数据库迁移规范
+
+### 迁移脚本管理规则
+1. **只能添加新迁移**：任何数据库变更需求只能通过添加新的迁移脚本实现，严禁修改已存在的历史迁移文件
+2. **序号连续性**：迁移脚本文件名必须保持序号连续性（001, 002, 003...），不得跳号或重复
+3. **禁止删库重建**：任何代码重构或问题修复都不能使用删除数据库的方式解决，必须通过新增迁移脚本修复
+4. **向前兼容**：新迁移必须与现有数据兼容，避免破坏性变更
+
+### 迁移脚本命名规范
+```
+src-tauri/migrations/
+├── 001_initial.sql              # 初始化表结构
+├── 002_create_ai_models.sql     # AI模型相关表
+├── 003_insert_ai_data.sql       # 默认AI数据
+├── 004_add_new_feature.sql      # 新功能相关变更
+└── ...
+```
+
+### 迁移脚本内容规范
+- 使用 `CREATE TABLE IF NOT EXISTS` 确保幂等性
+- 使用 `INSERT OR IGNORE` 避免重复插入
+- 添加必要的索引和约束
+- 包含详细的注释说明变更目的
+- 测试迁移的向前和向后兼容性
+
+### 数据库变更流程
+1. **需求分析**：明确数据库变更需求
+2. **设计迁移**：设计向前兼容的迁移方案
+3. **编写脚本**：创建新的迁移脚本文件
+4. **本地测试**：在本地环境测试迁移
+5. **代码审查**：确保迁移脚本质量
+6. **部署验证**：在测试环境验证迁移效果
+
+## 前后端接口数据结构规范
+
+### 1. 统一响应格式 (ApiResult)
+
+#### 1.1 基础响应格式
+所有API接口必须返回统一的`ApiResult<T>`格式：
+
+```typescript
+// 成功响应
+type ApiResult<T> = {
+  success: true;
+  data: T;
+} | {
+  success: false;
+  error: string;
+}
+```
+
+#### 1.2 Rust后端实现
+```rust
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApiResult<T> {
+    pub success: bool,
+    pub data: Option<T>,
+    pub error: Option<String>,
+}
+
+impl<T> ApiResult<T> {
+    pub fn success(data: T) -> Self {
+        Self {
+            success: true,
+            data: Some(data),
+            error: None,
+        }
+    }
+
+    pub fn error(message: String) -> Self {
+        Self {
+            success: false,
+            data: None,
+            error: Some(message),
+        }
+    }
+}
+```
+
+#### 1.3 TypeScript前端实现
+```typescript
+export type ApiResult<T> = {
+  success: true;
+  data: T;
+} | {
+  success: false;
+  error: string;
+};
+```
+
+### 2. 服务层规范
+
+#### 2.1 前端服务方法签名
+```typescript
+// ✅ 正确的方法签名
+async methodName(
+  params: ParamsType,
+  setLoading?: (state: LoadingState) => void
+): Promise<ApiResult<ReturnType>> {
+  return this.executeWithLoading(async () => {
+    return this.client.invoke<ReturnType>('command_name', params);
+  }, setLoading);
+}
+
+// ❌ 错误的方法签名
+async methodName(): ApiResult<ReturnType> { // 缺少Promise包装
+  // ...
+}
+```
+
+#### 2.2 后端命令处理器签名
+```rust
+// ✅ 正确的命令处理器
+#[tauri::command]
+pub async fn command_name(params: ParamsType) -> ApiResult<ReturnType> {
+    match some_operation(params).await {
+        Ok(data) => ApiResult::success(data),
+        Err(e) => ApiResult::error(e.to_string()),
+    }
+}
+```
+
+### 3. 数据传输对象 (DTO) 规范
+
+#### 3.1 命名约定
+- **请求类型**: `Create{Entity}Request`, `Update{Entity}Request`, `{Entity}Query`
+- **响应类型**: `{Entity}`, `{Entity}WithDetails`, `Paginated{Entity}`
+- **统计类型**: `{Entity}Statistics`, `{Entity}Distribution`
+
+#### 3.2 字段命名规范
+- **Rust**: 使用`snake_case`
+- **TypeScript**: 使用`camelCase`
+- **数据库**: 使用`snake_case`
+
+#### 3.3 类型映射示例
+```rust
+// Rust DTO
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateWordBookRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub icon_color: Option<String>,
+}
+```
+
+```typescript
+// TypeScript DTO
+export interface CreateWordBookRequest {
+  title: string;
+  description?: string;
+  iconColor?: string; // 注意：前端使用camelCase
+}
+```
+
+### 4. 分页响应规范
+
+#### 4.1 分页响应格式
+```typescript
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+```
+
+#### 4.2 分页查询参数
+```typescript
+export interface PaginationQuery {
+  page?: number;
+  page_size?: number;
+}
+```
+
+### 5. 错误处理规范
+
+#### 5.1 错误类型分类
+- **验证错误**: `VALIDATION_ERROR`
+- **业务逻辑错误**: `BUSINESS_ERROR`
+- **系统错误**: `SYSTEM_ERROR`
+- **权限错误**: `PERMISSION_ERROR`
+
+#### 5.2 错误消息格式
+```typescript
+interface ErrorDetail {
+  code: string;
+  message: string;
+  field?: string; // 字段级错误
+}
+```
+
+### 6. 状态管理规范
+
+#### 6.1 加载状态
+```typescript
+export interface LoadingState {
+  loading: boolean;
+  error?: string;
+}
+```
+
+#### 6.2 实体状态枚举
+```typescript
+// 通用状态
+export type EntityStatus = 'active' | 'inactive' | 'deleted' | 'draft';
+
+// 特定实体状态
+export type WordBookStatus = 'normal' | 'draft' | 'deleted';
+export type StudyPlanStatus = 'active' | 'paused' | 'completed';
+```
+
+### 7. API调用规范
+
+#### 7.1 前端API调用模式
+```typescript
+// ✅ 正确的API调用处理
+const result = await apiService.someMethod(params);
+if (result.success) {
+  // 处理成功情况
+  console.log('Data:', result.data);
+} else {
+  // 处理错误情况
+  console.error('Error:', result.error);
+  showToast(result.error, 'error');
+}
+
+// ❌ 错误的API调用处理
+const data = await apiService.someMethod(params); // 直接使用data
+```
+
+#### 7.2 后端错误处理模式
+```rust
+// ✅ 正确的错误处理
+pub async fn some_operation() -> Result<DataType, Box<dyn std::error::Error>> {
+    let data = database_operation().await
+        .map_err(|e| format!("Database error: {}", e))?;
+
+    Ok(data)
+}
+
+#[tauri::command]
+pub async fn command_handler() -> ApiResult<DataType> {
+    match some_operation().await {
+        Ok(data) => ApiResult::success(data),
+        Err(e) => ApiResult::error(e.to_string()),
+    }
+}
+```
+
+### 8. 数据验证规范
+
+#### 8.1 前端验证
+```typescript
+// 在服务层进行基础验证
+protected validateRequired(data: any, fields: string[]): void {
+  for (const field of fields) {
+    if (!data[field]) {
+      throw new Error(`${field} is required`);
+    }
+  }
+}
+```
+
+#### 8.2 后端验证
+```rust
+// 使用serde验证和自定义验证
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateRequest {
+    #[serde(deserialize_with = "validate_non_empty")]
+    pub title: String,
+    pub description: Option<String>,
+}
+
+fn validate_non_empty<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    if s.trim().is_empty() {
+        return Err(serde::de::Error::custom("Field cannot be empty"));
+    }
+    Ok(s)
+}
+```
+
+### 9. 代码生成检查清单
+
+在生成新的API接口时，必须确保：
+- [ ] 后端命令返回`ApiResult<T>`格式
+- [ ] 前端服务方法返回`Promise<ApiResult<T>>`
+- [ ] 使用统一的错误处理模式
+- [ ] 遵循命名约定
+- [ ] 包含适当的数据验证
+- [ ] 添加相应的测试用例
+- [ ] 更新类型定义文件
+
+### 10. 代码审查要点
+- 检查API响应格式一致性
+- 验证错误处理完整性
+- 确认类型安全性
+- 检查命名规范遵循情况
+- 验证测试覆盖率
+
+**注意**: 所有新增的API接口都必须严格遵循此规范，以确保前后端数据交互的一致性和可维护性。
+
+## 开发命令
+```bash
+# 开发模式
+npm run tauri:dev
+
+# 构建应用
+npm run tauri:build
+
+# 代码检查
+npm run lint
+cargo clippy
+```
+
+## 开发测试规范
+
+### 测试策略
+1. **算法类功能**：使用自动化测试用例辅助调试，确保代码质量
+2. **UI功能验证**：需要前后端同时启动，要求手工测试并反馈问题信息
+3. **数据库操作**：通过迁移脚本测试确保数据一致性
+4. **AI服务集成**：使用模拟数据和真实API分别测试
+
+### 测试流程
+1. **单元测试**：核心业务逻辑和工具函数
+2. **集成测试**：前后端API调用和数据库操作
+3. **手工测试**：UI交互、用户体验和完整流程
+4. **回归测试**：确保新功能不影响现有功能
+
+## 目录结构
+```
+src/
+├── components/          # React 组件
+├── pages/              # 页面组件
+├── types/              # TypeScript 类型定义
+├── services/           # 业务逻辑服务
+└── styles/             # 样式文件
+
+src-tauri/
+├── src/
+│   ├── handlers.rs     # API 处理器
+│   ├── types/          # Rust 类型定义
+│   └── migrations/     # 数据库迁移脚本
+└── Cargo.toml          # Rust 依赖配置
+```
+
+## 代码规范
+
+### React/TypeScript
+- 使用函数组件 + hooks
+- 优先使用 TypeScript 类型安全
+- 组件使用 PascalCase 命名
+- 导出使用 named export，避免 default export
+
+### Rust
+- 遵循 Rust 官方代码规范
+- 使用 `cargo fmt` 格式化
+- 使用 `cargo clippy` 进行代码检查
+
+### Tauri 通信
+- 前端调用后端使用 `invoke()` API
+- 后端命令使用 `#[tauri::command]` 宏
+- 错误处理使用统一的 `AppResult<T>` 格式
+
+## 状态管理
+- 简单状态: React useState/useReducer
+- 复杂状态: Zustand
+- 服务端状态: TanStack Query
+
+## 样式方案
+- **CSS Modules** - 组件样式隔离
+- **CSS 变量** - 设计系统和主题
+- **响应式设计** - CSS Grid/Flexbox
+
+## 页面布局规范
+
+### 布局一致性原则
+所有页面必须遵循统一的布局规范，确保用户体验的一致性：
+
+#### 页面结构标准
+1. **页面容器**: `.page` 类，统一的页面基础样式
+   ```css
+   .page {
+     min-height: 100vh;
+     background-color: var(--color-bg-secondary);
+     display: flex;
+     flex-direction: column;
+   }
+   ```
+
+2. **主内容区域**: `.main` 类，统一的内容容器规范
+   ```css
+   .main {
+     flex: 1;
+     max-width: 1400px;           /* 统一最大宽度 */
+     margin: 0 auto;              /* 居中布局 */
+     padding: var(--spacing-2xl) var(--spacing-lg); /* 统一内边距 */
+     width: 100%;
+   }
+   ```
+
+3. **页面头部**: `.pageHeader` 类，统一的页面标题区域
+   ```css
+   .pageHeader {
+     margin-bottom: var(--spacing-2xl); /* 统一底部间距 */
+   }
+   ```
+
+#### 响应式布局标准
+- **桌面端**: `max-width: 1400px`，内边距 `var(--spacing-2xl) var(--spacing-lg)`
+- **平板端** (≤768px): 内边距 `var(--spacing-lg) var(--spacing-md)`
+- **手机端** (≤480px): 内边距 `var(--spacing-md) var(--spacing-sm)`
+
+#### 页面标题规范
+- **主标题**: `font-size: var(--font-size-3xl)`，`font-weight: var(--font-weight-bold)`
+- **副标题**: `font-size: var(--font-size-lg)`，`color: var(--color-text-secondary)`
+- **标题间距**: 主标题下方 `var(--spacing-xs)`，副标题为 `margin: 0`
+
+#### 内容区域间距
+- **主要章节间距**: `margin-bottom: var(--spacing-2xl)`
+- **次要章节间距**: `margin-bottom: var(--spacing-lg)`
+- **组件间距**: `gap: var(--spacing-lg)` 或 `margin-bottom: var(--spacing-lg)`
+
+#### 面包屑导航规范
+- 所有页面必须包含 Header 和 Breadcrumb 组件
+- Header 后紧跟 Breadcrumb，然后是页面主要内容
+- 面包屑使用页面默认背景，不额外设置背景色
+
+### 布局约束规则
+1. **禁止破坏页面结构**: 所有页面必须遵循 Header → Breadcrumb → Content 的结构
+2. **统一最大宽度**: 所有页面内容区域最大宽度必须为 1400px
+3. **统一内边距**: 使用标准化的 spacing 变量，不得硬编码数值
+4. **响应式一致性**: 所有页面必须在相同断点使用相同的布局调整
+5. **组件间距标准化**: 相同级别的内容区域必须使用相同的间距规范
+
+
+
+## 性能优化
+- 使用 React.memo 避免不必要重渲染
+- 懒加载路由和组件
+- 图片资源优化
+- Tauri bundle 体积优化
+
+## 安全规范
+- 严格的 CSP 配置
+- API 端点权限控制
+- 敏感操作需要确认
+- 输入验证和清理
+
+
+## 代码生成规则
+
+### 组件生成
+- 新组件必须包含 TypeScript 接口定义
+- 创建对应的 CSS Module 文件 `ComponentName.module.css`
+- 包含基本的 props 验证和默认值
+- 添加 JSDoc 注释说明组件用途
+- 遵循项目的文件命名和目录结构
+- 使用 CSS 变量而非硬编码样式值
+
+### API 层生成
+- Tauri 命令必须有对应的前端 TypeScript 类型
+- 包含错误处理和加载状态管理
+- 添加 JSDoc 注释描述 API 功能和参数
+
+### 工具函数生成
+- 纯函数优先，避免副作用
+- 必须包含完整的 TypeScript 类型注解
+- 添加使用示例和文档注释
+
+## 重构规则
+
+### 重构触发条件
+- 函数超过 50 行代码
+- 组件 props 超过 10 个
+- 代码重复超过 3 次
+- 圈复杂度过高（> 10）
+- 测试覆盖率低于 80%
+
+### 重构策略
+- **提取组件**: 大组件拆分为小组件
+- **提取 hooks**: 复用状态逻辑
+- **提取工具函数**: 复用业务逻辑
+- **合并相似功能**: 避免重复代码
+- **优化数据结构**: 提升性能和可读性
+
+### 重构步骤
+1. 小步骤重构，保持功能不变
+2. 更新相关文档和类型定义
+
+## 自动化测试规则
+
+### 测试质量要求
+- 为新增功能编写测试
+- 测试核心业务逻辑
+- 测试边界条件和错误处理
+
+### 必要测试场景
+
+#### React 组件测试
+```typescript
+// 每个组件必须测试
+- 基本渲染
+- Props 传递和默认值
+- 用户交互（点击、输入等）
+- 条件渲染逻辑
+- 错误边界情况
+```
+
+#### Tauri 命令测试
+```rust
+// 每个命令必须测试
+- 正常输入输出
+- 边界条件处理
+- 错误情况处理
+- 权限验证
+- 数据序列化/反序列化
+```
+
+#### 集成测试
+- API 端到端调用
+- 状态管理集成
+- 文件系统操作
+- 系统通知功能
+- 跨平台兼容性
+
+### 测试文件命名规范
+```
+src/components/Button.tsx
+src/components/Button.test.tsx
+
+src/utils/format.ts
+src/utils/format.test.ts
+
+src-tauri/src/commands.rs
+src-tauri/src/commands.rs (内置 #[cfg(test)] 模块)
+```
+
+### 测试最佳实践
+- 使用工厂函数生成测试数据
+- 模拟外部依赖
+- 测试隔离，避免副作用
+
+## 前后端架构设计规则
+
+### 分层架构原则
+- **前端**: 类型定义 → 服务层 → 组件层 → 页面层
+- **后端**: 类型定义 → 处理器层 → 服务层 → 数据访问层
+
+### 职责分离原则
+
+#### 前端职责分离
+1. **类型定义层**: 定义所有 TypeScript 接口和类型
+2. **服务层**: 封装业务逻辑，调用 API
+3. **组件层**: 纯 UI 组件，通过 props 接收数据
+4. **页面层**: 组合组件，管理页面状态
+
+#### 后端职责分离
+1. **处理器层**: 接收 Tauri 命令调用，参数验证
+2. **服务层**: 业务逻辑实现，数据验证和转换
+3. **数据访问层**: 数据库操作封装，SQL 查询实现
+
+### 数据流规则
+
+#### 前端数据流
+```
+Page → Service → API → Tauri Backend
+  ↓       ↓       ↓
+Store ← Service ← API ← Response
+  ↓
+Component
+```
+
+#### 后端数据流
+```
+Handler → Service → Repository → Database
+   ↓        ↓         ↓
+Response ← Service ← Repository ← Data
+```
+
+### 错误处理规则
+- **后端**: 使用 `AppResult<T>` 统一返回类型
+- **前端**: 在 API 层统一处理错误
+- **用户提示**: 转换为用户友好的错误信息
+
+### 类型安全规则
+
+#### 类型命名规范
+```typescript
+// 实体类型
+interface StudyPlan { }
+interface WordBook { }
+
+// 请求类型
+interface CreateStudyPlanRequest { }
+interface UpdateWordBookRequest { }
+
+// 响应类型
+interface StudyPlanResponse { }
+interface WordBookListResponse { }
+
+// 查询类型
+interface StudyPlanQuery { }
+interface WordBookFilter { }
+```
+
+### 状态管理规则
+
+#### 状态分类
+1. **本地状态**：组件内部状态，使用 useState
+2. **共享状态**：跨组件状态，使用 Zustand
+3. **服务端状态**：API 数据，使用 TanStack Query
+4. **表单状态**：表单数据，使用 React Hook Form
+
+#### 状态更新规则
+1. **单向数据流**：数据从上到下流动
+2. **不可变更新**：使用 immer 或展开运算符
+3. **异步处理**：使用 async/await 和错误边界
+4. **缓存策略**：合理设置缓存时间和失效策略
+
+
+
+
+
+## Tauri 命令接口规范
+
+### 命令定义规则
+
+#### 后端命令定义 (Rust)
+```rust
+// ✅ 正确的命令定义
+#[tauri::command]
+pub async fn command_name(
+    app: AppHandle,
+    param1: String,
+    param2: Option<i64>,           // 使用基础类型，避免自定义类型
+    param3: Option<String>,
+) -> AppResult<ReturnType> {
+    // 命令实现
+}
+
+// ❌ 错误的命令定义
+#[tauri::command]
+pub async fn command_name(
+    app: AppHandle,
+    param1: String,
+    param2: Option<Id>,            // 避免使用自定义类型作为参数
+    param3: Option<String>,
+) -> Result<ReturnType, String> {  // 必须使用 AppResult<T>
+    // 命令实现
+}
+```
+
+#### 前端调用规则 (TypeScript)
+```typescript
+// ✅ 正确的调用方式
+const result = await this.client.invoke<ReturnType>('command_name', {
+  param1: value1,
+  param2: value2 || null,        // 使用驼峰命名
+  param3: value3                 // Tauri 自动转换为下划线命名
+});
+
+// ❌ 错误的调用方式
+const result = await this.client.invoke<ReturnType>('command_name', {
+  param_1: value1,               // 前端不应使用下划线命名
+  param_2: value2,
+  param_3: value3
+});
+```
+
+### 参数命名转换规则
+
+#### 自动转换机制
+Tauri 会自动在前后端之间进行参数名称转换：
+- **前端 → 后端**: `camelCase` → `snake_case`
+- **后端 → 前端**: `snake_case` → `camelCase`
+
+#### 命名对照表
+| 前端 (TypeScript) | 后端 (Rust) | 说明 |
+|------------------|-------------|------|
+| `modelId` | `model_id` | ID 类型参数 |
+| `extractionMode` | `extraction_mode` | 枚举/字符串参数 |
+| `displayName` | `display_name` | 显示名称 |
+| `baseUrl` | `base_url` | URL 参数 |
+| `apiKey` | `api_key` | API 密钥 |
+| `isActive` | `is_active` | 布尔值参数 |
+
+### 参数类型规范
+
+#### 推荐的参数类型
+```rust
+// ✅ 推荐使用的基础类型
+String                    // 字符串
+Option<String>           // 可选字符串
+i64                      // 整数 ID
+Option<i64>             // 可选整数 ID
+bool                     // 布尔值
+Option<bool>            // 可选布尔值
+Vec<String>             // 字符串数组
+```
+
+#### 避免的参数类型
+```rust
+// ❌ 避免使用的复杂类型
+Option<Id>              // 自定义类型别名
+CustomStruct            // 自定义结构体
+enum CustomEnum         // 自定义枚举
+```
+
+### 错误处理规范
+
+#### 统一返回类型
+```rust
+// ✅ 所有命令必须返回 AppResult<T>
+pub async fn command_name() -> AppResult<ReturnType> {
+    // 实现
+}
+
+// ❌ 不要使用其他返回类型
+pub async fn command_name() -> Result<ReturnType, String> {
+    // 错误的返回类型
+}
+```
+
+#### 取消操作处理
+```rust
+// ✅ 取消操作应返回空结果，不是错误
+if is_cancelled() {
+    return Ok(EmptyResult::default());  // 返回空结果
+}
+
+// ❌ 取消操作不应返回错误
+if is_cancelled() {
+    return Err("Operation cancelled".into());  // 错误的处理方式
+}
+```
+
+### 调试和验证
+
+#### 参数传递验证
+```rust
+// 开发阶段可以添加参数日志
+logger.info(
+    "COMMAND_DEBUG",
+    &format!("Received params: param1={}, param2={:?}", param1, param2)
+);
+```
+
+```typescript
+// 前端调试日志
+console.log('Calling command with params:', { param1, param2 });
+```
+
+#### 常见问题排查
+1. **参数为 None/null**:
+   - 检查前端参数命名是否使用驼峰命名
+   - 检查后端参数命名是否使用下划线命名
+   - 检查参数类型是否为基础类型
+
+2. **类型转换错误**:
+   - 避免使用自定义类型作为命令参数
+   - 使用 `i64` 而不是 `Id` 类型别名
+   - 确保 Option 类型的正确使用
+
+3. **命令未注册**:
+   - 检查 `lib.rs` 中的 `generate_handler!` 宏
+   - 确保命令函数为 `pub` 可见性
+
+### 命令注册规范
+
+#### 后端注册
+```rust
+// lib.rs 中的命令注册
+.invoke_handler(tauri::generate_handler![
+    // 现有命令...
+    command_name,           // 新增命令必须在此注册
+])
+```
+
+#### 前端类型定义
+```typescript
+// 为新命令添加类型定义
+export interface CommandParams {
+  param1: string;
+  param2?: number;
+  param3?: string;
+}
+
+export interface CommandResult {
+  // 返回结果的类型定义
+}
+```
+
+### 最佳实践
+
+1. **命令命名**: 使用动词+名词的形式，如 `create_word_book`, `update_ai_model`
+2. **参数验证**: 在命令开始时验证所有必需参数
+3. **错误日志**: 记录详细的错误信息用于调试
+4. **性能监控**: 对耗时操作添加性能日志
+5. **文档注释**: 为每个命令添加详细的文档注释
+
+### 更新的代码生成检查清单
+
+在生成新的Tauri命令时，必须确保：
+- [ ] 后端命令返回`AppResult<T>`格式
+- [ ] 前端服务方法返回`Promise<ApiResult<T>>`
+- [ ] **前端使用驼峰命名，后端使用下划线命名**
+- [ ] **参数类型使用基础类型（String, i64, bool等）**
+- [ ] **避免使用自定义类型作为命令参数**
+- [ ] **在 lib.rs 中注册新命令**
+- [ ] 使用统一的错误处理模式
+- [ ] 遵循命名约定
+- [ ] 包含适当的数据验证
+- [ ] 添加相应的测试用例
+- [ ] 更新类型定义文件
+
+**重要提醒**: 参数传递问题是Tauri开发中的常见陷阱，严格遵循命名转换规则可以避免大部分问题。
+

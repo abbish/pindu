@@ -1,7 +1,7 @@
 import React from 'react';
 import styles from './StudyPlanSection.module.css';
 import { StudyPlanCard } from '../StudyPlanCard';
-import type { StudyPlanWithProgress } from '../../utils/database';
+import type { StudyPlanWithProgress } from '../../types';
 
 export interface StudyPlanSectionProps {
   /** Section title */

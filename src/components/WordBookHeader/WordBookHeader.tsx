@@ -35,8 +35,6 @@ export interface WordBookDetailInfo {
 export interface WordBookHeaderProps {
   /** 单词本信息 */
   wordBook: WordBookDetailInfo;
-  /** 分享回调 */
-  onShare?: () => void;
   /** 编辑回调 */
   onEdit?: () => void;
   /** 删除回调 */
@@ -50,7 +48,6 @@ export interface WordBookHeaderProps {
  */
 export const WordBookHeader: React.FC<WordBookHeaderProps> = ({
   wordBook,
-  onShare,
   onEdit,
   onDelete,
   loading = false
@@ -113,13 +110,7 @@ export const WordBookHeader: React.FC<WordBookHeaderProps> = ({
         
         <div className={styles.actions}>
           <button
-            className={styles.actionBtn}
-            onClick={onShare}
-            title="分享"
-          >
-            <i className="fas fa-share" />
-          </button>
-          <button
+            type="button"
             className={`${styles.actionBtn} ${styles.editBtn}`}
             onClick={onEdit}
             title="编辑"
@@ -127,6 +118,7 @@ export const WordBookHeader: React.FC<WordBookHeaderProps> = ({
             <i className="fas fa-edit" />
           </button>
           <button
+            type="button"
             className={`${styles.actionBtn} ${styles.deleteBtn}`}
             onClick={onDelete}
             title="删除"

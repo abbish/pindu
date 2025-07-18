@@ -9,11 +9,22 @@ export interface ExtractedWord {
   /** 中文含义 */
   meaning: string;
   /** 词性 */
-  partOfSpeech: 'n.' | 'v.' | 'adj.' | 'adv.' | 'prep.' | 'conj.' | 'int.' | 'pron.';
+  partOfSpeech: 'n.' | 'v.' | 'adj.' | 'adv.' | 'prep.' | 'conj.' | 'int.' | 'pron.' | 'art.' | 'det.';
   /** 出现次数 */
   frequency: number;
   /** 是否已选择 */
   selected: boolean;
+  /** 自然拼读信息（可选） */
+  phonics?: {
+    ipa: string;
+    syllables: string;
+    phonics_rule: string;
+    analysis_explanation: string;
+    pos_abbreviation: string;
+    pos_english: string;
+    pos_chinese: string;
+    frequency: number;
+  };
 }
 
 export interface WordGridProps {
@@ -23,6 +34,8 @@ export interface WordGridProps {
   onWordToggle: (wordId: string) => void;
   /** 全选/取消全选回调 */
   onSelectAll: (selected: boolean) => void;
+  /** 按词性选择回调 */
+  onSelectByPartOfSpeech?: (partOfSpeech: string, selected: boolean) => void;
   /** 加载状态 */
   loading?: boolean;
 }
@@ -35,7 +48,9 @@ const PART_OF_SPEECH_CONFIG = {
   'prep.': { label: '介词', color: 'pink' },
   'conj.': { label: '连词', color: 'yellow' },
   'int.': { label: '感叹词', color: 'primary' },
-  'pron.': { label: '代词', color: 'blue' }
+  'pron.': { label: '代词', color: 'blue' },
+  'art.': { label: '冠词', color: 'green' },
+  'det.': { label: '限定词', color: 'purple' }
 };
 
 /**
@@ -45,6 +60,7 @@ export const WordGrid: React.FC<WordGridProps> = ({
   words,
   onWordToggle,
   onSelectAll,
+  onSelectByPartOfSpeech,
   loading = false
 }) => {
   const selectedCount = words.filter(word => word.selected).length;
@@ -53,6 +69,32 @@ export const WordGrid: React.FC<WordGridProps> = ({
 
   const handleSelectAllClick = () => {
     onSelectAll(!allSelected);
+  };
+
+  // 获取词性统计
+  const partOfSpeechStats = React.useMemo(() => {
+    const stats: Record<string, { total: number; selected: number }> = {};
+    words.forEach(word => {
+      const pos = word.partOfSpeech;
+      if (!stats[pos]) {
+        stats[pos] = { total: 0, selected: 0 };
+      }
+      stats[pos].total++;
+      if (word.selected) {
+        stats[pos].selected++;
+      }
+    });
+    return stats;
+  }, [words]);
+
+  // 按词性选择处理函数
+  const handleSelectByPos = (partOfSpeech: string) => {
+    const stat = partOfSpeechStats[partOfSpeech];
+    if (!stat || !onSelectByPartOfSpeech) return;
+
+    // 如果该词性的单词全部已选中，则取消选择；否则全选
+    const shouldSelect = stat.selected < stat.total;
+    onSelectByPartOfSpeech(partOfSpeech, shouldSelect);
   };
 
   if (loading) {
@@ -119,6 +161,44 @@ export const WordGrid: React.FC<WordGridProps> = ({
         </div>
       </div>
 
+      {/* 快速选择器 */}
+      {onSelectByPartOfSpeech && Object.keys(partOfSpeechStats).length > 0 && (
+        <div className={styles.quickSelector}>
+          <div className={styles.selectorHeader}>
+            <span className={styles.selectorTitle}>按词性快速选择：</span>
+          </div>
+          <div className={styles.selectorButtons}>
+            {Object.entries(partOfSpeechStats).map(([pos, stat]) => {
+              const posConfig = PART_OF_SPEECH_CONFIG[pos as keyof typeof PART_OF_SPEECH_CONFIG];
+              const isFullySelected = stat.selected === stat.total;
+              const isPartiallySelected = stat.selected > 0 && stat.selected < stat.total;
+
+              return (
+                <button
+                  key={pos}
+                  type="button"
+                  className={`${styles.posButton} ${styles[posConfig?.color || 'primary']} ${
+                    isFullySelected ? styles.fullySelected :
+                    isPartiallySelected ? styles.partiallySelected : ''
+                  }`}
+                  onClick={() => handleSelectByPos(pos)}
+                  title={`${posConfig?.label || pos}: ${stat.selected}/${stat.total} 已选择`}
+                >
+                  <span className={styles.posLabel}>{posConfig?.label || pos}</span>
+                  <span className={styles.posCount}>
+                    {stat.selected}/{stat.total}
+                  </span>
+                  <i className={`fas fa-${
+                    isFullySelected ? 'check-circle' :
+                    isPartiallySelected ? 'minus-circle' : 'circle'
+                  }`} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className={styles.wordsGrid}>
         {words.map((word) => {
           const posConfig = PART_OF_SPEECH_CONFIG[word.partOfSpeech];
@@ -137,16 +217,47 @@ export const WordGrid: React.FC<WordGridProps> = ({
               <div className={styles.wordContent}>
                 <div className={styles.wordText}>{word.word}</div>
                 <div className={styles.wordMeaning}>{word.meaning}</div>
+
+                {/* 显示自然拼读信息 */}
+                {word.phonics && (
+                  <div className={styles.phonicsInfo}>
+                    <div className={styles.phonicsRow}>
+                      <span className={styles.phonicsLabel}>音节:</span>
+                      <span className={styles.phonicsValue}>{word.phonics.syllables}</span>
+                    </div>
+                    <div className={styles.phonicsRow}>
+                      <span className={styles.phonicsLabel}>音标:</span>
+                      <span className={styles.phonicsValue}>{word.phonics.ipa}</span>
+                    </div>
+                    <div className={styles.phonicsRow}>
+                      <span className={styles.phonicsLabel}>拼读规则:</span>
+                      <span className={styles.phonicsValue}>{word.phonics.phonics_rule}</span>
+                    </div>
+                    {word.phonics.analysis_explanation && (
+                      <div className={styles.phonicsExplanation}>
+                        <span className={styles.phonicsLabel}>分析:</span>
+                        <span className={styles.explanationText}>{word.phonics.analysis_explanation}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className={styles.wordMeta}>
-                  <span 
+                  <span
                     className={`${styles.partOfSpeech} ${styles[posConfig.color]}`}
                     title={posConfig.label}
                   >
                     {word.partOfSpeech}
                   </span>
-                  <span className={styles.frequency}>
-                    出现 {word.frequency} 次
-                  </span>
+                  {word.phonics ? (
+                    <span className={styles.frequency}>
+                      频率: {word.phonics.frequency}
+                    </span>
+                  ) : (
+                    <span className={styles.frequency}>
+                      出现 {word.frequency} 次
+                    </span>
+                  )}
                 </div>
               </div>
             </label>

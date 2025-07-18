@@ -16,19 +16,19 @@ export interface TextImportProps {
   onFileUpload: (file: File) => void;
   /** 分析文本回调 */
   onAnalyzeText: () => void;
-  /** 当前选择的AI模型 */
-  selectedModel?: string;
+  /** 当前选择的AI模型ID */
+  selectedModelId?: string;
   /** AI模型变化回调 */
-  onModelChange?: (model: string) => void;
+  onModelChange?: (modelId: string) => void;
   /** 分析加载状态 */
   analyzing?: boolean;
+  /** 可用的AI模型列表 */
+  availableModels?: Array<{ id: string; label: string; description?: string }>;
 }
 
-const AI_MODELS = [
-  { value: 'deepseek-r1', label: 'DeepSeek R1' },
-  { value: 'gpt-4', label: 'GPT-4' },
-  { value: 'ux-pilot-3', label: 'UX Pilot 3' },
-  { value: 'gemini-pro', label: 'Gemini Pro' }
+// 默认模型列表（当没有提供 availableModels 时使用）
+const DEFAULT_AI_MODELS = [
+  { id: 'default', label: '默认模型', description: '使用系统默认配置的AI模型' }
 ];
 
 /**
@@ -41,9 +41,10 @@ export const TextImport: React.FC<TextImportProps> = ({
   onTextChange,
   onFileUpload,
   onAnalyzeText,
-  selectedModel = 'deepseek-r1',
+  selectedModelId = 'default',
   onModelChange,
-  analyzing = false
+  analyzing = false,
+  availableModels = DEFAULT_AI_MODELS
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -117,12 +118,15 @@ export const TextImport: React.FC<TextImportProps> = ({
               {onModelChange && (
                 <div className={styles.modelSelect}>
                   <select
-                    value={selectedModel}
+                    id="ai-model-select"
+                    value={selectedModelId}
                     onChange={(e) => onModelChange(e.target.value)}
                     className={styles.select}
+                    disabled={analyzing}
+                    title="选择用于文本分析的AI模型"
                   >
-                    {AI_MODELS.map(model => (
-                      <option key={model.value} value={model.value}>
+                    {availableModels.map(model => (
+                      <option key={model.id} value={model.id} title={model.description}>
                         {model.label}
                       </option>
                     ))}

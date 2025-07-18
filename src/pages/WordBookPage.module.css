@@ -70,7 +70,9 @@
   border: 2px dashed var(--color-border-secondary);
   border-radius: var(--radius-lg);
   max-width: 480px;
-  margin: 0 auto;
+  margin: 0;
+  grid-column: 1 / -1; /* 占据整个网格宽度 */
+  justify-self: start; /* 左对齐 */
 }
 
 .emptyIcon {
@@ -249,4 +251,33 @@
   .emptyDescription {
     font-size: var(--font-size-sm);
   }
+}
+
+/* Toggle Section */
+.toggleSection {
+  margin: var(--spacing-md) 0;
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.toggleLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.toggleInput {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+}
+
+.toggleText {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }

@@ -1,0 +1,132 @@
+/* Batch Delete Modal Component Styles */
+.content {
+  padding: var(--spacing-lg);
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-md);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-md);
+}
+
+.warning i {
+  color: var(--color-warning);
+  font-size: var(--font-size-lg);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.message {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
+
+.wordList {
+  margin-bottom: var(--spacing-lg);
+}
+
+.listHeader {
+  margin-bottom: var(--spacing-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.wordItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--color-border-tertiary);
+}
+
+.wordItem:last-child {
+  border-bottom: none;
+}
+
+.word {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.meaning {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: right;
+  flex: 1;
+  margin-left: var(--spacing-md);
+}
+
+.moreIndicator {
+  padding: var(--spacing-sm) var(--spacing-md);
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  background: var(--color-bg-tertiary);
+}
+
+.note {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.note i {
+  color: var(--color-info);
+  flex-shrink: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--color-border-secondary);
+  background: var(--color-bg-secondary);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .content {
+    padding: var(--spacing-md);
+  }
+  
+  .actions {
+    padding: var(--spacing-md);
+    flex-direction: column-reverse;
+  }
+  
+  .wordItem {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+  
+  .meaning {
+    text-align: left;
+    margin-left: 0;
+  }
+}

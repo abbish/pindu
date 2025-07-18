@@ -1,0 +1,406 @@
+/* 学习计划日程预览样式 */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+/* 空状态 */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-secondary);
+  text-align: center;
+}
+
+.emptyIcon {
+  font-size: var(--font-size-3xl);
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--spacing-md);
+}
+
+.emptyState p {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+/* 头部 */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-secondary);
+}
+
+.headerInfo h3 {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-xs) 0;
+}
+
+.headerInfo p {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.headerControls {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+}
+
+/* 视图模式切换 */
+.viewModeToggle {
+  display: flex;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+
+.toggleButton {
+  background: transparent;
+  border: none;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggleButton.active {
+  background: var(--color-primary);
+  color: white;
+}
+
+.toggleButton:hover:not(.active) {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+/* 展开控制 */
+.expandControls {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.controlButton {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-primary);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.controlButton:hover {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border-secondary);
+  color: var(--color-text-primary);
+}
+
+/* 元数据 */
+.metadata {
+  background: var(--color-primary-alpha-5);
+  border: 1px solid var(--color-primary-alpha-20);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+}
+
+.metadataGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.metadataItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.metadataLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.metadataValue {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* 日程列表 */
+.scheduleList {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-secondary);
+  overflow: hidden;
+}
+
+/* 概览视图 */
+.summaryView {
+  display: flex;
+  flex-direction: column;
+}
+
+.summaryItem {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.summaryItem:last-child {
+  border-bottom: none;
+}
+
+.summaryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.dayInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.dayNumber {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+}
+
+.dayDate {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.summaryStats {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.statBadge {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+/* 优先级条 */
+.priorityBar {
+  display: flex;
+  height: 4px;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  background: var(--color-bg-tertiary);
+}
+
+.prioritySegment {
+  transition: width 0.3s ease;
+}
+
+/* 详细视图 */
+.detailedView {
+  display: flex;
+  flex-direction: column;
+}
+
+.detailedItem {
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.detailedItem:last-child {
+  border-bottom: none;
+}
+
+.detailedHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.detailedHeader:hover {
+  background: var(--color-bg-secondary);
+}
+
+.headerStats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-xs);
+}
+
+.wordCount {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.breakdown {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.expandIcon {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  transition: transform 0.2s ease;
+}
+
+/* 详细内容 */
+.detailedContent {
+  padding: 0 var(--spacing-md) var(--spacing-md);
+  background: var(--color-bg-secondary);
+}
+
+.wordsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.wordItem {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+}
+
+.wordInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.wordText {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.wordMeta {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.wordType {
+  padding: 2px var(--spacing-xs);
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+}
+
+.wordType.new {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.wordType.review {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.priority {
+  padding: 2px var(--spacing-xs);
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+}
+
+.priority.high {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.priority.medium {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.priority.low {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.difficulty {
+  padding: 2px var(--spacing-xs);
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .headerControls {
+    justify-content: space-between;
+  }
+
+  .metadataGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .detailedHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .wordsList {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .expandControls {
+    flex-direction: column;
+    gap: var(--spacing-xs);
+  }
+
+  .summaryStats {
+    flex-direction: column;
+    gap: var(--spacing-xs);
+  }
+
+  .wordMeta {
+    flex-direction: column;
+  }
+}

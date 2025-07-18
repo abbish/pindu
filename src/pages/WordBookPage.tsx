@@ -10,12 +10,10 @@ import {
 } from '../components';
 import type { 
   FilterOptions,
+  WordBookStatistics
 } from '../components';
-import type {
-  WordBookStatistics,
-  WordBook
-} from '../utils/database';
-import { getWordBooks, getWordBookStatistics } from '../utils/database';
+import type { WordBook } from '../components/WordBookCard/WordBookCard';
+import { WordBookService } from '../services/wordbookService';
 
 export interface WordBookPageProps {
   /** Navigation handler */
@@ -37,12 +35,17 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({
     status: '',
     sortBy: ''
   });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadWordBookData();
   }, []);
+
+  useEffect(() => {
+    loadWordBookData();
+  }, [filters.status]);
 
   useEffect(() => {
     filterAndSortBooks();
@@ -52,15 +55,91 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({
     try {
       setLoading(true);
       setError(null);
-      
+
+      const wordBookService = new WordBookService();
+
+      // 先更新所有单词本的单词数量
+      await wordBookService.updateAllWordBookCounts();
+
+      // 根据状态过滤器决定是否包含已删除的单词本
+      const includeDeleted = filters.status === 'deleted' || filters.status === '';
+
+      // 确定传递给后端的状态参数
+      let statusParam: string | undefined = undefined;
+      if (filters.status && filters.status !== '') {
+        statusParam = filters.status;
+      }
+
       // 使用真实API获取数据
-      const [statsData, booksData] = await Promise.all([
-        getWordBookStatistics(),
-        getWordBooks()
+      const [statsResult, booksResult] = await Promise.all([
+        wordBookService.getWordBookStatistics(),
+        wordBookService.getAllWordBooks(includeDeleted, statusParam)
       ]);
 
-      setStats(statsData);
-      setBooks(booksData);
+      if (!statsResult.success) {
+        throw new Error(statsResult.error || '获取统计数据失败');
+      }
+      if (!booksResult.success) {
+        throw new Error(booksResult.error || '获取单词本列表失败');
+      }
+
+      const statsData = statsResult.data;
+      const booksData = booksResult.data;
+
+      // Convert database types to component types and fetch word type statistics for each book
+      const convertedBooks: WordBook[] = await Promise.all(
+        booksData.map(async (dbBook: any) => {
+          // 获取每个单词本的词性统计
+          let wordTypes = {
+            nouns: 0,
+            verbs: 0,
+            adjectives: 0,
+            others: 0
+          };
+
+          try {
+            const statsResult = await wordBookService.getWordBookTypeStatistics(dbBook.id);
+            if (statsResult.success && statsResult.data) {
+              wordTypes = {
+                nouns: statsResult.data.nouns,
+                verbs: statsResult.data.verbs,
+                adjectives: statsResult.data.adjectives,
+                others: statsResult.data.others
+              };
+            }
+          } catch (error) {
+            console.warn(`获取单词本 ${dbBook.id} 的统计信息失败:`, error);
+            // 保持默认的0值
+          }
+
+          return {
+            id: dbBook.id,
+            title: dbBook.title,
+            description: dbBook.description,
+            icon: dbBook.icon,
+            iconColor: dbBook.icon_color as any,
+            totalWords: dbBook.total_words,
+            linkedPlans: dbBook.linked_plans,
+            wordTypes,
+            createdAt: dbBook.created_at,
+            lastUsed: dbBook.last_used,
+            deletedAt: dbBook.deleted_at,
+            status: dbBook.status as 'normal' | 'draft' | 'deleted'
+          };
+        })
+      );
+
+      // Convert stats as well
+      const convertedStats: WordBookStatistics = {
+        totalBooks: statsData.total_books,
+        totalWords: statsData.total_words,
+        nouns: statsData.word_types.nouns,
+        verbs: statsData.word_types.verbs,
+        adjectives: statsData.word_types.adjectives
+      };
+
+      setStats(convertedStats);
+      setBooks(convertedBooks);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载单词本数据失败');
     } finally {
@@ -80,10 +159,13 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({
       );
     }
 
-    // Apply theme filter (simplified - would need proper theme mapping)
+    // Apply theme filter
     if (filters.theme) {
-      // This would need proper implementation based on your theme categorization
-      console.log('Theme filter:', filters.theme);
+      const themeId = parseInt(filters.theme);
+      filtered = filtered.filter(book => {
+        const bookWithTags = book as any;
+        return bookWithTags.theme_tags && bookWithTags.theme_tags.some((tag: any) => tag.id === themeId);
+      });
     }
 
     // Apply status filter (simplified - would need status field in VocabularyBook)
@@ -96,10 +178,10 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({
     if (filters.sortBy) {
       switch (filters.sortBy) {
         case 'created_time':
-          filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           break;
         case 'word_count':
-          filtered.sort((a, b) => b.total_words - a.total_words);
+          filtered.sort((a, b) => b.totalWords - a.totalWords);
           break;
         case 'completion':
           // Would need completion percentage in WordBook
@@ -142,17 +224,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({
     onNavigate?.('wordbook-detail', { id: book.id });
   };
 
-  const handleBookEdit = (book: WordBook) => {
-    // TODO: Navigate to edit word book page
-    console.log('Edit word book:', book.id);
-  };
 
-  const handleBookDelete = (book: WordBook) => {
-    // TODO: Show delete confirmation and handle deletion
-    if (window.confirm(`确定要删除单词本"${book.title}"吗？`)) {
-      console.log('Delete word book:', book.id);
-    }
-  };
 
   if (loading) {
     return (
@@ -234,6 +306,8 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({
           loading={false}
         />
 
+
+
         {/* Word Books Grid */}
         <section className={styles.booksSection}>
           {filteredBooks.length === 0 ? (
@@ -267,8 +341,6 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({
                   key={book.id}
                   book={book}
                   onClick={handleBookClick}
-                  onEdit={handleBookEdit}
-                  onDelete={handleBookDelete}
                 />
               ))}
             </div>

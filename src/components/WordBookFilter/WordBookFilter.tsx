@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { WordBookService } from '../../services/wordbookService';
+import { type ThemeTag } from '../../types';
 import styles from './WordBookFilter.module.css';
 
 export interface FilterOptions {
@@ -23,27 +25,13 @@ export interface WordBookFilterProps {
   loading?: boolean;
 }
 
-const THEME_OPTIONS = [
-  { value: '', label: '选择主题标签' },
-  { value: 'life', label: '生活词汇' },
-  { value: 'school', label: '学校用品' },
-  { value: 'animals', label: '动物世界' },
-  { value: 'food', label: '食物饮料' },
-  { value: 'colors', label: '颜色形状' },
-  { value: 'transport', label: '交通工具' },
-  { value: 'family', label: '家庭成员' },
-  { value: 'sports', label: '运动健身' },
-  { value: 'weather', label: '天气季节' },
-  { value: 'body', label: '身体部位' },
-  { value: 'numbers', label: '数字时间' },
-  { value: 'clothes', label: '服装配饰' }
-];
+
 
 const STATUS_OPTIONS = [
   { value: '', label: '所有状态' },
-  { value: 'active', label: '学习中' },
-  { value: 'completed', label: '已完成' },
-  { value: 'pending', label: '未开始' }
+  { value: 'normal', label: '正常' },
+  { value: 'draft', label: '草稿' },
+  { value: 'deleted', label: '已删除' }
 ];
 
 const SORT_OPTIONS = [
@@ -63,6 +51,28 @@ export const WordBookFilter: React.FC<WordBookFilterProps> = ({
   loading = false
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [availableThemes, setAvailableThemes] = useState<ThemeTag[]>([]);
+  const [themesLoading, setThemesLoading] = useState(false);
+
+  // 加载主题标签
+  useEffect(() => {
+    const loadThemes = async () => {
+      setThemesLoading(true);
+      try {
+        const wordbookService = new WordBookService();
+        const result = await wordbookService.getThemeTags();
+        if (result.success && result.data) {
+          setAvailableThemes(result.data);
+        }
+      } catch (error) {
+        console.error('加载主题标签失败:', error);
+      } finally {
+        setThemesLoading(false);
+      }
+    };
+
+    loadThemes();
+  }, []);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onFilterChange({
@@ -181,10 +191,14 @@ export const WordBookFilter: React.FC<WordBookFilterProps> = ({
               value={filters.theme}
               onChange={handleThemeChange}
               className={styles.select}
+              disabled={themesLoading}
             >
-              {THEME_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+              <option value="">
+                {themesLoading ? '加载主题标签中...' : '选择主题标签'}
+              </option>
+              {availableThemes.map(theme => (
+                <option key={theme.id} value={theme.id.toString()}>
+                  {theme.icon} {theme.name}
                 </option>
               ))}
             </select>

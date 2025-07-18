@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import styles from './StudyPlansPage.module.css';
 import { 
   Header, 
@@ -8,9 +8,10 @@ import {
   StudyPlanSection, 
   Button 
 } from '../components';
-import { getStudyPlans } from '../utils/database';
-import type { StudyPlanWithProgress } from '../utils/database';
+import { StudyService } from '../services/studyService';
 import type { FilterOption, StatsCard } from '../components';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { showErrorMessage } from '../utils/errorHandler';
 
 export interface StudyPlansPageProps {
   /** Navigation handler */
@@ -21,10 +22,16 @@ export interface StudyPlansPageProps {
  * Study Plans page component displaying all study plans organized by status
  */
 export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) => {
-  const [studyPlans, setStudyPlans] = useState<StudyPlanWithProgress[]>([]);
+  const studyService = new StudyService();
+  const { data: studyPlans, loading, error, refresh } = useAsyncData(async () => {
+    const result = await studyService.getAllStudyPlans();
+    if (result.success) {
+      return result.data;
+    } else {
+      throw new Error(result.error || '获取学习计划失败');
+    }
+  });
   const [statusFilter, setStatusFilter] = useState('all');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Filter options
   const filterOptions: FilterOption[] = [
@@ -34,32 +41,18 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
     { value: 'paused', label: '已暂停' }
   ];
 
-  useEffect(() => {
-    loadStudyPlans();
-  }, []);
-
-  const loadStudyPlans = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const plansData = await getStudyPlans();
-      setStudyPlans(plansData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '加载学习计划失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Filter plans by status
   const filteredPlans = useMemo(() => {
-    if (statusFilter === 'all') return studyPlans;
+    if (!studyPlans || !Array.isArray(studyPlans) || statusFilter === 'all') return studyPlans || [];
     return studyPlans.filter(plan => plan.status === statusFilter);
   }, [studyPlans, statusFilter]);
 
   // Group plans by status
   const groupedPlans = useMemo(() => {
+    if (!studyPlans || !Array.isArray(studyPlans)) {
+      return { active: [], paused: [], completed: [] };
+    }
+
     const groups = {
       active: studyPlans.filter(plan => plan.status === 'active'),
       paused: studyPlans.filter(plan => plan.status === 'paused'),
@@ -80,7 +73,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
 
   // Generate statistics
   const statsData: StatsCard[] = useMemo(() => {
-    const totalPlans = studyPlans.length;
+    const totalPlans = studyPlans?.length || 0;
     const activePlans = groupedPlans.active.length;
     const completedPlans = groupedPlans.completed.length;
     const totalStudyTime = 45; // Mock data
@@ -146,14 +139,16 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
     onNavigate?.(nav);
   };
 
-  if (error) {
+  if (loading) {
     return (
       <div className={styles.page}>
         <Header activeNav="plans" onNavChange={handleNavChange} />
         <main className={styles.main}>
-          <div className={styles.error}>
-            <p>{error}</p>
-            <Button onClick={loadStudyPlans}>重试</Button>
+          <div className={styles.loading}>
+            <div className={styles.loadingSpinner}>
+              <i className="fas fa-spinner fa-spin"></i>
+            </div>
+            <p>正在加载学习计划...</p>
           </div>
         </main>
       </div>
@@ -173,6 +168,25 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
           current="学习计划"
           onNavigate={handleNavChange}
         />
+
+        {/* Error Banner */}
+        {error && (
+          <section className={styles.errorSection}>
+            <div className={styles.errorBanner}>
+              <div className={styles.errorIcon}>
+                <i className="fas fa-exclamation-triangle" />
+              </div>
+              <div className={styles.errorContent}>
+                <h4>数据加载失败</h4>
+                <p>{showErrorMessage(error)}</p>
+                <button onClick={refresh} className={styles.retryBtn}>
+                  <i className="fas fa-redo" />
+                  重试
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Page Header */}
         <section className={styles.pageHeader}>
@@ -212,7 +226,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
                 onPlanClick={handlePlanClick}
                 onStudyStart={handleStudyStart}
                 onMenuAction={handleMenuAction}
-                loading={loading}
+                loading={false}
               />
               
               <StudyPlanSection
@@ -223,7 +237,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
                 onPlanClick={handlePlanClick}
                 onStudyStart={handleStudyStart}
                 onMenuAction={handleMenuAction}
-                loading={loading}
+                loading={false}
               />
               
               <StudyPlanSection
@@ -234,7 +248,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
                 onPlanClick={handlePlanClick}
                 onStudyStart={handleStudyStart}
                 onMenuAction={handleMenuAction}
-                loading={loading}
+                loading={false}
               />
             </>
           ) : (

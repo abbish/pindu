@@ -1,5 +1,5 @@
 /* Study Calendar Component Styles */
-.calendar {
+.studyCalendar {
   background-color: var(--color-bg-primary);
   border-radius: var(--radius-2xl);
   padding: var(--spacing-lg);
@@ -7,72 +7,194 @@
   border: 1px solid var(--color-border-light);
 }
 
-.title {
+/* Calendar Header */
+.calendarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-lg);
+}
+
+.navButton {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
   font-size: var(--font-size-lg);
+  cursor: pointer;
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.navButton:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.monthTitle {
+  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
-  margin: 0 0 var(--spacing-md) 0;
+  margin: 0;
   line-height: var(--line-height-tight);
 }
 
-.calendarGrid {
+/* Weekdays Row */
+.weekdaysRow {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
 }
 
-.dayHeader {
+.weekdayCell {
   text-align: center;
   padding: var(--spacing-xs);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
   line-height: var(--line-height-normal);
 }
 
+/* Calendar Grid */
+.calendarGrid {
+  margin-bottom: var(--spacing-lg);
+}
+
+.weekRow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+}
+
+/* Day Cell */
 .dayCell {
-  text-align: center;
-  padding: var(--spacing-xs);
-  font-size: var(--font-size-xs);
+  position: relative;
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-sm);
+  padding: var(--spacing-xs);
+  min-height: 80px;
   cursor: pointer;
   transition: all var(--transition-fast);
-  min-height: 28px;
+  background-color: var(--color-bg-secondary);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
 }
 
-.dayCell.inactive {
-  color: var(--color-text-muted);
+.dayCell:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-xs);
 }
 
-.dayCell.active {
-  color: var(--color-text-primary);
+.dayCell.otherMonth {
+  opacity: 0.3;
+  cursor: default;
 }
 
-.dayCell.studied {
-  background-color: rgba(76, 175, 80, 0.1);
-  color: var(--color-green);
-  font-weight: var(--font-weight-semibold);
+.dayCell.otherMonth:hover {
+  border-color: var(--color-border-light);
+  box-shadow: none;
 }
 
 .dayCell.today {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-light);
+}
+
+.dayCell.inPlan {
+  cursor: pointer;
+}
+
+.dayCell.inPlan:hover {
+  transform: translateY(-1px);
+}
+
+/* Day Status Colors */
+.dayCell.notStarted {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--color-border);
+}
+
+.dayCell.inProgress {
+  background-color: var(--color-warning-light);
+  border-color: var(--color-warning);
+}
+
+.dayCell.completed {
+  background-color: var(--color-success-light);
+  border-color: var(--color-success);
+}
+
+.dayCell.overdue {
+  background-color: var(--color-error-light);
+  border-color: var(--color-error);
+}
+
+.dayNumber {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.wordCounts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--spacing-xs);
+  flex: 1;
+}
+
+.newWords,
+.reviewWords {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.2;
+}
+
+.newWords {
   background-color: var(--color-primary);
   color: white;
-  font-weight: var(--font-weight-bold);
 }
 
-.dayCell:hover:not(.inactive) {
+.reviewWords {
+  background-color: var(--color-secondary);
+  color: white;
+}
+
+.progressBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
   background-color: var(--color-bg-tertiary);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  overflow: hidden;
 }
 
+.progressFill {
+  height: 100%;
+  background-color: var(--color-primary);
+  transition: width var(--transition-normal);
+  border-radius: inherit;
+  width: var(--progress-width, 0%);
+}
+
+/* Legend */
 .legend {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: var(--spacing-lg);
   font-size: var(--font-size-sm);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border-light);
 }
 
 .legendItem {
@@ -81,29 +203,32 @@
   gap: var(--spacing-xs);
 }
 
-.legendDot {
+.legendColor {
   width: 12px;
   height: 12px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
-.legendDot.studied {
-  background-color: var(--color-green);
+.legendColor.notStarted {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
 }
 
-.legendDot.today {
-  background-color: var(--color-primary);
+.legendColor.inProgress {
+  background-color: var(--color-warning);
 }
 
-.legendText {
+.legendColor.completed {
+  background-color: var(--color-success);
+}
+
+.legendColor.overdue {
+  background-color: var(--color-error);
+}
+
+.legendItem span {
   color: var(--color-text-secondary);
-  line-height: var(--line-height-normal);
-}
-
-.streakText {
-  color: var(--color-text-primary);
-  font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-normal);
 }
 
@@ -132,18 +257,44 @@
 
 /* Responsive Design */
 @media (max-width: 768px) {
-  .calendar {
+  .studyCalendar {
     padding: var(--spacing-md);
   }
-  
-  .legend {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--spacing-xs);
+
+  .calendarHeader {
+    margin-bottom: var(--spacing-md);
   }
-  
+
+  .monthTitle {
+    font-size: var(--font-size-lg);
+  }
+
   .dayCell {
-    min-height: 24px;
-    font-size: 10px;
+    min-height: 60px;
+    padding: 4px;
+  }
+
+  .dayNumber {
+    font-size: 11px;
+  }
+
+  .newWords,
+  .reviewWords {
+    font-size: 8px;
+    padding: 1px 2px;
+  }
+
+  .legend {
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+  }
+
+  .legendItem {
+    gap: 4px;
+  }
+
+  .legendColor {
+    width: 10px;
+    height: 10px;
   }
 }

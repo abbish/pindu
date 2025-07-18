@@ -5,11 +5,13 @@ export interface ButtonProps {
   /** Button content */
   children: React.ReactNode;
   /** Button variant */
-  variant?: 'primary' | 'secondary' | 'outline';
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger';
   /** Button size */
   size?: 'sm' | 'md' | 'lg';
   /** Disabled state */
   disabled?: boolean;
+  /** Loading state */
+  loading?: boolean;
   /** Click handler */
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   /** Additional CSS class */
@@ -26,6 +28,7 @@ export const Button: React.FC<ButtonProps> = ({
   variant = 'primary',
   size = 'md',
   disabled = false,
+  loading = false,
   onClick,
   className = '',
   type = 'button',
@@ -35,7 +38,8 @@ export const Button: React.FC<ButtonProps> = ({
     styles.button,
     styles[variant],
     styles[size],
-    disabled ? styles.disabled : '',
+    (disabled || loading) ? styles.disabled : '',
+    loading ? styles.loading : '',
     className
   ].filter(Boolean).join(' ');
 
@@ -43,11 +47,11 @@ export const Button: React.FC<ButtonProps> = ({
     <button
       type={type}
       className={buttonClass}
-      disabled={disabled}
+      disabled={disabled || loading}
       onClick={onClick}
       {...props}
     >
-      {children}
+      {loading ? '加载中...' : children}
     </button>
   );
 };

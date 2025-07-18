@@ -1,0 +1,597 @@
+/* Word Importer Modal Component Styles */
+.content {
+  padding: 0;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+/* 确保WordImporter在Modal中的样式适配 */
+.content :global(.word-importer) {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.content :global(.word-importer-header) {
+  padding-top: 0;
+}
+
+.content :global(.word-importer-content) {
+  max-height: none;
+}
+
+/* V2 Modal Styles - 三步骤交互 */
+.modalContent {
+  padding: var(--spacing-xl);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* 步骤指示器 */
+.stepIndicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--spacing-2xl);
+  padding: var(--spacing-lg) 0;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.stepNumber {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-lg);
+  border: 2px solid var(--color-border-secondary);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.step.active .stepNumber {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.step.completed .stepNumber {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: white;
+}
+
+.stepLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.step.active .stepLabel {
+  color: var(--color-primary);
+}
+
+.step.completed .stepLabel {
+  color: var(--color-success);
+}
+
+.stepConnector {
+  width: 80px;
+  height: 2px;
+  background: var(--color-border-secondary);
+  margin: 0 var(--spacing-md);
+}
+
+/* 步骤内容 */
+.stepContent {
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.stepHeader {
+  text-align: center;
+  margin-bottom: var(--spacing-xl);
+}
+
+.stepHeader h3 {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
+.stepHeader p {
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-relaxed);
+}
+
+/* 输入步骤 */
+.inputSection {
+  margin-bottom: var(--spacing-lg);
+}
+
+/* 文件上传区域 */
+.uploadSection {
+  margin-bottom: var(--spacing-lg);
+}
+
+.uploadArea {
+  position: relative;
+  border: 2px dashed var(--color-border-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-xl);
+  text-align: center;
+  transition: all var(--transition-fast);
+  background: var(--color-bg-secondary);
+}
+
+.uploadArea:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.fileInput {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.uploadLabel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+}
+
+.uploadLabel i {
+  font-size: var(--font-size-3xl);
+  color: var(--color-primary);
+}
+
+.uploadLabel span {
+  font-weight: var(--font-weight-medium);
+}
+
+.uploadLabel small {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+}
+
+.uploadedFile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  border-radius: var(--radius-md);
+  margin-top: var(--spacing-md);
+}
+
+.fileName {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--color-success);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.fileName i {
+  color: var(--color-success);
+}
+
+.clearFileBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.clearFileBtn:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+/* 分隔线 */
+.divider {
+  display: flex;
+  align-items: center;
+  margin: var(--spacing-lg) 0;
+  text-align: center;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border-secondary);
+}
+
+.divider span {
+  padding: 0 var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-primary);
+}
+
+.textInput {
+  width: 100%;
+  min-height: 200px;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  line-height: var(--line-height-normal);
+  resize: vertical;
+  transition: border-color var(--transition-fast);
+}
+
+.textInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.1);
+}
+
+.modelSection {
+  margin-bottom: var(--spacing-lg);
+}
+
+.modelLabel {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.modelSelect {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: border-color var(--transition-fast);
+}
+
+.modelSelect:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.1);
+}
+
+/* 分析进度步骤 */
+.progressSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-xl);
+}
+
+.progressInfo {
+  text-align: center;
+  width: 100%;
+}
+
+.progressStep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-lg);
+}
+
+.progressStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-lg);
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.progressStat {
+  text-align: center;
+}
+
+.statLabel {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.statValue {
+  display: block;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.progressBar {
+  width: 100%;
+  max-width: 400px;
+  height: 8px;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-hover));
+  border-radius: var(--radius-md);
+  transition: width var(--transition-normal);
+  width: 0%;
+}
+
+.progressFill.progressStarted {
+  width: 20%;
+}
+
+.progressFill.progressActive {
+  width: 60%;
+}
+
+.progressFill.progressComplete {
+  width: 100%;
+}
+
+/* 选择步骤 */
+.selectionSection {
+  flex: 1;
+  margin-bottom: var(--spacing-lg);
+}
+
+/* 进度提示 */
+.progressTip {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: var(--radius-md);
+  color: var(--color-info);
+  font-size: var(--font-size-sm);
+  margin-top: var(--spacing-md);
+}
+
+.progressTip i {
+  flex-shrink: 0;
+}
+
+/* 错误提示 */
+.error {
+  padding: var(--spacing-lg);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.errorHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.errorHeader i {
+  color: var(--color-danger);
+  font-size: var(--font-size-lg);
+  flex-shrink: 0;
+}
+
+.errorTitle {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-danger);
+  font-size: var(--font-size-md);
+}
+
+.errorMessage {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  margin-bottom: var(--spacing-md);
+}
+
+.errorLine {
+  margin-bottom: var(--spacing-xs);
+}
+
+.errorLine:last-child {
+  margin-bottom: 0;
+}
+
+.errorActions {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
+}
+
+/* 不同类型错误的样式 */
+.errorParsing {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+}
+
+.errorParsing .errorHeader i,
+.errorParsing .errorTitle {
+  color: var(--color-warning);
+}
+
+.errorTimeout {
+  border-color: var(--color-info-border);
+  background: var(--color-info-bg);
+}
+
+.errorTimeout .errorHeader i,
+.errorTimeout .errorTitle {
+  color: var(--color-info);
+}
+
+.errorNetwork {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+}
+
+.errorValidation {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+}
+
+.errorValidation .errorHeader i,
+.errorValidation .errorTitle {
+  color: var(--color-warning);
+}
+
+/* 步骤操作按钮 */
+.stepActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border-secondary);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .modalContent {
+    padding: var(--spacing-lg);
+  }
+
+  .stepIndicator {
+    margin-bottom: var(--spacing-lg);
+  }
+
+  .stepConnector {
+    width: 40px;
+    margin: 0 var(--spacing-sm);
+  }
+
+  .progressStats {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+  }
+
+  .stepActions {
+    flex-direction: column-reverse;
+  }
+
+  .uploadArea {
+    padding: var(--spacing-lg);
+  }
+
+  .uploadLabel i {
+    font-size: var(--font-size-2xl);
+  }
+
+  .uploadedFile {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .clearFileBtn {
+    align-self: flex-end;
+  }
+}
+
+/* 提取模式选择样式 */
+.extractionModeSection {
+  margin-top: var(--spacing-lg);
+}
+
+.modeOptions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-sm);
+}
+
+.modeOption {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 2px solid var(--color-border-primary);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: var(--color-bg-primary);
+}
+
+.modeOption:hover {
+  border-color: var(--color-primary-light);
+  background: var(--color-primary-bg);
+}
+
+.modeOption.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.modeRadio {
+  margin-top: 2px;
+  accent-color: var(--color-primary);
+}
+
+.modeContent {
+  flex: 1;
+}
+
+.modeTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.modeTitle i {
+  color: var(--color-primary);
+}
+
+.modeDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}

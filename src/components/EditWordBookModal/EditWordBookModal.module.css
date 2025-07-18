@@ -1,0 +1,176 @@
+/* Edit Word Book Modal Styles */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.required {
+  color: var(--color-error, #ef4444);
+}
+
+/* 加载状态 */
+.loading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.loading i {
+  color: var(--color-primary);
+}
+
+/* Icon Selector */
+.iconSelector {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.iconOption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.iconOption:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: rgba(78, 205, 196, 0.05);
+}
+
+.iconOption.selected {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: rgba(78, 205, 196, 0.1);
+}
+
+.iconOption i {
+  font-size: var(--font-size-lg);
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .actions {
+    flex-direction: column-reverse;
+    gap: var(--spacing-sm);
+  }
+  
+  .iconSelector {
+    gap: var(--spacing-xs);
+  }
+  
+  .iconOption {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* 状态选择器 */
+.statusSelector {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.statusOption {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md);
+  border: 2px solid var(--color-border-secondary);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+}
+
+.statusOption:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.statusOption.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
+
+.statusOption i {
+  font-size: var(--font-size-xl);
+  margin-bottom: var(--spacing-xs);
+}
+
+.statusOption span {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--spacing-xs);
+}
+
+.statusOption small {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+  line-height: var(--line-height-tight);
+}
+
+.statusOption.selected small {
+  color: var(--color-primary);
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+  .statusSelector {
+    flex-direction: column;
+  }
+
+  .statusOption {
+    flex-direction: row;
+    text-align: left;
+  }
+
+  .statusOption i {
+    margin-bottom: 0;
+    margin-right: var(--spacing-sm);
+  }
+
+  .statusOption span {
+    margin-bottom: 0;
+  }
+}
