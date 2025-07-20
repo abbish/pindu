@@ -48,6 +48,7 @@ export { Select, type SelectProps, type SelectOption } from './Select';
 export { EditWordBookModal, type EditWordBookModalProps } from './EditWordBookModal';
 export { DeleteWordBookModal, type DeleteWordBookModalProps } from './DeleteWordBookModal';
 export { EditWordModal, type EditWordModalProps } from './EditWordModal';
+export { EditPlanModal, type EditPlanModalProps } from './EditPlanModal';
 export { AIModelSelector, type AIModelSelectorProps } from './AIModelSelector';
 export { PlanningProgress, type PlanningProgressProps } from './PlanningProgress';
 export { StudySchedulePreview, type StudySchedulePreviewProps } from './StudySchedulePreview';

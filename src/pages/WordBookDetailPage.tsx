@@ -83,8 +83,10 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({
   const [wordBookData, setWordBookData] = useState<WordBook | null>(null);
   const [words, setWords] = useState<WordListDetail[]>([]);
   const [statistics, setStatistics] = useState<WordTypeDistribution | null>(null);
+  const [linkedPlans, setLinkedPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [linkedPlansLoading, setLinkedPlansLoading] = useState(false);
 
   // Modal states
   const [showEditModal, setShowEditModal] = useState(false);
@@ -149,6 +151,9 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({
         // 统计信息失败不影响主要功能，只记录警告
       }
 
+      // 获取关联学习计划
+      await loadLinkedPlans();
+
     } catch (err) {
       console.error('获取数据失败:', err);
       setError('获取数据失败，请稍后重试');
@@ -192,6 +197,27 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({
       showToast('加载单词列表失败', 'error');
     } finally {
       setWordsLoading(false);
+    }
+  };
+
+  // 加载关联学习计划
+  const loadLinkedPlans = async () => {
+    if (!id) return;
+
+    try {
+      setLinkedPlansLoading(true);
+      const result = await wordbookService.getWordBookLinkedPlans(id);
+      if (result.success) {
+        setLinkedPlans(result.data);
+      } else {
+        console.error('加载关联计划失败:', result.error);
+        showToast('加载关联计划失败', 'error');
+      }
+    } catch (error) {
+      console.error('加载关联计划失败:', error);
+      showToast('加载关联计划失败', 'error');
+    } finally {
+      setLinkedPlansLoading(false);
     }
   };
 
@@ -674,6 +700,94 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({
             }}
           />
         </div>
+
+        {/* Linked Plans Section */}
+        <section className={styles.linkedPlansSection}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>关联学习计划</h2>
+            <p className={styles.sectionDescription}>
+              使用此单词本的学习计划
+            </p>
+          </div>
+
+          {linkedPlansLoading ? (
+            <div className={styles.loadingContainer}>
+              <div className={styles.loadingSpinner}></div>
+              <span>加载关联计划中...</span>
+            </div>
+          ) : linkedPlans.length > 0 ? (
+            <div className={styles.linkedPlansGrid}>
+              {linkedPlans.map((plan) => (
+                <div key={plan.id} className={styles.linkedPlanCard}>
+                  <div className={styles.planHeader}>
+                    <h3 className={styles.planTitle}>{plan.name}</h3>
+                    <div className={styles.planBadges}>
+                      {plan.lifecycle_status === 'pending' && (
+                        <span className={`${styles.statusBadge} ${styles.pending}`}>
+                          待开始
+                        </span>
+                      )}
+                      {plan.lifecycle_status === 'active' && (
+                        <span className={`${styles.statusBadge} ${styles.active}`}>
+                          进行中
+                        </span>
+                      )}
+                      {plan.lifecycle_status === 'completed' && (
+                        <span className={`${styles.statusBadge} ${styles.completed}`}>
+                          已完成
+                        </span>
+                      )}
+                      {plan.lifecycle_status === 'terminated' && (
+                        <span className={`${styles.statusBadge} ${styles.terminated}`}>
+                          已终止
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {plan.description && (
+                    <p className={styles.planDescription}>{plan.description}</p>
+                  )}
+
+                  <div className={styles.planStats}>
+                    <div className={styles.statItem}>
+                      <span className={styles.statLabel}>总单词数</span>
+                      <span className={styles.statValue}>{plan.total_words || 0}</span>
+                    </div>
+                    <div className={styles.statItem}>
+                      <span className={styles.statLabel}>学习进度</span>
+                      <span className={styles.statValue}>
+                        {plan.progress_percentage ? `${plan.progress_percentage.toFixed(1)}%` : '0%'}
+                      </span>
+                    </div>
+                    <div className={styles.statItem}>
+                      <span className={styles.statLabel}>学习周期</span>
+                      <span className={styles.statValue}>{plan.study_period_days || 0}天</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.planActions}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onNavigate?.('plan-detail', { id: plan.id })}
+                    >
+                      查看详情
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon}>📚</div>
+              <h3 className={styles.emptyTitle}>暂无关联计划</h3>
+              <p className={styles.emptyDescription}>
+                此单词本还没有被任何学习计划使用
+              </p>
+            </div>
+          )}
+        </section>
       </main>
 
       {/* Edit Word Book Modal */}

@@ -21,8 +21,7 @@ export interface WordListTableProps {
   words: WordDetail[];
   /** 播放发音回调 */
   onPlayPronunciation?: (word: WordDetail) => void;
-  /** 编辑单词回调 */
-  onEditWord?: (word: WordDetail) => void;
+
   /** 删除单词回调 */
   onDeleteWord?: (word: WordDetail) => void;
   /** 批量删除回调 */
@@ -97,12 +96,12 @@ const generatePageNumbers = (current: number, total: number): (number | string)[
 export const WordListTable: React.FC<WordListTableProps> = ({
   words,
   onPlayPronunciation,
-  onEditWord,
   onDeleteWord,
   onBatchDelete,
   onAddWords,
   loading = false,
-  pagination
+  pagination,
+  readonly = false
 }) => {
   const [selectedWords, setSelectedWords] = useState<Set<number>>(new Set());
 
@@ -112,9 +111,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
     onPlayPronunciation?.(word);
   };
 
-  const handleEditWord = (word: WordDetail) => {
-    onEditWord?.(word);
-  };
+
 
   const handleDeleteWord = (word: WordDetail) => {
     onDeleteWord?.(word);
@@ -220,7 +217,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
         <div className={styles.filterRight}>
 
           {/* 批量操作按钮 */}
-          {selectedWords.size > 0 && (
+          {!readonly && selectedWords.size > 0 && (
             <button
               type="button"
               className={styles.batchDeleteBtn}
@@ -248,7 +245,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
       </div>
 
       {/* 批量操作提示条 */}
-      {selectedWords.size > 0 && (
+      {!readonly && selectedWords.size > 0 && (
         <div className={styles.selectionBar}>
           <div className={styles.selectionInfo}>
             <i className="fas fa-check-circle" />
@@ -291,21 +288,23 @@ export const WordListTable: React.FC<WordListTableProps> = ({
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      checked={selectedWords.size > 0 && selectedWords.size === words.length}
-                      onChange={handleSelectAll}
-                      className={styles.selectCheckbox}
-                      aria-label="全选单词"
-                    />
-                  </th>
+                  {!readonly && (
+                    <th>
+                      <input
+                        type="checkbox"
+                        checked={selectedWords.size > 0 && selectedWords.size === words.length}
+                        onChange={handleSelectAll}
+                        className={styles.selectCheckbox}
+                        aria-label="全选单词"
+                      />
+                    </th>
+                  )}
                   <th>单词</th>
                   <th>中文释义</th>
                   <th>音标</th>
                   <th>音节</th>
                   <th>词性</th>
-                  <th>操作</th>
+                  {!readonly && <th>操作</th>}
                 </tr>
               </thead>
               <tbody>
@@ -314,15 +313,17 @@ export const WordListTable: React.FC<WordListTableProps> = ({
 
                 return (
                   <tr key={word.id} className={selectedWords.has(word.id) ? styles.selectedRow : ''}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selectedWords.has(word.id)}
-                        onChange={() => handleSelectWord(word.id)}
-                        className={styles.selectCheckbox}
-                        aria-label={`选择单词 ${word.word}`}
-                      />
-                    </td>
+                    {!readonly && (
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedWords.has(word.id)}
+                          onChange={() => handleSelectWord(word.id)}
+                          className={styles.selectCheckbox}
+                          aria-label={`选择单词 ${word.word}`}
+                        />
+                      </td>
+                    )}
                     <td>
                       <div className={styles.wordCell}>
                         <h4 className={styles.wordText}>{word.word}</h4>
@@ -349,34 +350,29 @@ export const WordListTable: React.FC<WordListTableProps> = ({
                         {word.partOfSpeech}
                       </span>
                     </td>
-                    <td>
-                      <div className={styles.actions}>
-                        <button
-                          type="button"
-                          className={styles.actionBtn}
-                          onClick={() => handlePlayPronunciation(word)}
-                          title="播放发音"
-                        >
-                          <i className="fas fa-volume-up" />
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.actionBtn}
-                          onClick={() => handleEditWord(word)}
-                          title="编辑"
-                        >
-                          <i className="fas fa-edit" />
-                        </button>
-                        <button
-                          type="button"
-                          className={`${styles.actionBtn} ${styles.deleteBtn}`}
-                          onClick={() => handleDeleteWord(word)}
-                          title="删除"
-                        >
-                          <i className="fas fa-trash" />
-                        </button>
-                      </div>
-                    </td>
+                    {!readonly && (
+                      <td>
+                        <div className={styles.actions}>
+                          <button
+                            type="button"
+                            className={styles.actionBtn}
+                            onClick={() => handlePlayPronunciation(word)}
+                            title="播放发音"
+                          >
+                            <i className="fas fa-volume-up" />
+                          </button>
+
+                          <button
+                            type="button"
+                            className={`${styles.actionBtn} ${styles.deleteBtn}`}
+                            onClick={() => handleDeleteWord(word)}
+                            title="删除"
+                          >
+                            <i className="fas fa-trash" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

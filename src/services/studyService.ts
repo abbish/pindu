@@ -9,6 +9,7 @@ import {
   StudyPlanStatus,
   StudyPlanWord,
   StudyPlanStatistics,
+  StudyPlanStatusHistory,
   ApiResult,
   LoadingState,
   Id,
@@ -168,7 +169,7 @@ export class StudyService extends BaseService {
         end_date: request.endDate,
         ai_plan_data: request.aiPlanData,
         wordbook_ids: request.wordbookIds,
-        status: request.status || 'active',
+        status: request.status || 'normal',  // 修复：默认应该是 'normal' 而不是 'active'
       };
 
       return this.client.invoke<Id>('create_study_plan_with_schedule', { request: backendRequest });
@@ -184,6 +185,76 @@ export class StudyService extends BaseService {
   ): Promise<ApiResult<StudyPlanWord[]>> {
     return this.executeWithLoading(async () => {
       return this.client.invoke<StudyPlanWord[]>('get_study_plan_words', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 获取学习计划关联的单词本ID列表
+   */
+  async getStudyPlanWordBooks(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<number[]>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<number[]>('get_study_plan_word_books', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 更新学习计划基本信息（仅名称和描述）
+   */
+  async updateStudyPlanBasicInfo(
+    planId: number,
+    data: {
+      name: string;
+      description?: string;
+    },
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      this.validateRequired({ planId, name: data.name }, ['planId', 'name']);
+
+      return this.client.invoke<void>('update_study_plan_basic_info', {
+        planId,
+        name: data.name,
+        description: data.description
+      });
+    }, setLoading);
+  }
+
+  /**
+   * 更新学习计划完整信息（包括学习设置和日程）
+   */
+  async updateStudyPlanWithSchedule(
+    planId: number,
+    data: {
+      name: string;
+      description?: string;
+      intensityLevel: string;
+      studyPeriodDays: number;
+      reviewFrequency: number;
+      startDate: string;
+      wordbookIds: number[];
+      schedule: any[];
+      status: 'draft' | 'active';
+    },
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      this.validateRequired({ planId, name: data.name }, ['planId', 'name']);
+
+      return this.client.invoke<void>('update_study_plan_with_schedule', {
+        planId,
+        name: data.name,
+        description: data.description,
+        intensityLevel: data.intensityLevel,
+        studyPeriodDays: data.studyPeriodDays,
+        reviewFrequency: data.reviewFrequency,
+        startDate: data.startDate,
+        wordbookIds: data.wordbookIds,
+        schedule: data.schedule,
+        status: data.status
+      });
     }, setLoading);
   }
 
@@ -222,6 +293,106 @@ export class StudyService extends BaseService {
   ): Promise<ApiResult<StudyPlanStatistics>> {
     return this.executeWithLoading(async () => {
       return this.client.invoke<StudyPlanStatistics>('get_study_plan_statistics', { planId });
+    }, setLoading);
+  }
+
+  // ==================== 状态管理相关方法 ====================
+
+  /**
+   * 开始学习计划
+   */
+  async startStudyPlan(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('start_study_plan', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 完成学习计划
+   */
+  async completeStudyPlan(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('complete_study_plan', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 终止学习计划
+   */
+  async terminateStudyPlan(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('terminate_study_plan', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 重新学习计划
+   */
+  async restartStudyPlan(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('restart_study_plan', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 编辑学习计划（转为草稿状态）
+   */
+  async editStudyPlan(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('edit_study_plan', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 发布学习计划（从草稿状态转为正常状态）
+   */
+  async publishStudyPlan(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('publish_study_plan', { planId });
+    }, setLoading);
+  }
+
+
+
+  /**
+   * 删除学习计划（软删除）
+   */
+  async deleteStudyPlan(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('delete_study_plan', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 获取学习计划状态变更历史
+   */
+  async getStudyPlanStatusHistory(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<StudyPlanStatusHistory[]>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<StudyPlanStatusHistory[]>('get_study_plan_status_history', { planId });
     }, setLoading);
   }
 

@@ -170,22 +170,28 @@ export const CreatePlanPageV2: React.FC<CreatePlanPageV2Props> = ({ onNavigate }
   // 停止AI规划进程
   const stopPlanningProcess = async () => {
     try {
-      // 取消进度跟踪
+      // 1. 首先取消后端分析
+      await wordBookService.cancelAnalysis();
+
+      // 2. 取消前端控制器
       if (abortController) {
         abortController.abort();
         setAbortController(null);
       }
 
-      // 清除分析进度
+      // 3. 清除分析进度
       await wordBookService.clearAnalysisProgress();
 
-      // 重置状态
+      // 4. 重置前端状态
       setPlanning(false);
       setError(null);
 
-      console.log('AI规划进程已停止');
+      console.log('AI规划进程已完全停止');
     } catch (err) {
-      console.error('停止AI规划进程时出错:', err);
+      console.error('停止AI规划进程失败:', err);
+      // 即使出错也要重置前端状态
+      setPlanning(false);
+      setError(null);
     }
   };
 

@@ -33,49 +33,80 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
   });
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Filter options
-  const filterOptions: FilterOption[] = [
+  // 统一状态过滤选项
+  const statusFilterOptions: FilterOption[] = [
     { value: 'all', label: '全部状态' },
-    { value: 'active', label: '进行中' },
-    { value: 'completed', label: '已完成' },
-    { value: 'paused', label: '已暂停' }
+    { value: 'Draft', label: '草稿' },
+    { value: 'Pending', label: '待开始' },
+    { value: 'Active', label: '进行中' },
+    { value: 'Paused', label: '已暂停' },
+    { value: 'Completed', label: '已完成' },
+    { value: 'Terminated', label: '已终止' },
+    { value: 'Deleted', label: '已删除' }
   ];
 
-  // Filter plans by status
+  // Filter plans by unified status
   const filteredPlans = useMemo(() => {
-    if (!studyPlans || !Array.isArray(studyPlans) || statusFilter === 'all') return studyPlans || [];
-    return studyPlans.filter(plan => plan.status === statusFilter);
+    if (!studyPlans || !Array.isArray(studyPlans)) return [];
+
+    return studyPlans.filter(plan => {
+      // 使用统一状态过滤
+      if (statusFilter !== 'all' && plan.unified_status !== statusFilter) {
+        return false;
+      }
+
+      return true;
+    });
   }, [studyPlans, statusFilter]);
 
-  // Group plans by status
+  // Group plans by unified status
   const groupedPlans = useMemo(() => {
     if (!studyPlans || !Array.isArray(studyPlans)) {
-      return { active: [], paused: [], completed: [] };
+      return { draft: [], pending: [], active: [], paused: [], completed: [], terminated: [] };
     }
+
+    // 按统一状态分组（排除已删除的）
+    const visiblePlans = studyPlans.filter(plan => plan.unified_status !== 'Deleted');
 
     const groups = {
-      active: studyPlans.filter(plan => plan.status === 'active'),
-      paused: studyPlans.filter(plan => plan.status === 'paused'),
-      completed: studyPlans.filter(plan => plan.status === 'completed')
+      draft: visiblePlans.filter(plan => plan.unified_status === 'Draft'),
+      pending: visiblePlans.filter(plan => plan.unified_status === 'Pending'),
+      active: visiblePlans.filter(plan => plan.unified_status === 'Active'),
+      paused: visiblePlans.filter(plan => plan.unified_status === 'Paused'),
+      completed: visiblePlans.filter(plan => plan.unified_status === 'Completed'),
+      terminated: visiblePlans.filter(plan => plan.unified_status === 'Terminated')
     };
 
-    // If filtering, only show the filtered group
-    if (statusFilter !== 'all') {
-      return {
-        active: statusFilter === 'active' ? groups.active : [],
-        paused: statusFilter === 'paused' ? groups.paused : [],
-        completed: statusFilter === 'completed' ? groups.completed : []
-      };
-    }
-
     return groups;
-  }, [studyPlans, statusFilter]);
+  }, [studyPlans]);
+
+  // Helper functions for filtered section display
+  const getFilteredSectionTitle = () => {
+    if (statusFilter !== 'all') {
+      return statusFilterOptions.find(opt => opt.value === statusFilter)?.label || '学习计划';
+    }
+    return '学习计划';
+  };
+
+  const getFilteredSectionColor = () => {
+    if (statusFilter === 'Active') return 'green';
+    if (statusFilter === 'Pending') return 'blue';
+    if (statusFilter === 'Paused') return 'orange';
+    if (statusFilter === 'Completed') return 'gray';
+    if (statusFilter === 'Terminated') return 'red';
+    if (statusFilter === 'Draft') return 'gray';
+    if (statusFilter === 'draft') return 'orange';
+    if (statusFilter === 'deleted') return 'red';
+    return 'blue';
+  };
 
   // Generate statistics
   const statsData: StatsCard[] = useMemo(() => {
-    const totalPlans = studyPlans?.length || 0;
+    const totalPlans = studyPlans?.filter(plan => plan.status !== 'deleted').length || 0;
     const activePlans = groupedPlans.active.length;
     const completedPlans = groupedPlans.completed.length;
+    const terminatedPlans = groupedPlans.terminated.length;
+    const draftPlans = groupedPlans.draft.length;
     const totalStudyTime = 45; // Mock data
 
     return [
@@ -107,12 +138,12 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
         changeType: 'neutral'
       },
       {
-        id: 'time',
-        title: '分钟学习',
-        value: totalStudyTime,
-        icon: 'clock',
+        id: 'draft',
+        title: '草稿',
+        value: draftPlans,
+        icon: 'edit',
         color: 'blue',
-        change: '今日',
+        change: `${draftPlans}`,
         changeType: 'neutral'
       }
     ];
@@ -197,7 +228,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
             </div>
             <div className={styles.headerActions}>
               <FilterSelect
-                options={filterOptions}
+                options={statusFilterOptions}
                 value={statusFilter}
                 onChange={setStatusFilter}
               />
@@ -219,6 +250,28 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
           {statusFilter === 'all' ? (
             <>
               <StudyPlanSection
+                title="草稿"
+                statusColor="gray"
+                count={groupedPlans.draft.length}
+                plans={groupedPlans.draft}
+                onPlanClick={handlePlanClick}
+                onStudyStart={handleStudyStart}
+                onMenuAction={handleMenuAction}
+                loading={false}
+              />
+
+              <StudyPlanSection
+                title="待开始"
+                statusColor="blue"
+                count={groupedPlans.pending.length}
+                plans={groupedPlans.pending}
+                onPlanClick={handlePlanClick}
+                onStudyStart={handleStudyStart}
+                onMenuAction={handleMenuAction}
+                loading={false}
+              />
+
+              <StudyPlanSection
                 title="进行中"
                 statusColor="green"
                 count={groupedPlans.active.length}
@@ -228,10 +281,10 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
                 onMenuAction={handleMenuAction}
                 loading={false}
               />
-              
+
               <StudyPlanSection
                 title="已暂停"
-                statusColor="yellow"
+                statusColor="orange"
                 count={groupedPlans.paused.length}
                 plans={groupedPlans.paused}
                 onPlanClick={handlePlanClick}
@@ -239,12 +292,23 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
                 onMenuAction={handleMenuAction}
                 loading={false}
               />
-              
+
               <StudyPlanSection
                 title="已完成"
-                statusColor="blue"
+                statusColor="gray"
                 count={groupedPlans.completed.length}
                 plans={groupedPlans.completed}
+                onPlanClick={handlePlanClick}
+                onStudyStart={handleStudyStart}
+                onMenuAction={handleMenuAction}
+                loading={false}
+              />
+
+              <StudyPlanSection
+                title="已终止"
+                statusColor="red"
+                count={groupedPlans.terminated.length}
+                plans={groupedPlans.terminated}
                 onPlanClick={handlePlanClick}
                 onStudyStart={handleStudyStart}
                 onMenuAction={handleMenuAction}
@@ -253,11 +317,8 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
             </>
           ) : (
             <StudyPlanSection
-              title={filterOptions.find(opt => opt.value === statusFilter)?.label || '学习计划'}
-              statusColor={
-                statusFilter === 'active' ? 'green' :
-                statusFilter === 'paused' ? 'yellow' : 'blue'
-              }
+              title={getFilteredSectionTitle()}
+              statusColor={getFilteredSectionColor()}
               count={filteredPlans.length}
               plans={filteredPlans}
               onPlanClick={handlePlanClick}

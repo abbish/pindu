@@ -5,7 +5,8 @@ export interface StudyPlan {
   id: Id;
   name: string;
   description: string;
-  status: StudyPlanStatus;
+  status: StudyPlanStatus;                    // 管理状态：normal, draft, deleted
+  lifecycle_status: StudyPlanLifecycleStatus; // 生命周期状态：pending, active, completed
   total_words: number;
   learned_words: number;
   accuracy_rate: number;
@@ -16,18 +17,40 @@ export interface StudyPlan {
   review_frequency?: number;
   start_date?: string;
   end_date?: string;
+  actual_start_date?: string;                 // 实际开始时间
+  actual_end_date?: string;                   // 实际完成时间
+  actual_terminated_date?: string;            // 实际终止时间
   ai_plan_data?: string;
+  deleted_at?: string;                        // 软删除时间
   created_at: Timestamp;
   updated_at: Timestamp;
 }
 
 /// 带进度的学习计划
 export interface StudyPlanWithProgress extends StudyPlan {
+  unified_status: UnifiedStudyPlanStatus;  // 统一状态字段
   progress_percentage: number;
 }
 
-/// 学习计划状态
-export type StudyPlanStatus = 'active' | 'paused' | 'completed' | 'draft';
+/// 学习计划统一状态（新版本）
+export type UnifiedStudyPlanStatus =
+  | 'Draft'      // 草稿状态 - 刚创建，还未完成配置
+  | 'Pending'    // 待开始 - 已配置完成，等待开始学习
+  | 'Active'     // 进行中 - 正在学习
+  | 'Paused'     // 已暂停 - 暂时停止学习
+  | 'Completed'  // 已完成 - 学习计划正常完成
+  | 'Terminated' // 已终止 - 提前结束学习计划
+  | 'Deleted';   // 已删除 - 软删除状态
+
+/// 旧的学习计划管理状态（保留用于向后兼容）
+export type LegacyStudyPlanStatus = 'normal' | 'draft' | 'deleted';
+
+/// 旧的学习计划生命周期状态（保留用于向后兼容）
+export type LegacyStudyPlanLifecycleStatus = 'pending' | 'active' | 'completed' | 'terminated';
+
+/// 为了向后兼容，保留原有的类型别名
+export type StudyPlanStatus = LegacyStudyPlanStatus;
+export type StudyPlanLifecycleStatus = LegacyStudyPlanLifecycleStatus;
 
 /// 学习强度等级
 export type IntensityLevel = 'easy' | 'normal' | 'intensive';
@@ -45,13 +68,16 @@ export interface UpdateStudyPlanRequest {
   name?: string;
   description?: string;
   status?: StudyPlanStatus;
+  lifecycle_status?: StudyPlanLifecycleStatus;
   mastery_level?: number;
 }
 
 /// 学习计划查询参数
 export interface StudyPlanQuery {
   status?: StudyPlanStatus;
+  lifecycle_status?: StudyPlanLifecycleStatus;
   keyword?: string;
+  include_deleted?: boolean;  // 是否包含已删除的计划
 }
 
 /// 学习会话
@@ -295,4 +321,156 @@ export interface StudyPlanScheduleWord {
   priority: 'high' | 'medium' | 'low';
   difficultyLevel: number;
   createdAt: Timestamp;
+}
+
+// ==================== 状态管理相关类型 ====================
+
+/// 学习计划状态变更历史
+export interface StudyPlanStatusHistory {
+  id: Id;
+  planId: Id;
+  fromStatus?: string;
+  toStatus: string;
+  fromLifecycleStatus?: string;
+  toLifecycleStatus: string;
+  changedAt: Timestamp;
+  reason?: string;
+}
+
+/// 状态转换请求
+export interface StatusTransitionRequest {
+  planId: Id;
+  reason?: string;
+}
+
+/// 状态转换响应
+export interface StatusTransitionResponse {
+  success: boolean;
+  newStatus: string;
+  newLifecycleStatus: string;
+  message: string;
+}
+
+// ==================== 统一状态管理工具函数 ====================
+
+/// 状态显示信息
+export interface StatusDisplayInfo {
+  text: string;
+  color: string;
+  icon: string;
+}
+
+/// 获取状态显示信息
+export const getStatusDisplay = (status: UnifiedStudyPlanStatus): StatusDisplayInfo => {
+  switch (status) {
+    case 'Draft': return { text: '草稿', color: 'gray', icon: 'edit' };
+    case 'Pending': return { text: '待开始', color: 'blue', icon: 'clock' };
+    case 'Active': return { text: '进行中', color: 'green', icon: 'play' };
+    case 'Paused': return { text: '已暂停', color: 'orange', icon: 'pause' };
+    case 'Completed': return { text: '已完成', color: 'green', icon: 'check' };
+    case 'Terminated': return { text: '已终止', color: 'red', icon: 'stop' };
+    case 'Deleted': return { text: '已删除', color: 'gray', icon: 'trash' };
+  }
+};
+
+/// 可用操作类型
+export type StudyPlanAction =
+  | 'edit'           // 编辑
+  | 'publish'        // 发布
+  | 'start'          // 开始
+  | 'pause'          // 暂停
+  | 'resume'         // 恢复
+  | 'complete'       // 完成
+  | 'terminate'      // 终止
+  | 'restart'        // 重新开始
+  | 'delete'         // 删除
+  | 'restore'        // 恢复
+  | 'permanentDelete'; // 永久删除
+
+/// 获取可用操作
+export const getAvailableActions = (status: UnifiedStudyPlanStatus): StudyPlanAction[] => {
+  switch (status) {
+    case 'Draft':
+      return ['edit', 'publish', 'delete'];
+    case 'Pending':
+      return ['start', 'edit', 'delete'];
+    case 'Active':
+      return ['pause', 'complete', 'terminate', 'edit'];
+    case 'Paused':
+      return ['resume', 'terminate', 'edit'];
+    case 'Completed':
+    case 'Terminated':
+      return ['restart', 'delete'];
+    case 'Deleted':
+      return ['restore', 'permanentDelete'];
+    default:
+      return [];
+  }
+};
+
+/// 检查状态转换是否合法
+export const canTransitionTo = (from: UnifiedStudyPlanStatus, to: UnifiedStudyPlanStatus): boolean => {
+  switch (from) {
+    case 'Draft':
+      return ['Pending', 'Deleted'].includes(to);
+    case 'Pending':
+      return ['Active', 'Draft', 'Deleted'].includes(to);
+    case 'Active':
+      return ['Paused', 'Completed', 'Terminated', 'Draft'].includes(to);
+    case 'Paused':
+      return ['Active', 'Terminated', 'Draft'].includes(to);
+    case 'Completed':
+    case 'Terminated':
+      return ['Draft'].includes(to);
+    case 'Deleted':
+      return false; // 删除状态不能转换到其他状态，需要恢复操作
+    default:
+      return false;
+  }
+};
+
+/// 从旧的双状态系统转换到新的统一状态
+export const convertLegacyStatus = (
+  status: LegacyStudyPlanStatus,
+  lifecycleStatus: LegacyStudyPlanLifecycleStatus
+): UnifiedStudyPlanStatus => {
+  if (status === 'deleted') return 'Deleted';
+  if (status === 'draft') return 'Draft';
+
+  // status === 'normal'
+  switch (lifecycleStatus) {
+    case 'pending': return 'Pending';
+    case 'active': return 'Active';
+    case 'completed': return 'Completed';
+    case 'terminated': return 'Terminated';
+    default: return 'Draft';
+  }
+};
+
+/// 统一状态转换请求
+export interface UnifiedStatusTransitionRequest {
+  planId: Id;
+  targetStatus: UnifiedStudyPlanStatus;
+  reason?: string;
+}
+
+/// 统一状态转换响应
+export interface UnifiedStatusTransitionResponse {
+  success: boolean;
+  newStatus: UnifiedStudyPlanStatus;
+  message: string;
+}
+
+/// 状态显示配置
+export interface StatusDisplayConfig {
+  label: string;
+  color: 'green' | 'blue' | 'orange' | 'red' | 'gray';
+  icon: string;
+}
+
+/// 状态过滤选项
+export interface StatusFilterOption {
+  value: string;
+  label: string;
+  count?: number;
 }

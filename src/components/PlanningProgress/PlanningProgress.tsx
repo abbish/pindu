@@ -38,29 +38,55 @@ export const PlanningProgress: React.FC<PlanningProgressProps> = ({
     // 清理之前的轮询
     clearPolling();
 
-    const pollInterval = setInterval(async () => {
+    let pollInterval = 1000; // 初始轮询间隔1秒
+    let consecutiveErrors = 0;
+
+    const poll = async () => {
       try {
         const result = await wordBookService.getAnalysisProgress();
         if (result.success && result.data) {
           setProgress(result.data);
+          consecutiveErrors = 0; // 重置错误计数
 
-          // 如果分析完成或出错，停止轮询
-          if (result.data.status === 'completed' || result.data.status === 'error') {
+          // 如果分析完成、出错或取消，停止轮询
+          if (['completed', 'error', 'cancelled'].includes(result.data.status)) {
             clearPolling();
+            return;
           }
+
+          // 动态调整轮询间隔：分析进行中时可以稍微频繁一些
+          pollInterval = result.data.chunks_received > 0 ? 800 : 1200;
+        } else {
+          consecutiveErrors++;
+          // 如果连续错误，增加轮询间隔
+          pollInterval = Math.min(pollInterval * 1.5, 5000);
         }
       } catch (err) {
         console.error('Progress polling error:', err);
-        clearPolling();
-      }
-    }, 500); // 每0.5秒轮询一次
+        consecutiveErrors++;
 
-    setPollIntervalRef(pollInterval);
+        // 连续错误超过3次，停止轮询
+        if (consecutiveErrors >= 3) {
+          clearPolling();
+          return;
+        }
+
+        // 增加轮询间隔
+        pollInterval = Math.min(pollInterval * 2, 5000);
+      }
+
+      // 设置下次轮询
+      const timeoutId = setTimeout(poll, pollInterval);
+      setPollIntervalRef(timeoutId);
+    };
+
+    // 开始轮询
+    poll();
   };
 
   const clearPolling = () => {
     if (pollIntervalRef) {
-      clearInterval(pollIntervalRef);
+      clearTimeout(pollIntervalRef); // 改为clearTimeout，因为现在使用setTimeout
       setPollIntervalRef(null);
     }
   };

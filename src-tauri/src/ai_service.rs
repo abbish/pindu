@@ -792,7 +792,19 @@ impl AIService {
             // 检查是否已取消
             if progress_manager.is_cancelled() {
                 logger.info("AI_SERVICE", "🚫 Study plan generation cancelled by user");
-                return Err("Study plan generation cancelled".into());
+                // 返回一个空的结果而不是错误，与自然拼读分析保持一致
+                return Ok(crate::types::study::StudyPlanAIResult {
+                    plan_metadata: crate::types::study::StudyPlanMetadata {
+                        total_words: 0,
+                        study_period_days: 0,
+                        intensity_level: "".to_string(),
+                        review_frequency: 0,
+                        plan_type: "".to_string(),
+                        start_date: "".to_string(),
+                        end_date: "".to_string(),
+                    },
+                    daily_plans: vec![],
+                });
             }
 
             match result {

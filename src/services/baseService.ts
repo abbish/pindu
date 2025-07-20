@@ -23,9 +23,14 @@ export abstract class BaseService {
       return result;
     } catch (error) {
       console.error('executeWithLoading: Operation failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = this.formatError(error);
       setLoading?.({ loading: false, error: errorMessage });
-      throw error;
+
+      // 返回统一的错误格式而不是抛出异常
+      return {
+        success: false,
+        error: errorMessage
+      };
     }
   }
 

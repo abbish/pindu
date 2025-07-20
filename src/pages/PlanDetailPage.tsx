@@ -11,36 +11,31 @@ import {
   useToast,
   type WordListDetail
 } from '../components';
-import { BatchDeleteModal } from '../components/BatchDeleteModal';
+
 import { Modal } from '../components/Modal';
+import { EditPlanModal } from '../components/EditPlanModal';
 import { StudyService } from '../services/studyService';
 import type {
   StudyPlanWithProgress,
   StudyPlanAIResult,
   DailyStudyWord,
   StudyPlanStatus,
+  StudyPlanLifecycleStatus,
   StudyPlanWord,
-  StudyPlanStatistics
+  StudyPlanStatistics,
+  StudyPlanStatusHistory,
+  UnifiedStudyPlanStatus
 } from '../types';
+import {
+  getStatusDisplay,
+  getAvailableActions,
+  canTransitionTo
+} from '../types/study';
 
 // 视图模式类型
 type ViewMode = 'overview' | 'schedule' | 'words' | 'statistics';
 
 // 辅助函数
-function getStatusDisplay(status: StudyPlanStatus) {
-  switch (status) {
-    case 'active':
-      return { text: '进行中', color: 'var(--color-success)', bgColor: 'var(--color-success-light)' };
-    case 'paused':
-      return { text: '已暂停', color: 'var(--color-warning)', bgColor: 'var(--color-warning-light)' };
-    case 'completed':
-      return { text: '已完成', color: 'var(--color-info)', bgColor: 'var(--color-info-light)' };
-    case 'draft':
-      return { text: '草稿', color: 'var(--color-text-tertiary)', bgColor: 'var(--color-bg-tertiary)' };
-    default:
-      return { text: '未知', color: 'var(--color-text-tertiary)', bgColor: 'var(--color-bg-tertiary)' };
-  }
-}
 
 function getIntensityDisplay(intensity?: string) {
   switch (intensity) {
@@ -52,6 +47,58 @@ function getIntensityDisplay(intensity?: string) {
       return { text: '强化模式', color: 'var(--color-warning)' };
     default:
       return { text: '标准模式', color: 'var(--color-info)' };
+  }
+}
+
+function getActionConfig(action: string) {
+  switch (action) {
+    case 'edit':
+      return { label: '编辑', icon: 'edit', color: 'primary' };
+    case 'publish':
+      return { label: '发布', icon: 'paper-plane', color: 'primary' };
+    case 'start':
+      return { label: '开始学习', icon: 'play', color: 'primary' };
+    case 'pause':
+      return { label: '暂停', icon: 'pause', color: 'warning' };
+    case 'resume':
+      return { label: '恢复', icon: 'play', color: 'primary' };
+    case 'complete':
+      return { label: '完成', icon: 'check', color: 'primary' };
+    case 'terminate':
+      return { label: '终止', icon: 'stop', color: 'danger' };
+    case 'restart':
+      return { label: '重新开始', icon: 'redo', color: 'primary' };
+    case 'delete':
+      return { label: '删除', icon: 'trash', color: 'danger' };
+    case 'restore':
+      return { label: '恢复', icon: 'undo', color: 'primary' };
+    case 'permanentDelete':
+      return { label: '永久删除', icon: 'trash-alt', color: 'danger' };
+    default:
+      return { label: action, icon: 'cog', color: 'primary' };
+  }
+}
+
+function getPartOfSpeechDisplay(pos: string) {
+  switch (pos) {
+    case 'n.':
+      return { label: '名词', icon: 'cube', color: 'blue' };
+    case 'v.':
+      return { label: '动词', icon: 'play', color: 'green' };
+    case 'adj.':
+      return { label: '形容词', icon: 'palette', color: 'purple' };
+    case 'adv.':
+      return { label: '副词', icon: 'fast-forward', color: 'orange' };
+    case 'prep.':
+      return { label: '介词', icon: 'link', color: 'teal' };
+    case 'conj.':
+      return { label: '连词', icon: 'plus', color: 'indigo' };
+    case 'int.':
+      return { label: '感叹词', icon: 'exclamation', color: 'red' };
+    case 'pron.':
+      return { label: '代词', icon: 'user', color: 'pink' };
+    default:
+      return { label: '其他', icon: 'question', color: 'gray' };
   }
 }
 
@@ -78,6 +125,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   const [currentView, setCurrentView] = useState<ViewMode>('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [needsRegeneration, setNeedsRegeneration] = useState(false);
 
   // 统计数据
   const [studyStreak, setStudyStreak] = useState(0);
@@ -90,26 +138,33 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   // 统计数据
   const [statistics, setStatistics] = useState<StudyPlanStatistics | null>(null);
 
-  // 删除确认状态
-  const [deleteModal, setDeleteModal] = useState<{
-    isOpen: boolean;
-    words: WordListDetail[];
-    deleting: boolean;
-  }>({
-    isOpen: false,
-    words: [],
-    deleting: false
-  });
+  // 词性统计数据
+  const [partOfSpeechStats, setPartOfSpeechStats] = useState<{[key: string]: number}>({});
+
+
 
   // 状态转换确认状态
   const [statusChangeModal, setStatusChangeModal] = useState<{
     isOpen: boolean;
-    targetStatus: 'active' | 'draft';
+    action: 'start' | 'complete' | 'terminate' | 'restart' | 'edit' | 'publish' | 'delete';
+    actionLabel: string;
+    confirmMessage: string;
     processing: boolean;
   }>({
     isOpen: false,
-    targetStatus: 'active',
+    action: 'start',
+    actionLabel: '',
+    confirmMessage: '',
     processing: false
+  });
+
+  // 编辑计划模态框状态
+  const [editPlanModal, setEditPlanModal] = useState<{
+    isOpen: boolean;
+    saving: boolean;
+  }>({
+    isOpen: false,
+    saving: false
   });
 
   useEffect(() => {
@@ -128,7 +183,24 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
       }
 
       const plan = planResult.data;
-      setPlanData(plan);
+
+      // 确保状态字段的类型正确性
+      const normalizedPlan = {
+        ...plan,
+        status: plan.status as StudyPlanStatus,
+        lifecycle_status: plan.lifecycle_status as StudyPlanLifecycleStatus
+      };
+
+      console.log('Plan data received:', {
+        id: plan.id,
+        name: plan.name,
+        status: plan.status,
+        lifecycle_status: plan.lifecycle_status,
+        statusType: typeof plan.status,
+        lifecycleStatusType: typeof plan.lifecycle_status
+      });
+
+      setPlanData(normalizedPlan);
 
       // 解析AI规划数据
       if (plan.ai_plan_data) {
@@ -185,6 +257,9 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 
       if (result.success) {
         setPlanWords(result.data);
+        // 计算词性统计
+        const posStats = calculatePartOfSpeechStats(result.data);
+        setPartOfSpeechStats(posStats);
       } else {
         showToast(result.error, 'error');
       }
@@ -213,104 +288,56 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     }
   };
 
+  // 计算词性统计 - 基于唯一单词ID，避免重复计算复习单词
+  const calculatePartOfSpeechStats = (words: StudyPlanWord[]) => {
+    const stats: {[key: string]: number} = {};
+    const uniqueWords = new Map<number, StudyPlanWord>();
+
+    // 去重：基于word_id，只保留每个单词的一个实例
+    words.forEach(word => {
+      if (!uniqueWords.has(word.id)) {
+        uniqueWords.set(word.id, word);
+      }
+    });
+
+    // 统计唯一单词的词性分布
+    uniqueWords.forEach(word => {
+      const pos = word.partOfSpeech || 'unknown';
+      stats[pos] = (stats[pos] || 0) + 1;
+    });
+
+    return stats;
+  };
+
   // 事件处理函数
   const handleViewChange = (view: ViewMode) => {
     setCurrentView(view);
   };
 
-  // 删除单词相关处理函数
-  const handleRemoveFromPlan = (word: WordListDetail) => {
-    setDeleteModal({
-      isOpen: true,
-      words: [word],
-      deleting: false
-    });
-  };
 
-  const handleBatchRemoveFromPlan = (words: WordListDetail[]) => {
-    setDeleteModal({
-      isOpen: true,
-      words: words,
-      deleting: false
-    });
-  };
-
-  // 确认删除处理
-  const handleConfirmDelete = async () => {
-    if (!planId || deleteModal.words.length === 0) return;
-
-    setDeleteModal(prev => ({ ...prev, deleting: true }));
-
-    try {
-      const wordIds = deleteModal.words.map(w => w.id);
-
-      if (deleteModal.words.length === 1) {
-        const result = await studyService.removeWordFromPlan(planId, wordIds[0]);
-        if (result.success) {
-          showToast('已从学习计划中移除', 'success');
-        } else {
-          showToast(result.error, 'error');
-          return;
-        }
-      } else {
-        const result = await studyService.batchRemoveWordsFromPlan(planId, wordIds);
-        if (result.success) {
-          showToast(`已从学习计划中移除 ${deleteModal.words.length} 个单词`, 'success');
-        } else {
-          showToast(result.error, 'error');
-          return;
-        }
-      }
-
-      // 重新加载数据
-      await Promise.all([
-        loadPlanWords(),
-        loadStatistics(), // 更新统计数据
-        loadPlanDetail() // 更新计划基本信息（包括进度等）
-      ]);
-
-      // 关闭Modal
-      setDeleteModal({
-        isOpen: false,
-        words: [],
-        deleting: false
-      });
-    } catch (error) {
-      console.error('删除单词失败:', error);
-      showToast('删除单词失败', 'error');
-    } finally {
-      setDeleteModal(prev => ({ ...prev, deleting: false }));
-    }
-  };
-
-  // 取消删除
-  const handleCancelDelete = () => {
-    setDeleteModal({
-      isOpen: false,
-      words: [],
-      deleting: false
-    });
-  };
 
   // 状态转换处理
-  const handleStatusChange = (targetStatus: 'active' | 'draft') => {
+  const handleStatusAction = (action: 'start' | 'complete' | 'terminate' | 'restart' | 'edit' | 'publish' | 'delete') => {
     if (!planData) return;
 
-    if (targetStatus === 'active' && planData.status === 'draft') {
-      // 从草稿转为正式，需要确认重新生成日程
-      setStatusChangeModal({
-        isOpen: true,
-        targetStatus: 'active',
-        processing: false
-      });
-    } else if (targetStatus === 'draft' && planData.status === 'active') {
-      // 从正式转为草稿，直接确认
-      setStatusChangeModal({
-        isOpen: true,
-        targetStatus: 'draft',
-        processing: false
-      });
+    // 如果是草稿状态下的编辑操作，直接打开编辑模态框
+    if (action === 'edit' && planData.unified_status === 'Draft') {
+      handleEditPlan();
+      return;
     }
+
+    const availableActions = getAvailableActions(planData.unified_status as UnifiedStudyPlanStatus);
+    const actionConfig = availableActions.find(a => a === action);
+
+    if (!actionConfig) return;
+
+    setStatusChangeModal({
+      isOpen: true,
+      action,
+      actionLabel: actionConfig.label,
+      confirmMessage: actionConfig.confirmMessage || `确认${actionConfig.label}吗？`,
+      processing: false
+    });
   };
 
   // 确认状态转换
@@ -320,44 +347,85 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     setStatusChangeModal(prev => ({ ...prev, processing: true }));
 
     try {
-      if (statusChangeModal.targetStatus === 'active') {
-        // 从草稿转为正式：重新生成日程计划
-        showToast('正在重新生成学习日程...', 'info');
+      let result;
 
-        // TODO: 调用重新生成日程的API
-        // const result = await studyService.regenerateSchedule(planId);
+      switch (statusChangeModal.action) {
+        case 'start':
+          result = await studyService.startStudyPlan(planId);
+          if (result.success) {
+            showToast('学习计划已开始', 'success');
+          }
+          break;
 
-        // 暂时只更新状态
-        const result = await studyService.updateStudyPlan(planId, {
-          status: 'active'
-        });
+        case 'complete':
+          result = await studyService.completeStudyPlan(planId);
+          if (result.success) {
+            showToast('学习计划已完成', 'success');
+          }
+          break;
 
-        if (result.success) {
-          showToast('学习计划已激活，日程已重新生成', 'success');
-          await loadPlanDetail(); // 重新加载计划详情
-        } else {
-          showToast(result.error, 'error');
-          return;
-        }
-      } else {
-        // 从正式转为草稿
-        const result = await studyService.updateStudyPlan(planId, {
-          status: 'draft'
-        });
+        case 'terminate':
+          result = await studyService.terminateStudyPlan(planId);
+          if (result.success) {
+            showToast('学习计划已终止', 'success');
+          }
+          break;
 
-        if (result.success) {
-          showToast('学习计划已转为草稿状态', 'success');
-          await loadPlanDetail(); // 重新加载计划详情
-        } else {
-          showToast(result.error, 'error');
-          return;
-        }
+        case 'restart':
+          result = await studyService.restartStudyPlan(planId);
+          if (result.success) {
+            showToast('学习计划已重置，请重新生成日程', 'success');
+          }
+          break;
+
+        case 'edit':
+          // 如果是草稿状态，打开编辑模态框
+          if (planData.status === 'draft') {
+            handleEditPlan();
+            return; // 不需要API调用，直接返回
+          }
+          // 如果是正常状态，转为草稿状态
+          result = await studyService.editStudyPlan(planId);
+          if (result.success) {
+            showToast('学习计划已转为草稿状态，学习进度已重置', 'success');
+          }
+          break;
+
+        case 'publish':
+          result = await studyService.publishStudyPlan(planId);
+          if (result.success) {
+            showToast('学习计划已发布', 'success');
+          }
+          break;
+
+        case 'delete':
+          result = await studyService.deleteStudyPlan(planId);
+          if (result.success) {
+            showToast('学习计划已删除', 'success');
+            // 删除后跳转到列表页
+            onNavigate?.('plans');
+            return;
+          }
+          break;
+
+        default:
+          throw new Error('未知的操作类型');
       }
+
+      if (!result.success) {
+        showToast(result.error, 'error');
+        return;
+      }
+
+      // 重新加载计划详情
+      await loadPlanDetail();
 
       // 关闭Modal
       setStatusChangeModal({
         isOpen: false,
-        targetStatus: 'active',
+        action: 'start',
+        actionLabel: '',
+        confirmMessage: '',
         processing: false
       });
     } catch (error) {
@@ -372,85 +440,48 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   const handleCancelStatusChange = () => {
     setStatusChangeModal({
       isOpen: false,
-      targetStatus: 'active',
+      action: 'start',
+      actionLabel: '',
+      confirmMessage: '',
       processing: false
     });
   };
 
-  // 渲染操作按钮
-  const renderActionButtons = () => {
-    const status = planData?.status as StudyPlanStatus;
+  // 打开编辑计划模态框
+  const handleEditPlan = () => {
+    setEditPlanModal({
+      isOpen: true,
+      saving: false
+    });
+  };
 
-    switch (status) {
-      case 'active':
-        return (
-          <>
-            <Button onClick={handleContinueStudy} variant="primary">
-              <i className="fas fa-play" />
-              继续学习
-            </Button>
-            <Button onClick={handlePausePlan} variant="secondary">
-              <i className="fas fa-pause" />
-              暂停计划
-            </Button>
-            <Button onClick={handleEditPlan} variant="outline">
-              <i className="fas fa-edit" />
-              编辑
-            </Button>
-          </>
-        );
-      case 'paused':
-        return (
-          <>
-            <Button onClick={handleResumePlan} variant="primary">
-              <i className="fas fa-play" />
-              恢复学习
-            </Button>
-            <Button onClick={handleCompletePlan} variant="secondary">
-              <i className="fas fa-check" />
-              标记完成
-            </Button>
-            <Button onClick={handleEditPlan} variant="outline">
-              <i className="fas fa-edit" />
-              编辑
-            </Button>
-          </>
-        );
-      case 'completed':
-        return (
-          <>
-            <Button onClick={() => onNavigate?.('plans')} variant="secondary">
-              <i className="fas fa-list" />
-              查看所有计划
-            </Button>
-            <Button onClick={handleEditPlan} variant="outline">
-              <i className="fas fa-edit" />
-              编辑
-            </Button>
-          </>
-        );
-      case 'draft':
-        return (
-          <>
-            <Button onClick={handleResumePlan} variant="primary">
-              <i className="fas fa-play" />
-              开始学习
-            </Button>
-            <Button onClick={handleEditPlan} variant="secondary">
-              <i className="fas fa-edit" />
-              编辑计划
-            </Button>
-          </>
-        );
-      default:
-        return (
-          <Button onClick={handleEditPlan} variant="outline">
-            <i className="fas fa-edit" />
-            编辑
-          </Button>
-        );
+  // 关闭编辑计划模态框
+  const handleCloseEditPlan = () => {
+    setEditPlanModal({
+      isOpen: false,
+      saving: false
+    });
+  };
+
+  // 保存编辑计划
+  const handleSaveEditPlan = async (planId: number) => {
+    try {
+      setEditPlanModal(prev => ({ ...prev, saving: true }));
+
+      // 重新加载计划数据
+      await loadPlanDetail();
+
+      showToast('学习计划已更新', 'success');
+      handleCloseEditPlan();
+    } catch (err) {
+      console.error('Failed to reload plan after edit:', err);
+      showToast('更新成功，但刷新数据失败', 'warning');
+    } finally {
+      setEditPlanModal(prev => ({ ...prev, saving: false }));
     }
   };
+
+
 
   const handleNavChange = (nav: string) => {
     onNavigate?.(nav);
@@ -460,55 +491,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     onNavigate?.(page);
   };
 
-  const handleContinueStudy = () => {
-    onNavigate?.('start-study-plan', { planId });
-  };
 
-  const handleEditPlan = () => {
-    onNavigate?.('edit-plan', { planId });
-  };
-
-  const handlePausePlan = async () => {
-    try {
-      const result = await studyService.updateStudyPlan(planId, { status: 'paused' });
-      if (result.success) {
-        showToast('学习计划已暂停', 'success');
-        loadPlanDetail();
-      } else {
-        showToast(result.error || '暂停失败', 'error');
-      }
-    } catch (err) {
-      showToast('暂停失败', 'error');
-    }
-  };
-
-  const handleResumePlan = async () => {
-    try {
-      const result = await studyService.updateStudyPlan(planId, { status: 'active' });
-      if (result.success) {
-        showToast('学习计划已恢复', 'success');
-        loadPlanDetail();
-      } else {
-        showToast(result.error || '恢复失败', 'error');
-      }
-    } catch (err) {
-      showToast('恢复失败', 'error');
-    }
-  };
-
-  const handleCompletePlan = async () => {
-    try {
-      const result = await studyService.updateStudyPlan(planId, { status: 'completed' });
-      if (result.success) {
-        showToast('学习计划已完成', 'success');
-        loadPlanDetail();
-      } else {
-        showToast(result.error || '完成失败', 'error');
-      }
-    } catch (err) {
-      showToast('完成失败', 'error');
-    }
-  };
 
   if (loading) {
     return (
@@ -546,7 +529,6 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     );
   }
 
-  const statusDisplay = getStatusDisplay(planData.status as StudyPlanStatus);
   const intensityDisplay = getIntensityDisplay(planData.intensity_level || undefined);
 
   // 计算学习天数
@@ -558,6 +540,30 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   const startDate = planData.start_date ? new Date(planData.start_date) : new Date();
   const today = new Date();
   const studiedDays = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+  // 计算时间进度（基于日程自然日进度）
+  const calculateTimeProgress = () => {
+    if (!planData.start_date || !planData.end_date) return 0;
+
+    const startDate = new Date(planData.start_date);
+    const endDate = new Date(planData.end_date);
+    const today = new Date();
+
+    // 如果还没开始，时间进度为0%
+    if (today < startDate) return 0;
+
+    // 如果已经结束，时间进度为100%
+    if (today > endDate) return 100;
+
+    // 计算当前时间进度
+    const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const passedDays = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    return Math.min(100, Math.max(0, (passedDays / totalDays) * 100));
+  };
+
+  const timeProgress = calculateTimeProgress();
+  const actualProgress = planData.progress_percentage;
 
   return (
     <div className={styles.page}>
@@ -582,9 +588,12 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
                 <div className={styles.titleLeft}>
                   <h2 className={styles.planTitle}>{planData.name}</h2>
                   <div className={styles.badgeGroup}>
-                    <span className={`${styles.statusBadge} ${styles[planData.status]}`}>
-                      {statusDisplay.text}
+                    {/* 统一状态标签 */}
+                    <span className={`${styles.statusBadge} ${styles[planData.unified_status?.toLowerCase()]}`}>
+                      {getStatusDisplay(planData.unified_status as UnifiedStudyPlanStatus).text}
                     </span>
+
+                    {/* 强度标签 */}
                     {planData.intensity_level && (
                       <span className={`${styles.intensityBadge} ${styles[planData.intensity_level]}`}>
                         {intensityDisplay.text}
@@ -593,110 +602,183 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
                   </div>
                 </div>
                 <div className={styles.titleRight}>
-                  {/* 状态转换按钮 */}
-                  {planData.status === 'draft' && (
-                    <Button
-                      variant="primary"
-                      size="small"
-                      onClick={() => handleStatusChange('active')}
-                    >
-                      <i className="fas fa-play" />
-                      激活计划
-                    </Button>
-                  )}
-                  {planData.status === 'active' && (
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onClick={() => handleStatusChange('draft')}
-                    >
-                      <i className="fas fa-edit" />
-                      转为草稿
-                    </Button>
-                  )}
+                  {/* 状态信息显示 */}
                 </div>
               </div>
               <p className={styles.planDescription}>{planData.description}</p>
-              <div className={styles.planMeta}>
-                {planData.start_date && planData.end_date && (
-                  <div className={styles.metaItem}>
-                    <i className={`fas fa-calendar ${styles.metaIcon}`} />
-                    <span className={styles.metaText}>
-                      {planData.start_date} 至 {planData.end_date}
-                    </span>
+
+              {/* 基本信息网格 */}
+              <div className={styles.infoGrid}>
+                <div className={styles.infoCard}>
+                  <div className={styles.infoHeader}>
+                    <i className="fas fa-calendar" />
+                    <span>学习周期</span>
                   </div>
-                )}
-                <div className={styles.metaItem}>
-                  <i className={`fas fa-clock ${styles.metaIcon}`} />
-                  <span className={styles.metaText}>
-                    已学习 {studiedDays} 天 / 共 {studyDays} 天
-                  </span>
+                  <div className={styles.infoContent}>
+                    {planData.start_date && planData.end_date ? (
+                      <span>{planData.start_date} 至 {planData.end_date}</span>
+                    ) : (
+                      <span className={styles.noData}>未设置</span>
+                    )}
+                  </div>
                 </div>
+
+                <div className={styles.infoCard}>
+                  <div className={styles.infoHeader}>
+                    <i className="fas fa-clock" />
+                    <span>学习进度</span>
+                  </div>
+                  <div className={styles.infoContent}>
+                    <span>已学习 {studiedDays} 天 / 共 {studyDays} 天</span>
+                  </div>
+                </div>
+
+                <div className={styles.infoCard}>
+                  <div className={styles.infoHeader}>
+                    <i className="fas fa-book" />
+                    <span>单词数量</span>
+                  </div>
+                  <div className={styles.infoContent}>
+                    <span>{planData.total_words || 0} 个单词</span>
+                  </div>
+                </div>
+
                 {planData.review_frequency && (
-                  <div className={styles.metaItem}>
-                    <i className={`fas fa-repeat ${styles.metaIcon}`} />
-                    <span className={styles.metaText}>
-                      复习频率 {planData.review_frequency} 次
-                    </span>
+                  <div className={styles.infoCard}>
+                    <div className={styles.infoHeader}>
+                      <i className="fas fa-repeat" />
+                      <span>复习频率</span>
+                    </div>
+                    <div className={styles.infoContent}>
+                      <span>{planData.review_frequency} 次</span>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
             <div className={styles.headerActions}>
-              {renderActionButtons()}
+              {getAvailableActions(planData.unified_status as UnifiedStudyPlanStatus).map((action) => {
+                const actionConfig = getActionConfig(action);
+                return (
+                  <Button
+                    key={action}
+                    variant={actionConfig.color === 'danger' ? 'danger' : actionConfig.color === 'warning' ? 'secondary' : 'primary'}
+                    onClick={() => handleStatusAction(action as any)}
+                  >
+                    <i className={`fas fa-${actionConfig.icon}`} />
+                    {actionConfig.label}
+                  </Button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Progress Bar */}
-          <div className={styles.progressSection}>
-            <div className={styles.progressHeader}>
-              <span className={styles.progressLabel}>总体进度</span>
-              <span className={styles.progressValue}>
-                {planData.progress_percentage.toFixed(0)}%
-              </span>
+        {/* Draft Status Alert */}
+        {planData.status === 'draft' && (
+          <div className={styles.draftAlert}>
+            <div className={styles.draftAlertContent}>
+              <div className={styles.draftAlertIcon}>
+                <i className="fas fa-edit" />
+              </div>
+              <div className={styles.draftAlertText}>
+                <h4>草稿状态</h4>
+                <p>当前计划处于草稿状态，您可以自由修改计划内容和单词列表。</p>
+                {needsRegeneration && (
+                  <p className={styles.regenerationWarning}>
+                    <i className="fas fa-exclamation-triangle" />
+                    检测到内容变更，建议重新生成学习日程以获得最佳学习效果。
+                  </p>
+                )}
+              </div>
+              <div className={styles.draftAlertActions}>
+                {needsRegeneration && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      // TODO: 实现重新生成日程的功能
+                      showToast('重新生成日程功能开发中', 'info');
+                    }}
+                  >
+                    <i className="fas fa-sync-alt" />
+                    重新生成日程
+                  </Button>
+                )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleStatusAction('publish')}
+                >
+                  <i className="fas fa-paper-plane" />
+                  发布计划
+                </Button>
+              </div>
             </div>
-            <div className={styles.progressBar}>
-              <div
-                className={styles.progressFill}
-                style={{ width: `${planData.progress_percentage}%` }}
-              />
+          </div>
+        )}
+
+          {/* Progress Bars */}
+          <div className={styles.progressSection}>
+            {/* 时间进度 */}
+            <div className={styles.progressItem}>
+              <div className={styles.progressHeader}>
+                <span className={styles.progressLabel}>时间进度</span>
+                <span className={styles.progressValue}>
+                  {timeProgress.toFixed(0)}%
+                </span>
+              </div>
+              <div className={styles.progressBar}>
+                <div
+                  className={styles.progressFill}
+                  style={{ width: `${timeProgress}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 实际进度 */}
+            <div className={styles.progressItem}>
+              <div className={styles.progressHeader}>
+                <span className={styles.progressLabel}>实际进度</span>
+                <span className={styles.progressValue}>
+                  {actualProgress.toFixed(0)}%
+                </span>
+              </div>
+              <div className={styles.progressBar}>
+                <div
+                  className={styles.progressFill}
+                  style={{ width: `${actualProgress}%` }}
+                />
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Statistics Cards */}
-        <section className={styles.statsGrid}>
+        {/* Core Statistics Cards - 核心指标 */}
+        <section className={styles.coreStatsGrid}>
           <StatCard
             icon="book"
             iconColor="primary"
             label="总单词数"
             value={planData.total_words}
-            unit="个单词"
+            unit="个"
           />
           <StatCard
             icon="check"
             iconColor="green"
             label="已学单词"
             value={planData.learned_words}
-            unit="个单词"
-          />
-          <StatCard
-            icon="calendar-check"
-            iconColor="orange"
-            label="学习天数"
-            value={studiedDays}
-            unit="天"
+            unit="个"
           />
           <StatCard
             icon="star"
             iconColor="yellow"
             label="平均正确率"
-            value={`${planData.accuracy_rate}%`}
-            unit="正确率"
+            value={`${Math.round(planData.accuracy_rate || 0)}%`}
+            unit=""
           />
           <StatCard
             icon="fire"
-            iconColor="primary"
+            iconColor="orange"
             label="连续学习"
             value={studyStreak}
             unit="天"
@@ -712,128 +794,97 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
           )}
         </section>
 
-        {/* View Navigation */}
-        <section className={styles.viewNavigation}>
-          <div className={styles.viewTabs}>
-            <button
-              className={`${styles.viewTab} ${currentView === 'overview' ? styles.active : ''}`}
-              onClick={() => handleViewChange('overview')}
-              type="button"
-            >
-              <i className="fas fa-chart-pie" />
-              概览
-            </button>
-            <button
-              className={`${styles.viewTab} ${currentView === 'schedule' ? styles.active : ''}`}
-              onClick={() => handleViewChange('schedule')}
-              type="button"
-            >
-              <i className="fas fa-calendar-alt" />
-              日程安排
-            </button>
-            <button
-              className={`${styles.viewTab} ${currentView === 'words' ? styles.active : ''}`}
-              onClick={() => handleViewChange('words')}
-              type="button"
-            >
-              <i className="fas fa-book-open" />
-              单词列表
-            </button>
-
-            <button
-              className={`${styles.viewTab} ${currentView === 'statistics' ? styles.active : ''}`}
-              onClick={() => handleViewChange('statistics')}
-              type="button"
-            >
-              <i className="fas fa-chart-bar" />
-              统计分析
-            </button>
-          </div>
-        </section>
-
         {/* Main Content */}
         <section className={styles.mainContent}>
-          {renderCurrentView()}
+          {/* View Navigation */}
+          <div className={styles.viewNavigation}>
+            <div className={styles.viewTabs}>
+              <button
+                className={`${styles.viewTab} ${currentView === 'overview' ? styles.active : ''}`}
+                onClick={() => handleViewChange('overview')}
+                type="button"
+              >
+                <i className="fas fa-chart-pie" />
+                概览
+              </button>
+              <button
+                className={`${styles.viewTab} ${currentView === 'schedule' ? styles.active : ''}`}
+                onClick={() => handleViewChange('schedule')}
+                type="button"
+              >
+                <i className="fas fa-calendar-alt" />
+                日程安排
+              </button>
+              <button
+                className={`${styles.viewTab} ${currentView === 'words' ? styles.active : ''}`}
+                onClick={() => handleViewChange('words')}
+                type="button"
+              >
+                <i className="fas fa-book-open" />
+                单词列表
+              </button>
+
+              <button
+                className={`${styles.viewTab} ${currentView === 'statistics' ? styles.active : ''}`}
+                onClick={() => handleViewChange('statistics')}
+                type="button"
+              >
+                <i className="fas fa-chart-bar" />
+                统计分析
+              </button>
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div className={styles.contentArea}>
+            {renderCurrentView()}
+          </div>
         </section>
       </main>
 
-      {/* 删除确认Modal */}
-      <BatchDeleteModal
-        isOpen={deleteModal.isOpen}
-        onClose={handleCancelDelete}
-        onConfirm={handleConfirmDelete}
-        words={deleteModal.words}
-        deleting={deleteModal.deleting}
-      />
+
 
       {/* 状态转换确认Modal */}
       <Modal
         isOpen={statusChangeModal.isOpen}
         onClose={handleCancelStatusChange}
-        title={statusChangeModal.targetStatus === 'active' ? '激活学习计划' : '转为草稿状态'}
+        title={statusChangeModal.actionLabel}
         size="medium"
       >
-        <div style={{ padding: '20px' }}>
-          {statusChangeModal.targetStatus === 'active' ? (
-            <div>
-              <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#fff3cd', borderRadius: '6px', border: '1px solid #ffeaa7' }}>
-                <i className="fas fa-exclamation-triangle" style={{ color: '#856404', marginRight: '8px' }} />
-                <strong>重要提醒</strong>
-              </div>
-              <p style={{ marginBottom: '16px', lineHeight: '1.6' }}>
-                将学习计划从草稿状态激活后，系统将：
-              </p>
-              <ul style={{ marginBottom: '20px', paddingLeft: '20px', lineHeight: '1.6' }}>
-                <li>根据当前的单词列表和参数重新生成学习日程</li>
-                <li>开始正式的学习计划，无法再随意修改单词</li>
-                <li>生成每日学习任务和复习安排</li>
-              </ul>
-              <p style={{ color: '#666', fontSize: '14px' }}>
-                确认要激活这个学习计划吗？
-              </p>
-            </div>
-          ) : (
-            <div>
-              <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#d1ecf1', borderRadius: '6px', border: '1px solid #bee5eb' }}>
-                <i className="fas fa-info-circle" style={{ color: '#0c5460', marginRight: '8px' }} />
-                <strong>状态转换</strong>
-              </div>
-              <p style={{ marginBottom: '16px', lineHeight: '1.6' }}>
-                将学习计划转为草稿状态后，您可以：
-              </p>
-              <ul style={{ marginBottom: '20px', paddingLeft: '20px', lineHeight: '1.6' }}>
-                <li>自由添加或删除单词</li>
-                <li>修改学习参数和设置</li>
-                <li>重新规划学习内容</li>
-              </ul>
-              <p style={{ color: '#666', fontSize: '14px' }}>
-                注意：转为草稿后，当前的学习进度将被保留，但日程安排可能需要重新生成。
-              </p>
-            </div>
-          )}
-        </div>
+        <div className={styles.modalContent}>
+          <div className={styles.confirmMessage}>
+            <i className="fas fa-question-circle" />
+            <p>{statusChangeModal.confirmMessage}</p>
+          </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '0 20px 20px' }}>
-          <Button
-            variant="secondary"
-            onClick={handleCancelStatusChange}
-            disabled={statusChangeModal.processing}
-          >
-            取消
-          </Button>
-          <Button
-            variant={statusChangeModal.targetStatus === 'active' ? 'primary' : 'warning'}
-            onClick={handleConfirmStatusChange}
-            loading={statusChangeModal.processing}
-            disabled={statusChangeModal.processing}
-          >
-            {statusChangeModal.processing
-              ? (statusChangeModal.targetStatus === 'active' ? '激活中...' : '转换中...')
-              : (statusChangeModal.targetStatus === 'active' ? '确认激活' : '确认转换')
-            }
-          </Button>
+          <div className={styles.modalActions}>
+            <Button
+              variant="secondary"
+              onClick={handleCancelStatusChange}
+              disabled={statusChangeModal.processing}
+            >
+              取消
+            </Button>
+            <Button
+              variant={statusChangeModal.action === 'delete' ? 'danger' : 'primary'}
+              onClick={handleConfirmStatusChange}
+              loading={statusChangeModal.processing}
+              disabled={statusChangeModal.processing}
+            >
+              {statusChangeModal.processing ? '处理中...' : `确认${statusChangeModal.actionLabel}`}
+            </Button>
+          </div>
         </div>
       </Modal>
+
+      {/* 编辑计划Modal */}
+      <EditPlanModal
+        isOpen={editPlanModal.isOpen}
+        onClose={handleCloseEditPlan}
+        plan={planData}
+        onSave={handleSaveEditPlan}
+        saving={editPlanModal.saving}
+      />
     </div>
   );
 
@@ -863,48 +914,9 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 
     return (
       <div className={styles.overviewContent}>
-        {/* 统计指标卡片 */}
-        <div className={styles.statsGrid}>
-          <StatCard
-            label="平均每日学习时长"
-            value={statistics?.averageDailyStudyMinutes || 0}
-            unit="分钟"
-            icon="clock"
-            iconColor="blue"
-          />
-          <StatCard
-            label="时间进度"
-            value={statistics?.timeProgressPercentage?.toFixed(1) || 0}
-            unit="%"
-            icon="calendar"
-            iconColor="green"
-          />
-          <StatCard
-            label="完成进度"
-            value={statistics?.actualProgressPercentage?.toFixed(1) || 0}
-            unit="%"
-            icon="check-circle"
-            iconColor="primary"
-          />
-          <StatCard
-            label="平均正确率"
-            value={statistics?.averageAccuracyRate?.toFixed(1) || 0}
-            unit="%"
-            icon="target"
-            iconColor="purple"
-          />
-          <StatCard
-            label="按时完成率"
-            value={((100 - (statistics?.overdueRatio || 0))).toFixed(1)}
-            unit="%"
-            icon="clock-check"
-            iconColor="orange"
-          />
-        </div>
-
         {/* 学习日历 */}
         <div className={styles.calendarSection}>
-          <h3>学习日程</h3>
+          <h3 className={styles.sectionTitle}>学习日程</h3>
           <StudyCalendar
             aiPlanData={aiPlanData}
             onDateClick={handleDateClick}
@@ -941,28 +953,9 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
       // TODO: Implement text-to-speech functionality
     };
 
-    const handleEditWord = async (word: WordListDetail) => {
-      // 检查学习计划状态
-      if (planData?.status !== 'draft') {
-        showToast('只有草稿状态的学习计划才能编辑单词', 'warning');
-        return;
-      }
-      // 复用单词本的编辑功能
-      // TODO: 实现编辑功能，更新原始单词数据
-      console.log('Edit word:', word);
-    };
 
-    // 检查是否可以进行删除操作
-    const canModifyWords = planData?.status === 'draft';
 
-    // 如果不是草稿状态，重写删除函数为提示函数
-    const handleDeleteWord = canModifyWords ? handleRemoveFromPlan : (word: WordListDetail) => {
-      showToast('只有草稿状态的学习计划才能删除单词', 'warning');
-    };
 
-    const handleBatchDelete = canModifyWords ? handleBatchRemoveFromPlan : (words: WordListDetail[]) => {
-      showToast('只有草稿状态的学习计划才能删除单词', 'warning');
-    };
 
 
 
@@ -981,11 +974,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
       <WordListTable
         words={wordsForTable}
         onPlayPronunciation={handlePlayPronunciation}
-        onEditWord={handleEditWord}
-        onDeleteWord={handleDeleteWord}
-        onBatchDelete={handleBatchDelete}
         loading={wordsLoading}
-        readonly={!canModifyWords}
+        readonly={true}
       />
     );
   }
@@ -996,37 +986,57 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   function renderStatisticsView() {
     return (
       <div className={styles.statisticsContent}>
-        <div className={styles.statsCards}>
-          <div className={styles.statCard}>
-            <h4>学习效率</h4>
-            <div className={styles.statValue}>{planData?.accuracy_rate || 0}%</div>
-            <div className={styles.statTrend}>
-              <i className="fas fa-arrow-up" />
-              <span>较上周提升 5%</span>
-            </div>
-          </div>
-
-          <div className={styles.statCard}>
-            <h4>掌握程度</h4>
-            <div className={styles.statValue}>{planData?.mastery_level || 0}/5</div>
-            <div className={styles.statTrend}>
-              <i className="fas fa-arrow-up" />
-              <span>较上周提升 0.5</span>
-            </div>
-          </div>
-
-          <div className={styles.statCard}>
-            <h4>学习连续性</h4>
-            <div className={styles.statValue}>{studyStreak}天</div>
-            <div className={styles.statTrend}>
-              <i className="fas fa-fire" />
-              <span>连续学习记录</span>
-            </div>
+        {/* 学习效率指标 */}
+        <div className={styles.statsSection}>
+          <h3 className={styles.sectionTitle}>学习效率</h3>
+          <div className={styles.statsGrid}>
+            <StatCard
+              label="平均每日学习时长"
+              value={statistics?.averageDailyStudyMinutes || 0}
+              unit="分钟"
+              icon="clock"
+              iconColor="blue"
+            />
+            <StatCard
+              label="时间进度"
+              value={Math.round(timeProgress).toString()}
+              unit="%"
+              icon="calendar"
+              iconColor="green"
+            />
+            <StatCard
+              label="按时完成率"
+              value={Math.round(100 - (statistics?.overdueRatio || 0)).toString()}
+              unit="%"
+              icon="clock-check"
+              iconColor="orange"
+            />
           </div>
         </div>
 
-        <div className={styles.detailedStats}>
-          <h3>详细统计</h3>
+        {/* 学习内容统计 */}
+        <div className={styles.statsSection}>
+          <h3 className={styles.sectionTitle}>学习内容统计</h3>
+          <div className={styles.statsGrid}>
+            {Object.entries(partOfSpeechStats).map(([pos, count]) => {
+              const posDisplay = getPartOfSpeechDisplay(pos);
+              return (
+                <StatCard
+                  key={pos}
+                  label={posDisplay.label}
+                  value={count}
+                  unit="个"
+                  icon={posDisplay.icon}
+                  iconColor={posDisplay.color}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 详细统计 */}
+        <div className={styles.statsSection}>
+          <h3 className={styles.sectionTitle}>详细统计</h3>
           <div className={styles.statsTable}>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>总学习时间</span>
@@ -1034,18 +1044,24 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>平均每日学习</span>
-              <span className={styles.statsValue}>35分钟</span>
+              <span className={styles.statsValue}>{statistics?.averageDailyStudyMinutes || 0}分钟</span>
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>最长连续学习</span>
               <span className={styles.statsValue}>{studyStreak}天</span>
             </div>
             <div className={styles.statsRow}>
-              <span className={styles.statsLabel}>完成率</span>
-              <span className={styles.statsValue}>{planData?.progress_percentage?.toFixed(1) || 0}%</span>
+              <span className={styles.statsLabel}>计划完成率</span>
+              <span className={styles.statsValue}>{Math.round(planData?.progress_percentage || 0)}%</span>
+            </div>
+            <div className={styles.statsRow}>
+              <span className={styles.statsLabel}>时间完成率</span>
+              <span className={styles.statsValue}>{Math.round(timeProgress)}%</span>
             </div>
           </div>
         </div>
+
+
       </div>
     );
   }

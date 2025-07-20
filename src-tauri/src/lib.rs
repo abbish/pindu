@@ -86,6 +86,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_word_books,
             get_word_book_detail,
+            get_word_book_linked_plans,
             get_word_book_statistics,
             get_theme_tags,
             get_global_word_book_statistics,
@@ -100,10 +101,21 @@ pub fn run() {
             get_study_plans,
             get_study_plan,
             update_study_plan,
+            update_study_plan_basic_info,
+            update_study_plan_with_schedule,
             create_study_plan,
             generate_study_plan_schedule,
             create_study_plan_with_schedule,
             get_study_statistics,
+            // 学习计划状态管理命令
+            start_study_plan,
+            complete_study_plan,
+            terminate_study_plan,
+            restart_study_plan,
+            edit_study_plan,
+            publish_study_plan,
+            delete_study_plan,
+            get_study_plan_status_history,
             get_system_logs,
 
             create_word_book_from_analysis,
@@ -128,6 +140,7 @@ pub fn run() {
 
             // 新增的学习计划单词管理命令
             get_study_plan_words,
+            get_study_plan_word_books,
             remove_word_from_plan,
             batch_remove_words_from_plan,
             get_study_plan_statistics

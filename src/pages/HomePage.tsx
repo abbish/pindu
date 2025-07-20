@@ -101,7 +101,17 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
     }
   }, [errors, showError, refresh]);
 
-  const studyPlans = (data.studyPlans && Array.isArray(data.studyPlans)) ? data.studyPlans : [];
+  // 过滤学习计划：只显示正常状态的计划（排除删除、草稿状态）
+  const studyPlans = (data.studyPlans && Array.isArray(data.studyPlans))
+    ? data.studyPlans.filter(plan =>
+        plan.status === 'normal' && (
+          plan.lifecycle_status === 'pending' ||
+          plan.lifecycle_status === 'active' ||
+          plan.lifecycle_status === 'completed' ||
+          plan.lifecycle_status === 'terminated'
+        )
+      )
+    : [];
   const wordBooks = (data.wordBooks && Array.isArray(data.wordBooks)) ? data.wordBooks : [];
   const statistics = data.statistics || {
     total_words_learned: 0,

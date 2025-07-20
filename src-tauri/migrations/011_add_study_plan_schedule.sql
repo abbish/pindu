@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS study_plan_schedule_words (
     wordbook_id INTEGER NOT NULL, -- 单词来源的单词本ID
     is_review BOOLEAN NOT NULL DEFAULT FALSE, -- 是否为复习单词
     review_count INTEGER DEFAULT NULL, -- 复习次数（仅复习单词有此字段）
-    priority TEXT NOT NULL CHECK (priority IN ('high', 'medium', 'low')) DEFAULT 'medium',
-    difficulty_level INTEGER NOT NULL CHECK (difficulty_level BETWEEN 1 AND 5) DEFAULT 1,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    difficulty_level INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (schedule_id) REFERENCES study_plan_schedules(id) ON DELETE CASCADE,
     FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE,

@@ -1,6 +1,7 @@
 import React from 'react';
 import styles from './StudyPlanCard.module.css';
-import type { StudyPlanWithProgress } from '../../types';
+import type { StudyPlanWithProgress, UnifiedStudyPlanStatus } from '../../types';
+import { getStatusDisplay } from '../../types/study';
 
 export interface StudyPlanCardProps {
   /** Study plan data */
@@ -16,18 +17,6 @@ export interface StudyPlanCardProps {
 }
 
 // 辅助函数
-function getStatusDisplay(status: string) {
-  switch (status) {
-    case 'active':
-      return { text: '进行中', color: 'var(--color-green)' };
-    case 'paused':
-      return { text: '已暂停', color: 'var(--color-orange)' };
-    case 'completed':
-      return { text: '已完成', color: 'var(--color-blue)' };
-    default:
-      return { text: '未知', color: 'var(--color-gray)' };
-  }
-}
 
 function getMasteryDisplay(level: number) {
   const stars = Math.min(Math.max(Math.floor(level / 20), 1), 5);
@@ -61,7 +50,7 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
   onActionClick,
   onMenuAction
 }) => {
-  const statusDisplay = getStatusDisplay(plan.status);
+  const statusDisplay = getStatusDisplay(plan.unified_status as UnifiedStudyPlanStatus);
   const masteryDisplay = getMasteryDisplay(plan.mastery_level);
 
   const handleCardClick = () => {
@@ -80,20 +69,26 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
   };
 
   const getProgressColor = () => {
-    if (plan.status === 'completed') return 'var(--color-green)';
-    if (plan.status === 'paused') return 'var(--color-yellow)';
+    if (plan.lifecycle_status === 'completed') return 'var(--color-green)';
+    if (plan.status === 'draft') return 'var(--color-orange)';
+    if (plan.lifecycle_status === 'pending') return 'var(--color-blue)';
     return 'var(--color-primary)';
   };
 
   const getActionButtonText = () => {
-    if (plan.status === 'completed') return '复习';
-    if (plan.status === 'paused') return '开始学习';
-    return '继续学习';
+    if (plan.status === 'draft') return '编辑计划';
+    if (plan.lifecycle_status === 'completed') return '重新学习';
+    if (plan.lifecycle_status === 'terminated') return '重新学习';
+    if (plan.lifecycle_status === 'pending') return '开始学习';
+    if (plan.lifecycle_status === 'active') return '继续学习';
+    return '查看详情';
   };
 
   const getActionButtonColor = () => {
-    if (plan.status === 'completed') return 'var(--color-green)';
-    if (plan.status === 'paused') return 'var(--color-yellow)';
+    if (plan.lifecycle_status === 'completed') return 'var(--color-blue)';
+    if (plan.lifecycle_status === 'terminated') return 'var(--color-blue)';
+    if (plan.status === 'draft') return 'var(--color-orange)';
+    if (plan.lifecycle_status === 'pending') return 'var(--color-blue)';
     return 'var(--color-primary)';
   };
 
@@ -102,12 +97,7 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
     <>
       {/* Header - 状态标签和菜单 */}
       <div className={styles.header}>
-        <span 
-          className={styles.status}
-          style={{
-            color: statusDisplay.color
-          }}
-        >
+        <span className={`${styles.status} ${styles[statusDisplay.color]}`}>
           {statusDisplay.text}
         </span>
         <button className={styles.menuBtn} onClick={handleMenuClick}>

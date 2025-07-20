@@ -155,6 +155,52 @@
   overflow: hidden;
 }
 
+/* 统一视图 */
+.unifiedView {
+  display: flex;
+  flex-direction: column;
+}
+
+.scheduleItem {
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.scheduleItem:last-child {
+  border-bottom: none;
+}
+
+.scheduleHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  cursor: pointer;
+  transition: background-color var(--transition-normal);
+}
+
+.scheduleHeader:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+.scheduleContent {
+  padding: 0 var(--spacing-lg) var(--spacing-lg);
+  border-top: 1px solid var(--color-border-tertiary);
+  background-color: var(--color-bg-secondary);
+}
+
+.headerStats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+  flex: 1;
+}
+
+.statBadges {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
 /* 概览视图 */
 .summaryView {
   display: flex;
@@ -218,7 +264,20 @@
 }
 
 .prioritySegment {
+  height: 100%;
   transition: width 0.3s ease;
+}
+
+.prioritySegment.high {
+  background-color: var(--color-error);
+}
+
+.prioritySegment.medium {
+  background-color: var(--color-warning);
+}
+
+.prioritySegment.low {
+  background-color: var(--color-success);
 }
 
 /* 详细视图 */
@@ -402,5 +461,69 @@
 
   .wordMeta {
     flex-direction: column;
+  }
+}
+
+/* 保存按钮区域 */
+.actionButtons {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: flex-end;
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  margin-top: var(--spacing-lg);
+}
+
+.button {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.button.primary {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.button.primary:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+}
+
+.button.secondary {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.button.secondary:hover:not(:disabled) {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border-hover);
+}
+
+@media (max-width: 480px) {
+  .actionButtons {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  .button {
+    width: 100%;
   }
 }

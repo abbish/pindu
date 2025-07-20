@@ -102,6 +102,17 @@ export class WordBookService extends BaseService {
   }
 
   /**
+   * 获取单词本关联的学习计划
+   */
+  async getWordBookLinkedPlans(id: Id, setLoading?: (state: LoadingState) => void): Promise<ApiResult<any[]>> {
+    return this.executeWithLoading(async () => {
+      this.validateRequired({ id }, ['id']);
+
+      return this.client.invoke<any[]>('get_word_book_linked_plans', { bookId: id });
+    }, setLoading);
+  }
+
+  /**
    * 创建单词本
    */
   async createWordBook(

@@ -147,9 +147,118 @@ pub async fn get_word_books(app: AppHandle, include_deleted: Option<bool>, statu
     }
 }
 
+/// 获取单词本关联的学习计划
+#[tauri::command]
+pub async fn get_word_book_linked_plans(app: AppHandle, book_id: Id) -> AppResult<Vec<StudyPlanWithProgress>> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("get_word_book_linked_plans", Some(&format!("book_id: {}", book_id)));
+
+    let query = r#"
+        SELECT DISTINCT
+            sp.id,
+            sp.name,
+            sp.description,
+            sp.status,
+            sp.lifecycle_status,
+            -- 新增统一状态字段，如果不存在则根据旧状态计算
+            COALESCE(
+                sp.unified_status,
+                CASE
+                    WHEN sp.status = 'deleted' THEN 'Deleted'
+                    WHEN sp.status = 'draft' THEN 'Draft'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'pending' THEN 'Pending'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'active' THEN 'Active'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'completed' THEN 'Completed'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'terminated' THEN 'Terminated'
+                    ELSE 'Draft'
+                END
+            ) as unified_status,
+            sp.total_words,
+            sp.learned_words,
+            sp.accuracy_rate,
+            sp.mastery_level,
+            sp.intensity_level,
+            sp.study_period_days,
+            sp.review_frequency,
+            sp.start_date,
+            sp.end_date,
+            sp.actual_start_date,
+            sp.actual_end_date,
+            sp.actual_terminated_date,
+            sp.ai_plan_data,
+            sp.deleted_at,
+            sp.created_at,
+            sp.updated_at,
+            CASE
+                WHEN sp.total_words > 0 THEN
+                    COALESCE(
+                        (SELECT COUNT(*) * 100.0 / sp.total_words
+                         FROM study_plan_words spw
+                         WHERE spw.plan_id = sp.id AND spw.learned = 1),
+                        0.0
+                    )
+                ELSE 0.0
+            END as progress_percentage
+        FROM study_plans sp
+        JOIN study_plan_words spw ON sp.id = spw.plan_id
+        JOIN words w ON spw.word_id = w.id
+        WHERE w.word_book_id = ?
+        AND sp.deleted_at IS NULL
+        AND sp.status = 'normal'
+        ORDER BY sp.created_at DESC
+    "#;
+
+    match sqlx::query(query)
+        .bind(book_id)
+        .fetch_all(pool.inner())
+        .await
+    {
+        Ok(rows) => {
+            let plans: Vec<StudyPlanWithProgress> = rows.into_iter().map(|row| {
+                StudyPlanWithProgress {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                    description: row.get("description"),
+                    status: row.get("status"),
+                    lifecycle_status: row.get("lifecycle_status"),
+                    unified_status: row.get("unified_status"),
+                    total_words: row.get("total_words"),
+                    learned_words: row.get("learned_words"),
+                    accuracy_rate: row.get("accuracy_rate"),
+                    mastery_level: row.get("mastery_level"),
+                    intensity_level: row.get("intensity_level"),
+                    study_period_days: row.get("study_period_days"),
+                    review_frequency: row.get("review_frequency"),
+                    start_date: row.get("start_date"),
+                    end_date: row.get("end_date"),
+                    actual_start_date: row.get("actual_start_date"),
+                    actual_end_date: row.get("actual_end_date"),
+                    actual_terminated_date: row.get("actual_terminated_date"),
+                    ai_plan_data: row.get("ai_plan_data"),
+                    deleted_at: row.get("deleted_at"),
+                    created_at: row.get("created_at"),
+                    updated_at: row.get("updated_at"),
+                    progress_percentage: row.get("progress_percentage"),
+                }
+            }).collect();
+
+            logger.api_response("get_word_book_linked_plans", true, Some(&format!("Found {} linked plans", plans.len())));
+            Ok(plans)
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            logger.database_operation("SELECT", "study_plans", false, Some(&error_msg));
+            logger.api_response("get_word_book_linked_plans", false, Some(&error_msg));
+            Err(AppError::DatabaseError(error_msg))
+        }
+    }
+}
+
 /// 根据ID获取单词本详情
 #[tauri::command]
-pub async fn get_word_book_detail(app: AppHandle, bookId: Id) -> AppResult<WordBook> {
+pub async fn get_word_book_detail(app: AppHandle, book_id: Id) -> AppResult<WordBook> {
     let pool = app.state::<SqlitePool>();
 
     let query = r#"
@@ -171,7 +280,7 @@ pub async fn get_word_book_detail(app: AppHandle, bookId: Id) -> AppResult<WordB
     "#;
 
     let row = sqlx::query(query)
-        .bind(bookId)
+        .bind(book_id)
         .fetch_optional(pool.inner())
         .await?
         .ok_or_else(|| AppError::NotFound("单词本未找到".to_string()))?;
@@ -186,7 +295,7 @@ pub async fn get_word_book_detail(app: AppHandle, bookId: Id) -> AppResult<WordB
     "#;
 
     let theme_rows = sqlx::query(theme_tags_query)
-        .bind(bookId)
+        .bind(book_id)
         .fetch_all(pool.inner())
         .await?;
 
@@ -253,11 +362,11 @@ pub async fn get_theme_tags(app: AppHandle) -> AppResult<Vec<ThemeTag>> {
 
 /// 获取单词本词性统计
 #[tauri::command]
-pub async fn get_word_book_statistics(app: AppHandle, bookId: Id) -> AppResult<WordTypeDistribution> {
+pub async fn get_word_book_statistics(app: AppHandle, book_id: Id) -> AppResult<WordTypeDistribution> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("get_word_book_statistics", Some(&format!("bookId: {}", bookId)));
+    logger.api_request("get_word_book_statistics", Some(&format!("book_id: {}", book_id)));
 
     let query = r#"
         SELECT
@@ -269,7 +378,7 @@ pub async fn get_word_book_statistics(app: AppHandle, bookId: Id) -> AppResult<W
     "#;
 
     let rows = sqlx::query(query)
-        .bind(bookId)
+        .bind(book_id)
         .fetch_all(pool.inner())
         .await?;
 
@@ -397,6 +506,15 @@ pub async fn update_all_word_book_counts(app: AppHandle) -> AppResult<()> {
             SELECT COUNT(*)
             FROM words
             WHERE words.word_book_id = word_books.id
+        ),
+        linked_plans = (
+            SELECT COUNT(DISTINCT sp.id)
+            FROM study_plans sp
+            JOIN study_plan_words spw ON sp.id = spw.plan_id
+            JOIN words w ON spw.word_id = w.id
+            WHERE w.word_book_id = word_books.id
+            AND sp.deleted_at IS NULL
+            AND sp.status = 'normal'
         )
     "#;
 
@@ -457,7 +575,7 @@ pub async fn create_word_book(app: AppHandle, request: CreateWordBookRequest) ->
 #[tauri::command]
 pub async fn update_word_book(
     app: AppHandle,
-    bookId: Id,
+    book_id: Id,
     request: UpdateWordBookRequest,
 ) -> AppResult<()> {
     let pool = app.state::<SqlitePool>();
@@ -483,7 +601,7 @@ pub async fn update_word_book(
         .bind(&request.icon)
         .bind(&request.icon_color)
         .bind(&request.status)
-        .bind(bookId)
+        .bind(book_id)
         .execute(&mut *tx)
         .await?;
 
@@ -492,7 +610,7 @@ pub async fn update_word_book(
         // 删除现有的主题标签关联
         let delete_query = "DELETE FROM word_book_theme_tags WHERE word_book_id = ?";
         sqlx::query(delete_query)
-            .bind(bookId)
+            .bind(book_id)
             .execute(&mut *tx)
             .await?;
 
@@ -503,7 +621,7 @@ pub async fn update_word_book(
                 VALUES (?, ?)
             "#;
             sqlx::query(insert_query)
-                .bind(bookId)
+                .bind(book_id)
                 .bind(theme_tag_id)
                 .execute(&mut *tx)
                 .await?;
@@ -518,16 +636,16 @@ pub async fn update_word_book(
 
 /// 删除单词本（软删除）
 #[tauri::command]
-pub async fn delete_word_book(app: AppHandle, bookId: Id) -> AppResult<()> {
+pub async fn delete_word_book(app: AppHandle, book_id: Id) -> AppResult<()> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("delete_word_book", Some(&format!("bookId: {}", bookId)));
+    logger.api_request("delete_word_book", Some(&format!("book_id: {}", book_id)));
 
     // 软删除单词本：设置 deleted_at 字段
     let query = "UPDATE word_books SET deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL";
     let result = sqlx::query(query)
-        .bind(bookId)
+        .bind(book_id)
         .execute(pool.inner())
         .await?;
 
@@ -545,7 +663,7 @@ pub async fn delete_word_book(app: AppHandle, bookId: Id) -> AppResult<()> {
 #[tauri::command]
 pub async fn get_words_by_book(
     app: AppHandle,
-    bookId: Id,
+    book_id: Id,
     page: Option<u32>,
     page_size: Option<u32>,
     search_term: Option<String>,
@@ -559,15 +677,15 @@ pub async fn get_words_by_book(
     let offset = (page - 1) * page_size;
 
     logger.api_request("get_words_by_book", Some(&format!(
-        "bookId: {}, page: {}, page_size: {}, search_term: {:?}, part_of_speech: {:?}",
-        bookId, page, page_size, search_term, part_of_speech
+        "book_id: {}, page: {}, page_size: {}, search_term: {:?}, part_of_speech: {:?}",
+        book_id, page, page_size, search_term, part_of_speech
     )));
 
     // 构建查询，使用更简单的方法
-    let (final_query, _final_params) = build_words_query(bookId, &search_term, &part_of_speech);
+    let (final_query, _final_params) = build_words_query(book_id, &search_term, &part_of_speech);
 
     let mut query_builder = sqlx::query(&final_query)
-        .bind(bookId);
+        .bind(book_id);
 
     // 绑定搜索参数（使用前匹配模式）
     if let Some(ref term) = search_term {
@@ -616,9 +734,9 @@ pub async fn get_words_by_book(
     }).collect();
 
     // 构建计数查询
-    let (count_query, _) = build_words_count_query(bookId, &search_term, &part_of_speech);
+    let (count_query, _) = build_words_count_query(book_id, &search_term, &part_of_speech);
     let mut count_query_builder = sqlx::query(&count_query)
-        .bind(bookId);
+        .bind(book_id);
 
     // 绑定搜索参数（使用前匹配模式）
     if let Some(ref term) = search_term {
@@ -727,8 +845,8 @@ fn build_words_count_query(_book_id: Id, search_term: &Option<String>, part_of_s
 #[tauri::command]
 pub async fn add_word_to_book(
     app: AppHandle,
-    bookId: Id,
-    wordData: CreateWordRequest,
+    book_id: Id,
+    word_data: CreateWordRequest,
 ) -> AppResult<Id> {
     let pool = app.state::<SqlitePool>();
     
@@ -742,28 +860,28 @@ pub async fn add_word_to_book(
     "#;
 
     let result = sqlx::query(query)
-        .bind(bookId)
-        .bind(&wordData.word)
-        .bind(&wordData.meaning)
-        .bind(&wordData.description)
-        .bind(&wordData.ipa)
-        .bind(&wordData.syllables)
-        .bind(&wordData.phonics_segments)
-        .bind(&wordData.part_of_speech)
-        .bind(wordData.category_id)
-        .bind(&wordData.pos_abbreviation)
-        .bind(&wordData.pos_english)
-        .bind(&wordData.pos_chinese)
-        .bind(&wordData.phonics_rule)
-        .bind(&wordData.analysis_explanation)
+        .bind(book_id)
+        .bind(&word_data.word)
+        .bind(&word_data.meaning)
+        .bind(&word_data.description)
+        .bind(&word_data.ipa)
+        .bind(&word_data.syllables)
+        .bind(&word_data.phonics_segments)
+        .bind(&word_data.part_of_speech)
+        .bind(word_data.category_id)
+        .bind(&word_data.pos_abbreviation)
+        .bind(&word_data.pos_english)
+        .bind(&word_data.pos_chinese)
+        .bind(&word_data.phonics_rule)
+        .bind(&word_data.analysis_explanation)
         .execute(pool.inner())
         .await?;
 
     // 更新单词本的单词数量、最后使用时间和更新时间
     let update_query = "UPDATE word_books SET total_words = (SELECT COUNT(*) FROM words WHERE word_book_id = ?), last_used = datetime('now'), updated_at = datetime('now') WHERE id = ?";
     sqlx::query(update_query)
-        .bind(bookId)
-        .bind(bookId)
+        .bind(book_id)
+        .bind(book_id)
         .execute(pool.inner())
         .await?;
 
@@ -774,8 +892,8 @@ pub async fn add_word_to_book(
 #[tauri::command]
 pub async fn update_word(
     app: AppHandle,
-    wordId: Id,
-    wordData: UpdateWordRequest,
+    word_id: Id,
+    word_data: UpdateWordRequest,
 ) -> AppResult<()> {
     let pool = app.state::<SqlitePool>();
 
@@ -799,20 +917,20 @@ pub async fn update_word(
     "#;
 
     sqlx::query(query)
-        .bind(&wordData.word)
-        .bind(&wordData.meaning)
-        .bind(&wordData.description)
-        .bind(&wordData.ipa)
-        .bind(&wordData.syllables)
-        .bind(&wordData.phonics_segments)
-        .bind(&wordData.part_of_speech)
-        .bind(wordData.category_id)
-        .bind(&wordData.pos_abbreviation)
-        .bind(&wordData.pos_english)
-        .bind(&wordData.pos_chinese)
-        .bind(&wordData.phonics_rule)
-        .bind(&wordData.analysis_explanation)
-        .bind(wordId)
+        .bind(&word_data.word)
+        .bind(&word_data.meaning)
+        .bind(&word_data.description)
+        .bind(&word_data.ipa)
+        .bind(&word_data.syllables)
+        .bind(&word_data.phonics_segments)
+        .bind(&word_data.part_of_speech)
+        .bind(word_data.category_id)
+        .bind(&word_data.pos_abbreviation)
+        .bind(&word_data.pos_english)
+        .bind(&word_data.pos_chinese)
+        .bind(&word_data.phonics_rule)
+        .bind(&word_data.analysis_explanation)
+        .bind(word_id)
         .execute(pool.inner())
         .await?;
 
@@ -821,19 +939,19 @@ pub async fn update_word(
 
 /// 删除单词
 #[tauri::command]
-pub async fn delete_word(app: AppHandle, wordId: Id) -> AppResult<()> {
+pub async fn delete_word(app: AppHandle, word_id: Id) -> AppResult<()> {
     let pool = app.state::<SqlitePool>();
 
     // 获取单词所属的单词本ID
     let book_query = "SELECT word_book_id FROM words WHERE id = ?";
     let book_row = sqlx::query(book_query)
-        .bind(wordId)
+        .bind(word_id)
         .fetch_optional(pool.inner())
         .await?;
 
     // 删除单词
     sqlx::query("DELETE FROM words WHERE id = ?")
-        .bind(wordId)
+        .bind(word_id)
         .execute(pool.inner())
         .await?;
 
@@ -861,28 +979,52 @@ pub async fn get_study_plans(app: AppHandle) -> AppResult<Vec<StudyPlanWithProgr
 
     let query = r#"
         SELECT
-            id,
-            name,
-            description,
-            status,
-            total_words,
-            learned_words,
-            accuracy_rate,
-            mastery_level,
-            intensity_level,
-            study_period_days,
-            review_frequency,
-            start_date,
-            end_date,
-            ai_plan_data,
-            created_at,
-            updated_at,
+            sp.id,
+            sp.name,
+            sp.description,
+            sp.status,
+            sp.lifecycle_status,
+            -- 新增统一状态字段，如果不存在则根据旧状态计算
+            COALESCE(
+                sp.unified_status,
+                CASE
+                    WHEN sp.status = 'deleted' THEN 'Deleted'
+                    WHEN sp.status = 'draft' THEN 'Draft'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'pending' THEN 'Pending'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'active' THEN 'Active'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'completed' THEN 'Completed'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'terminated' THEN 'Terminated'
+                    ELSE 'Draft'
+                END
+            ) as unified_status,
+            sp.total_words,
+            sp.learned_words,
+            sp.accuracy_rate,
+            sp.mastery_level,
+            sp.intensity_level,
+            sp.study_period_days,
+            sp.review_frequency,
+            sp.start_date,
+            sp.end_date,
+            sp.actual_start_date,
+            sp.actual_end_date,
+            sp.actual_terminated_date,
+            sp.ai_plan_data,
+            sp.deleted_at,
+            sp.created_at,
+            sp.updated_at,
             CASE
-                WHEN total_words > 0 THEN (learned_words * 100.0 / total_words)
+                WHEN sp.total_words > 0 THEN
+                    COALESCE(
+                        (SELECT COUNT(*) * 100.0 / sp.total_words
+                         FROM study_plan_words spw
+                         WHERE spw.plan_id = sp.id AND spw.learned = 1),
+                        0.0
+                    )
                 ELSE 0.0
             END as progress_percentage
-        FROM study_plans
-        ORDER BY created_at DESC
+        FROM study_plans sp
+        ORDER BY sp.created_at DESC
     "#;
 
     match sqlx::query(query).fetch_all(pool.inner()).await {
@@ -895,6 +1037,8 @@ pub async fn get_study_plans(app: AppHandle) -> AppResult<Vec<StudyPlanWithProgr
                     name: row.get("name"),
                     description: row.get("description"),
                     status: row.get("status"),
+                    lifecycle_status: row.get("lifecycle_status"),
+                    unified_status: row.get("unified_status"),
                     total_words: row.get("total_words"),
                     learned_words: row.get("learned_words"),
                     accuracy_rate: row.get("accuracy_rate"),
@@ -904,7 +1048,11 @@ pub async fn get_study_plans(app: AppHandle) -> AppResult<Vec<StudyPlanWithProgr
                     review_frequency: row.get("review_frequency"),
                     start_date: row.get("start_date"),
                     end_date: row.get("end_date"),
+                    actual_start_date: row.get("actual_start_date"),
+                    actual_end_date: row.get("actual_end_date"),
+                    actual_terminated_date: row.get("actual_terminated_date"),
                     ai_plan_data: row.get("ai_plan_data"),
+                    deleted_at: row.get("deleted_at"),
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
                     progress_percentage: row.get("progress_percentage"),
@@ -933,28 +1081,52 @@ pub async fn get_study_plan(app: AppHandle, plan_id: i64) -> AppResult<StudyPlan
 
     let query = r#"
         SELECT
-            id,
-            name,
-            description,
-            status,
-            total_words,
-            learned_words,
-            accuracy_rate,
-            mastery_level,
-            intensity_level,
-            study_period_days,
-            review_frequency,
-            start_date,
-            end_date,
-            ai_plan_data,
-            created_at,
-            updated_at,
+            sp.id,
+            sp.name,
+            sp.description,
+            sp.status,
+            sp.lifecycle_status,
+            -- 新增统一状态字段，如果不存在则根据旧状态计算
+            COALESCE(
+                sp.unified_status,
+                CASE
+                    WHEN sp.status = 'deleted' THEN 'Deleted'
+                    WHEN sp.status = 'draft' THEN 'Draft'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'pending' THEN 'Pending'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'active' THEN 'Active'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'completed' THEN 'Completed'
+                    WHEN sp.status = 'normal' AND sp.lifecycle_status = 'terminated' THEN 'Terminated'
+                    ELSE 'Draft'
+                END
+            ) as unified_status,
+            sp.total_words,
+            sp.learned_words,
+            sp.accuracy_rate,
+            sp.mastery_level,
+            sp.intensity_level,
+            sp.study_period_days,
+            sp.review_frequency,
+            sp.start_date,
+            sp.end_date,
+            sp.actual_start_date,
+            sp.actual_end_date,
+            sp.actual_terminated_date,
+            sp.ai_plan_data,
+            sp.deleted_at,
+            sp.created_at,
+            sp.updated_at,
             CASE
-                WHEN total_words > 0 THEN (CAST(learned_words AS REAL) / CAST(total_words AS REAL)) * 100.0
+                WHEN sp.total_words > 0 THEN
+                    COALESCE(
+                        (SELECT COUNT(*) * 100.0 / sp.total_words
+                         FROM study_plan_words spw
+                         WHERE spw.plan_id = sp.id AND spw.learned = 1),
+                        0.0
+                    )
                 ELSE 0.0
             END as progress_percentage
-        FROM study_plans
-        WHERE id = ?
+        FROM study_plans sp
+        WHERE sp.id = ? AND sp.deleted_at IS NULL
     "#;
 
     match sqlx::query(query)
@@ -970,6 +1142,8 @@ pub async fn get_study_plan(app: AppHandle, plan_id: i64) -> AppResult<StudyPlan
                 name: row.get("name"),
                 description: row.get("description"),
                 status: row.get("status"),
+                lifecycle_status: row.get("lifecycle_status"),
+                unified_status: row.get("unified_status"),
                 total_words: row.get("total_words"),
                 learned_words: row.get("learned_words"),
                 accuracy_rate: row.get("accuracy_rate"),
@@ -979,7 +1153,11 @@ pub async fn get_study_plan(app: AppHandle, plan_id: i64) -> AppResult<StudyPlan
                 review_frequency: row.get("review_frequency"),
                 start_date: row.get("start_date"),
                 end_date: row.get("end_date"),
+                actual_start_date: row.get("actual_start_date"),
+                actual_end_date: row.get("actual_end_date"),
+                actual_terminated_date: row.get("actual_terminated_date"),
                 ai_plan_data: row.get("ai_plan_data"),
+                deleted_at: row.get("deleted_at"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
                 progress_percentage: row.get("progress_percentage"),
@@ -1059,18 +1237,26 @@ pub async fn update_study_plan(
     );
 
     // 创建查询并绑定参数
-    let mut query_builder: Query<'_, sqlx::Sqlite, _> = sqlx::query(&query);
-    for value in values {
+    let _query_builder: Query<'_, sqlx::Sqlite, _> = sqlx::query(&query);
+    for _value in values {
         // 这里需要使用不同的方法来绑定动态参数
         // 由于 sqlx 的限制，我们使用简化的方法
     }
 
-    // 简化的更新方法 - 只支持状态更新
+    // 简化的更新方法 - 支持统一状态更新
     if let Some(status) = updates.get("status").and_then(|v| v.as_str()) {
-        let simple_query = "UPDATE study_plans SET status = ?, updated_at = ? WHERE id = ?";
+        // 将旧状态转换为新的统一状态
+        let unified_status = match status {
+            "draft" => "Draft",
+            "normal" => "Pending", // 默认为待开始
+            _ => "Draft"
+        };
+
+        let simple_query = "UPDATE study_plans SET status = ?, unified_status = ?, updated_at = ? WHERE id = ?";
 
         match sqlx::query(simple_query)
             .bind(status)
+            .bind(unified_status)
             .bind(chrono::Utc::now().to_rfc3339())
             .bind(plan_id)
             .execute(pool.inner())
@@ -1154,19 +1340,21 @@ pub async fn create_study_plan(app: AppHandle, request: CreateStudyPlanRequest) 
 
     logger.database_operation("SELECT", "words", true, Some(&format!("Validated {} words", valid_word_count)));
 
-    // 创建学习计划
+    // 创建学习计划 - 使用新的统一状态管理
     let insert_query = r#"
         INSERT INTO study_plans (
             name,
             description,
             status,
+            lifecycle_status,
+            unified_status,
             total_words,
             learned_words,
             accuracy_rate,
             mastery_level,
             created_at,
             updated_at
-        ) VALUES (?, ?, 'active', ?, 0, 0.0, ?, datetime('now'), datetime('now'))
+        ) VALUES (?, ?, 'draft', 'pending', 'Draft', ?, 0, 0.0, ?, datetime('now'), datetime('now'))
     "#;
 
     let mastery_level = request.mastery_level.unwrap_or(1);
@@ -1642,9 +1830,12 @@ pub async fn clear_analysis_progress(app: AppHandle) -> AppResult<()> {
 
     logger.api_request("clear_analysis_progress", None);
 
-    get_global_progress_manager().clear_progress();
+    // 设置取消标志并清除进度
+    let progress_manager = get_global_progress_manager();
+    progress_manager.cancel_analysis(); // 先取消分析
+    progress_manager.clear_progress();  // 再清除进度
 
-    logger.api_response("clear_analysis_progress", true, Some("Progress cleared"));
+    logger.api_response("clear_analysis_progress", true, Some("Progress cleared and analysis cancelled"));
 
     Ok(())
 }
@@ -1947,22 +2138,33 @@ pub async fn create_study_plan_with_schedule(
         }
     };
 
-    // 创建学习计划
+    // 创建学习计划 - 使用新的统一状态管理
     let insert_plan_query = r#"
         INSERT INTO study_plans (
-            name, description, status, total_words, learned_words, accuracy_rate, mastery_level,
+            name, description, status, lifecycle_status, unified_status, total_words, learned_words, accuracy_rate, mastery_level,
             intensity_level, study_period_days, review_frequency, start_date, end_date, ai_plan_data,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 0, 0.0, 1, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        ) VALUES (?, ?, ?, ?, ?, ?, 0, 0.0, 1, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     "#;
 
-    let status = request.status.as_deref().unwrap_or("active");
+    // 使用新的统一状态管理
+    let unified_status = match request.status.as_deref().unwrap_or("draft") {
+        "draft" => "Draft",
+        "active" => "Pending", // 创建后的活跃状态应该是待开始
+        _ => "Draft"
+    };
+
+    // 保持旧字段兼容性
+    let status = if unified_status == "Draft" { "draft" } else { "normal" };
+    let lifecycle_status = if unified_status == "Draft" { "pending" } else { "pending" };
     let total_words = ai_result.plan_metadata.total_words;
 
     let plan_result = match sqlx::query(insert_plan_query)
         .bind(&request.name)
         .bind(&request.description)
         .bind(status)
+        .bind(lifecycle_status)
+        .bind(unified_status)
         .bind(total_words)
         .bind(&request.intensity_level)
         .bind(request.study_period_days)
@@ -2053,7 +2255,10 @@ pub async fn create_study_plan_with_schedule(
                 .await
             {
                 let _ = tx.rollback().await;
-                let error_msg = format!("Failed to create schedule word: {}", e);
+                let error_msg = format!(
+                    "Failed to create schedule word: {}. Details: schedule_id={}, word_id={}, wordbook_id={}, word={}, is_review={}, review_count={:?}, priority={}, difficulty_level={}",
+                    e, schedule_id, word_id, wordbook_id, word.word, word.is_review, word.review_count, word.priority, word.difficulty_level
+                );
                 logger.database_operation("INSERT", "study_plan_schedule_words", false, Some(&error_msg));
                 logger.api_response("create_study_plan_with_schedule", false, Some(&error_msg));
                 return Err(AppError::DatabaseError(error_msg));
@@ -2099,6 +2304,35 @@ pub async fn create_study_plan_with_schedule(
         return Err(AppError::DatabaseError(error_msg));
     }
 
+    // 更新相关单词本的关联计划数量
+    let update_linked_plans_query = r#"
+        UPDATE word_books
+        SET linked_plans = (
+            SELECT COUNT(DISTINCT sp.id)
+            FROM study_plans sp
+            JOIN study_plan_words spw ON sp.id = spw.plan_id
+            JOIN words w ON spw.word_id = w.id
+            WHERE w.word_book_id = word_books.id
+            AND sp.deleted_at IS NULL
+            AND sp.status = 'normal'
+        )
+        WHERE id IN (
+            SELECT DISTINCT w.word_book_id
+            FROM study_plan_words spw
+            JOIN words w ON spw.word_id = w.id
+            WHERE spw.plan_id = ?
+        )
+    "#;
+
+    if let Err(e) = sqlx::query(update_linked_plans_query)
+        .bind(plan_id)
+        .execute(pool.inner())
+        .await
+    {
+        // 不返回错误，因为学习计划已经创建成功，只是统计更新失败
+        logger.database_operation("UPDATE", "word_books", false, Some(&format!("Failed to update linked_plans: {}", e)));
+    }
+
     logger.api_response("create_study_plan_with_schedule", true, Some(&format!(
         "Created study plan with ID: {}, {} daily plans, {} total words",
         plan_id, ai_result.daily_plans.len(), total_words
@@ -2124,11 +2358,10 @@ pub async fn get_study_plan_words(app: AppHandle, plan_id: i64) -> AppResult<Vec
             w.part_of_speech,
             w.ipa,
             w.syllables,
-            spw.wordbook_id
-        FROM study_plan_schedule_words spw
-        JOIN study_plan_schedules sps ON spw.schedule_id = sps.id
+            w.word_book_id as wordbook_id
+        FROM study_plan_words spw
         JOIN words w ON w.id = spw.word_id
-        WHERE sps.plan_id = ?
+        WHERE spw.plan_id = ?
         ORDER BY w.word
     "#;
 
@@ -2175,7 +2408,7 @@ pub async fn get_study_plan_words(app: AppHandle, plan_id: i64) -> AppResult<Vec
         }
         Err(e) => {
             let error_msg = e.to_string();
-            logger.database_operation("SELECT", "study_plan_schedule_words", false, Some(&error_msg));
+            logger.database_operation("SELECT", "study_plan_words", false, Some(&error_msg));
             logger.api_response("get_study_plan_words", false, Some(&error_msg));
             Err(AppError::DatabaseError(error_msg))
         }
@@ -2190,8 +2423,37 @@ pub async fn remove_word_from_plan(app: AppHandle, plan_id: i64, word_id: i64) -
 
     logger.api_request("remove_word_from_plan", Some(&format!("plan_id: {}, word_id: {}", plan_id, word_id)));
 
-    // 删除该单词在学习计划中的所有日程安排
-    let query = r#"
+    // 首先删除学习计划单词关联表中的记录
+    let delete_plan_word_query = r#"
+        DELETE FROM study_plan_words
+        WHERE plan_id = ? AND word_id = ?
+    "#;
+
+    match sqlx::query(delete_plan_word_query)
+        .bind(plan_id)
+        .bind(word_id)
+        .execute(pool.inner())
+        .await
+    {
+        Ok(result) => {
+            if result.rows_affected() == 0 {
+                let error_msg = format!("Word {} not found in plan {}", word_id, plan_id);
+                logger.api_response("remove_word_from_plan", false, Some(&error_msg));
+                return Err(AppError::NotFound(error_msg));
+            }
+
+            logger.info("DATABASE", &format!("Removed word {} from plan {} (study_plan_words)", word_id, plan_id));
+        },
+        Err(e) => {
+            let error_msg = e.to_string();
+            logger.database_operation("DELETE", "study_plan_words", false, Some(&error_msg));
+            logger.api_response("remove_word_from_plan", false, Some(&error_msg));
+            return Err(AppError::DatabaseError(error_msg));
+        }
+    }
+
+    // 然后删除该单词在学习计划中的所有日程安排
+    let delete_schedule_query = r#"
         DELETE FROM study_plan_schedule_words
         WHERE word_id = ?
         AND schedule_id IN (
@@ -2199,21 +2461,15 @@ pub async fn remove_word_from_plan(app: AppHandle, plan_id: i64, word_id: i64) -
         )
     "#;
 
-    match sqlx::query(query)
+    match sqlx::query(delete_schedule_query)
         .bind(word_id)
         .bind(plan_id)
         .execute(pool.inner())
         .await
     {
         Ok(result) => {
-            if result.rows_affected() > 0 {
-                logger.api_response("remove_word_from_plan", true, Some(&format!("Removed word {} from plan {} ({} schedule entries deleted)", word_id, plan_id, result.rows_affected())));
-                Ok(())
-            } else {
-                let error_msg = format!("Word {} not found in plan {}", word_id, plan_id);
-                logger.api_response("remove_word_from_plan", false, Some(&error_msg));
-                Err(AppError::NotFound(error_msg))
-            }
+            logger.api_response("remove_word_from_plan", true, Some(&format!("Removed word {} from plan {} ({} schedule entries deleted)", word_id, plan_id, result.rows_affected())));
+            Ok(())
         }
         Err(e) => {
             let error_msg = e.to_string();
@@ -2307,7 +2563,7 @@ pub async fn get_study_plan_statistics(app: AppHandle, plan_id: i64) -> AppResul
     let total_words: i64 = plan_row.get("total_words");
 
     // 计算时间相关统计
-    let (total_days, time_progress_percentage) = if let (Some(start), Some(end)) = (&start_date, &end_date) {
+    let (total_days, time_progress_percentage) = if let (Some(_start), Some(_end)) = (&start_date, &end_date) {
         // 这里应该使用实际的日期计算，简化处理
         let total_days = 30; // 临时值，实际应该计算日期差
         let time_progress = 50.0; // 临时值，实际应该计算当前进度
@@ -2372,4 +2628,813 @@ pub async fn get_study_plan_statistics(app: AppHandle, plan_id: i64) -> AppResul
 
     logger.api_response("get_study_plan_statistics", true, Some("Statistics calculated successfully"));
     Ok(statistics)
+}
+
+// ==================== 学习计划状态管理相关命令 ====================
+
+/// 开始学习计划
+#[tauri::command]
+pub async fn start_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("start_study_plan", Some(&format!("plan_id: {}", plan_id)));
+
+    // 开始事务
+    let mut tx = pool.inner().begin().await?;
+
+    // 检查学习计划状态
+    let check_query = "SELECT status, lifecycle_status FROM study_plans WHERE id = ? AND deleted_at IS NULL";
+    let row = match sqlx::query(check_query).bind(plan_id).fetch_optional(&mut *tx).await? {
+        Some(row) => row,
+        None => {
+            let _ = tx.rollback().await;
+            let error_msg = "学习计划不存在或已被删除";
+            logger.api_response("start_study_plan", false, Some(error_msg));
+            return Err(AppError::NotFound(error_msg.to_string()));
+        }
+    };
+
+    let current_status: String = row.get("status");
+    let current_lifecycle_status: String = row.get("lifecycle_status");
+
+    // 验证状态转换是否合法
+    if current_status != "normal" {
+        let _ = tx.rollback().await;
+        let error_msg = "只有正常状态的学习计划才能开始学习";
+        logger.api_response("start_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    if current_lifecycle_status != "pending" {
+        let _ = tx.rollback().await;
+        let error_msg = "学习计划已经开始或已完成";
+        logger.api_response("start_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    // 更新学习计划状态
+    let update_query = r#"
+        UPDATE study_plans
+        SET lifecycle_status = 'active',
+            actual_start_date = datetime('now'),
+            updated_at = datetime('now')
+        WHERE id = ?
+    "#;
+
+    sqlx::query(update_query).bind(plan_id).execute(&mut *tx).await?;
+
+    // 记录状态变更历史
+    let history_query = r#"
+        INSERT INTO study_plan_status_history
+        (plan_id, from_status, to_status, from_lifecycle_status, to_lifecycle_status, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    "#;
+
+    sqlx::query(history_query)
+        .bind(plan_id)
+        .bind(&current_status)
+        .bind("normal")
+        .bind(&current_lifecycle_status)
+        .bind("active")
+        .bind("用户手动开始学习")
+        .execute(&mut *tx)
+        .await?;
+
+    // 提交事务
+    tx.commit().await?;
+
+    logger.api_response("start_study_plan", true, Some("学习计划已开始"));
+    Ok(())
+}
+
+/// 完成学习计划
+#[tauri::command]
+pub async fn complete_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("complete_study_plan", Some(&format!("plan_id: {}", plan_id)));
+
+    // 开始事务
+    let mut tx = pool.inner().begin().await?;
+
+    // 检查学习计划状态
+    let check_query = "SELECT status, lifecycle_status FROM study_plans WHERE id = ? AND deleted_at IS NULL";
+    let row = match sqlx::query(check_query).bind(plan_id).fetch_optional(&mut *tx).await? {
+        Some(row) => row,
+        None => {
+            let _ = tx.rollback().await;
+            let error_msg = "学习计划不存在或已被删除";
+            logger.api_response("complete_study_plan", false, Some(error_msg));
+            return Err(AppError::NotFound(error_msg.to_string()));
+        }
+    };
+
+    let current_status: String = row.get("status");
+    let current_lifecycle_status: String = row.get("lifecycle_status");
+
+    // 验证状态转换是否合法
+    if current_status != "normal" {
+        let _ = tx.rollback().await;
+        let error_msg = "只有正常状态的学习计划才能完成";
+        logger.api_response("complete_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    if current_lifecycle_status != "active" {
+        let _ = tx.rollback().await;
+        let error_msg = "只有进行中的学习计划才能完成";
+        logger.api_response("complete_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    // 更新学习计划状态
+    let update_query = r#"
+        UPDATE study_plans
+        SET lifecycle_status = 'completed',
+            actual_end_date = datetime('now'),
+            updated_at = datetime('now')
+        WHERE id = ?
+    "#;
+
+    sqlx::query(update_query).bind(plan_id).execute(&mut *tx).await?;
+
+    // 记录状态变更历史
+    let history_query = r#"
+        INSERT INTO study_plan_status_history
+        (plan_id, from_status, to_status, from_lifecycle_status, to_lifecycle_status, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    "#;
+
+    sqlx::query(history_query)
+        .bind(plan_id)
+        .bind(&current_status)
+        .bind("normal")
+        .bind(&current_lifecycle_status)
+        .bind("completed")
+        .bind("用户手动完成学习")
+        .execute(&mut *tx)
+        .await?;
+
+    // 提交事务
+    tx.commit().await?;
+
+    logger.api_response("complete_study_plan", true, Some("学习计划已完成"));
+    Ok(())
+}
+
+/// 终止学习计划
+#[tauri::command]
+pub async fn terminate_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("terminate_study_plan", Some(&format!("plan_id: {}", plan_id)));
+
+    // 开始事务
+    let mut tx = pool.inner().begin().await?;
+
+    // 检查学习计划状态
+    let check_query = "SELECT status, lifecycle_status FROM study_plans WHERE id = ? AND deleted_at IS NULL";
+    let row = match sqlx::query(check_query).bind(plan_id).fetch_optional(&mut *tx).await? {
+        Some(row) => row,
+        None => {
+            let _ = tx.rollback().await;
+            let error_msg = "学习计划不存在或已被删除";
+            logger.api_response("terminate_study_plan", false, Some(error_msg));
+            return Err(AppError::NotFound(error_msg.to_string()));
+        }
+    };
+
+    let current_status: String = row.get("status");
+    let current_lifecycle_status: String = row.get("lifecycle_status");
+
+    // 验证状态转换是否合法
+    if current_status != "normal" {
+        let _ = tx.rollback().await;
+        let error_msg = "只有正常状态的学习计划才能终止";
+        logger.api_response("terminate_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    if current_lifecycle_status != "active" {
+        let _ = tx.rollback().await;
+        let error_msg = "只有进行中的学习计划才能终止";
+        logger.api_response("terminate_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    // 更新学习计划状态
+    let update_query = r#"
+        UPDATE study_plans
+        SET lifecycle_status = 'terminated',
+            actual_terminated_date = datetime('now'),
+            updated_at = datetime('now')
+        WHERE id = ?
+    "#;
+
+    sqlx::query(update_query).bind(plan_id).execute(&mut *tx).await?;
+
+    // 记录状态变更历史
+    let history_query = r#"
+        INSERT INTO study_plan_status_history
+        (plan_id, from_status, to_status, from_lifecycle_status, to_lifecycle_status, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    "#;
+
+    sqlx::query(history_query)
+        .bind(plan_id)
+        .bind(&current_status)
+        .bind("normal")
+        .bind(&current_lifecycle_status)
+        .bind("terminated")
+        .bind("用户手动终止学习")
+        .execute(&mut *tx)
+        .await?;
+
+    // 提交事务
+    tx.commit().await?;
+
+    logger.api_response("terminate_study_plan", true, Some("学习计划已终止"));
+    Ok(())
+}
+
+/// 重新学习计划（从已完成或已终止状态重新开始）
+#[tauri::command]
+pub async fn restart_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("restart_study_plan", Some(&format!("plan_id: {}", plan_id)));
+
+    // 开始事务
+    let mut tx = pool.inner().begin().await?;
+
+    // 检查学习计划状态
+    let check_query = "SELECT status, lifecycle_status FROM study_plans WHERE id = ? AND deleted_at IS NULL";
+    let row = match sqlx::query(check_query).bind(plan_id).fetch_optional(&mut *tx).await? {
+        Some(row) => row,
+        None => {
+            let _ = tx.rollback().await;
+            let error_msg = "学习计划不存在或已被删除";
+            logger.api_response("restart_study_plan", false, Some(error_msg));
+            return Err(AppError::NotFound(error_msg.to_string()));
+        }
+    };
+
+    let current_status: String = row.get("status");
+    let current_lifecycle_status: String = row.get("lifecycle_status");
+
+    // 验证状态转换是否合法
+    if current_status != "normal" {
+        let _ = tx.rollback().await;
+        let error_msg = "只有正常状态的学习计划才能重新学习";
+        logger.api_response("restart_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    if current_lifecycle_status != "completed" && current_lifecycle_status != "terminated" {
+        let _ = tx.rollback().await;
+        let error_msg = "只有已完成或已终止的学习计划才能重新学习";
+        logger.api_response("restart_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    // 重置学习计划状态和进度
+    let update_query = r#"
+        UPDATE study_plans
+        SET lifecycle_status = 'pending',
+            learned_words = 0,
+            accuracy_rate = 0.0,
+            actual_start_date = NULL,
+            actual_end_date = NULL,
+            actual_terminated_date = NULL,
+            updated_at = datetime('now')
+        WHERE id = ?
+    "#;
+
+    sqlx::query(update_query).bind(plan_id).execute(&mut *tx).await?;
+
+    // 清空学习日程
+    sqlx::query("DELETE FROM study_plan_schedules WHERE plan_id = ?")
+        .bind(plan_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 清空学习记录
+    sqlx::query("DELETE FROM study_sessions WHERE plan_id = ?")
+        .bind(plan_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 重置学习进度（保留原始单词列表，只清空学习状态）
+    sqlx::query("UPDATE study_plan_words SET learned = 0, accuracy_rate = 0.0, last_reviewed = NULL WHERE plan_id = ?")
+        .bind(plan_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 记录状态变更历史
+    let history_query = r#"
+        INSERT INTO study_plan_status_history
+        (plan_id, from_status, to_status, from_lifecycle_status, to_lifecycle_status, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    "#;
+
+    sqlx::query(history_query)
+        .bind(plan_id)
+        .bind(&current_status)
+        .bind("normal")
+        .bind(&current_lifecycle_status)
+        .bind("pending")
+        .bind("用户重新开始学习，清空历史进度")
+        .execute(&mut *tx)
+        .await?;
+
+    // 提交事务
+    tx.commit().await?;
+
+    logger.api_response("restart_study_plan", true, Some("学习计划已重置，需要重新生成日程"));
+    Ok(())
+}
+
+/// 编辑学习计划（转为草稿状态）
+#[tauri::command]
+pub async fn edit_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("edit_study_plan", Some(&format!("plan_id: {}", plan_id)));
+
+    // 开始事务
+    let mut tx = pool.inner().begin().await?;
+
+    // 检查学习计划状态
+    let check_query = "SELECT status, lifecycle_status FROM study_plans WHERE id = ? AND deleted_at IS NULL";
+    let row = match sqlx::query(check_query).bind(plan_id).fetch_optional(&mut *tx).await? {
+        Some(row) => row,
+        None => {
+            let _ = tx.rollback().await;
+            let error_msg = "学习计划不存在或已被删除";
+            logger.api_response("edit_study_plan", false, Some(error_msg));
+            return Err(AppError::NotFound(error_msg.to_string()));
+        }
+    };
+
+    let current_status: String = row.get("status");
+    let current_lifecycle_status: String = row.get("lifecycle_status");
+
+    // 验证状态转换是否合法
+    if current_status != "normal" {
+        let _ = tx.rollback().await;
+        let error_msg = "只有正常状态的学习计划才能编辑";
+        logger.api_response("edit_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    // 更新学习计划状态并重置学习进度
+    let update_query = r#"
+        UPDATE study_plans
+        SET status = 'draft',
+            lifecycle_status = 'pending',
+            learned_words = 0,
+            accuracy_rate = 0.0,
+            actual_start_date = NULL,
+            actual_end_date = NULL,
+            updated_at = datetime('now')
+        WHERE id = ?
+    "#;
+
+    sqlx::query(update_query).bind(plan_id).execute(&mut *tx).await?;
+
+    // 清空学习日程
+    sqlx::query("DELETE FROM study_plan_schedules WHERE plan_id = ?")
+        .bind(plan_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 清空学习记录
+    sqlx::query("DELETE FROM study_sessions WHERE plan_id = ?")
+        .bind(plan_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 注意：不删除 study_plan_words，保留原始单词关联
+    // 只重置学习进度字段（mastery_level 字段在 study_plans 表中，不在 study_plan_words 表中）
+    sqlx::query("UPDATE study_plan_words SET learned = 0 WHERE plan_id = ?")
+        .bind(plan_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 记录状态变更历史
+    let history_query = r#"
+        INSERT INTO study_plan_status_history
+        (plan_id, from_status, to_status, from_lifecycle_status, to_lifecycle_status, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    "#;
+
+    sqlx::query(history_query)
+        .bind(plan_id)
+        .bind(&current_status)
+        .bind("draft")
+        .bind(&current_lifecycle_status)
+        .bind("pending")
+        .bind("用户编辑学习计划，重置学习进度")
+        .execute(&mut *tx)
+        .await?;
+
+    // 提交事务
+    tx.commit().await?;
+
+    logger.api_response("edit_study_plan", true, Some("学习计划已转为草稿状态，学习进度已重置"));
+    Ok(())
+}
+
+/// 发布学习计划（从草稿转为正常）
+#[tauri::command]
+pub async fn publish_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("publish_study_plan", Some(&format!("plan_id: {}", plan_id)));
+
+    // 开始事务
+    let mut tx = pool.inner().begin().await?;
+
+    // 检查学习计划状态
+    let check_query = "SELECT status, lifecycle_status FROM study_plans WHERE id = ? AND deleted_at IS NULL";
+    let row = match sqlx::query(check_query).bind(plan_id).fetch_optional(&mut *tx).await? {
+        Some(row) => row,
+        None => {
+            let _ = tx.rollback().await;
+            let error_msg = "学习计划不存在或已被删除";
+            logger.api_response("publish_study_plan", false, Some(error_msg));
+            return Err(AppError::NotFound(error_msg.to_string()));
+        }
+    };
+
+    let current_status: String = row.get("status");
+    let current_lifecycle_status: String = row.get("lifecycle_status");
+
+    // 验证状态转换是否合法
+    if current_status != "draft" {
+        let _ = tx.rollback().await;
+        let error_msg = "只有草稿状态的学习计划才能发布";
+        logger.api_response("publish_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
+    }
+
+    // 更新学习计划状态
+    let update_query = r#"
+        UPDATE study_plans
+        SET status = 'normal',
+            updated_at = datetime('now')
+        WHERE id = ?
+    "#;
+
+    sqlx::query(update_query).bind(plan_id).execute(&mut *tx).await?;
+
+    // 记录状态变更历史
+    let history_query = r#"
+        INSERT INTO study_plan_status_history
+        (plan_id, from_status, to_status, from_lifecycle_status, to_lifecycle_status, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    "#;
+
+    sqlx::query(history_query)
+        .bind(plan_id)
+        .bind(&current_status)
+        .bind("normal")
+        .bind(&current_lifecycle_status)
+        .bind("pending")
+        .bind("用户发布学习计划")
+        .execute(&mut *tx)
+        .await?;
+
+    // 提交事务
+    tx.commit().await?;
+
+    logger.api_response("publish_study_plan", true, Some("学习计划已发布"));
+    Ok(())
+}
+
+/// 软删除学习计划
+#[tauri::command]
+pub async fn delete_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("delete_study_plan", Some(&format!("plan_id: {}", plan_id)));
+
+    // 开始事务
+    let mut tx = pool.inner().begin().await?;
+
+    // 检查学习计划是否存在
+    let check_query = "SELECT status, lifecycle_status FROM study_plans WHERE id = ? AND deleted_at IS NULL";
+    let row = match sqlx::query(check_query).bind(plan_id).fetch_optional(&mut *tx).await? {
+        Some(row) => row,
+        None => {
+            let _ = tx.rollback().await;
+            let error_msg = "学习计划不存在或已被删除";
+            logger.api_response("delete_study_plan", false, Some(error_msg));
+            return Err(AppError::NotFound(error_msg.to_string()));
+        }
+    };
+
+    let current_status: String = row.get("status");
+    let current_lifecycle_status: String = row.get("lifecycle_status");
+
+    // 软删除学习计划
+    let update_query = r#"
+        UPDATE study_plans
+        SET status = 'deleted',
+            deleted_at = datetime('now'),
+            updated_at = datetime('now')
+        WHERE id = ?
+    "#;
+
+    sqlx::query(update_query).bind(plan_id).execute(&mut *tx).await?;
+
+    // 记录状态变更历史
+    let history_query = r#"
+        INSERT INTO study_plan_status_history
+        (plan_id, from_status, to_status, from_lifecycle_status, to_lifecycle_status, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    "#;
+
+    sqlx::query(history_query)
+        .bind(plan_id)
+        .bind(&current_status)
+        .bind("deleted")
+        .bind(&current_lifecycle_status)
+        .bind(&current_lifecycle_status)
+        .bind("用户删除学习计划")
+        .execute(&mut *tx)
+        .await?;
+
+    // 提交事务
+    tx.commit().await?;
+
+    logger.api_response("delete_study_plan", true, Some("学习计划已删除"));
+    Ok(())
+}
+
+/// 获取学习计划状态变更历史
+#[tauri::command]
+pub async fn get_study_plan_status_history(app: AppHandle, plan_id: i64) -> AppResult<Vec<StudyPlanStatusHistory>> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("get_study_plan_status_history", Some(&format!("plan_id: {}", plan_id)));
+
+    let query = r#"
+        SELECT
+            id,
+            plan_id,
+            from_status,
+            to_status,
+            from_lifecycle_status,
+            to_lifecycle_status,
+            changed_at,
+            reason
+        FROM study_plan_status_history
+        WHERE plan_id = ?
+        ORDER BY changed_at DESC
+    "#;
+
+    match sqlx::query(query).bind(plan_id).fetch_all(pool.inner()).await {
+        Ok(rows) => {
+            let history: Vec<StudyPlanStatusHistory> = rows.into_iter().map(|row| {
+                StudyPlanStatusHistory {
+                    id: row.get("id"),
+                    plan_id: row.get("plan_id"),
+                    from_status: row.get("from_status"),
+                    to_status: row.get("to_status"),
+                    from_lifecycle_status: row.get("from_lifecycle_status"),
+                    to_lifecycle_status: row.get("to_lifecycle_status"),
+                    changed_at: row.get("changed_at"),
+                    reason: row.get("reason"),
+                }
+            }).collect();
+
+            logger.api_response("get_study_plan_status_history", true, Some(&format!("返回 {} 条历史记录", history.len())));
+            Ok(history)
+        }
+        Err(e) => {
+            let error_msg = format!("获取状态历史失败: {}", e);
+            logger.api_response("get_study_plan_status_history", false, Some(&error_msg));
+            Err(AppError::DatabaseError(error_msg))
+        }
+    }
+}
+
+/// 获取学习计划关联的单词本ID列表
+#[tauri::command]
+pub async fn get_study_plan_word_books(app: AppHandle, plan_id: i64) -> AppResult<Vec<i64>> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("get_study_plan_word_books", Some(&format!("plan_id: {}", plan_id)));
+
+    let query = r#"
+        SELECT DISTINCT w.word_book_id
+        FROM study_plan_words spw
+        JOIN words w ON w.id = spw.word_id
+        WHERE spw.plan_id = ?
+        ORDER BY w.word_book_id
+    "#;
+
+    match sqlx::query(query)
+        .bind(plan_id)
+        .fetch_all(pool.inner())
+        .await
+    {
+        Ok(rows) => {
+            let word_book_ids: Vec<i64> = rows.iter()
+                .map(|row| row.get::<i64, _>("word_book_id"))
+                .collect();
+
+            logger.api_response("get_study_plan_word_books", true, Some(&format!("Found {} word books", word_book_ids.len())));
+            Ok(word_book_ids)
+        }
+        Err(e) => {
+            let error_msg = format!("数据库错误: {}", e);
+            logger.api_response("get_study_plan_word_books", false, Some(&error_msg));
+            Err(AppError::DatabaseError(error_msg))
+        }
+    }
+}
+
+/// 更新学习计划基本信息（仅名称和描述）
+#[tauri::command]
+pub async fn update_study_plan_basic_info(
+    app: AppHandle,
+    plan_id: i64,
+    name: String,
+    description: Option<String>
+) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("update_study_plan_basic_info", Some(&format!("plan_id: {}", plan_id)));
+
+    // 开始事务
+    let mut tx = pool.inner().begin().await?;
+
+    // 检查学习计划是否存在且为草稿状态
+    let check_query = "SELECT status FROM study_plans WHERE id = ? AND deleted_at IS NULL";
+    let plan_status: String = match sqlx::query_scalar(check_query)
+        .bind(plan_id)
+        .fetch_optional(&mut *tx)
+        .await?
+    {
+        Some(status) => status,
+        None => {
+            let error_msg = "学习计划不存在";
+            logger.api_response("update_study_plan_basic_info", false, Some(error_msg));
+            return Err(AppError::DatabaseError(error_msg.to_string()));
+        }
+    };
+
+    // 只允许更新草稿状态的计划
+    if plan_status != "draft" {
+        let error_msg = "只能编辑草稿状态的学习计划";
+        logger.api_response("update_study_plan_basic_info", false, Some(error_msg));
+        return Err(AppError::DatabaseError(error_msg.to_string()));
+    }
+
+    // 更新学习计划基本信息（仅名称和描述）
+    let update_query = r#"
+        UPDATE study_plans
+        SET
+            name = ?,
+            description = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    "#;
+
+    sqlx::query(update_query)
+        .bind(&name)
+        .bind(description.as_deref())
+        .bind(plan_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 提交事务
+    tx.commit().await?;
+
+    logger.api_response("update_study_plan_basic_info", true, Some("学习计划基本信息已更新"));
+    Ok(())
+}
+
+/// 更新学习计划完整信息（包括学习设置和日程）
+#[tauri::command]
+pub async fn update_study_plan_with_schedule(
+    app: AppHandle,
+    plan_id: i64,
+    name: String,
+    description: Option<String>,
+    intensity_level: String,
+    study_period_days: i64,
+    review_frequency: i64,
+    start_date: String,
+    _wordbook_ids: Vec<i64>,
+    schedule: serde_json::Value,
+    status: String
+) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("update_study_plan_with_schedule", Some(&format!("plan_id: {}", plan_id)));
+
+    // 开始事务
+    let mut tx = pool.inner().begin().await?;
+
+    // 检查学习计划是否存在且为草稿状态
+    let plan_status: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM study_plans WHERE id = ?"
+    )
+        .bind(plan_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+    let plan_status = match plan_status {
+        Some(status) => status,
+        None => {
+            let error_msg = "学习计划不存在";
+            logger.api_response("update_study_plan_with_schedule", false, Some(error_msg));
+            return Err(AppError::DatabaseError(error_msg.to_string()));
+        }
+    };
+
+    // 只允许更新草稿状态的计划
+    if plan_status != "draft" {
+        let error_msg = "只能编辑草稿状态的学习计划";
+        logger.api_response("update_study_plan_with_schedule", false, Some(error_msg));
+        return Err(AppError::DatabaseError(error_msg.to_string()));
+    }
+
+    // 更新学习计划基本信息和设置
+    let update_query = r#"
+        UPDATE study_plans
+        SET name = ?,
+            description = ?,
+            intensity_level = ?,
+            study_period_days = ?,
+            review_frequency = ?,
+            start_date = ?,
+            ai_plan_data = ?,
+            status = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    "#;
+
+    sqlx::query(update_query)
+        .bind(&name)
+        .bind(&description)
+        .bind(&intensity_level)
+        .bind(study_period_days)
+        .bind(review_frequency)
+        .bind(&start_date)
+        .bind(schedule.to_string())
+        .bind(&status)
+        .bind(plan_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 删除现有的单词关联（与创建逻辑保持一致）
+    sqlx::query("DELETE FROM study_plan_words WHERE plan_id = ?")
+        .bind(plan_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // 重新创建学习计划单词关联（与创建逻辑保持一致）
+    let mut all_word_ids = std::collections::HashSet::new();
+    if let Ok(schedule_str) = serde_json::to_string(&schedule) {
+        if let Ok(ai_result) = serde_json::from_str::<StudyPlanAIResult>(&schedule_str) {
+            for daily_plan in &ai_result.daily_plans {
+                for word in &daily_plan.words {
+                    if let Ok(word_id) = word.word_id.parse::<i64>() {
+                        all_word_ids.insert(word_id);
+                    }
+                }
+            }
+        }
+    }
+
+    for word_id in all_word_ids {
+        sqlx::query(
+            "INSERT INTO study_plan_words (plan_id, word_id, learned, correct_count, total_attempts, mastery_score) VALUES (?, ?, FALSE, 0, 0, 0.0)"
+        )
+            .bind(plan_id)
+            .bind(word_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    // 提交事务
+    tx.commit().await?;
+
+    logger.api_response("update_study_plan_with_schedule", true, Some("学习计划已完整更新"));
+    Ok(())
 }

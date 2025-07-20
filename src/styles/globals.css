@@ -51,6 +51,7 @@
   --color-success-bg: rgba(76, 175, 80, 0.1);
   --color-success-border: rgba(76, 175, 80, 0.3);
   --color-error: #F44336;
+  --color-error-hover: #D32F2F;
   --color-warning: #FF9800;
   --color-info: #2196F3;
   --color-info-bg: rgba(33, 150, 243, 0.1);

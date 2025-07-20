@@ -49,11 +49,11 @@ CREATE TABLE IF NOT EXISTS study_plans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
-    status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'completed')) DEFAULT 'active',
+    status TEXT NOT NULL DEFAULT 'active',
     total_words INTEGER NOT NULL DEFAULT 0,
     learned_words INTEGER NOT NULL DEFAULT 0,
     accuracy_rate REAL NOT NULL DEFAULT 0.0,
-    mastery_level INTEGER NOT NULL CHECK (mastery_level BETWEEN 1 AND 5) DEFAULT 1,
+    mastery_level INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

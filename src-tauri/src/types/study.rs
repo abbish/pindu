@@ -7,7 +7,8 @@ pub struct StudyPlan {
     pub id: Id,
     pub name: String,
     pub description: String,
-    pub status: String,
+    pub status: String,                    // 管理状态：normal, draft, deleted
+    pub lifecycle_status: String,          // 生命周期状态：pending, active, completed
     pub total_words: i32,
     pub learned_words: i32,
     pub accuracy_rate: f64,
@@ -18,7 +19,11 @@ pub struct StudyPlan {
     pub review_frequency: Option<i32>,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    pub actual_start_date: Option<String>,     // 实际开始时间
+    pub actual_end_date: Option<String>,       // 实际完成时间
+    pub actual_terminated_date: Option<String>, // 实际终止时间
     pub ai_plan_data: Option<String>,
+    pub deleted_at: Option<String>,        // 软删除时间
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -29,7 +34,9 @@ pub struct StudyPlanWithProgress {
     pub id: Id,
     pub name: String,
     pub description: String,
-    pub status: String,
+    pub status: String,                    // 管理状态：normal, draft, deleted (保留用于兼容)
+    pub lifecycle_status: String,          // 生命周期状态：pending, active, completed (保留用于兼容)
+    pub unified_status: String,            // 统一状态：Draft, Pending, Active, Paused, Completed, Terminated, Deleted
     pub total_words: i32,
     pub learned_words: i32,
     pub accuracy_rate: f64,
@@ -40,20 +47,33 @@ pub struct StudyPlanWithProgress {
     pub review_frequency: Option<i32>,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    pub actual_start_date: Option<String>,     // 实际开始时间
+    pub actual_end_date: Option<String>,       // 实际完成时间
+    pub actual_terminated_date: Option<String>, // 实际终止时间
     pub ai_plan_data: Option<String>,
+    pub deleted_at: Option<String>,        // 软删除时间
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     pub progress_percentage: f64,
 }
 
-/// 学习计划状态
+/// 学习计划管理状态
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum StudyPlanStatus {
-    Active,
-    Paused,
-    Completed,
-    Draft,
+    Normal,   // 正常状态（可以开始学习）
+    Draft,    // 草稿状态（可以编辑修改）
+    Deleted,  // 已删除状态（软删除）
+}
+
+/// 学习计划生命周期状态
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum StudyPlanLifecycleStatus {
+    Pending,    // 待开始（创建后的初始状态）
+    Active,     // 进行中（用户手动开始后）
+    Completed,  // 已完成（学习完成）
+    Terminated, // 已终止（用户手动终止）
 }
 
 /// 学习强度等级
@@ -80,6 +100,7 @@ pub struct UpdateStudyPlanRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub status: Option<StudyPlanStatus>,
+    pub lifecycle_status: Option<StudyPlanLifecycleStatus>,
     pub mastery_level: Option<i32>,
 }
 
@@ -87,7 +108,9 @@ pub struct UpdateStudyPlanRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StudyPlanQuery {
     pub status: Option<StudyPlanStatus>,
+    pub lifecycle_status: Option<StudyPlanLifecycleStatus>,
     pub keyword: Option<String>,
+    pub include_deleted: Option<bool>,  // 是否包含已删除的计划
 }
 
 /// 学习会话
@@ -278,6 +301,7 @@ pub struct StudyPlanWord {
     pub id: Id,
     pub word: String,
     pub meaning: String,
+    #[serde(rename = "partOfSpeech")]
     pub part_of_speech: String,
     pub ipa: String,
     pub syllables: String,
@@ -322,4 +346,161 @@ pub struct StudyPlanStatistics {
     pub total_words: i64,
     pub completed_words: i64,
     pub total_study_minutes: i64,
+}
+
+// ==================== 状态管理相关类型 ====================
+
+/// 学习计划状态变更历史
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StudyPlanStatusHistory {
+    pub id: Id,
+    pub plan_id: Id,
+    pub from_status: Option<String>,
+    pub to_status: String,
+    pub from_lifecycle_status: Option<String>,
+    pub to_lifecycle_status: String,
+    pub changed_at: Timestamp,
+    pub reason: Option<String>,
+}
+
+/// 状态转换请求
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StatusTransitionRequest {
+    pub plan_id: Id,
+    pub reason: Option<String>,
+}
+
+/// 状态转换响应
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StatusTransitionResponse {
+    pub success: bool,
+    pub new_status: String,
+    pub new_lifecycle_status: String,
+    pub message: String,
+}
+
+// ==================== 统一状态管理 ====================
+
+/// 学习计划统一状态（新版本）
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum UnifiedStudyPlanStatus {
+    /// 草稿状态 - 刚创建，还未完成配置
+    #[serde(rename = "Draft")]
+    Draft,
+    /// 待开始 - 已配置完成，等待开始学习
+    #[serde(rename = "Pending")]
+    Pending,
+    /// 进行中 - 正在学习
+    #[serde(rename = "Active")]
+    Active,
+    /// 已暂停 - 暂时停止学习
+    #[serde(rename = "Paused")]
+    Paused,
+    /// 已完成 - 学习计划正常完成
+    #[serde(rename = "Completed")]
+    Completed,
+    /// 已终止 - 提前结束学习计划
+    #[serde(rename = "Terminated")]
+    Terminated,
+    /// 已删除 - 软删除状态
+    #[serde(rename = "Deleted")]
+    Deleted,
+}
+
+impl UnifiedStudyPlanStatus {
+    /// 检查状态转换是否合法
+    pub fn can_transition_to(&self, target: &UnifiedStudyPlanStatus) -> bool {
+        use UnifiedStudyPlanStatus::*;
+        match (self, target) {
+            // 从草稿状态可以转换到
+            (Draft, Pending) | (Draft, Deleted) => true,
+
+            // 从待开始状态可以转换到
+            (Pending, Active) | (Pending, Draft) | (Pending, Deleted) => true,
+
+            // 从进行中状态可以转换到
+            (Active, Paused) | (Active, Completed) | (Active, Terminated) | (Active, Draft) => true,
+
+            // 从暂停状态可以转换到
+            (Paused, Active) | (Paused, Terminated) | (Paused, Draft) => true,
+
+            // 从完成/终止状态可以转换到
+            (Completed, Draft) | (Terminated, Draft) => true,
+
+            // 任何状态都可以删除
+            (_, Deleted) => true,
+
+            // 其他转换都不允许
+            _ => false,
+        }
+    }
+
+    /// 获取状态的显示信息
+    pub fn display_info(&self) -> (&'static str, &'static str) {
+        match self {
+            UnifiedStudyPlanStatus::Draft => ("草稿", "gray"),
+            UnifiedStudyPlanStatus::Pending => ("待开始", "blue"),
+            UnifiedStudyPlanStatus::Active => ("进行中", "green"),
+            UnifiedStudyPlanStatus::Paused => ("已暂停", "orange"),
+            UnifiedStudyPlanStatus::Completed => ("已完成", "green"),
+            UnifiedStudyPlanStatus::Terminated => ("已终止", "red"),
+            UnifiedStudyPlanStatus::Deleted => ("已删除", "gray"),
+        }
+    }
+
+    /// 从字符串转换
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "Draft" => Some(UnifiedStudyPlanStatus::Draft),
+            "Pending" => Some(UnifiedStudyPlanStatus::Pending),
+            "Active" => Some(UnifiedStudyPlanStatus::Active),
+            "Paused" => Some(UnifiedStudyPlanStatus::Paused),
+            "Completed" => Some(UnifiedStudyPlanStatus::Completed),
+            "Terminated" => Some(UnifiedStudyPlanStatus::Terminated),
+            "Deleted" => Some(UnifiedStudyPlanStatus::Deleted),
+            _ => None,
+        }
+    }
+
+    /// 转换为字符串
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            UnifiedStudyPlanStatus::Draft => "Draft",
+            UnifiedStudyPlanStatus::Pending => "Pending",
+            UnifiedStudyPlanStatus::Active => "Active",
+            UnifiedStudyPlanStatus::Paused => "Paused",
+            UnifiedStudyPlanStatus::Completed => "Completed",
+            UnifiedStudyPlanStatus::Terminated => "Terminated",
+            UnifiedStudyPlanStatus::Deleted => "Deleted",
+        }
+    }
+}
+
+/// 从旧的双状态系统转换到新的统一状态
+pub fn convert_legacy_status(status: &str, lifecycle_status: &str) -> UnifiedStudyPlanStatus {
+    match (status, lifecycle_status) {
+        ("deleted", _) => UnifiedStudyPlanStatus::Deleted,
+        ("draft", _) => UnifiedStudyPlanStatus::Draft,
+        ("normal", "pending") => UnifiedStudyPlanStatus::Pending,
+        ("normal", "active") => UnifiedStudyPlanStatus::Active,
+        ("normal", "completed") => UnifiedStudyPlanStatus::Completed,
+        ("normal", "terminated") => UnifiedStudyPlanStatus::Terminated,
+        _ => UnifiedStudyPlanStatus::Draft, // 默认为草稿状态
+    }
+}
+
+/// 统一状态转换请求
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UnifiedStatusTransitionRequest {
+    pub plan_id: Id,
+    pub target_status: UnifiedStudyPlanStatus,
+    pub reason: Option<String>,
+}
+
+/// 统一状态转换响应
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UnifiedStatusTransitionResponse {
+    pub success: bool,
+    pub new_status: UnifiedStudyPlanStatus,
+    pub message: String,
 }
