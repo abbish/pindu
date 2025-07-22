@@ -24,27 +24,7 @@ interface ScheduleProgress {
 }
 
 // 辅助函数
-function getMasteryDisplay(level: number) {
-  const stars = Math.min(Math.max(Math.floor(level / 20), 1), 5);
-  let text = '';
-  let color = '';
 
-  if (level >= 80) {
-    text = '精通';
-    color = 'var(--color-green)';
-  } else if (level >= 60) {
-    text = '熟练';
-    color = 'var(--color-blue)';
-  } else if (level >= 40) {
-    text = '一般';
-    color = 'var(--color-orange)';
-  } else {
-    text = '初学';
-    color = 'var(--color-red)';
-  }
-
-  return { text, color, stars };
-}
 
 /**
  * Study plan card component displaying plan information and progress
@@ -66,7 +46,7 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
      plan.lifecycle_status === 'terminated' ? 'Terminated' : 'Draft');
 
   const statusDisplay = getStatusDisplay(unifiedStatus as UnifiedStudyPlanStatus);
-  const masteryDisplay = getMasteryDisplay(plan.mastery_level);
+
 
   // 计算时间进度
   const timeProgress = useMemo(() => {

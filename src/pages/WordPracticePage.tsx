@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Header,
-  Breadcrumb,
+
   PracticeWordCard,
   type PracticeWordData,
   useToast
@@ -144,8 +144,8 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
           // 创建新的练习会话
           console.log('创建新会话，参数:', { planId, scheduleId });
           result = await practiceService.startPracticeSession({
-            planId,
-            scheduleId
+            planId: planId!,
+            scheduleId: scheduleId!
           });
           console.log('创建会话结果:', result);
           if (result.success) {
@@ -352,14 +352,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     }
   };
 
-  // 面包屑导航
-  const handleBreadcrumbClick = (key: string) => {
-    if (key === 'home') {
-      onNavigate?.('home');
-    } else if (key === 'plans') {
-      onNavigate?.('plans');
-    }
-  };
+
 
   // 加载状态
   if (loading) {

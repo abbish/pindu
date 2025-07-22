@@ -71,7 +71,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
       draft: visiblePlans.filter(plan => plan.unified_status === 'Draft'),
       pending: visiblePlans.filter(plan => plan.unified_status === 'Pending'),
       active: visiblePlans.filter(plan => plan.unified_status === 'Active'),
-      paused: visiblePlans.filter(plan => plan.unified_status === 'Paused'),
+      paused: visiblePlans.filter(plan => plan.unified_status === 'Paused' as any),
       completed: visiblePlans.filter(plan => plan.unified_status === 'Completed'),
       terminated: visiblePlans.filter(plan => plan.unified_status === 'Terminated')
     };
@@ -170,7 +170,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
     // 获取统一状态
     const unifiedStatus = plan.unified_status ||
       (plan.status === 'deleted' ? 'Deleted' :
-       plan.status === 'draft' ? 'Draft' :
+       plan.status === 'draft' as any ? 'Draft' :
        plan.lifecycle_status === 'pending' ? 'Pending' :
        plan.lifecycle_status === 'active' ? 'Active' :
        plan.lifecycle_status === 'completed' ? 'Completed' :

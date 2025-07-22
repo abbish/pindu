@@ -196,7 +196,7 @@ export class StudyService extends BaseService {
     year: number,
     month: number,
     setLoading?: (state: LoadingState) => void
-  ): Promise<ApiResult<CalendarDayData[]>> {
+  ): Promise<ApiResult<any[]>> {
     return this.executeWithLoading(async () => {
       this.validateRequired({ planId, year, month }, ['planId', 'year', 'month']);
 
@@ -208,7 +208,7 @@ export class StudyService extends BaseService {
         throw new Error('年份必须在2020-2030之间');
       }
 
-      return this.client.invoke<CalendarDayData[]>('get_study_plan_calendar_data', {
+      return this.client.invoke<any[]>('get_study_plan_calendar_data', {
         planId,
         year,
         month

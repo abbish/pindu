@@ -55,9 +55,7 @@ export type LegacyStudyPlanStatus = StudyPlanStatus;
 /// 旧的学习计划生命周期状态（保留用于向后兼容）
 export type LegacyStudyPlanLifecycleStatus = StudyPlanLifecycleStatus;
 
-/// 为了向后兼容，保留原有的类型别名
-export type StudyPlanStatus = LegacyStudyPlanStatus;
-export type StudyPlanLifecycleStatus = LegacyStudyPlanLifecycleStatus;
+
 
 /// 学习强度等级
 export type IntensityLevel = 'easy' | 'normal' | 'intensive';

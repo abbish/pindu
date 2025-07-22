@@ -1,8 +1,9 @@
-import type { 
-  StudyPlanStatus, 
-  StudyPlanLifecycleStatus, 
+import type {
+  StudyPlanStatus,
+  StudyPlanLifecycleStatus,
   StatusDisplayConfig,
-  StatusFilterOption 
+  StatusFilterOption,
+  UnifiedStudyPlanStatus
 } from '../types';
 
 /**

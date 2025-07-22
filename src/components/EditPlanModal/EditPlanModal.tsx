@@ -92,17 +92,7 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
 
-  // 格式化学习周期显示文本
-  const formatStudyPeriod = (days: number): string => {
-    switch (days) {
-      case 1: return '1天 (强化突击)';
-      case 3: return '3天 (短期集中)';
-      case 7: return '1周 (7天)';
-      case 14: return '2周 (14天)';
-      case 28: return '4周 (28天)';
-      default: return `${days} 天`;
-    }
-  };
+
 
 
 
@@ -382,7 +372,10 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
         };
 
         console.log('Updating study plan with schedule:', updateRequest);
-        const result = await studyService.updateStudyPlanWithSchedule(plan.id, updateRequest);
+        const result = await studyService.updateStudyPlanWithSchedule(plan.id, {
+          ...updateRequest,
+          schedule: updateRequest.schedule as any
+        });
 
         if (result.success) {
           showToast('学习计划已更新', 'success');

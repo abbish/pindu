@@ -13,7 +13,7 @@ import type {
   AIProvider,
   AIModelConfig,
   DatabaseOverview,
-  ResetResult,
+
   Id
 } from '../types';
 import { useErrorHandler } from '../hooks/useErrorHandler';

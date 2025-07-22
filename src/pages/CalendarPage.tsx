@@ -66,7 +66,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ onNavigate }) => {
   const [todaySchedules, setTodaySchedules] = useState<TodayStudySchedule[]>([]);
   const [schedulesLoading, setSchedulesLoading] = useState<LoadingState>({ loading: false });
   const [incompleteSessions, setIncompleteSessions] = useState<PracticeSession[]>([]);
-  const today = new Date();
+
 
   // 获取日历数据
   useEffect(() => {
@@ -165,24 +165,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ onNavigate }) => {
     return Array.from(planMap.values());
   }, [calendarData]);
 
-  // 获取今日计划数据
-  const todayPlans: TodayPlan[] = useMemo(() => {
-    if (!calendarData || !calendarData.days) return [];
 
-    const todayStr = today.toISOString().split('T')[0];
-    const todayData = calendarData.days.find(day => day.date === todayStr);
-
-    if (!todayData?.studyPlans || !Array.isArray(todayData.studyPlans)) return [];
-
-    return todayData.studyPlans.map(plan => ({
-      id: plan.id.toString(),
-      name: plan.name || '未命名计划',
-      color: plan.color || 'var(--color-primary)',
-      icon: plan.icon || 'book',
-      targetWords: plan.targetWords || 0,
-      completedWords: plan.completedWords || 0
-    }));
-  }, [calendarData, today]);
 
   // 获取月度统计数据
   const monthlyStats: MonthlyStats = useMemo(() => {
@@ -311,7 +294,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ onNavigate }) => {
       onNavigate('word-practice', {
         planId: session.planId,
         scheduleId: session.scheduleId,
-        sessionId: session.id
+        sessionId: session.sessionId
       });
     }
   };
@@ -319,7 +302,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ onNavigate }) => {
   // 处理取消练习
   const handleCancelPractice = async (session: PracticeSession) => {
     try {
-      const result = await practiceService.cancelPracticeSession(session.id);
+      const result = await practiceService.cancelPracticeSession(session.sessionId);
       if (result.success) {
         // 重新获取未完成练习列表
         const updatedResult = await practiceService.getIncompletePracticeSessions();
@@ -633,9 +616,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ onNavigate }) => {
                 <h3 className={styles.cardTitle}>未完成练习</h3>
                 <div className={styles.incompleteSessions}>
                   {incompleteSessions.map((session) => (
-                    <div key={session.id} className={styles.sessionItem}>
+                    <div key={session.sessionId} className={styles.sessionItem}>
                       <div className={styles.sessionHeader}>
-                        <div className={styles.sessionName}>{session.planName}</div>
+                        <div className={styles.sessionName}>{session.planTitle}</div>
                         <div className={styles.sessionDate}>
                           {new Date(session.scheduleDate).toLocaleDateString('zh-CN', {
                             month: 'short',

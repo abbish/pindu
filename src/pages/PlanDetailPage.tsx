@@ -25,6 +25,7 @@ import type {
   StudyPlanWord,
   StudyPlanStatistics,
   UnifiedStudyPlanStatus,
+  StudyPlanAction,
   PracticeSession
 } from '../types';
 import {
@@ -35,26 +36,9 @@ import {
 // 视图模式类型
 type ViewMode = 'overview' | 'schedule' | 'words' | 'statistics' | 'logs';
 
-// 学习日志类型
-interface StudyLogEntry {
-  date: string;
-  sessions: StudySessionLog[];
-  totalWordsStudied: number;
-  totalTimeMinutes: number;
-  averageAccuracy: number;
-}
 
-interface StudySessionLog {
-  id: string;
-  scheduleId: number;
-  startedAt: string;
-  completedAt?: string;
-  wordsStudied: number;
-  correctAnswers: number;
-  totalTimeSeconds: number;
-  accuracy: number;
-  status: 'completed' | 'paused' | 'abandoned';
-}
+
+
 
 // 辅助函数
 
@@ -367,8 +351,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     setCurrentView(view);
 
     // 根据视图加载相应数据
-    if (view === 'words' && studyPlanWords.length === 0) {
-      loadStudyPlanWords();
+    if (view === 'words' && planWords.length === 0) {
+      loadPlanWords();
     } else if (view === 'statistics' && !statistics) {
       loadStatistics();
     } else if (view === 'logs' && practiceSessions.length === 0) {
@@ -676,15 +660,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 
   const intensityDisplay = getIntensityDisplay(planData.intensity_level || undefined);
 
-  // 计算学习天数
-  const studyDays = planData.start_date && planData.end_date
-    ? Math.ceil((new Date(planData.end_date).getTime() - new Date(planData.start_date).getTime()) / (1000 * 60 * 60 * 24))
-    : 0;
 
-  // 计算已学习天数
-  const startDate = planData.start_date ? new Date(planData.start_date) : new Date();
-  const today = new Date();
-  const studiedDays = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
 
   // 计算时间进度（基于日程自然日进度）
   const calculateTimeProgress = () => {
@@ -750,14 +726,16 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
               {getAvailableActions(planData.unified_status as UnifiedStudyPlanStatus)
                 .sort((a, b) => {
                   // 定义按钮优先级顺序
-                  const priority = {
+                  const priority: Record<StudyPlanAction, number> = {
                     'start': 1,     // 开始学习
                     'publish': 2,   // 发布计划
                     'complete': 3,  // 完成学习
                     'edit': 4,      // 编辑计划
                     'terminate': 5, // 终止学习
                     'restart': 6,   // 重新开始
-                    'delete': 7     // 删除计划
+                    'delete': 7,    // 删除计划
+                    'restore': 8,   // 恢复计划
+                    'permanentDelete': 9 // 永久删除
                   };
                   return (priority[a] || 99) - (priority[b] || 99);
                 })
@@ -797,7 +775,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
                   <span>学习强度</span>
                 </div>
                 <div className={styles.infoContent}>
-                  <span className={`${styles.intensityText} ${styles[planData.intensity_level]}`}>
+                  <span className={`${styles.intensityText} ${planData.intensity_level ? styles[planData.intensity_level] : ''}`}>
                     {intensityDisplay.text}
                   </span>
                 </div>
