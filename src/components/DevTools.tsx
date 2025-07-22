@@ -16,32 +16,41 @@ const DevTools: React.FC<DevToolsProps> = ({ enabled = import.meta.env.DEV }) =>
   // 拦截控制台日志
   useEffect(() => {
     if (!enabled) return;
-    
+
     const originalConsoleLog = console.log;
     const originalConsoleError = console.error;
-    
+
     console.log = (...args) => {
       originalConsoleLog(...args);
-      setLogs(prev => [...prev, `[LOG] ${args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-      ).join(' ')}`].slice(-50)); // 只保留最近50条日志
+      // 使用setTimeout避免在渲染过程中更新状态
+      setTimeout(() => {
+        setLogs(prev => [...prev, `[LOG] ${args.map(arg =>
+          typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+        ).join(' ')}`].slice(-50)); // 只保留最近50条日志
+      }, 0);
     };
-    
+
     console.error = (...args) => {
       originalConsoleError(...args);
-      setLogs(prev => [...prev, `[ERROR] ${args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-      ).join(' ')}`].slice(-50));
+      // 使用setTimeout避免在渲染过程中更新状态
+      setTimeout(() => {
+        setLogs(prev => [...prev, `[ERROR] ${args.map(arg =>
+          typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+        ).join(' ')}`].slice(-50));
+      }, 0);
     };
     
     // 监听API调用
     const handleApiCall = (event: CustomEvent) => {
       const { command, args } = event.detail;
-      setApiCalls(prev => [...prev, { 
-        command, 
-        args, 
-        timestamp: Date.now() 
-      }].slice(-20)); // 只保留最近20个API调用
+      // 使用setTimeout避免在渲染过程中更新状态
+      setTimeout(() => {
+        setApiCalls(prev => [...prev, {
+          command,
+          args,
+          timestamp: Date.now()
+        }].slice(-20)); // 只保留最近20个API调用
+      }, 0);
     };
     
     window.addEventListener('tauri-api-call' as any, handleApiCall as any);
@@ -55,7 +64,8 @@ const DevTools: React.FC<DevToolsProps> = ({ enabled = import.meta.env.DEV }) =>
   
   return (
     <div className={styles.devTools}>
-      <button 
+      <button
+        type="button"
         className={styles.toggleButton}
         onClick={() => setIsVisible(!isVisible)}
       >

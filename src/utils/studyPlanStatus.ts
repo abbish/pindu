@@ -108,7 +108,8 @@ export function canTransitionTo(
  */
 export function getAvailableActions(
   status: StudyPlanStatus,
-  lifecycleStatus: StudyPlanLifecycleStatus
+  lifecycleStatus: StudyPlanLifecycleStatus,
+  unifiedStatus?: UnifiedStudyPlanStatus
 ): Array<{
   action: string;
   label: string;
@@ -118,10 +119,13 @@ export function getAvailableActions(
 }> {
   const actions = [];
 
-  // 按照新的规则定义按钮显示逻辑
-  if (status === 'normal') {
-    if (lifecycleStatus === 'pending') {
-      // 正常+待开始 = 可以看到开始学习 + 进入草稿
+  // 优先使用新的统一状态，如果没有则使用旧的双状态系统
+  const currentStatus = unifiedStatus || convertLegacyStatus(status, lifecycleStatus);
+
+  // 按照新的统一状态定义按钮显示逻辑
+  switch (currentStatus) {
+    case 'Pending':
+      // 待开始状态 = 可以看到开始学习 + 进入草稿
       actions.push({
         action: 'start',
         label: '开始学习',
@@ -136,8 +140,10 @@ export function getAvailableActions(
         color: 'warning' as const,
         confirmMessage: '进入草稿状态后可以修改计划内容，但需要重新生成日程。确认继续吗？'
       });
-    } else if (lifecycleStatus === 'active') {
-      // 正常+进行中 = 可以看到终止学习
+      break;
+
+    case 'Active':
+      // 进行中状态 = 可以看到终止学习
       actions.push({
         action: 'terminate',
         label: '终止学习',
@@ -145,8 +151,11 @@ export function getAvailableActions(
         color: 'danger' as const,
         confirmMessage: '确认终止此学习计划吗？终止后可以重新开始学习。'
       });
-    } else if (lifecycleStatus === 'completed' || lifecycleStatus === 'terminated') {
-      // 正常 + 已完成/已终止 = 可以看到重新学习 + 删除计划
+      break;
+
+    case 'Completed':
+    case 'Terminated':
+      // 已完成/已终止状态 = 可以看到重新学习 + 删除计划
       actions.push({
         action: 'restart',
         label: '重新学习',
@@ -161,25 +170,56 @@ export function getAvailableActions(
         color: 'danger' as const,
         confirmMessage: '确认删除此学习计划吗？删除后无法恢复。'
       });
-    }
-  } else if (status === 'draft') {
-    // 草稿 = 可以看到编辑计划 + 删除计划
-    actions.push({
-      action: 'edit',
-      label: '编辑计划',
-      icon: 'edit',
-      color: 'warning' as const
-    });
-    actions.push({
-      action: 'delete',
-      label: '删除计划',
-      icon: 'trash',
-      color: 'danger' as const,
-      confirmMessage: '确认删除此学习计划吗？删除后无法恢复。'
-    });
+      break;
+
+    case 'Draft':
+      // 草稿状态 = 可以看到编辑计划 + 删除计划
+      actions.push({
+        action: 'edit',
+        label: '编辑计划',
+        icon: 'edit',
+        color: 'warning' as const
+      });
+      actions.push({
+        action: 'delete',
+        label: '删除计划',
+        icon: 'trash',
+        color: 'danger' as const,
+        confirmMessage: '确认删除此学习计划吗？删除后无法恢复。'
+      });
+      break;
+
+    case 'Deleted':
+      // 已删除状态 = 无可用操作
+      break;
+
+    default:
+      // 未知状态，回退到旧逻辑
+      console.warn('Unknown unified status:', currentStatus);
+      break;
   }
 
   return actions;
+}
+
+/**
+ * 将旧的双状态系统转换为新的统一状态
+ */
+function convertLegacyStatus(
+  status: StudyPlanStatus,
+  lifecycleStatus: StudyPlanLifecycleStatus
+): UnifiedStudyPlanStatus {
+  if (status === 'deleted') return 'Deleted';
+  if (status === 'draft') return 'Draft';
+
+  // status === 'normal'
+  switch (lifecycleStatus) {
+    case 'pending': return 'Pending';
+    case 'active': return 'Active';
+    case 'completed': return 'Completed';
+    case 'terminated': return 'Terminated';
+    default: return 'Draft';
+  }
 }
 
 /**

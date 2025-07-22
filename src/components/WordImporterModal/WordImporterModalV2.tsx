@@ -35,7 +35,7 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
   const [extractedWords, setExtractedWords] = useState<ExtractedWord[]>([]);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [errorType, setErrorType] = useState<'network' | 'parsing' | 'timeout' | 'validation' | 'unknown'>('unknown');
+  const [errorType, setErrorType] = useState<'network' | 'parsing' | 'timeout' | 'validation' | 'size' | 'auth' | 'rate_limit' | 'unknown'>('unknown');
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   // const [analysisResult, setAnalysisResult] = useState<any>(null);
   // const [analysisPromiseRef, setAnalysisPromiseRef] = useState<Promise<any> | null>(null);
@@ -51,52 +51,74 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
 
   // 清理轮询的函数
   const clearPolling = () => {
+    console.log('Clearing polling timers...');
+
     if (pollIntervalRef) {
       clearInterval(pollIntervalRef);
       setPollIntervalRef(null);
+      console.log('Cleared poll interval');
     }
     if (pollTimeoutRef) {
       clearTimeout(pollTimeoutRef);
       setPollTimeoutRef(null);
+      console.log('Cleared poll timeout');
     }
   };
 
   const wordBookService = new WordBookService();
   const aiModelService = new AIModelService();
 
-  // 组件卸载时清理轮询
+  // 组件卸载时清理轮询和取消后端分析
   useEffect(() => {
     return () => {
+      console.log('Component unmounting, cleaning up...');
       clearPolling();
+
+      // 组件卸载时尝试取消后端分析
+      if (currentStep === 'analyzing') {
+        wordBookService.cancelAnalysis().catch(err => {
+          console.error('Failed to cancel analysis on unmount:', err);
+        });
+      }
     };
-  }, []);
+  }, [currentStep]);
 
   // 智能错误处理函数
   const handleError = (errorMessage: string, context?: string) => {
     console.error('Analysis error:', errorMessage, context);
 
     let userFriendlyMessage = '';
-    let errorType: 'network' | 'parsing' | 'timeout' | 'validation' | 'unknown' = 'unknown';
+    let errorType: 'network' | 'parsing' | 'timeout' | 'validation' | 'size' | 'auth' | 'rate_limit' | 'unknown' = 'unknown';
 
-    // 根据错误信息分类处理
-    if (errorMessage.includes('XML parsing error') || errorMessage.includes('Failed to parse')) {
+    // 根据错误信息分类处理，优先匹配具体错误
+    if (errorMessage.includes('JSON parsing error') || errorMessage.includes('XML parsing error') || errorMessage.includes('Failed to parse')) {
       errorType = 'parsing';
-      userFriendlyMessage = 'AI分析结果格式异常，这通常是由于文本内容过于复杂导致的。请尝试：\n• 减少文本长度\n• 简化文本内容\n• 重新分析';
-    } else if (errorMessage.includes('timeout') || errorMessage.includes('超时')) {
+      userFriendlyMessage = 'AI返回的数据格式异常，这通常是由于：\n• 文本内容过于复杂或包含特殊字符\n• AI模型输出格式不稳定\n• 网络传输中断导致数据不完整\n\n建议解决方案：\n• 减少文本长度（建议少于2000字符）\n• 简化文本内容，移除特殊符号\n• 更换其他AI模型重试';
+    } else if (errorMessage.includes('timeout') || errorMessage.includes('超时') || errorMessage.includes('Request timeout')) {
       errorType = 'timeout';
-      userFriendlyMessage = '分析时间过长，请尝试：\n• 减少文本长度\n• 选择更快的AI模型\n• 稍后重试';
-    } else if (errorMessage.includes('network') || errorMessage.includes('连接') || errorMessage.includes('请求失败')) {
+      userFriendlyMessage = '分析请求超时，可能原因：\n• 文本内容过长，AI处理时间超出限制\n• 网络连接不稳定\n• AI服务响应缓慢\n\n建议解决方案：\n• 将文本分段处理，每次处理1000-2000字符\n• 检查网络连接稳定性\n• 选择响应更快的AI模型\n• 稍后重试';
+    } else if (errorMessage.includes('文本内容过长') || errorMessage.includes('文件大小') || errorMessage.includes('limit')) {
+      errorType = 'size';
+      userFriendlyMessage = '文本内容超出处理限制：\n• 当前文本长度过长\n• 建议将文本分段处理\n• 每次处理建议不超过2000字符\n• 可以分多次导入后合并';
+    } else if (errorMessage.includes('401') || errorMessage.includes('unauthorized') || errorMessage.includes('API key')) {
+      errorType = 'auth';
+      userFriendlyMessage = 'AI服务认证失败：\n• API密钥可能已过期或无效\n• 请检查AI模型配置\n• 联系管理员更新API密钥';
+    } else if (errorMessage.includes('429') || errorMessage.includes('rate limit') || errorMessage.includes('quota')) {
+      errorType = 'rate_limit';
+      userFriendlyMessage = 'AI服务使用频率超限：\n• 请求过于频繁，触发限流\n• 请等待几分钟后重试\n• 考虑升级AI服务套餐';
+    } else if (errorMessage.includes('network') || errorMessage.includes('连接') || errorMessage.includes('请求失败') || errorMessage.includes('connection')) {
       errorType = 'network';
-      userFriendlyMessage = '网络连接异常，请检查：\n• 网络连接是否正常\n• AI服务是否可用\n• 稍后重试';
-    } else if (errorMessage.includes('文本内容') || errorMessage.includes('validation')) {
+      userFriendlyMessage = '网络连接异常：\n• 请检查网络连接是否正常\n• AI服务可能暂时不可用\n• 防火墙或代理设置可能阻止连接\n• 稍后重试';
+    } else if (errorMessage.includes('文本内容') || errorMessage.includes('validation') || errorMessage.includes('不能为空')) {
       errorType = 'validation';
-      userFriendlyMessage = '文本内容不符合要求，请检查：\n• 文本是否为空\n• 文本长度是否合适\n• 文本格式是否正确';
+      userFriendlyMessage = '输入内容验证失败：\n• 文本内容不能为空\n• 请检查文本格式是否正确\n• 确保选择了有效的AI模型';
     } else {
       errorType = 'unknown';
-      userFriendlyMessage = '分析过程中出现了问题，建议：\n• 检查文本内容\n• 尝试更换AI模型\n• 稍后重试';
+      // 显示原始错误信息，但添加友好的前缀
+      userFriendlyMessage = `分析过程中出现问题：\n\n具体错误：${errorMessage}\n\n建议解决方案：\n• 检查文本内容和格式\n• 尝试更换AI模型\n• 减少文本长度后重试\n• 如问题持续，请联系技术支持`;
     }
 
-    // 清理轮询
+    // 清理轮询和进度
     clearPolling();
 
     setError(userFriendlyMessage);
@@ -117,6 +139,9 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
       case 'parsing': return 'fa-code';
       case 'timeout': return 'fa-clock';
       case 'validation': return 'fa-edit';
+      case 'size': return 'fa-file-alt';
+      case 'auth': return 'fa-key';
+      case 'rate_limit': return 'fa-tachometer-alt';
       default: return 'fa-exclamation-triangle';
     }
   };
@@ -124,13 +149,18 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
   // 获取错误标题
   const getErrorTitle = (type: string): string => {
     switch (type) {
-      case 'network': return '网络连接问题';
-      case 'parsing': return 'AI分析格式异常';
-      case 'timeout': return '分析超时';
-      case 'validation': return '输入验证失败';
-      default: return '分析失败';
+      case 'network': return '网络连接错误';
+      case 'parsing': return '数据解析错误';
+      case 'timeout': return '请求超时';
+      case 'validation': return '输入验证错误';
+      case 'size': return '文件大小超限';
+      case 'auth': return '认证失败';
+      case 'rate_limit': return '请求频率超限';
+      default: return '分析错误';
     }
   };
+
+
 
   // 转换词性缩写
   const convertPOSAbbreviation = (pos: string): ExtractedWord['partOfSpeech'] => {
@@ -234,17 +264,21 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
 
   // 重置状态
   const resetState = () => {
-    // 清理轮询
+    console.log('Resetting all state...');
+
+    // 清理轮询和定时器
     clearPolling();
 
+    // 重置所有状态
     setCurrentStep('input');
     setTextContent('');
     setExtractedWords([]);
     setAnalysisProgress(null);
     setError(null);
+    setErrorType('unknown');
     setUploadedFileName(null);
-    // setAnalysisResult(null);
-    // setAnalysisPromiseRef(null);
+
+    console.log('State reset completed');
   };
 
   // 处理文件上传
@@ -267,7 +301,8 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
     // 检查文件大小 (限制为5MB)
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      setError('文件大小不能超过 5MB');
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      handleError(`文件大小超出限制：当前文件 ${fileSizeMB}MB，最大支持 5MB`, 'File size exceeded');
       return;
     }
 
@@ -293,23 +328,42 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
 
   // 取消分析
   const handleCancelAnalysis = async () => {
+    console.log('Cancelling analysis...');
+
+    // 立即清理前端状态，避免用户等待
+    clearPolling();
+
     try {
       // 通知后端取消分析
+      console.log('Sending cancel request to backend...');
       await wordBookService.cancelAnalysis();
+      console.log('Backend cancel request completed');
     } catch (error) {
       console.error('Failed to cancel backend analysis:', error);
+      // 即使后端取消失败，也要清理前端状态
     }
 
-    // 直接取消，不需要确认
+    // 重置所有状态
     resetState();
     setCurrentStep('input');
+    console.log('Analysis cancelled and state reset');
   };
 
   // 关闭模态框
-  const handleClose = () => {
+  const handleClose = async () => {
     // 如果正在分析中，询问用户是否确认关闭
     if (currentStep === 'analyzing') {
       if (window.confirm('分析正在进行中，确定要关闭吗？这将中断当前分析。')) {
+        console.log('User confirmed to close during analysis');
+
+        // 先取消分析
+        try {
+          await wordBookService.cancelAnalysis();
+          console.log('Analysis cancelled before closing');
+        } catch (error) {
+          console.error('Failed to cancel analysis before closing:', error);
+        }
+
         resetState();
         onClose();
       }
@@ -329,6 +383,23 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
     if (!selectedModel) {
       handleError('请选择AI模型', 'No model selected');
       return;
+    }
+
+    // 检查文本长度
+    const textLength = textContent.trim().length;
+    if (textLength > 5000) {
+      handleError(`文本内容过长：当前 ${textLength} 字符，建议控制在 5000 字符以内`, 'Text too long');
+      return;
+    }
+
+    // 如果文本较长，给出警告但允许继续
+    if (textLength > 3000) {
+      const shouldContinue = window.confirm(
+        `文本内容较长（${textLength} 字符），分析可能需要较长时间。\n\n建议：\n• 分段处理可以提高成功率\n• 较长文本可能导致AI输出不稳定\n\n是否继续分析？`
+      );
+      if (!shouldContinue) {
+        return;
+      }
     }
 
     // 清除之前的错误状态
@@ -367,12 +438,26 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
           // 分析成功但没有单词，可能是被取消了
           console.log('Analysis completed with empty result, likely cancelled');
           // 不需要处理，取消操作已经在handleCancelAnalysis中处理了
+        } else if (!result.success) {
+          // API返回了错误
+          console.error('Analysis API returned error:', result.error);
+          handleError(result.error || '分析失败', 'API returned error');
         } else {
           // 真正的错误
           handleError('分析完成但未获取到有效结果', 'Promise resolved with invalid result');
         }
       }).catch(err => {
-        handleError(err instanceof Error ? err.message : '分析失败', 'Promise rejected');
+        console.error('Analysis promise rejected:', err);
+        // 尝试从错误对象中提取更详细的信息
+        let errorMessage = '分析失败';
+        if (err instanceof Error) {
+          errorMessage = err.message;
+        } else if (typeof err === 'string') {
+          errorMessage = err;
+        } else if (err && typeof err === 'object' && err.error) {
+          errorMessage = err.error;
+        }
+        handleError(errorMessage, 'Promise rejected');
       });
 
     } catch (err) {
@@ -409,13 +494,20 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
             });
           } else if (result.data.status === 'error') {
             clearPolling();
-            handleError(result.data.error_message || '分析失败', 'Progress status error');
+            // 使用后端返回的详细错误信息
+            const errorMsg = result.data.error_message || '分析失败';
+            console.error('Backend analysis error:', errorMsg);
+            handleError(errorMsg, 'Progress status error');
           }
+        } else {
+          // API调用成功但没有返回有效数据
+          console.warn('Progress API returned success but no valid data:', result);
         }
       } catch (err) {
         console.error('Progress polling error:', err);
         clearPolling();
-        handleError('获取进度失败', 'Progress polling error');
+        // 轮询错误通常是网络问题，不应该显示给用户，除非是持续错误
+        // 这里只记录日志，让超时机制处理
       }
     }, 500); // 每0.5秒轮询一次，更频繁的更新
 
@@ -446,6 +538,35 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
 
     // 重新开始分析
     handleStartAnalysis();
+  };
+
+  // 显示大文件处理帮助
+  const handleShowSizeHelp = () => {
+    const helpMessage = `处理大文件的建议方法：
+
+1. 文本分段处理：
+   • 将大文本分成多个小段（建议每段1000-2000字符）
+   • 分别进行分析和导入
+   • 最后在单词本中统一管理
+
+2. 优化文本内容：
+   • 移除不必要的格式符号和特殊字符
+   • 保留核心的英文单词和句子
+   • 删除重复内容
+
+3. 选择合适的AI模型：
+   • 某些模型对长文本处理能力更强
+   • 可以尝试不同的模型进行分析
+
+4. 分批导入：
+   • 可以多次使用导入功能
+   • 系统会自动去重和合并单词
+
+是否要继续尝试分析当前文本？`;
+
+    if (window.confirm(helpMessage)) {
+      handleStartAnalysis();
+    }
   };
 
   // 返回输入步骤
@@ -635,7 +756,7 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
             >
               知道了
             </Button>
-            {(errorType === 'parsing' || errorType === 'timeout' || errorType === 'network') && (
+            {(errorType === 'parsing' || errorType === 'timeout' || errorType === 'network' || errorType === 'unknown') && (
               <Button
                 variant="primary"
                 size="sm"
@@ -645,6 +766,18 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
                 }}
               >
                 重新分析
+              </Button>
+            )}
+            {errorType === 'size' && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  clearError();
+                  handleShowSizeHelp();
+                }}
+              >
+                了解分段处理
               </Button>
             )}
           </div>

@@ -73,6 +73,18 @@ export const CreatePlanPageV2: React.FC<CreatePlanPageV2Props> = ({ onNavigate }
   const [error, setError] = useState<string | null>(null);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
 
+  // 格式化学习周期显示文本
+  const formatStudyPeriod = (days: number): string => {
+    switch (days) {
+      case 1: return '1天 (强化突击)';
+      case 3: return '3天 (短期集中)';
+      case 7: return '1周 (7天)';
+      case 14: return '2周 (14天)';
+      case 28: return '4周 (28天)';
+      default: return `${days} 天`;
+    }
+  };
+
   // 获取单词本数据
   const { data: rawWordBooks, loading: loadingBooks, error: loadError } = useAsyncData(async () => {
     const result = await wordBookService.getAllWordBooks();
@@ -322,7 +334,7 @@ export const CreatePlanPageV2: React.FC<CreatePlanPageV2Props> = ({ onNavigate }
   };
 
   const handleSaveDraft = () => handleSave('draft');
-  const handleCreate = () => handleSave('active');
+  const handleCreate = () => handleSave('active' as any);
 
   if (loadError && !loadingBooks) {
     return (
@@ -429,7 +441,11 @@ export const CreatePlanPageV2: React.FC<CreatePlanPageV2Props> = ({ onNavigate }
                       onChange={(e) => handleFormChange('studyPeriodDays', parseInt(e.target.value))}
                       className={styles.select}
                     >
+                      <option value={1}>1天 (强化突击)</option>
+                      <option value={3}>3天 (短期集中)</option>
                       <option value={7}>1周 (7天)</option>
+                      <option value={14}>2周 (14天)</option>
+                      <option value={28}>4周 (28天)</option>
                       <option value={14}>2周 (14天)</option>
                       <option value={28}>4周 (28天)</option>
                     </select>
@@ -537,7 +553,7 @@ export const CreatePlanPageV2: React.FC<CreatePlanPageV2Props> = ({ onNavigate }
                   </div>
                   <div className={styles.parameterItem}>
                     <span className={styles.parameterLabel}>学习周期:</span>
-                    <span className={styles.parameterValue}>{formData.studyPeriodDays} 天</span>
+                    <span className={styles.parameterValue}>{formatStudyPeriod(formData.studyPeriodDays)}</span>
                   </div>
                   <div className={styles.parameterItem}>
                     <span className={styles.parameterLabel}>复习频率:</span>
@@ -575,7 +591,7 @@ export const CreatePlanPageV2: React.FC<CreatePlanPageV2Props> = ({ onNavigate }
                     </div>
                     <div className={styles.summaryItem}>
                       <span className={styles.summaryLabel}>学习周期:</span>
-                      <span className={styles.summaryValue}>{aiResult.planMetadata?.studyPeriodDays || 0} 天</span>
+                      <span className={styles.summaryValue}>{formatStudyPeriod(aiResult.planMetadata?.studyPeriodDays || 0)}</span>
                     </div>
                     <div className={styles.summaryItem}>
                       <span className={styles.summaryLabel}>结束日期:</span>
@@ -667,7 +683,7 @@ export const CreatePlanPageV2: React.FC<CreatePlanPageV2Props> = ({ onNavigate }
                   </div>
                   <div className={styles.infoItem}>
                     <span className={styles.infoLabel}>学习周期:</span>
-                    <span className={styles.infoValue}>{aiResult.planMetadata?.studyPeriodDays || 0} 天</span>
+                    <span className={styles.infoValue}>{formatStudyPeriod(aiResult.planMetadata?.studyPeriodDays || 0)}</span>
                   </div>
                   <div className={styles.infoItem}>
                     <span className={styles.infoLabel}>开始日期:</span>

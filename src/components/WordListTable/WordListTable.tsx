@@ -22,6 +22,8 @@ export interface WordListTableProps {
   /** 播放发音回调 */
   onPlayPronunciation?: (word: WordDetail) => void;
 
+  /** 编辑单词回调 */
+  onEditWord?: (word: WordDetail) => void;
   /** 删除单词回调 */
   onDeleteWord?: (word: WordDetail) => void;
   /** 批量删除回调 */
@@ -37,6 +39,8 @@ export interface WordListTableProps {
     total: number;
     onChange: (page: number) => void;
   };
+  /** 只读模式 */
+  readonly?: boolean;
 }
 
 const PART_OF_SPEECH_CONFIG = {

@@ -14,12 +14,10 @@ import { WordBookService } from '../../services/wordbookService';
 import { StudyService } from '../../services/studyService';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useToast } from '../';
-import type { 
+import type {
   StudyPlan,
-  StudyPlanScheduleRequest, 
-  StudyPlanAIResult, 
-  IntensityLevel,
-  StudyPlanStatus
+  StudyPlanAIResult,
+  IntensityLevel
 } from '../../types';
 
 export interface EditPlanModalProps {
@@ -61,8 +59,7 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
   isOpen,
   onClose,
   plan,
-  onSave,
-  saving = false
+  onSave
 }) => {
   const { showToast } = useToast();
   const wordBookService = new WordBookService();
@@ -95,10 +92,22 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
 
+  // 格式化学习周期显示文本
+  const formatStudyPeriod = (days: number): string => {
+    switch (days) {
+      case 1: return '1天 (强化突击)';
+      case 3: return '3天 (短期集中)';
+      case 7: return '1周 (7天)';
+      case 14: return '2周 (14天)';
+      case 28: return '4周 (28天)';
+      default: return `${days} 天`;
+    }
+  };
+
 
 
   // 获取单词本数据
-  const { data: rawWordBooks, loading: loadingBooks, error: loadError } = useAsyncData(async () => {
+  const { data: rawWordBooks, loading: loadingBooks } = useAsyncData(async () => {
     const result = await wordBookService.getAllWordBooks();
     if (result.success) {
       return result.data.filter(book => book.status === 'normal');
@@ -179,6 +188,8 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
     resetState();
     onClose();
   };
+
+
 
   // 基本信息表单字段更新
   const updateBasicFormData = (field: keyof BasicFormData, value: any) => {
@@ -366,7 +377,7 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
           reviewFrequency: advancedFormData.reviewFrequency,
           startDate: advancedFormData.startDate,
           wordbookIds: advancedFormData.selectedBooks,
-          schedule: aiResult, // 传递整个aiResult对象
+          schedule: aiResult, // 传递完整的AI结果对象，而不是只传递日程数组
           status: 'draft' as const // 编辑计划时保持草稿状态
         };
 
@@ -431,6 +442,7 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
     <div className={styles.basicTab}>
       <div className={styles.formSection}>
         <FormInput
+          name="name"
           label="计划名称"
           value={basicFormData.name}
           onChange={(value) => updateBasicFormData('name', value)}
@@ -439,6 +451,7 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
         />
 
         <FormInput
+          name="description"
           label="计划描述"
           value={basicFormData.description}
           onChange={(value) => updateBasicFormData('description', value)}
@@ -500,9 +513,11 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
                   className={styles.select}
                   title="学习周期"
                 >
-                  <option value={7}>1周</option>
-                  <option value={14}>2周</option>
-                  <option value={28}>4周</option>
+                  <option value={1}>1天 (强化突击)</option>
+                  <option value={3}>3天 (短期集中)</option>
+                  <option value={7}>1周 (7天)</option>
+                  <option value={14}>2周 (14天)</option>
+                  <option value={28}>4周 (28天)</option>
                 </select>
               </div>
 
@@ -585,162 +600,11 @@ export const EditPlanModal: React.FC<EditPlanModalProps> = ({
     </div>
   );
 
-  // 渲染高级设置界面（保留用于兼容）
-  const renderAdvancedMode = () => (
-    <div className={styles.advancedMode}>
-      <div className={styles.stepIndicator}>
-        <div className={`${styles.stepItem} ${styles.completed}`}>
-          <i className="fas fa-check" />
-          基本信息
-        </div>
-        <div className={`${styles.stepConnector} ${styles.completed}`} />
-        <div className={`${styles.stepItem} ${styles.active}`}>
-          <i className="fas fa-cog" />
-          学习设置
-        </div>
-      </div>
-
-      <div className={styles.formSection}>
-        <h3 className={styles.sectionTitle}>学习设置</h3>
-
-        <div className={styles.settingsGrid}>
-          <div className={styles.settingItem}>
-            <label>学习强度</label>
-            <select
-              value={advancedFormData.intensityLevel}
-              onChange={(e) => updateAdvancedFormData('intensityLevel', e.target.value)}
-              className={styles.select}
-            >
-              <option value="easy">轻松模式 (5-15词/天)</option>
-              <option value="normal">标准模式 (15-30词/天)</option>
-              <option value="intensive">强化模式 (30-50词/天)</option>
-            </select>
-          </div>
-
-          <div className={styles.settingItem}>
-            <label>学习周期</label>
-            <select
-              value={advancedFormData.studyPeriodDays}
-              onChange={(e) => updateAdvancedFormData('studyPeriodDays', parseInt(e.target.value))}
-              className={styles.select}
-            >
-              <option value={7}>1周 (7天)</option>
-              <option value={14}>2周 (14天)</option>
-              <option value={28}>4周 (28天)</option>
-            </select>
-          </div>
-
-          <div className={styles.settingItem}>
-            <label>复习频率</label>
-            <select
-              value={advancedFormData.reviewFrequency}
-              onChange={(e) => updateAdvancedFormData('reviewFrequency', parseInt(e.target.value))}
-              className={styles.select}
-            >
-              <option value={3}>3次复习</option>
-              <option value={4}>4次复习</option>
-              <option value={5}>5次复习</option>
-            </select>
-          </div>
-        </div>
-
-        <FormInput
-          label="开始日期"
-          value={advancedFormData.startDate}
-          onChange={(value) => updateAdvancedFormData('startDate', value)}
-          type="date"
-          required
-        />
-      </div>
-
-      <div className={styles.formSection}>
-        <h3 className={styles.sectionTitle}>单词本选择</h3>
-        <WordBookSelector
-          books={wordBooks}
-          selectedBooks={advancedFormData.selectedBooks}
-          onSelectionChange={(books) => updateAdvancedFormData('selectedBooks', books)}
-          loading={loadingBooks}
-        />
-      </div>
-
-      <div className={styles.formSection}>
-        <h3 className={styles.sectionTitle}>AI模型选择</h3>
-        <AIModelSelector
-          selectedModel={advancedFormData.selectedModel}
-          onModelChange={(modelId) => updateAdvancedFormData('selectedModel', modelId || undefined)}
-          label="AI模型选择"
-          description="选择用于重新生成学习计划的AI模型（可选，默认使用系统推荐模型）"
-        />
-      </div>
-
-      {error && (
-        <div className={styles.error}>
-          <i className="fas fa-exclamation-triangle" />
-          {error}
-        </div>
-      )}
-
-      <div className={styles.actions}>
-        <Button
-          variant="secondary"
-          onClick={handleBackToBasic}
-          disabled={updating}
-        >
-          <i className="fas fa-arrow-left" />
-          返回
-        </Button>
-
-        <Button
-          variant="primary"
-          onClick={handleStartPlanning}
-          disabled={updating}
-        >
-          <i className="fas fa-magic" />
-          重新生成日程
-        </Button>
-      </div>
-    </div>
-  );
 
 
 
-  // 渲染确认界面
-  const renderConfirmationMode = () => (
-    <div className={styles.confirmationMode}>
-      <div className={styles.stepIndicator}>
-        <div className={`${styles.stepItem} ${styles.completed}`}>
-          <i className="fas fa-check" />
-          基本信息
-        </div>
-        <div className={`${styles.stepConnector} ${styles.completed}`} />
-        <div className={`${styles.stepItem} ${styles.completed}`}>
-          <i className="fas fa-check" />
-          学习设置
-        </div>
-        <div className={`${styles.stepConnector} ${styles.completed}`} />
-        <div className={`${styles.stepItem} ${styles.active}`}>
-          <i className="fas fa-check-circle" />
-          确认更新
-        </div>
-      </div>
 
-      {aiResult && (
-        <StudySchedulePreview
-          aiResult={aiResult}
-          onCreatePlan={handleSaveUpdatedPlan}
-          loading={updating}
-          mode="edit"
-        />
-      )}
 
-      {error && (
-        <div className={styles.error}>
-          <i className="fas fa-exclamation-triangle" />
-          {error}
-        </div>
-      )}
-    </div>
-  );
 
   if (!plan) return null;
 

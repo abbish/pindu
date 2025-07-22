@@ -171,26 +171,101 @@
 
 /* Calendar Grid */
 .calendarGrid {
+  position: relative;
+  z-index: 2;
+  margin-bottom: var(--spacing-lg);
+}
+
+.weekRow {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: var(--spacing-xs);
-  position: relative;
-  z-index: 2;
+  margin-bottom: var(--spacing-xs);
 }
 
-.dayCell {
-  aspect-ratio: 1;
-  padding: var(--spacing-xs);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-primary);
-  cursor: pointer;
-  transition: all 0.2s;
+.loadingContainer {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+  color: var(--color-text-secondary);
+  gap: var(--spacing-sm);
+}
+
+.loadingContainer i {
+  font-size: var(--font-size-xl);
+  color: var(--color-primary);
+}
+
+.dayCell {
   position: relative;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs);
+  min-height: 80px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background-color: var(--color-bg-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.dayCell:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-xs);
+}
+
+.dayCell.otherMonth {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.dayCell.otherMonth:hover {
+  border-color: var(--color-border-light);
+  box-shadow: none;
+}
+
+.dayCell.today {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-light);
+}
+
+.dayCell.inPlan {
+  cursor: pointer;
+}
+
+.dayCell.inPlan:hover {
+  transform: translateY(-1px);
+}
+
+/* Day Status Colors - 匹配StudyCalendar */
+.dayCell.notStarted {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--color-border);
+}
+
+.dayCell.planned {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--color-border);
+}
+
+.dayCell.partial {
+  background-color: var(--color-warning-light);
+  border-color: var(--color-warning);
+}
+
+.dayCell.completed {
+  background-color: var(--color-success-light);
+  border-color: var(--color-success);
+}
+
+.dayCell.missed {
+  background-color: var(--color-error-light);
+  border-color: var(--color-error);
 }
 
 .dayCell:hover {
@@ -201,71 +276,13 @@
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
-  margin-bottom: 2px;
+  margin-bottom: var(--spacing-xs);
 }
 
-.statusIcon {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-size-xs);
-}
-
-.wordCount {
-  font-size: var(--font-size-xs);
-  margin-top: 2px;
-  font-weight: var(--font-weight-medium);
-}
-
-/* Day Status Styles */
-.dayCell.completed {
-  background: var(--color-bg-primary);
-}
-
-.dayCell.completed .dayNumber {
-  color: var(--color-text-primary);
-}
-
-.dayCell.partial {
-  background: var(--color-bg-primary);
-}
-
-.dayCell.partial .dayNumber {
-  color: var(--color-text-primary);
-}
-
-.dayCell.missed {
-  background: var(--color-bg-primary);
-}
-
-.dayCell.missed .dayNumber {
-  color: var(--color-text-primary);
-}
-
-.dayCell.today {
-  border: 2px solid var(--color-primary);
-  background: var(--color-primary-light);
-}
-
+/* 保留今天的数字样式 */
 .dayCell.today .dayNumber {
   color: var(--color-primary);
   font-weight: var(--font-weight-bold);
-}
-
-.dayCell.today .wordCount {
-  color: var(--color-primary);
-  font-weight: var(--font-weight-semibold);
-}
-
-.dayCell.planned {
-  background: var(--color-bg-primary);
-}
-
-.dayCell.planned .dayNumber {
-  color: var(--color-text-primary);
 }
 
 /* Sidebar */
@@ -485,4 +502,181 @@
   .cardTitle {
     font-size: var(--font-size-lg);
   }
+}
+
+/* 单词数显示 - 匹配StudyCalendar样式 */
+.wordCounts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--spacing-xs);
+  flex: 1;
+}
+
+.newWords,
+.reviewWords {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.2;
+}
+
+.newWords {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.reviewWords {
+  background-color: var(--color-secondary);
+  color: white;
+}
+
+/* 进度条 - 匹配StudyCalendar */
+.progressBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background-color: var(--color-bg-tertiary);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background-color: var(--color-primary);
+  transition: width var(--transition-normal);
+  border-radius: inherit;
+  width: var(--progress-width, 0%);
+}
+
+/* Today Schedule Styles */
+.scheduleItem {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  transition: all var(--transition-normal);
+}
+
+.scheduleItem:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.scheduleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.scheduleName {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+}
+
+.scheduleStatus {
+  font-size: var(--font-size-sm);
+}
+
+.statusCompleted {
+  color: var(--color-green);
+  background: rgba(76, 175, 80, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+}
+
+.statusInProgress {
+  color: var(--color-orange);
+  background: rgba(255, 149, 0, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+}
+
+.statusNotStarted {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+}
+
+.scheduleDetails {
+  margin-bottom: var(--spacing-sm);
+}
+
+.wordCounts {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.newWords {
+  background: rgba(33, 150, 243, 0.1);
+  color: var(--color-primary);
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.reviewWords {
+  background: rgba(156, 39, 176, 0.1);
+  color: var(--color-purple);
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.progressText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  min-width: 60px;
+}
+
+.practiceBtn {
+  width: 100%;
+  margin-top: var(--spacing-sm);
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-xl);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.emptyState i {
+  font-size: var(--font-size-2xl);
+  margin-bottom: var(--spacing-sm);
+  opacity: 0.5;
+}
+
+.loadingContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  color: var(--color-text-secondary);
+  gap: var(--spacing-sm);
+}
+
+.loadingContainer i {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

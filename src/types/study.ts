@@ -5,8 +5,10 @@ export interface StudyPlan {
   id: Id;
   name: string;
   description: string;
-  status: StudyPlanStatus;                    // 管理状态：normal, draft, deleted
-  lifecycle_status: StudyPlanLifecycleStatus; // 生命周期状态：pending, active, completed
+  status: StudyPlanStatus;                    // 管理状态：normal, draft, deleted (保留用于兼容)
+  /** @deprecated Use unified_status instead */
+  lifecycle_status?: StudyPlanLifecycleStatus; // 生命周期状态：pending, active, completed (已废弃)
+  unified_status: UnifiedStudyPlanStatus;     // 统一状态字段
   total_words: number;
   learned_words: number;
   accuracy_rate: number;
@@ -28,7 +30,6 @@ export interface StudyPlan {
 
 /// 带进度的学习计划
 export interface StudyPlanWithProgress extends StudyPlan {
-  unified_status: UnifiedStudyPlanStatus;  // 统一状态字段
   progress_percentage: number;
 }
 
@@ -37,16 +38,22 @@ export type UnifiedStudyPlanStatus =
   | 'Draft'      // 草稿状态 - 刚创建，还未完成配置
   | 'Pending'    // 待开始 - 已配置完成，等待开始学习
   | 'Active'     // 进行中 - 正在学习
-  | 'Paused'     // 已暂停 - 暂时停止学习
   | 'Completed'  // 已完成 - 学习计划正常完成
   | 'Terminated' // 已终止 - 提前结束学习计划
   | 'Deleted';   // 已删除 - 软删除状态
 
+/// 学习计划管理状态（保留用于向后兼容）
+export type StudyPlanStatus = 'normal' | 'draft' | 'deleted';
+
+/// 学习计划生命周期状态（已废弃，保留用于向后兼容）
+/** @deprecated Use UnifiedStudyPlanStatus instead */
+export type StudyPlanLifecycleStatus = 'pending' | 'active' | 'completed' | 'terminated';
+
 /// 旧的学习计划管理状态（保留用于向后兼容）
-export type LegacyStudyPlanStatus = 'normal' | 'draft' | 'deleted';
+export type LegacyStudyPlanStatus = StudyPlanStatus;
 
 /// 旧的学习计划生命周期状态（保留用于向后兼容）
-export type LegacyStudyPlanLifecycleStatus = 'pending' | 'active' | 'completed' | 'terminated';
+export type LegacyStudyPlanLifecycleStatus = StudyPlanLifecycleStatus;
 
 /// 为了向后兼容，保留原有的类型别名
 export type StudyPlanStatus = LegacyStudyPlanStatus;
@@ -127,6 +134,130 @@ export interface EndSessionRequest {
   words_studied: number;
   correct_answers: number;
   total_time: number;
+}
+
+// ==================== 单词练习相关类型 ====================
+
+/// 单词练习步骤枚举
+export enum WordPracticeStep {
+  STEP_1 = 1, // 显示完整信息（单词+音标+中文+音节+拼读）
+  STEP_2 = 2, // 隐藏英文原文（音标+中文+音节+拼读）
+  STEP_3 = 3  // 仅中文+音节+拼读+发音
+}
+
+/// 练习单词信息
+export interface PracticeWordInfo {
+  wordId: number;
+  word: string;
+  meaning: string;
+  description?: string;
+  ipa?: string;
+  syllables?: string;
+  phonicsSegments?: string;
+}
+
+/// 单词练习状态
+export interface WordPracticeState {
+  wordId: number;
+  planWordId: number;        // study_plan_schedule_words 表的 ID
+  wordInfo: PracticeWordInfo; // 完整的单词信息
+  currentStep: WordPracticeStep;
+  stepResults: boolean[];    // 三个步骤的结果 [step1, step2, step3]
+  stepAttempts: number[];    // 每个步骤的尝试次数
+  stepTimeSpent: number[];   // 每个步骤的用时（毫秒）
+  completed: boolean;        // 三个步骤是否全部完成
+  passed: boolean;           // 三步全对才算通过
+  startTime: string;         // 开始时间
+  endTime?: string;          // 结束时间
+}
+
+/// 练习会话
+export interface PracticeSession {
+  sessionId: string;
+  planId: number;
+  planTitle?: string;        // 学习计划名称
+  scheduleId: number;        // 关联的日程ID
+  scheduleDate: string;      // 日程日期
+  startTime: string;
+  endTime?: string;
+  totalTime: number;         // 总时间（包含暂停，毫秒）
+  activeTime: number;        // 实际练习时间（毫秒）
+  pauseCount: number;        // 暂停次数
+  wordStates: WordPracticeState[];
+  completed: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/// 暂停记录
+export interface PracticePauseRecord {
+  id: number;
+  sessionId: string;
+  pauseStart: string;
+  pauseEnd?: string;
+  createdAt: string;
+}
+
+/// 练习结果
+export interface PracticeResult {
+  sessionId: string;
+  planId: number;
+  scheduleId: number;
+  scheduleDate: string;
+  totalWords: number;
+  passedWords: number;       // 三步全对的单词数
+  totalSteps: number;        // 总步骤数（单词数 * 3）
+  correctSteps: number;      // 正确步骤数
+  stepAccuracy: number;      // 步骤正确率
+  wordAccuracy: number;      // 单词通过率
+  totalTime: number;         // 总时间（毫秒）
+  activeTime: number;        // 实际练习时间（毫秒）
+  pauseCount: number;
+  averageTimePerWord: number; // 平均每个单词用时（毫秒）
+  difficultWords: WordPracticeState[]; // 未通过的单词
+  completedAt: string;
+}
+
+/// 练习统计数据
+export interface PracticeStatistics {
+  totalSessions: number;      // 总练习会话数
+  completedSessions: number;  // 已完成会话数
+  averageAccuracy: number;    // 平均准确率
+  totalPracticeTime: number;  // 总练习时间（毫秒）
+  wordsLearned: number;       // 已学会的单词数
+}
+
+/// 开始练习会话请求
+export interface StartPracticeSessionRequest {
+  planId: number;
+  scheduleId: number;
+}
+
+/// 提交步骤结果请求
+export interface SubmitStepResultRequest {
+  sessionId: string;
+  wordId: number;
+  planWordId: number;
+  step: WordPracticeStep;
+  userInput: string;
+  isCorrect: boolean;
+  timeSpent: number;         // 毫秒
+  attempts: number;
+}
+
+/// 暂停练习会话请求
+export interface PausePracticeSessionRequest {
+  sessionId: string;
+}
+
+/// 恢复练习会话请求
+export interface ResumePracticeSessionRequest {
+  sessionId: string;
+}
+
+/// 完成练习会话请求
+export interface CompletePracticeSessionRequest {
+  sessionId: string;
 }
 
 // ==================== AI规划相关类型 ====================
@@ -251,6 +382,58 @@ export interface CalendarDayData {
   completedWordsCount: number;
   progressPercentage: number;
   studyTimeMinutes?: number;
+  // 新增字段
+  studyPlans?: CalendarStudyPlan[];
+  studySessions?: CalendarStudySession[];
+}
+
+/// 日历中的学习计划信息
+export interface CalendarStudyPlan {
+  id: number;
+  name: string;
+  color?: string;
+  icon?: string;
+  targetWords: number;
+  completedWords: number;
+  status: StudyPlanLifecycleStatus;
+}
+
+/// 日历中的学习记录信息
+export interface CalendarStudySession {
+  id: number;
+  planId: number;
+  planName: string;
+  wordsStudied: number;
+  studyTimeMinutes: number;
+  accuracyRate: number;
+  completedAt: string;
+}
+
+/// 日历月度数据请求
+export interface CalendarMonthRequest {
+  year: number;
+  month: number; // 1-12
+  includeOtherMonths?: boolean; // 是否包含其他月份的日期
+}
+
+/// 日历月度数据响应
+export interface CalendarMonthResponse {
+  year: number;
+  month: number;
+  days: CalendarDayData[];
+  monthlyStats: CalendarMonthlyStats;
+}
+
+/// 日历月度统计
+export interface CalendarMonthlyStats {
+  totalDays: number;
+  studyDays: number;
+  completedDays: number;
+  totalWordsLearned: number;
+  totalStudyMinutes: number;
+  averageAccuracy: number;
+  streakDays: number;
+  activePlansCount: number;
 }
 
 /// 学习计划统计数据
@@ -366,7 +549,7 @@ export const getStatusDisplay = (status: UnifiedStudyPlanStatus): StatusDisplayI
     case 'Draft': return { text: '草稿', color: 'gray', icon: 'edit' };
     case 'Pending': return { text: '待开始', color: 'blue', icon: 'clock' };
     case 'Active': return { text: '进行中', color: 'green', icon: 'play' };
-    case 'Paused': return { text: '已暂停', color: 'orange', icon: 'pause' };
+
     case 'Completed': return { text: '已完成', color: 'green', icon: 'check' };
     case 'Terminated': return { text: '已终止', color: 'red', icon: 'stop' };
     case 'Deleted': return { text: '已删除', color: 'gray', icon: 'trash' };
@@ -378,8 +561,6 @@ export type StudyPlanAction =
   | 'edit'           // 编辑
   | 'publish'        // 发布
   | 'start'          // 开始
-  | 'pause'          // 暂停
-  | 'resume'         // 恢复
   | 'complete'       // 完成
   | 'terminate'      // 终止
   | 'restart'        // 重新开始
@@ -395,9 +576,7 @@ export const getAvailableActions = (status: UnifiedStudyPlanStatus): StudyPlanAc
     case 'Pending':
       return ['start', 'edit', 'delete'];
     case 'Active':
-      return ['pause', 'complete', 'terminate', 'edit'];
-    case 'Paused':
-      return ['resume', 'terminate', 'edit'];
+      return ['complete', 'terminate', 'edit'];
     case 'Completed':
     case 'Terminated':
       return ['restart', 'delete'];
@@ -416,9 +595,7 @@ export const canTransitionTo = (from: UnifiedStudyPlanStatus, to: UnifiedStudyPl
     case 'Pending':
       return ['Active', 'Draft', 'Deleted'].includes(to);
     case 'Active':
-      return ['Paused', 'Completed', 'Terminated', 'Draft'].includes(to);
-    case 'Paused':
-      return ['Active', 'Terminated', 'Draft'].includes(to);
+      return ['Completed', 'Terminated', 'Draft'].includes(to);
     case 'Completed':
     case 'Terminated':
       return ['Draft'].includes(to);
@@ -473,4 +650,48 @@ export interface StatusFilterOption {
   value: string;
   label: string;
   count?: number;
+}
+
+/// 今日学习日程
+export interface TodayStudySchedule {
+  planId: Id;
+  planName: string;
+  scheduleId: Id;
+  scheduleDate: string;
+  newWordsCount: number;
+  reviewWordsCount: number;
+  totalWordsCount: number;
+  completedWordsCount: number;
+  progressPercentage: number;
+  status: 'completed' | 'in-progress' | 'not-started';
+  canStartPractice: boolean;
+}
+
+/// 数据库表统计信息
+export interface DatabaseTableStats {
+  table_name: string;
+  display_name: string;
+  record_count: number;
+  table_type: 'config' | 'user_data';
+  description: string;
+}
+
+/// 数据库概览信息
+export interface DatabaseOverview {
+  total_tables: number;
+  total_records: number;
+  tables: DatabaseTableStats[];
+}
+
+/// 重置操作结果
+export interface ResetResult {
+  success: boolean;
+  message: string;
+  deleted_records: number;
+  affected_tables: string[];
+}
+
+/// 选择性重置请求
+export interface SelectiveResetRequest {
+  table_names: string[];
 }

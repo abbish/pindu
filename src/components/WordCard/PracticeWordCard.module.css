@@ -1,0 +1,439 @@
+/* 练习卡片主容器 */
+.practiceCard {
+  background: var(--color-bg-primary);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--spacing-xl);
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.practiceCard:hover {
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-2px);
+}
+
+/* 步骤标题区域 */
+.stepHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 2px solid var(--color-border-light);
+}
+
+.stepBadge {
+  background: var(--color-primary);
+  color: white;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--border-radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+}
+
+.stepInfo {
+  flex: 1;
+}
+
+.stepTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-xs) 0;
+}
+
+.stepDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+/* 单词信息区域 */
+.wordSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.wordDisplay {
+  text-align: center;
+}
+
+.wordText {
+  font-size: 3.5rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+  letter-spacing: 0.05em;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  /* 禁止选中和复制 */
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  pointer-events: none;
+}
+
+/* 语音播放区域 */
+.audioSection {
+  display: flex;
+  justify-content: center;
+}
+
+.audioBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-full);
+  width: 48px;
+  height: 48px;
+  font-size: var(--font-size-lg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.audioBtn:hover {
+  background: var(--color-primary-dark);
+  transform: scale(1.1);
+}
+
+/* 音标和音节行 */
+.phoneticSyllablesRow {
+  display: flex;
+  gap: var(--spacing-lg);
+  align-items: stretch;
+}
+
+.phoneticColumn,
+.syllablesColumn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius-md);
+}
+
+.phoneticLabel,
+.syllablesLabel {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  min-width: 50px;
+  flex-shrink: 0;
+}
+
+.phoneticText {
+  font-size: var(--font-size-xl);
+  color: var(--color-primary);
+  font-family: 'Lucida Sans Unicode', 'Arial Unicode MS', sans-serif;
+  font-weight: var(--font-weight-medium);
+}
+
+.syllablesText {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.audioBtn {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-full);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.audioBtn:hover {
+  background: var(--color-primary-dark);
+  transform: scale(1.1);
+}
+
+/* 释义区域 */
+.meaningSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.meaningRow,
+.descriptionRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius-md);
+}
+
+.meaningLabel,
+.descriptionLabel {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.meaningText {
+  font-size: var(--font-size-xl);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.descriptionText {
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* 拼读规则区域 */
+.phonicsSection {
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius-md);
+}
+
+.phonicsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.phonicsLabel {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  min-width: 50px;
+  flex-shrink: 0;
+}
+
+.phonicsSegments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.phonicsSegment {
+  background: var(--color-primary);
+  color: white;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.syllablesGroup,
+.phonicsGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.phonicsLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+  min-width: 40px;
+}
+
+.syllablesDisplay,
+.phonicsDisplay {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.syllableSegment,
+.phonicsSegment {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+/* 输入区域 */
+.inputSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.inputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.practiceInput {
+  width: 100%;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  padding-right: 60px;
+  font-size: var(--font-size-xl);
+  border: 3px solid var(--color-border-light);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: all 0.3s ease;
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+
+.practiceInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.practiceInput.focused {
+  transform: scale(1.02);
+}
+
+.practiceInput.correct {
+  border-color: var(--color-success);
+  background: var(--color-success-light);
+}
+
+.practiceInput.incorrect {
+  border-color: var(--color-error);
+  background: var(--color-error-light);
+}
+
+.inputIcon {
+  position: absolute;
+  right: var(--spacing-lg);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-lg);
+  pointer-events: none;
+}
+
+/* 结果显示 */
+.resultDisplay {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  border-radius: var(--border-radius-md);
+  animation: slideIn 0.3s ease;
+}
+
+.resultDisplay.success {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+  border: 2px solid var(--color-success);
+}
+
+.resultDisplay.error {
+  background: var(--color-error-light);
+  color: var(--color-error-dark);
+  border: 2px solid var(--color-error);
+}
+
+.resultIcon {
+  font-size: var(--font-size-xl);
+}
+
+.resultText {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-medium);
+  flex: 1;
+}
+
+.correctAnswer {
+  font-size: var(--font-size-md);
+  margin-top: var(--spacing-xs);
+}
+
+/* 提交按钮 */
+.submitBtn {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-lg) var(--spacing-2xl);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  align-self: center;
+  min-width: 120px;
+}
+
+.submitBtn:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.submitBtn:disabled {
+  background: var(--color-text-tertiary);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 动画 */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .practiceCard {
+    padding: var(--spacing-lg);
+    margin: var(--spacing-md);
+  }
+
+  .wordText {
+    font-size: 2.5rem;
+  }
+
+  .practiceInput {
+    font-size: var(--font-size-lg);
+    padding: var(--spacing-md) var(--spacing-lg);
+  }
+
+  .phonicsSection {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .syllablesGroup,
+  .phonicsGroup {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+}

@@ -38,24 +38,26 @@
   margin-bottom: var(--spacing-2xl);
 }
 
-.headerTop {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: var(--spacing-lg);
-  gap: var(--spacing-lg);
-}
+/* 移除旧的headerTop和planInfo样式，使用新的布局结构 */
 
-.planInfo {
-  flex: 1;
-}
-
+/* Title Row - 独立容器 */
 .titleRow {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  margin-bottom: var(--spacing-xl);
   gap: var(--spacing-lg);
-  margin-bottom: var(--spacing-sm);
+}
+
+.titleSection {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Info Cards Container - 独立容器 */
+.infoCardsContainer {
+  width: 100%;
+  margin-bottom: var(--spacing-lg);
 }
 
 .titleLeft {
@@ -150,10 +152,12 @@
 
 /* 信息网格 */
 .infoGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  display: flex;
   gap: var(--spacing-md);
-  margin-top: var(--spacing-lg);
+  flex-wrap: nowrap;
+  align-items: stretch;
+  width: 100%;
+  justify-content: space-between;
 }
 
 .infoCard {
@@ -162,6 +166,10 @@
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
   transition: all var(--transition-normal);
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  text-align: left;
 }
 
 .infoCard:hover {
@@ -191,6 +199,22 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* 日期范围显示 */
+.dateRange {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+  line-height: 1.2;
+}
+
+.dateSeparator {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  text-align: center;
+  margin: 1px 0;
+}
+
 .noData {
   color: var(--color-text-tertiary);
   font-style: italic;
@@ -214,9 +238,11 @@
 
 .headerActions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--spacing-sm);
   flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 0;
 }
 
 .actionBtn {
@@ -406,12 +432,12 @@
     padding: var(--spacing-lg);
   }
   
-  .headerTop {
+  .titleRow {
     flex-direction: column;
     align-items: stretch;
     gap: var(--spacing-md);
   }
-  
+
   .headerActions {
     order: -1;
     justify-content: flex-end;
@@ -432,8 +458,13 @@
   }
 
   .infoGrid {
-    grid-template-columns: 1fr;
+    flex-direction: column;
     gap: var(--spacing-sm);
+  }
+
+  .infoCard {
+    text-align: left;
+    min-width: unset;
   }
   
   .statsGrid {
@@ -1285,4 +1316,189 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+}
+
+/* 学习日志样式 */
+.logsContent {
+  padding: var(--spacing-lg);
+}
+
+.logsHeader {
+  margin-bottom: var(--spacing-2xl);
+  text-align: center;
+}
+
+.logsHeader h3 {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
+.logsHeader p {
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.logsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.logEntry {
+  background-color: var(--color-bg-primary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
+  overflow: hidden;
+}
+
+.logDate {
+  background-color: var(--color-bg-secondary);
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dateInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.date {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.weekday {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.dailySummary {
+  display: flex;
+  gap: var(--spacing-lg);
+}
+
+.summaryItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.summaryItem i {
+  color: var(--color-primary);
+}
+
+.sessionsList {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.sessionItem {
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border-light);
+}
+
+.sessionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.sessionTime {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.sessionTime i {
+  color: var(--color-primary);
+}
+
+.sessionStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+}
+
+.sessionStatus.completed {
+  background-color: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.sessionStatus.paused {
+  background-color: var(--color-warning-light);
+  color: var(--color-warning-dark);
+}
+
+.sessionStatus.abandoned {
+  background-color: var(--color-error-light);
+  color: var(--color-error-dark);
+}
+
+.sessionStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.statLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.statValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .logDate {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+  }
+
+  .dailySummary {
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+  }
+
+  .sessionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .sessionStats {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

@@ -7,7 +7,7 @@ export interface StudyPlanSectionProps {
   /** Section title */
   title: string;
   /** Status indicator color */
-  statusColor: 'green' | 'yellow' | 'blue' | 'primary';
+  statusColor: 'green' | 'yellow' | 'blue' | 'primary' | 'gray' | 'orange' | 'red';
   /** Number of plans in this section */
   count: number;
   /** Study plans data */
@@ -40,7 +40,10 @@ export const StudyPlanSection: React.FC<StudyPlanSectionProps> = ({
       green: styles.statusGreen,
       yellow: styles.statusYellow,
       blue: styles.statusBlue,
-      primary: styles.statusPrimary
+      primary: styles.statusPrimary,
+      orange: styles.statusYellow, // 使用yellow样式作为orange的替代
+      red: styles.statusPrimary, // 使用primary样式作为red的替代
+      gray: styles.statusBlue // 使用blue样式作为gray的替代
     };
     return colorMap[statusColor] || styles.statusPrimary;
   };

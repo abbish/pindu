@@ -3,8 +3,14 @@ export * from './baseService';
 export * from './wordbookService';
 export * from './studyService';
 export * from './statisticsService';
+export * from './calendarService';
+export * from './dataManagementService';
+export * from './practiceService';
 
 // 导出服务实例
 export { WordBookService } from './wordbookService';
 export { studyService } from './studyService';
 export { statisticsService } from './statisticsService';
+export { calendarService } from './calendarService';
+export { dataManagementService } from './dataManagementService';
+export { practiceService } from './practiceService';

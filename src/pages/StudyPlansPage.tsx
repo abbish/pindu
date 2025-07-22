@@ -39,7 +39,6 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
     { value: 'Draft', label: '草稿' },
     { value: 'Pending', label: '待开始' },
     { value: 'Active', label: '进行中' },
-    { value: 'Paused', label: '已暂停' },
     { value: 'Completed', label: '已完成' },
     { value: 'Terminated', label: '已终止' },
     { value: 'Deleted', label: '已删除' }
@@ -105,9 +104,9 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
     const totalPlans = studyPlans?.filter(plan => plan.status !== 'deleted').length || 0;
     const activePlans = groupedPlans.active.length;
     const completedPlans = groupedPlans.completed.length;
-    const terminatedPlans = groupedPlans.terminated.length;
+    // const terminatedPlans = groupedPlans.terminated.length;
     const draftPlans = groupedPlans.draft.length;
-    const totalStudyTime = 45; // Mock data
+    // const totalStudyTime = 45; // Mock data
 
     return [
       {
@@ -153,8 +152,83 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
     onNavigate?.('plan-detail', { planId });
   };
 
-  const handleStudyStart = (planId: number) => {
-    onNavigate?.('start-study-plan', { planId });
+  const handleStudyStart = async (planId: number) => {
+    // 找到对应的学习计划
+    const plan = studyPlans?.find(p => p.id === planId);
+    if (!plan) {
+      console.error('找不到指定的学习计划');
+      return;
+    }
+
+    // 根据学习计划的状态决定跳转行为
+    if (plan.status === 'draft') {
+      // 草稿状态，跳转到编辑页面
+      onNavigate?.('plan-detail', { planId });
+      return;
+    }
+
+    // 获取统一状态
+    const unifiedStatus = plan.unified_status ||
+      (plan.status === 'deleted' ? 'Deleted' :
+       plan.status === 'draft' ? 'Draft' :
+       plan.lifecycle_status === 'pending' ? 'Pending' :
+       plan.lifecycle_status === 'active' ? 'Active' :
+       plan.lifecycle_status === 'completed' ? 'Completed' :
+       plan.lifecycle_status === 'terminated' ? 'Terminated' : 'Draft');
+
+    if (unifiedStatus === 'Pending') {
+      // 待开始状态，需要先启动学习计划，然后跳转到练习页面
+      try {
+        // 调用启动学习计划的API
+        const studyService = new StudyService();
+        const result = await studyService.startStudyPlan(planId);
+
+        if (result.success) {
+          // 启动成功后，获取第一个日程ID并跳转到练习页面
+          const schedulesResult = await studyService.getStudyPlanSchedules(planId);
+          if (schedulesResult.success && schedulesResult.data.length > 0) {
+            const firstSchedule = schedulesResult.data[0];
+            onNavigate?.('word-practice', { planId, scheduleId: firstSchedule.id });
+          } else {
+            console.error('找不到可练习的日程');
+          }
+        } else {
+          console.error('启动学习计划失败:', result.error);
+        }
+      } catch (error) {
+        console.error('启动学习计划失败:', error);
+      }
+    } else if (plan.lifecycle_status === 'active') {
+      // 进行中状态，直接跳转到练习页面
+      try {
+        const studyService = new StudyService();
+        const schedulesResult = await studyService.getStudyPlanSchedules(planId);
+        if (schedulesResult.success && schedulesResult.data.length > 0) {
+          // 找到今天的日程，如果没有则使用第一个未完成的日程
+          const today = new Date().toISOString().split('T')[0];
+          let targetSchedule = schedulesResult.data.find(schedule =>
+            schedule.schedule_date === today && !schedule.completed
+          );
+
+          if (!targetSchedule) {
+            targetSchedule = schedulesResult.data.find(schedule => !schedule.completed);
+          }
+
+          if (!targetSchedule) {
+            targetSchedule = schedulesResult.data[0];
+          }
+
+          onNavigate?.('word-practice', { planId, scheduleId: targetSchedule.id });
+        } else {
+          console.error('找不到可练习的日程');
+        }
+      } catch (error) {
+        console.error('获取日程失败:', error);
+      }
+    } else {
+      // 其他状态，跳转到计划详情页面
+      onNavigate?.('plan-detail', { planId });
+    }
   };
 
   const handleMenuAction = (planId: number, action: string) => {

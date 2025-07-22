@@ -482,6 +482,41 @@
   color: var(--color-warning);
 }
 
+.errorSize {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+}
+
+.errorSize .errorHeader i,
+.errorSize .errorTitle {
+  color: var(--color-warning);
+}
+
+.errorAuth {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+}
+
+.errorAuth .errorHeader i,
+.errorAuth .errorTitle {
+  color: var(--color-danger);
+}
+
+.errorRateLimit {
+  border-color: var(--color-info-border);
+  background: var(--color-info-bg);
+}
+
+.errorRateLimit .errorHeader i,
+.errorRateLimit .errorTitle {
+  color: var(--color-info);
+}
+
+.errorUnknown {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+}
+
 /* 步骤操作按钮 */
 .stepActions {
   display: flex;

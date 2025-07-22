@@ -8,9 +8,12 @@ import {
 } from '../components';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { AIModelService } from '../services/aiModelService';
+import { dataManagementService } from '../services/dataManagementService';
 import type {
   AIProvider,
   AIModelConfig,
+  DatabaseOverview,
+  ResetResult,
   Id
 } from '../types';
 import { useErrorHandler } from '../hooks/useErrorHandler';
@@ -26,12 +29,21 @@ export interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({
   onNavigate
 }) => {
-  const [activeTab, setActiveTab] = useState<'ai-models' | 'general'>('ai-models');
+  const [activeTab, setActiveTab] = useState<'ai-models' | 'general' | 'data-management'>('ai-models');
   const [providers, setProviders] = useState<AIProvider[]>([]);
   const [models, setModels] = useState<AIModelConfig[]>([]);
   const [defaultModel, setDefaultModel] = useState<AIModelConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // 数据管理相关状态
+  const [databaseOverview, setDatabaseOverview] = useState<DatabaseOverview | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  // 选择性重置相关状态
+  const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
+  const [selectiveResetMode, setSelectiveResetMode] = useState(false);
 
   // 编辑状态
   const [editingProvider, setEditingProvider] = useState<AIProvider | null>(null);
@@ -52,6 +64,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     message: '',
     onConfirm: () => {},
     type: 'warning'
+  });
+
+  // 重置确认对话框状态
+  const [resetDialog, setResetDialog] = useState<{
+    isOpen: boolean;
+    step: 'warning' | 'confirm';
+    confirmText: string;
+  }>({
+    isOpen: false,
+    step: 'warning',
+    confirmText: '',
   });
 
   // 表单数据
@@ -137,6 +160,184 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const handleBreadcrumbClick = (key: string) => {
     onNavigate?.(key);
+  };
+
+  // 加载数据库统计信息
+  const loadDatabaseStatistics = async () => {
+    try {
+      setDataLoading(true);
+      const result = await dataManagementService.getDatabaseStatistics();
+
+      if (result.success) {
+        setDatabaseOverview(result.data);
+      } else {
+        showError(new Error(result.error || '获取数据库统计失败'));
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
+  // 处理标签切换
+  const handleTabChange = (tab: 'ai-models' | 'general' | 'data-management') => {
+    setActiveTab(tab);
+
+    // 如果切换到数据管理标签，加载数据库统计
+    if (tab === 'data-management' && !databaseOverview) {
+      loadDatabaseStatistics();
+    }
+  };
+
+  // 处理重置数据库按钮点击
+  const handleResetDatabase = () => {
+    setResetDialog({
+      isOpen: true,
+      step: 'warning',
+      confirmText: '',
+    });
+  };
+
+  // 处理重置确认
+  const handleResetConfirm = async () => {
+    if (resetDialog.step === 'warning') {
+      // 第一步：显示警告，进入确认步骤
+      setResetDialog(prev => ({
+        ...prev,
+        step: 'confirm',
+        confirmText: '',
+      }));
+    } else if (resetDialog.step === 'confirm') {
+      // 第二步：检查确认文本并执行重置
+      if (resetDialog.confirmText !== 'RESET') {
+        showError(new Error('请输入正确的确认文本 "RESET"'));
+        return;
+      }
+
+      try {
+        setResetting(true);
+        const result = await dataManagementService.resetUserData();
+
+        if (result.success) {
+          // 重置成功，关闭对话框并刷新统计信息
+          setResetDialog({
+            isOpen: false,
+            step: 'warning',
+            confirmText: '',
+          });
+
+          // 刷新数据库统计
+          await loadDatabaseStatistics();
+
+          // 显示成功消息
+          alert(`重置成功！${result.data.message}`);
+        } else {
+          showError(new Error(result.error || '重置失败'));
+        }
+      } catch (error) {
+        showError(error);
+      } finally {
+        setResetting(false);
+      }
+    }
+  };
+
+  // 处理重置取消
+  const handleResetCancel = () => {
+    setResetDialog({
+      isOpen: false,
+      step: 'warning',
+      confirmText: '',
+    });
+  };
+
+  // 处理表格选择
+  const handleTableSelect = (tableName: string, checked: boolean) => {
+    const newSelected = new Set(selectedTables);
+    if (checked) {
+      newSelected.add(tableName);
+    } else {
+      newSelected.delete(tableName);
+    }
+    setSelectedTables(newSelected);
+  };
+
+  // 处理全选/取消全选
+  const handleSelectAll = (checked: boolean) => {
+    if (checked && databaseOverview) {
+      const allTables = new Set(databaseOverview.tables.map(t => t.table_name));
+      setSelectedTables(allTables);
+    } else {
+      setSelectedTables(new Set());
+    }
+  };
+
+  // 处理选择性重置
+  const handleSelectiveReset = async () => {
+    if (selectedTables.size === 0) {
+      showError(new Error('请至少选择一个数据表进行重置'));
+      return;
+    }
+
+    if (resetDialog.step === 'warning') {
+      // 第一步：显示警告，进入确认步骤
+      setResetDialog(prev => ({
+        ...prev,
+        step: 'confirm',
+        confirmText: '',
+      }));
+    } else if (resetDialog.step === 'confirm') {
+      // 第二步：检查确认文本并执行重置
+      if (resetDialog.confirmText !== 'RESET') {
+        showError(new Error('请输入正确的确认文本 "RESET"'));
+        return;
+      }
+
+      try {
+        setResetting(true);
+        const result = await dataManagementService.resetSelectedTables(Array.from(selectedTables));
+
+        if (result.success) {
+          // 重置成功，关闭对话框并刷新统计信息
+          setResetDialog({
+            isOpen: false,
+            step: 'warning',
+            confirmText: '',
+          });
+
+          // 清空选择
+          setSelectedTables(new Set());
+          setSelectiveResetMode(false);
+
+          // 刷新数据库统计
+          await loadDatabaseStatistics();
+
+          // 显示成功消息
+          alert(`重置成功！${result.data.message}`);
+        } else {
+          showError(new Error(result.error || '重置失败'));
+        }
+      } catch (error) {
+        showError(error);
+      } finally {
+        setResetting(false);
+      }
+    }
+  };
+
+  // 获取选中表的统计信息
+  const getSelectedTablesStats = () => {
+    if (!databaseOverview) return { count: 0, records: 0 };
+
+    const selectedTablesList = databaseOverview.tables.filter(t =>
+      selectedTables.has(t.table_name)
+    );
+
+    return {
+      count: selectedTablesList.length,
+      records: selectedTablesList.reduce((sum, t) => sum + (t.record_count || 0), 0)
+    };
   };
 
   const handleSetDefaultModel = async (modelId: Id) => {
@@ -407,7 +608,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <button
               type="button"
               className={`${styles.tab} ${activeTab === 'ai-models' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('ai-models')}
+              onClick={() => handleTabChange('ai-models')}
             >
               <i className="fas fa-robot" />
               AI模型配置
@@ -415,10 +616,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <button
               type="button"
               className={`${styles.tab} ${activeTab === 'general' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('general')}
+              onClick={() => handleTabChange('general')}
             >
               <i className="fas fa-cog" />
               通用设置
+            </button>
+            <button
+              type="button"
+              className={`${styles.tab} ${activeTab === 'data-management' ? styles.tabActive : ''}`}
+              onClick={() => handleTabChange('data-management')}
+            >
+              <i className="fas fa-database" />
+              数据管理
             </button>
           </div>
 
@@ -610,6 +819,200 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   </div>
                   <div className={styles.sectionContent}>
                     <p className={styles.comingSoon}>更多设置选项即将推出...</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'data-management' && (
+              <div className={styles.dataManagementTab}>
+                {/* 数据库概览 */}
+                <div className={styles.settingSection}>
+                  <div className={styles.sectionHeader}>
+                    <h3 className={styles.sectionTitle}>数据库概览</h3>
+                    <p className={styles.sectionDescription}>
+                      查看系统中的数据统计信息
+                    </p>
+                    <Button
+                      onClick={loadDatabaseStatistics}
+                      disabled={dataLoading}
+                      variant="secondary"
+                    >
+                      <i className="fas fa-sync-alt" />
+                      刷新统计
+                    </Button>
+                  </div>
+                  <div className={styles.sectionContent}>
+                    {dataLoading ? (
+                      <div className={styles.loading}>
+                        <LoadingSpinner />
+                        <span>加载数据统计...</span>
+                      </div>
+                    ) : databaseOverview ? (
+                      <div className={styles.databaseOverview}>
+                        <div className={styles.overviewStats}>
+                          <div className={styles.statItem}>
+                            <div className={styles.statValue}>{databaseOverview.total_tables || 0}</div>
+                            <div className={styles.statLabel}>数据表</div>
+                          </div>
+                          <div className={styles.statItem}>
+                            <div className={styles.statValue}>{(databaseOverview.total_records || 0).toLocaleString()}</div>
+                            <div className={styles.statLabel}>总记录数</div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={styles.emptyState}>
+                        <p>点击"刷新统计"按钮加载数据库信息</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 数据表详情 */}
+                {databaseOverview && (
+                  <div className={styles.settingSection}>
+                    <div className={styles.sectionHeader}>
+                      <h3 className={styles.sectionTitle}>
+                        📊 数据表列表
+                      </h3>
+                      <p className={styles.sectionDescription}>
+                        系统中的所有数据表，可选择性重置
+                      </p>
+                      <div className={styles.tableActions}>
+                        <Button
+                          onClick={() => setSelectiveResetMode(!selectiveResetMode)}
+                          variant={selectiveResetMode ? "primary" : "secondary"}
+                          size="sm"
+                        >
+                          {selectiveResetMode ? '取消选择' : '选择性重置'}
+                        </Button>
+                        {selectiveResetMode && (
+                          <>
+                            <Button
+                              onClick={() => handleSelectAll(true)}
+                              variant="outline"
+                              size="sm"
+                            >
+                              全选
+                            </Button>
+                            <Button
+                              onClick={() => handleSelectAll(false)}
+                              variant="outline"
+                              size="sm"
+                            >
+                              取消全选
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className={styles.sectionContent}>
+                      {selectiveResetMode && (
+                        <div className={styles.selectionSummary}>
+                          <p>
+                            已选择 <strong>{getSelectedTablesStats().count}</strong> 个表，
+                            共 <strong>{getSelectedTablesStats().records.toLocaleString()}</strong> 条记录
+                          </p>
+                        </div>
+                      )}
+                      <div className={styles.tablesList}>
+                        {(databaseOverview.tables || []).map(table => (
+                          <div
+                            key={table.table_name}
+                            className={`${styles.tableStatsCard} ${
+                              selectiveResetMode && selectedTables.has(table.table_name) ? styles.selected : ''
+                            }`}
+                          >
+                            {selectiveResetMode && (
+                              <div className={styles.tableCheckbox}>
+                                <input
+                                  type="checkbox"
+                                  id={`table-${table.table_name}`}
+                                  checked={selectedTables.has(table.table_name)}
+                                  onChange={(e) => handleTableSelect(table.table_name, e.target.checked)}
+                                  aria-label={`选择 ${table.display_name}`}
+                                />
+                                <label htmlFor={`table-${table.table_name}`} className={styles.visuallyHidden}>
+                                  选择 {table.display_name}
+                                </label>
+                              </div>
+                            )}
+                            <div className={styles.tableInfo}>
+                              <h4 className={styles.tableName}>
+                                {table.display_name}
+                                <span className={styles.tableType}>({table.table_type})</span>
+                              </h4>
+                              <p className={styles.tableDescription}>{table.description}</p>
+                            </div>
+                            <div className={styles.tableStats}>
+                              <span className={styles.recordCount}>{(table.record_count || 0).toLocaleString()}</span>
+                              <span className={styles.recordLabel}>条记录</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 重置操作 */}
+                <div className={styles.settingSection}>
+                  <div className={styles.sectionHeader}>
+                    <h3 className={styles.sectionTitle}>
+                      ⚠️ 重置数据库
+                    </h3>
+                    <p className={styles.sectionDescription}>
+                      清理所有用户数据，恢复到全新状态
+                    </p>
+                  </div>
+                  <div className={styles.sectionContent}>
+                    <div className={styles.resetSection}>
+                      <div className={styles.resetWarning}>
+                        <h4>⚠️ 危险操作</h4>
+                        <p>此操作将永久删除以下数据：</p>
+                        <ul>
+                          <li>所有单词本和单词</li>
+                          <li>所有学习计划和学习进度</li>
+                          <li>所有练习记录和会话</li>
+                          <li>所有学习统计数据</li>
+                        </ul>
+                        <p><strong>AI模型配置和系统设置将被保留</strong></p>
+                      </div>
+                      <div className={styles.resetButtons}>
+                        <Button
+                          onClick={() => {
+                            console.log('Reset all button clicked!');
+                            handleResetDatabase();
+                          }}
+                          disabled={resetting || dataLoading}
+                          variant="danger"
+                        >
+                          🗑️ 重置所有用户数据
+                        </Button>
+
+                        {selectiveResetMode && selectedTables.size > 0 && (
+                          <Button
+                            onClick={() => {
+                              console.log('Reset selected button clicked!', Array.from(selectedTables));
+                              setResetDialog({
+                                isOpen: true,
+                                step: 'warning',
+                                confirmText: '',
+                              });
+                            }}
+                            disabled={resetting || dataLoading}
+                            variant="danger"
+                          >
+                            🗑️ 重置选中的表 ({selectedTables.size})
+                          </Button>
+                        )}
+
+                        <p className={styles.debugInfo}>
+                          调试信息: resetting={resetting ? 'true' : 'false'}, dataLoading={dataLoading ? 'true' : 'false'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -814,6 +1217,99 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   disabled={saving || !modelForm.provider_id || !modelForm.display_name || !modelForm.model_id}
                 >
                   {saving ? '保存中...' : '保存'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reset Confirmation Dialog */}
+        {resetDialog.isOpen && (
+          <div className={styles.modal}>
+            <div className={styles.modalContent}>
+              <div className={styles.modalHeader}>
+                <h3 className={styles.modalTitle}>
+                  {resetDialog.step === 'warning' ? '确认重置数据库' : '最终确认'}
+                </h3>
+                <button
+                  type="button"
+                  className={styles.modalClose}
+                  onClick={handleResetCancel}
+                  title="关闭"
+                >
+                  <i className="fas fa-times" />
+                </button>
+              </div>
+              <div className={styles.modalBody}>
+                {resetDialog.step === 'warning' ? (
+                  <div className={styles.resetConfirmWarning}>
+                    <div className={styles.warningIcon}>⚠️</div>
+                    <h4>此操作不可撤销！</h4>
+                    {selectiveResetMode && selectedTables.size > 0 ? (
+                      <>
+                        <p>您即将删除以下选中的数据表：</p>
+                        <ul>
+                          {Array.from(selectedTables).map(tableName => {
+                            const table = databaseOverview?.tables?.find(t => t.table_name === tableName);
+                            return (
+                              <li key={tableName}>
+                                {table?.display_name || tableName}（{table?.record_count || 0} 条记录）
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <p>总计：<strong>{getSelectedTablesStats().records.toLocaleString()}</strong> 条记录将被删除</p>
+                      </>
+                    ) : (
+                      <>
+                        <p>您即将删除所有用户数据，包括：</p>
+                        <ul>
+                          <li>所有单词本和单词（{databaseOverview?.tables?.find(t => t.table_name === 'word_books')?.record_count || 0} 个单词本）</li>
+                          <li>所有学习计划和进度（{databaseOverview?.tables?.find(t => t.table_name === 'study_plans')?.record_count || 0} 个学习计划）</li>
+                          <li>所有练习记录（{databaseOverview?.tables?.find(t => t.table_name === 'practice_sessions')?.record_count || 0} 个练习会话）</li>
+                        </ul>
+                      </>
+                    )}
+                    <p><strong>AI模型配置将被保留</strong></p>
+                    <p>确定要继续吗？</p>
+                  </div>
+                ) : (
+                  <div className={styles.resetConfirmInput}>
+                    <div className={styles.warningIcon}>🔥</div>
+                    <h4>最终确认</h4>
+                    <p>请在下方输入框中输入 <strong>"RESET"</strong> 来确认此操作：</p>
+                    <input
+                      type="text"
+                      className={styles.confirmInput}
+                      value={resetDialog.confirmText}
+                      onChange={(e) => setResetDialog(prev => ({
+                        ...prev,
+                        confirmText: e.target.value
+                      }))}
+                      placeholder="请输入 RESET"
+                      autoFocus
+                    />
+                    <p className={styles.inputHint}>
+                      只有输入正确的确认文本才能执行重置操作
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className={styles.modalFooter}>
+                <Button
+                  variant="secondary"
+                  onClick={handleResetCancel}
+                  disabled={resetting}
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={selectiveResetMode && selectedTables.size > 0 ? handleSelectiveReset : handleResetConfirm}
+                  disabled={resetting || (resetDialog.step === 'confirm' && resetDialog.confirmText !== 'RESET')}
+                  variant="danger"
+                >
+                  {resetting ? '重置中...' : resetDialog.step === 'warning' ? '继续' :
+                    (selectiveResetMode && selectedTables.size > 0 ? '确认重置选中表' : '确认重置')}
                 </Button>
               </div>
             </div>

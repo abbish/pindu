@@ -722,16 +722,51 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({
                   <div className={styles.planHeader}>
                     <h3 className={styles.planTitle}>{plan.name}</h3>
                     <div className={styles.planBadges}>
-                      {plan.lifecycle_status === 'pending' && (
-                        <span className={`${styles.statusBadge} ${styles.pending}`}>
-                          待开始
-                        </span>
-                      )}
-                      {plan.lifecycle_status === 'active' && (
-                        <span className={`${styles.statusBadge} ${styles.active}`}>
-                          进行中
-                        </span>
-                      )}
+                      {(() => {
+                        // 获取统一状态
+                        const unifiedStatus = plan.unified_status ||
+                          (plan.status === 'deleted' ? 'Deleted' :
+                           plan.status === 'draft' ? 'Draft' :
+                           plan.lifecycle_status === 'pending' ? 'Pending' :
+                           plan.lifecycle_status === 'active' ? 'Active' :
+                           plan.lifecycle_status === 'completed' ? 'Completed' :
+                           plan.lifecycle_status === 'terminated' ? 'Terminated' : 'Draft');
+
+                        switch (unifiedStatus) {
+                          case 'Pending':
+                            return (
+                              <span className={`${styles.statusBadge} ${styles.pending}`}>
+                                待开始
+                              </span>
+                            );
+                          case 'Active':
+                            return (
+                              <span className={`${styles.statusBadge} ${styles.active}`}>
+                                进行中
+                              </span>
+                            );
+                          case 'Completed':
+                            return (
+                              <span className={`${styles.statusBadge} ${styles.completed}`}>
+                                已完成
+                              </span>
+                            );
+                          case 'Terminated':
+                            return (
+                              <span className={`${styles.statusBadge} ${styles.terminated}`}>
+                                已终止
+                              </span>
+                            );
+                          case 'Draft':
+                            return (
+                              <span className={`${styles.statusBadge} ${styles.draft}`}>
+                                草稿
+                              </span>
+                            );
+                          default:
+                            return null;
+                        }
+                      })()}
                       {plan.lifecycle_status === 'completed' && (
                         <span className={`${styles.statusBadge} ${styles.completed}`}>
                           已完成
@@ -770,7 +805,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => onNavigate?.('plan-detail', { id: plan.id })}
+                      onClick={() => onNavigate?.('plan-detail', { planId: plan.id })}
                     >
                       查看详情
                     </Button>

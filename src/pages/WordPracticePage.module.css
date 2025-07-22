@@ -1,0 +1,358 @@
+/* 页面主容器 */
+.page {
+  min-height: 100vh;
+  background-color: var(--color-bg-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--spacing-lg);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 状态栏 */
+.statusBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-lg) var(--spacing-xl);
+  margin: var(--spacing-lg) 0 var(--spacing-2xl) 0;
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.progressInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.wordProgress,
+.stepProgress {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius-md);
+}
+
+.timeInfo {
+  display: flex;
+  align-items: center;
+}
+
+.timer {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  font-family: 'Courier New', monospace;
+}
+
+.controls {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.controlBtn {
+  background: var(--color-bg-primary);
+  border: 2px solid var(--color-border-light);
+  border-radius: var(--border-radius-md);
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--color-text-secondary);
+}
+
+.controlBtn:hover {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+  transform: scale(1.05);
+}
+
+/* 练习区域 */
+.practiceArea {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: var(--spacing-lg) 0;
+}
+
+/* 暂停覆盖层 */
+.pauseOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-lg);
+  z-index: 10;
+}
+
+.pauseContent {
+  text-align: center;
+  color: white;
+  padding: var(--spacing-2xl);
+}
+
+.pauseContent i {
+  font-size: 4rem;
+  margin-bottom: var(--spacing-lg);
+  opacity: 0.8;
+}
+
+.pauseContent h3 {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0 0 var(--spacing-md) 0;
+}
+
+.pauseContent p {
+  font-size: var(--font-size-lg);
+  margin: 0 0 var(--spacing-xl) 0;
+  opacity: 0.9;
+}
+
+.resumeBtn {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-lg) var(--spacing-2xl);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin: 0 auto;
+}
+
+.resumeBtn:hover {
+  background: var(--color-primary-dark);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .main {
+    padding: var(--spacing-md);
+  }
+
+  .statusBar {
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+  }
+
+  .progressInfo {
+    order: 1;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .timeInfo {
+    order: 2;
+  }
+
+  .controls {
+    order: 3;
+  }
+
+  .practiceArea {
+    min-height: 400px;
+  }
+
+  .pauseContent {
+    padding: var(--spacing-lg);
+  }
+
+  .pauseContent i {
+    font-size: 3rem;
+  }
+
+  .pauseContent h3 {
+    font-size: var(--font-size-xl);
+  }
+
+  .pauseContent p {
+    font-size: var(--font-size-md);
+  }
+}
+
+@media (max-width: 480px) {
+  .progressInfo {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  .wordProgress,
+  .stepProgress {
+    font-size: var(--font-size-sm);
+  }
+
+  .timer {
+    font-size: var(--font-size-md);
+  }
+
+  .controlBtn {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.practiceArea > * {
+  animation: fadeIn 0.5s ease;
+}
+
+/* 进度条样式 */
+.progressInfo::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: var(--color-primary);
+  border-radius: var(--border-radius-sm);
+  transition: width 0.3s ease;
+}
+
+/* 专注模式样式 */
+.page {
+  /* 移除所有可能的干扰元素 */
+  --header-height: 60px;
+}
+
+.main {
+  /* 确保内容区域占满剩余空间 */
+  padding-top: var(--spacing-md);
+}
+
+/* 确保卡片在各种屏幕尺寸下都居中显示 */
+.practiceArea {
+  padding: var(--spacing-lg);
+}
+
+/* 高对比度模式支持 */
+@media (prefers-contrast: high) {
+  .statusBar {
+    background: var(--color-bg-primary);
+    border: 2px solid var(--color-border-dark);
+  }
+
+  .controlBtn {
+    border-width: 2px;
+  }
+
+  .pauseOverlay {
+    background: rgba(0, 0, 0, 0.9);
+  }
+}
+
+/* 加载状态 */
+.loadingState,
+.errorState,
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.loadingState i,
+.errorState i,
+.emptyState i {
+  font-size: 3rem;
+  margin-bottom: var(--spacing-lg);
+  color: var(--color-primary);
+}
+
+.errorState i {
+  color: var(--color-error);
+}
+
+.loadingState p,
+.errorState p,
+.emptyState p {
+  font-size: var(--font-size-lg);
+  margin: var(--spacing-md) 0;
+}
+
+.errorState h3,
+.emptyState h3 {
+  font-size: var(--font-size-xl);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-md) 0;
+}
+
+.retryBtn,
+.backBtn {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-md) var(--spacing-xl);
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: var(--spacing-lg);
+}
+
+.retryBtn:hover,
+.backBtn:hover {
+  background: var(--color-primary-dark);
+  transform: translateY(-1px);
+}
+
+/* 减少动画模式支持 */
+@media (prefers-reduced-motion: reduce) {
+  .practiceArea > *,
+  .controlBtn,
+  .resumeBtn,
+  .retryBtn,
+  .backBtn {
+    animation: none;
+    transition: none;
+  }
+}

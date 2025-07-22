@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import type { StudyPlanAIResult, CalendarDayData } from '../../types';
+import type { CalendarDayData } from '../../types';
+import { studyService } from '../../services';
 import styles from './StudyCalendar.module.css';
 
 export interface StudyCalendarProps {
-  /** AI规划数据 */
-  aiPlanData: StudyPlanAIResult | null;
+  /** 学习计划ID */
+  planId: number;
   /** 日期点击回调 */
   onDateClick: (date: string) => void;
   /** Loading state */
@@ -15,91 +16,44 @@ export interface StudyCalendarProps {
  * Study calendar component showing study progress
  */
 export const StudyCalendar: React.FC<StudyCalendarProps> = ({
-  aiPlanData,
+  planId,
   onDateClick,
   loading = false
 }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarData, setCalendarData] = useState<CalendarDayData[]>([]);
+  const [dataLoading, setDataLoading] = useState(false);
 
-  // 生成日历数据
+  // 获取日历数据
   useEffect(() => {
-    if (!aiPlanData) return;
+    const fetchCalendarData = async () => {
+      if (!planId) return;
 
-    const today = new Date();
-    const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      try {
+        setDataLoading(true);
+        const year = currentMonth.getFullYear();
+        const month = currentMonth.getMonth() + 1;
 
-    const startOfCalendar = new Date(startOfMonth);
-    startOfCalendar.setDate(startOfCalendar.getDate() - startOfCalendar.getDay());
+        const result = await studyService.getStudyPlanCalendarData(planId, year, month);
 
-    const days: CalendarDayData[] = [];
-    const currentDate = new Date(startOfCalendar);
-
-    // 生成6周的日历数据
-    for (let week = 0; week < 6; week++) {
-      for (let day = 0; day < 7; day++) {
-        const dateStr = currentDate.toISOString().split('T')[0];
-        const isToday = currentDate.toDateString() === today.toDateString();
-        const isInCurrentMonth = currentDate.getMonth() === currentMonth.getMonth();
-
-        // 查找该日期的学习计划
-        const dailyPlan = aiPlanData.dailyPlans.find(plan => plan.date === dateStr);
-        const isInPlan = !!dailyPlan;
-
-        let status: CalendarDayData['status'] = 'not-started';
-        let newWordsCount = 0;
-        let reviewWordsCount = 0;
-        let totalWordsCount = 0;
-        let completedWordsCount = 0;
-        let progressPercentage = 0;
-
-        if (dailyPlan) {
-          newWordsCount = dailyPlan.words.filter(w => !w.isReview).length;
-          reviewWordsCount = dailyPlan.words.filter(w => w.isReview).length;
-          totalWordsCount = dailyPlan.words.length;
-
-          // 模拟完成状态计算
-          if (currentDate < today) {
-            // 过去的日期，模拟完成状态
-            completedWordsCount = Math.floor(totalWordsCount * 0.8); // 假设80%完成率
-            progressPercentage = (completedWordsCount / totalWordsCount) * 100;
-
-            if (progressPercentage >= 100) {
-              status = 'completed';
-            } else if (progressPercentage > 0) {
-              status = 'overdue';
-            } else {
-              status = 'overdue';
-            }
-          } else if (currentDate.toDateString() === today.toDateString()) {
-            // 今天，模拟进行中状态
-            completedWordsCount = Math.floor(totalWordsCount * 0.3); // 假设30%完成
-            progressPercentage = (completedWordsCount / totalWordsCount) * 100;
-            status = 'in-progress';
-          } else {
-            // 未来的日期
-            status = 'not-started';
-          }
+        if (result.success) {
+          setCalendarData(result.data);
+        } else {
+          console.error('Failed to fetch calendar data:', result.error);
+          setCalendarData([]);
         }
-
-        days.push({
-          date: dateStr,
-          isToday,
-          isInPlan: isInPlan && isInCurrentMonth,
-          status,
-          newWordsCount,
-          reviewWordsCount,
-          totalWordsCount,
-          completedWordsCount,
-          progressPercentage
-        });
-
-        currentDate.setDate(currentDate.getDate() + 1);
+      } catch (error) {
+        console.error('Error fetching calendar data:', error);
+        setCalendarData([]);
+      } finally {
+        setDataLoading(false);
       }
-    }
+    };
 
-    setCalendarData(days);
-  }, [currentMonth, aiPlanData]);
+    fetchCalendarData();
+  }, [planId, currentMonth]);
+
+
 
   // 切换月份
   const handlePrevMonth = () => {
@@ -211,7 +165,7 @@ export const StudyCalendar: React.FC<StudyCalendarProps> = ({
     return weeks;
   };
 
-  if (loading) {
+  if (loading || dataLoading) {
     return (
       <div className={styles.studyCalendar}>
         <div className={styles.loading}>

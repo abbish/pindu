@@ -10,6 +10,8 @@ import CreateWordBookPageV2 from './pages/CreateWordBookPageV2';
 import WordBookDetailPage from './pages/WordBookDetailPage';
 import StartStudyPlanPage from './pages/StartStudyPlanPage';
 import FinishStudyPlanPage from './pages/FinishStudyPlanPage';
+import WordPracticePage from './pages/WordPracticePage';
+import PracticeResultPage from './pages/PracticeResultPage';
 import CalendarPage from './pages/CalendarPage';
 import { SettingsPage } from './pages/SettingsPage';
 // Real database implementation is now in place
@@ -19,8 +21,14 @@ function App() {
   const [pageParams, setPageParams] = useState<any>(null);
 
   const handleNavigation = useCallback((page: string, params?: any) => {
+    console.log('=== App 导航被调用 ===');
+    console.log('目标页面:', page);
+    console.log('导航参数:', params);
+
     setCurrentPage(page);
     setPageParams(params);
+
+    console.log('导航状态已更新');
   }, []);
 
   const renderPage = () => {
@@ -39,6 +47,16 @@ function App() {
         return <WordBookDetailPage id={pageParams?.id} onNavigate={handleNavigation} />;
       case 'start-study-plan':
         return <StartStudyPlanPage planId={pageParams?.planId} onNavigate={handleNavigation} />;
+      case 'word-practice':
+        console.log('=== 渲染 WordPracticePage ===');
+        console.log('传递的props:', {
+          planId: pageParams?.planId,
+          scheduleId: pageParams?.scheduleId,
+          sessionId: pageParams?.sessionId
+        });
+        return <WordPracticePage planId={pageParams?.planId} scheduleId={pageParams?.scheduleId} sessionId={pageParams?.sessionId} onNavigate={handleNavigation} />;
+      case 'practice-result':
+        return <PracticeResultPage result={pageParams} onNavigate={handleNavigation} />;
       case 'finish-study-plan':
         return <FinishStudyPlanPage results={pageParams} onNavigate={handleNavigation} />;
       case 'study':

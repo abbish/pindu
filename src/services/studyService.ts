@@ -104,8 +104,8 @@ export class StudyService extends BaseService {
         throw new Error('必须选择至少一个单词本');
       }
 
-      if (![7, 14, 28].includes(request.studyPeriodDays)) {
-        throw new Error('学习周期必须是7天、14天或28天');
+      if (![1, 3, 7, 14, 28].includes(request.studyPeriodDays)) {
+        throw new Error('学习周期必须是1天、3天、7天、14天或28天');
       }
 
       if (!['easy', 'normal', 'intensive'].includes(request.intensityLevel)) {
@@ -185,6 +185,34 @@ export class StudyService extends BaseService {
   ): Promise<ApiResult<StudyPlanWord[]>> {
     return this.executeWithLoading(async () => {
       return this.client.invoke<StudyPlanWord[]>('get_study_plan_words', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 获取学习计划的日历数据（用于StudyCalendar组件）
+   */
+  async getStudyPlanCalendarData(
+    planId: number,
+    year: number,
+    month: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<CalendarDayData[]>> {
+    return this.executeWithLoading(async () => {
+      this.validateRequired({ planId, year, month }, ['planId', 'year', 'month']);
+
+      if (month < 1 || month > 12) {
+        throw new Error('月份必须在1-12之间');
+      }
+
+      if (year < 2020 || year > 2030) {
+        throw new Error('年份必须在2020-2030之间');
+      }
+
+      return this.client.invoke<CalendarDayData[]>('get_study_plan_calendar_data', {
+        planId,
+        year,
+        month
+      });
     }, setLoading);
   }
 
@@ -393,6 +421,29 @@ export class StudyService extends BaseService {
   ): Promise<ApiResult<StudyPlanStatusHistory[]>> {
     return this.executeWithLoading(async () => {
       return this.client.invoke<StudyPlanStatusHistory[]>('get_study_plan_status_history', { planId });
+    }, setLoading);
+  }
+
+  /**
+   * 获取学习计划的日程列表
+   */
+  async getStudyPlanSchedules(
+    planId: number,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<Array<{
+    id: number;
+    schedule_date: string;
+    word_count: number;
+    completed: boolean;
+  }>>> {
+    return this.executeWithLoading(async () => {
+      this.validateRequired({ planId }, ['planId']);
+      return this.client.invoke<Array<{
+        id: number;
+        schedule_date: string;
+        word_count: number;
+        completed: boolean;
+      }>>('get_study_plan_schedules', { planId });
     }, setLoading);
   }
 

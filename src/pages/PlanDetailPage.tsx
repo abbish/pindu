@@ -15,6 +15,7 @@ import {
 import { Modal } from '../components/Modal';
 import { EditPlanModal } from '../components/EditPlanModal';
 import { StudyService } from '../services/studyService';
+import { practiceService } from '../services';
 import type {
   StudyPlanWithProgress,
   StudyPlanAIResult,
@@ -23,17 +24,37 @@ import type {
   StudyPlanLifecycleStatus,
   StudyPlanWord,
   StudyPlanStatistics,
-  StudyPlanStatusHistory,
-  UnifiedStudyPlanStatus
+  UnifiedStudyPlanStatus,
+  PracticeSession
 } from '../types';
 import {
   getStatusDisplay,
-  getAvailableActions,
-  canTransitionTo
+  getAvailableActions
 } from '../types/study';
 
 // 视图模式类型
-type ViewMode = 'overview' | 'schedule' | 'words' | 'statistics';
+type ViewMode = 'overview' | 'schedule' | 'words' | 'statistics' | 'logs';
+
+// 学习日志类型
+interface StudyLogEntry {
+  date: string;
+  sessions: StudySessionLog[];
+  totalWordsStudied: number;
+  totalTimeMinutes: number;
+  averageAccuracy: number;
+}
+
+interface StudySessionLog {
+  id: string;
+  scheduleId: number;
+  startedAt: string;
+  completedAt?: string;
+  wordsStudied: number;
+  correctAnswers: number;
+  totalTimeSeconds: number;
+  accuracy: number;
+  status: 'completed' | 'paused' | 'abandoned';
+}
 
 // 辅助函数
 
@@ -50,28 +71,31 @@ function getIntensityDisplay(intensity?: string) {
   }
 }
 
-function getActionConfig(action: string) {
+function getActionConfig(action: string, currentStatus?: UnifiedStudyPlanStatus) {
   switch (action) {
     case 'edit':
-      return { label: '编辑', icon: 'edit', color: 'primary' };
+      // 根据当前状态调整编辑按钮的文字
+      if (currentStatus === 'Draft') {
+        return { label: '继续编辑', icon: 'edit', color: 'primary' };
+      } else if (currentStatus === 'Active') {
+        return { label: '修改计划', icon: 'edit', color: 'primary' };
+      } else {
+        return { label: '编辑计划', icon: 'edit', color: 'primary' };
+      }
     case 'publish':
-      return { label: '发布', icon: 'paper-plane', color: 'primary' };
+      return { label: '发布计划', icon: 'paper-plane', color: 'primary' };
     case 'start':
       return { label: '开始学习', icon: 'play', color: 'primary' };
-    case 'pause':
-      return { label: '暂停', icon: 'pause', color: 'warning' };
-    case 'resume':
-      return { label: '恢复', icon: 'play', color: 'primary' };
     case 'complete':
-      return { label: '完成', icon: 'check', color: 'primary' };
+      return { label: '完成学习', icon: 'check', color: 'primary' };
     case 'terminate':
-      return { label: '终止', icon: 'stop', color: 'danger' };
+      return { label: '终止学习', icon: 'stop', color: 'danger' };
     case 'restart':
-      return { label: '重新开始', icon: 'redo', color: 'primary' };
+      return { label: '重新学习', icon: 'redo', color: 'primary' };
     case 'delete':
-      return { label: '删除', icon: 'trash', color: 'danger' };
+      return { label: '删除计划', icon: 'trash', color: 'danger' };
     case 'restore':
-      return { label: '恢复', icon: 'undo', color: 'primary' };
+      return { label: '恢复计划', icon: 'undo', color: 'primary' };
     case 'permanentDelete':
       return { label: '永久删除', icon: 'trash-alt', color: 'danger' };
     default:
@@ -125,7 +149,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   const [currentView, setCurrentView] = useState<ViewMode>('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [needsRegeneration, setNeedsRegeneration] = useState(false);
+  const [needsRegeneration] = useState(false);
 
   // 统计数据
   const [studyStreak, setStudyStreak] = useState(0);
@@ -140,6 +164,10 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 
   // 词性统计数据
   const [partOfSpeechStats, setPartOfSpeechStats] = useState<{[key: string]: number}>({});
+
+  // 练习会话数据（替代学习日志）
+  const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
 
 
@@ -188,7 +216,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
       const normalizedPlan = {
         ...plan,
         status: plan.status as StudyPlanStatus,
-        lifecycle_status: plan.lifecycle_status as StudyPlanLifecycleStatus
+        lifecycle_status: plan.lifecycle_status as StudyPlanLifecycleStatus,
+        unified_status: plan.unified_status as UnifiedStudyPlanStatus
       };
 
       console.log('Plan data received:', {
@@ -196,8 +225,10 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
         name: plan.name,
         status: plan.status,
         lifecycle_status: plan.lifecycle_status,
+        unified_status: plan.unified_status,
         statusType: typeof plan.status,
-        lifecycleStatusType: typeof plan.lifecycle_status
+        lifecycleStatusType: typeof plan.lifecycle_status,
+        unifiedStatusType: typeof plan.unified_status
       });
 
       setPlanData(normalizedPlan);
@@ -210,7 +241,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 
           // 获取今日学习单词
           const today = new Date().toISOString().split('T')[0];
-          const todayPlan = aiData.dailyPlans.find(dp => dp.date === today);
+          const todayPlan = aiData.dailyPlans?.find(dp => dp.date === today);
           if (todayPlan) {
             setTodayWords(todayPlan.words);
           }
@@ -288,6 +319,28 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     }
   };
 
+  // 加载练习会话数据
+  const loadPracticeSessions = async () => {
+    if (!planId) return;
+
+    try {
+      setLogsLoading(true);
+      const result = await practiceService.getPlanPracticeSessions(planId);
+
+      if (result.success) {
+        setPracticeSessions(result.data);
+      } else {
+        console.error('加载练习会话失败:', result.error);
+        showToast('加载练习会话失败', 'error');
+      }
+    } catch (error) {
+      console.error('加载练习会话失败:', error);
+      showToast('加载练习会话失败', 'error');
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
   // 计算词性统计 - 基于唯一单词ID，避免重复计算复习单词
   const calculatePartOfSpeechStats = (words: StudyPlanWord[]) => {
     const stats: {[key: string]: number} = {};
@@ -312,6 +365,15 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   // 事件处理函数
   const handleViewChange = (view: ViewMode) => {
     setCurrentView(view);
+
+    // 根据视图加载相应数据
+    if (view === 'words' && studyPlanWords.length === 0) {
+      loadStudyPlanWords();
+    } else if (view === 'statistics' && !statistics) {
+      loadStatistics();
+    } else if (view === 'logs' && practiceSessions.length === 0) {
+      loadPracticeSessions();
+    }
   };
 
 
@@ -327,15 +389,17 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     }
 
     const availableActions = getAvailableActions(planData.unified_status as UnifiedStudyPlanStatus);
-    const actionConfig = availableActions.find(a => a === action);
+    const isActionAvailable = availableActions.includes(action as any);
 
-    if (!actionConfig) return;
+    if (!isActionAvailable) return;
+
+    const actionConfig = getActionConfig(action, planData.unified_status as UnifiedStudyPlanStatus);
 
     setStatusChangeModal({
       isOpen: true,
       action,
-      actionLabel: actionConfig.label,
-      confirmMessage: actionConfig.confirmMessage || `确认${actionConfig.label}吗？`,
+      actionLabel: (actionConfig as any).label,
+      confirmMessage: (actionConfig as any).confirmMessage || `确认${(actionConfig as any).label}吗？`,
       processing: false
     });
   };
@@ -455,6 +519,87 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     });
   };
 
+  // 处理进入练习
+  const handleStartPractice = async () => {
+    if (!planData) return;
+
+    try {
+      // 获取当前应该练习的日程
+      const studyService = new StudyService();
+      const schedulesResult = await studyService.getStudyPlanSchedules(planData.id);
+
+      if (schedulesResult.success) {
+        if (schedulesResult.data.length > 0) {
+          // 找到今天的日程，如果没有则使用第一个未完成的日程
+          const today = new Date().toISOString().split('T')[0];
+          let targetSchedule = schedulesResult.data.find(schedule =>
+            schedule.schedule_date === today && !schedule.completed
+          );
+
+          // 如果没有今天的日程，找第一个未完成的日程
+          if (!targetSchedule) {
+            targetSchedule = schedulesResult.data.find(schedule => !schedule.completed);
+          }
+
+          // 如果还是没有，使用第一个日程
+          if (!targetSchedule) {
+            targetSchedule = schedulesResult.data[0];
+          }
+
+          if (targetSchedule) {
+            onNavigate?.('word-practice', {
+              planId: planData.id,
+              scheduleId: targetSchedule.id
+            });
+          } else {
+            showToast('没有找到可练习的日程', 'error');
+          }
+        } else {
+          // 没有日程数据，提示用户生成日程
+          showToast('该学习计划还没有生成学习日程，请先编辑计划并生成AI规划', 'warning');
+        }
+      } else {
+        showToast('获取学习日程失败', 'error');
+      }
+    } catch (error) {
+      console.error('进入练习失败:', error);
+      showToast('进入练习时发生错误', 'error');
+    }
+  };
+
+  // 处理开始指定日程的练习
+  const handleStartSchedulePractice = async (planId: number, scheduleDate: string) => {
+    if (!planData) return;
+
+    try {
+      // 获取该日期的日程
+      const studyService = new StudyService();
+      const schedulesResult = await studyService.getStudyPlanSchedules(planId);
+
+      if (schedulesResult.success) {
+        // 找到对应日期的日程
+        const targetSchedule = schedulesResult.data.find(schedule =>
+          schedule.schedule_date === scheduleDate
+        );
+
+        if (targetSchedule) {
+          // 导航到练习页面
+          onNavigate?.('word-practice', {
+            planId: planId,
+            scheduleId: targetSchedule.id
+          });
+        } else {
+          showToast('未找到对应日期的学习日程', 'error');
+        }
+      } else {
+        showToast(schedulesResult.error || '获取学习日程失败', 'error');
+      }
+    } catch (error) {
+      console.error('开始练习失败:', error);
+      showToast('开始练习失败', 'error');
+    }
+  };
+
   // 关闭编辑计划模态框
   const handleCloseEditPlan = () => {
     setEditPlanModal({
@@ -464,14 +609,14 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   };
 
   // 保存编辑计划
-  const handleSaveEditPlan = async (planId: number) => {
+  const handleSaveEditPlan = async () => {
     try {
       setEditPlanModal(prev => ({ ...prev, saving: true }));
 
       // 重新加载计划数据
       await loadPlanDetail();
 
-      showToast('学习计划已更新', 'success');
+      // 不需要显示toast，EditPlanModal内部已经显示了
       handleCloseEditPlan();
     } catch (err) {
       console.error('Failed to reload plan after edit:', err);
@@ -582,94 +727,121 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 
         {/* Plan Header */}
         <section className={styles.planHeader}>
-          <div className={styles.headerTop}>
-            <div className={styles.planInfo}>
-              <div className={styles.titleRow}>
-                <div className={styles.titleLeft}>
-                  <h2 className={styles.planTitle}>{planData.name}</h2>
-                  <div className={styles.badgeGroup}>
-                    {/* 统一状态标签 */}
-                    <span className={`${styles.statusBadge} ${styles[planData.unified_status?.toLowerCase()]}`}>
-                      {getStatusDisplay(planData.unified_status as UnifiedStudyPlanStatus).text}
-                    </span>
-
-                    {/* 强度标签 */}
-                    {planData.intensity_level && (
-                      <span className={`${styles.intensityBadge} ${styles[planData.intensity_level]}`}>
-                        {intensityDisplay.text}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className={styles.titleRight}>
-                  {/* 状态信息显示 */}
-                </div>
-              </div>
+          {/* Title Row - 独立容器 */}
+          <div className={styles.titleRow}>
+            <div className={styles.titleSection}>
+              <h2 className={styles.planTitle}>{planData.name}</h2>
               <p className={styles.planDescription}>{planData.description}</p>
-
-              {/* 基本信息网格 */}
-              <div className={styles.infoGrid}>
-                <div className={styles.infoCard}>
-                  <div className={styles.infoHeader}>
-                    <i className="fas fa-calendar" />
-                    <span>学习周期</span>
-                  </div>
-                  <div className={styles.infoContent}>
-                    {planData.start_date && planData.end_date ? (
-                      <span>{planData.start_date} 至 {planData.end_date}</span>
-                    ) : (
-                      <span className={styles.noData}>未设置</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className={styles.infoCard}>
-                  <div className={styles.infoHeader}>
-                    <i className="fas fa-clock" />
-                    <span>学习进度</span>
-                  </div>
-                  <div className={styles.infoContent}>
-                    <span>已学习 {studiedDays} 天 / 共 {studyDays} 天</span>
-                  </div>
-                </div>
-
-                <div className={styles.infoCard}>
-                  <div className={styles.infoHeader}>
-                    <i className="fas fa-book" />
-                    <span>单词数量</span>
-                  </div>
-                  <div className={styles.infoContent}>
-                    <span>{planData.total_words || 0} 个单词</span>
-                  </div>
-                </div>
-
-                {planData.review_frequency && (
-                  <div className={styles.infoCard}>
-                    <div className={styles.infoHeader}>
-                      <i className="fas fa-repeat" />
-                      <span>复习频率</span>
-                    </div>
-                    <div className={styles.infoContent}>
-                      <span>{planData.review_frequency} 次</span>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
             <div className={styles.headerActions}>
-              {getAvailableActions(planData.unified_status as UnifiedStudyPlanStatus).map((action) => {
-                const actionConfig = getActionConfig(action);
-                return (
-                  <Button
-                    key={action}
-                    variant={actionConfig.color === 'danger' ? 'danger' : actionConfig.color === 'warning' ? 'secondary' : 'primary'}
-                    onClick={() => handleStatusAction(action as any)}
-                  >
-                    <i className={`fas fa-${actionConfig.icon}`} />
-                    {actionConfig.label}
-                  </Button>
-                );
-              })}
+              {/* 主要操作按钮 - 按优先级和相关性排列 */}
+
+              {/* 1. 进入练习按钮 - 最高优先级 */}
+              {planData.unified_status === 'Active' && (
+                <Button
+                  variant="primary"
+                  onClick={handleStartPractice}
+                >
+                  进入练习
+                </Button>
+              )}
+
+              {/* 2. 状态转换按钮 - 按操作流程排列 */}
+              {getAvailableActions(planData.unified_status as UnifiedStudyPlanStatus)
+                .sort((a, b) => {
+                  // 定义按钮优先级顺序
+                  const priority = {
+                    'start': 1,     // 开始学习
+                    'publish': 2,   // 发布计划
+                    'complete': 3,  // 完成学习
+                    'edit': 4,      // 编辑计划
+                    'terminate': 5, // 终止学习
+                    'restart': 6,   // 重新开始
+                    'delete': 7     // 删除计划
+                  };
+                  return (priority[a] || 99) - (priority[b] || 99);
+                })
+                .map((action) => {
+                  const actionConfig = getActionConfig(action, planData.unified_status as UnifiedStudyPlanStatus);
+                  return (
+                    <Button
+                      key={action}
+                      variant={actionConfig.color === 'danger' ? 'danger' : actionConfig.color === 'warning' ? 'secondary' : 'primary'}
+                      onClick={() => handleStatusAction(action as any)}
+                    >
+                      {actionConfig.label}
+                    </Button>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Info Cards - 独立容器 */}
+          <div className={styles.infoCardsContainer}>
+            <div className={styles.infoGrid}>
+              <div className={styles.infoCard}>
+                <div className={styles.infoHeader}>
+                  <i className="fas fa-info-circle" />
+                  <span>计划状态</span>
+                </div>
+                <div className={styles.infoContent}>
+                  <span className={`${styles.statusText} ${styles[planData.unified_status?.toLowerCase()]}`}>
+                    {getStatusDisplay(planData.unified_status as UnifiedStudyPlanStatus).text}
+                  </span>
+                </div>
+              </div>
+
+              <div className={styles.infoCard}>
+                <div className={styles.infoHeader}>
+                  <i className="fas fa-tachometer-alt" />
+                  <span>学习强度</span>
+                </div>
+                <div className={styles.infoContent}>
+                  <span className={`${styles.intensityText} ${styles[planData.intensity_level]}`}>
+                    {intensityDisplay.text}
+                  </span>
+                </div>
+              </div>
+
+              <div className={styles.infoCard}>
+                <div className={styles.infoHeader}>
+                  <i className="fas fa-calendar" />
+                  <span>学习周期</span>
+                </div>
+                <div className={styles.infoContent}>
+                  {planData.start_date && planData.end_date ? (
+                    <div className={styles.dateRange}>
+                      <div>{planData.start_date}</div>
+                      <div className={styles.dateSeparator}>至</div>
+                      <div>{planData.end_date}</div>
+                    </div>
+                  ) : (
+                    <span className={styles.noData}>未设置</span>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles.infoCard}>
+                <div className={styles.infoHeader}>
+                  <i className="fas fa-book" />
+                  <span>单词数量</span>
+                </div>
+                <div className={styles.infoContent}>
+                  <span>{planData.total_words || 0} 个单词</span>
+                </div>
+              </div>
+
+              {planData.review_frequency && (
+                <div className={styles.infoCard}>
+                  <div className={styles.infoHeader}>
+                    <i className="fas fa-repeat" />
+                    <span>复习频率</span>
+                  </div>
+                  <div className={styles.infoContent}>
+                    <span>{planData.review_frequency} 次</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -832,6 +1004,14 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
                 <i className="fas fa-chart-bar" />
                 统计分析
               </button>
+              <button
+                className={`${styles.viewTab} ${currentView === 'logs' ? styles.active : ''}`}
+                onClick={() => handleViewChange('logs')}
+                type="button"
+              >
+                <i className="fas fa-history" />
+                学习日志
+              </button>
             </div>
           </div>
 
@@ -900,6 +1080,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 
       case 'statistics':
         return renderStatisticsView();
+      case 'logs':
+        return renderLogsView();
       default:
         return renderOverviewView();
     }
@@ -918,7 +1100,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
         <div className={styles.calendarSection}>
           <h3 className={styles.sectionTitle}>学习日程</h3>
           <StudyCalendar
-            aiPlanData={aiPlanData}
+            planId={planId}
             onDateClick={handleDateClick}
             loading={false}
           />
@@ -926,6 +1108,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
       </div>
     );
   }
+
+
 
   // 日程安排视图
   function renderScheduleView() {
@@ -941,7 +1125,12 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 
     return (
       <div className={styles.scheduleContent}>
-        <StudySchedulePreview aiResult={aiPlanData} />
+        <StudySchedulePreview
+          aiResult={aiPlanData}
+          mode="edit"
+          planId={planData?.id}
+          onStartPractice={handleStartSchedulePractice}
+        />
       </div>
     );
   }
@@ -1027,7 +1216,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
                   value={count}
                   unit="个"
                   icon={posDisplay.icon}
-                  iconColor={posDisplay.color}
+                  iconColor={posDisplay.color as any}
                 />
               );
             })}
@@ -1062,6 +1251,125 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
         </div>
 
 
+      </div>
+    );
+  }
+
+  // 练习会话视图
+  function renderLogsView() {
+    if (logsLoading) {
+      return (
+        <div className={styles.loadingContainer}>
+          <i className="fas fa-spinner fa-spin" />
+          <span>加载练习记录中...</span>
+        </div>
+      );
+    }
+
+    if (practiceSessions.length === 0) {
+      return (
+        <div className={styles.emptyState}>
+          <i className="fas fa-history" />
+          <h3>暂无练习记录</h3>
+          <p>开始练习后，这里将显示您的练习历史记录</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className={styles.logsContent}>
+        <div className={styles.logsHeader}>
+          <h3>练习记录</h3>
+          <p>显示该学习计划下所有的练习会话记录</p>
+        </div>
+
+        <div className={styles.sessionsList}>
+          {practiceSessions.map((session) => (
+            <div key={session.sessionId} className={styles.sessionCard}>
+              <div className={styles.sessionHeader}>
+                <div className={styles.sessionInfo}>
+                  <div className={styles.sessionDate}>
+                    {new Date(session.scheduleDate).toLocaleDateString('zh-CN', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      weekday: 'short'
+                    })}
+                  </div>
+                  <div className={styles.sessionTime}>
+                    {new Date(session.startTime).toLocaleTimeString('zh-CN', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                    {session.endTime && (
+                      <> - {new Date(session.endTime).toLocaleTimeString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}</>
+                    )}
+                  </div>
+                </div>
+                <div className={`${styles.sessionStatus} ${session.completed ? styles.completed : styles.incomplete}`}>
+                  {session.completed ? (
+                    <>
+                      <i className="fas fa-check-circle" />
+                      <span>已完成</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-clock" />
+                      <span>未完成</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles.sessionStats}>
+                <div className={styles.statItem}>
+                  <span className={styles.statLabel}>练习时长</span>
+                  <span className={styles.statValue}>
+                    {Math.floor(session.activeTime / 60000)}分{Math.floor((session.activeTime % 60000) / 1000)}秒
+                  </span>
+                </div>
+                <div className={styles.statItem}>
+                  <span className={styles.statLabel}>总时长</span>
+                  <span className={styles.statValue}>
+                    {Math.floor(session.totalTime / 60000)}分{Math.floor((session.totalTime % 60000) / 1000)}秒
+                  </span>
+                </div>
+                <div className={styles.statItem}>
+                  <span className={styles.statLabel}>暂停次数</span>
+                  <span className={styles.statValue}>{session.pauseCount}次</span>
+                </div>
+                <div className={styles.statItem}>
+                  <span className={styles.statLabel}>会话ID</span>
+                  <span className={styles.statValue}>{session.sessionId?.slice(0, 8) || 'N/A'}...</span>
+                </div>
+              </div>
+
+              {!session.completed && (
+                <div className={styles.sessionActions}>
+                  <Button
+                    onClick={() => {
+                      if (onNavigate) {
+                        onNavigate('word-practice', {
+                          planId: session.planId,
+                          scheduleId: session.scheduleId,
+                          sessionId: session.sessionId
+                        });
+                      }
+                    }}
+                    size="sm"
+                    variant="primary"
+                  >
+                    <i className="fas fa-play" />
+                    继续练习
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from './HomePage.module.css';
-import { Header, StudyPlanCard, useToast } from '../components';
+import { Header, StudyPlanCard, useToast, IncompletePracticeModal } from '../components';
 import { WordBookCard } from '../components/WordBookCard';
 import { ErrorModal } from '../components/ErrorModal';
 import { LogViewer } from '../components/LogViewer';
 import { StudyService } from '../services/studyService';
 import { WordBookService } from '../services/wordbookService';
+import { practiceService } from '../services/practiceService';
 import { useMultipleAsyncData } from '../hooks/useAsyncData';
 import { useErrorHandler } from '../hooks/useErrorHandler';
 import { showErrorMessage } from '../utils/errorHandler';
+import { type PracticeSession } from '../types/study';
 
 export interface HomePageProps {
   /** Navigation handler */
@@ -24,6 +26,11 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
   const wordBookService = new WordBookService();
   const { errorState, showError, hideError } = useErrorHandler();
   const [showLogViewer, setShowLogViewer] = useState(false);
+
+  // 未完成练习相关状态
+  const [incompleteSessions, setIncompleteSessions] = useState<PracticeSession[]>([]);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [checkingIncomplete, setCheckingIncomplete] = useState(false);
 
   const { data, loading, errors, refresh } = useMultipleAsyncData({
     studyPlans: async () => {
@@ -101,16 +108,45 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
     }
   }, [errors, showError, refresh]);
 
+  // 检测未完成的练习
+  useEffect(() => {
+    const checkIncompletePractice = async () => {
+      if (checkingIncomplete) return;
+
+      setCheckingIncomplete(true);
+      try {
+        const result = await practiceService.checkIncompletePractice();
+        if (result.success && result.data && result.data.hasIncomplete) {
+          setIncompleteSessions(result.data.sessions || []);
+          setShowIncompleteModal(true);
+        }
+      } catch (error) {
+        console.warn('检查未完成练习失败:', error);
+        // 不显示错误，静默失败
+      } finally {
+        setCheckingIncomplete(false);
+      }
+    };
+
+    // 页面加载后延迟2秒检查，避免影响主要内容加载，只检查一次
+    const timer = setTimeout(checkIncompletePractice, 2000);
+    return () => clearTimeout(timer);
+  }, []); // 移除checkingIncomplete依赖，只在组件挂载时检查一次
+
   // 过滤学习计划：只显示正常状态的计划（排除删除、草稿状态）
   const studyPlans = (data.studyPlans && Array.isArray(data.studyPlans))
-    ? data.studyPlans.filter(plan =>
-        plan.status === 'normal' && (
-          plan.lifecycle_status === 'pending' ||
-          plan.lifecycle_status === 'active' ||
-          plan.lifecycle_status === 'completed' ||
-          plan.lifecycle_status === 'terminated'
-        )
-      )
+    ? data.studyPlans.filter(plan => {
+        // 优先使用统一状态，如果没有则使用旧的双状态系统
+        const unifiedStatus = plan.unified_status ||
+          (plan.status === 'deleted' ? 'Deleted' :
+           plan.status === 'draft' ? 'Draft' :
+           plan.lifecycle_status === 'pending' ? 'Pending' :
+           plan.lifecycle_status === 'active' ? 'Active' :
+           plan.lifecycle_status === 'completed' ? 'Completed' :
+           plan.lifecycle_status === 'terminated' ? 'Terminated' : 'Draft');
+
+        return unifiedStatus !== 'Deleted' && unifiedStatus !== 'Draft';
+      })
     : [];
   const wordBooks = (data.wordBooks && Array.isArray(data.wordBooks)) ? data.wordBooks : [];
   const statistics = data.statistics || {
@@ -127,8 +163,83 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
     onNavigate?.('plan-detail', { planId });
   };
 
-  const handleStudyStart = (planId: number) => {
-    onNavigate?.('start-study-plan', { planId });
+  // 获取学习计划的当前日程ID
+  const getCurrentScheduleId = async (planId: number): Promise<number | null> => {
+    try {
+      const studyService = new StudyService();
+      // 获取学习计划的日程列表
+      const result = await studyService.getStudyPlanSchedules(planId);
+      if (result.success && result.data.length > 0) {
+        // 找到今天的日程，如果没有则返回第一个未完成的日程
+        const today = new Date().toISOString().split('T')[0];
+        const todaySchedule = result.data.find(schedule => schedule.schedule_date === today);
+        if (todaySchedule) {
+          return todaySchedule.id;
+        }
+
+        // 如果没有今天的日程，返回第一个日程
+        return result.data[0].id;
+      }
+      return null;
+    } catch (error) {
+      console.error('获取日程失败:', error);
+      return null;
+    }
+  };
+
+  const handleStudyStart = async (planId: number) => {
+    // 找到对应的学习计划
+    const plan = studyPlans.find(p => p.id === planId);
+    if (!plan) {
+      toast.showError('错误', '找不到指定的学习计划');
+      return;
+    }
+
+    // 根据学习计划的状态决定跳转行为
+    if (plan.status === 'draft') {
+      // 草稿状态，跳转到编辑页面
+      onNavigate?.('plan-detail', { planId });
+      return;
+    }
+
+    if (plan.lifecycle_status === 'pending') {
+      // 待开始状态，需要先启动学习计划，然后跳转到练习页面
+      try {
+        // 调用启动学习计划的API
+        const studyService = new StudyService();
+        const result = await studyService.startStudyPlan(planId);
+
+        if (result.success) {
+          toast.showSuccess('开始学习', '学习计划已启动');
+          // 启动成功后，获取第一个日程ID并跳转到练习页面
+          const scheduleId = await getCurrentScheduleId(planId);
+          if (scheduleId) {
+            onNavigate?.('word-practice', { planId, scheduleId });
+          } else {
+            toast.showError('错误', '找不到可练习的日程');
+          }
+        } else {
+          toast.showError('启动失败', result.error || '启动学习计划失败');
+        }
+      } catch (error) {
+        console.error('启动学习计划失败:', error);
+        toast.showError('启动失败', '启动学习计划时发生错误');
+      }
+    } else if (plan.lifecycle_status === 'active') {
+      // 进行中状态，直接跳转到练习页面
+      const scheduleId = await getCurrentScheduleId(planId);
+      if (scheduleId) {
+        onNavigate?.('word-practice', { planId, scheduleId });
+      } else {
+        toast.showError('错误', '找不到可练习的日程');
+      }
+    } else if (plan.lifecycle_status === 'completed' || plan.lifecycle_status === 'terminated') {
+      // 已完成或已终止状态，跳转到计划详情页面
+      onNavigate?.('plan-detail', { planId });
+    } else {
+      // 其他状态，跳转到计划详情页面
+      onNavigate?.('plan-detail', { planId });
+    }
   };
 
   const handleWordBookClick = (book: any) => {
@@ -146,6 +257,59 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
       console.log('Quick action:', action);
       // TODO: Handle other quick actions
     }
+  };
+
+  // 处理未完成练习的回调
+  const handleContinuePractice = (session: PracticeSession) => {
+    console.log('=== 继续练习被点击 ===');
+    console.log('会话数据:', session);
+
+    // 注意：后端返回的字段名是snake_case，需要正确访问
+    const navigationParams = {
+      planId: (session as any).plan_id,
+      scheduleId: (session as any).schedule_id,
+      sessionId: (session as any).session_id
+    };
+
+    console.log('导航参数:', navigationParams);
+
+    setShowIncompleteModal(false);
+    // 继续练习，跳转到练习页面
+    onNavigate?.('word-practice', navigationParams);
+
+    console.log('导航调用完成');
+  };
+
+  const handleCancelPractice = async (session: PracticeSession) => {
+    try {
+      // 取消练习会话
+      const result = await practiceService.cancelPracticeSession(session.sessionId);
+      if (result.success) {
+        // 从列表中移除该会话
+        setIncompleteSessions(prev => (prev || []).filter(s => s.sessionId !== session.sessionId));
+        toast.showSuccess('已取消练习', '练习会话已被取消');
+
+        // 如果没有更多未完成的练习，关闭模态框
+        if (incompleteSessions.length <= 1) {
+          setShowIncompleteModal(false);
+        }
+      } else {
+        toast.showError('取消失败', result.error || '取消练习会话失败');
+      }
+    } catch (error) {
+      console.error('取消练习会话失败:', error);
+      toast.showError('取消失败', '取消练习会话时发生错误');
+    }
+  };
+
+  const handleCloseIncompleteModal = () => {
+    setShowIncompleteModal(false);
+  };
+
+  const handleSkipIncompleteReminder = () => {
+    setShowIncompleteModal(false);
+    // 可以在这里设置一个标志，在本次会话中不再提醒
+    // localStorage.setItem('skipIncompleteReminder', 'true');
   };
 
   if (loading) {
@@ -402,6 +566,16 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
         message={errorState.message}
         details={errorState.details}
         onRetry={errorState.retryAction}
+      />
+
+      {/* 未完成练习提醒模态框 */}
+      <IncompletePracticeModal
+        isOpen={showIncompleteModal}
+        sessions={incompleteSessions}
+        onContinue={handleContinuePractice}
+        onCancel={handleCancelPractice}
+        onClose={handleCloseIncompleteModal}
+        onSkip={handleSkipIncompleteReminder}
       />
 
       {/* 日志查看器 */}

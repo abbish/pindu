@@ -1017,8 +1017,11 @@ impl AIService {
         // 提取JSON部分
         let json_str = self.extract_json_from_response(json_content);
 
+        // 清理JSON语法错误
+        let cleaned_json = self.clean_json_syntax(&json_str);
+
         // 先解析为通用的JSON值，然后进行字段名转换
-        let ai_json: serde_json::Value = serde_json::from_str(&json_str)?;
+        let ai_json: serde_json::Value = serde_json::from_str(&cleaned_json)?;
 
         // 转换字段名从下划线到驼峰命名
         let converted_json = self.convert_study_plan_field_names(ai_json)?;
@@ -1032,6 +1035,49 @@ impl AIService {
         }
 
         Ok(result)
+    }
+
+    /// 清理JSON语法错误
+    fn clean_json_syntax(&self, json_str: &str) -> String {
+        let mut cleaned = json_str.to_string();
+
+        // 修复JavaScript对象语法为JSON语法
+        // 1. 修复无引号的属性名
+        let property_replacements = [
+            ("word_id:", r#""word_id":"#),
+            ("word:", r#""word":"#),
+            ("wordbook_id:", r#""wordbook_id":"#),
+            ("is_review:", r#""is_review":"#),
+            ("review_count:", r#""review_count":"#),
+            ("priority:", r#""priority":"#),
+            ("difficulty_level:", r#""difficulty_level":"#),
+        ];
+
+        for (pattern, replacement) in property_replacements.iter() {
+            // 只替换在对象开始位置的属性名（前面有空白字符、{或,）
+            let lines: Vec<&str> = cleaned.lines().collect();
+            let mut new_lines = Vec::new();
+
+            for line in lines {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with(pattern) && !trimmed.starts_with(&format!("\"{}\"", &pattern[..pattern.len()-1])) {
+                    // 替换无引号的属性名
+                    let new_line = line.replace(pattern, replacement);
+                    new_lines.push(new_line);
+                } else {
+                    new_lines.push(line.to_string());
+                }
+            }
+            cleaned = new_lines.join("\n");
+        }
+
+        // 2. 修复无引号的日期值（如 "date": 2025-08-27 应该是 "date": "2025-08-27"）
+        // 查找 "date": 后面跟着无引号的日期
+        if let Some(pos) = cleaned.find(r#""date": 2025-08-27"#) {
+            cleaned = cleaned.replace(r#""date": 2025-08-27"#, r#""date": "2025-08-27""#);
+        }
+
+        cleaned
     }
 
     /// 转换学习计划JSON的字段名从下划线到驼峰命名

@@ -143,7 +143,33 @@ pub fn run() {
             get_study_plan_word_books,
             remove_word_from_plan,
             batch_remove_words_from_plan,
-            get_study_plan_statistics
+            get_study_plan_statistics,
+
+            // 日历相关命令
+            get_calendar_month_data,
+            get_today_study_schedules,
+            get_study_plan_calendar_data,
+            diagnose_calendar_data,
+            diagnose_study_plan_data,
+            diagnose_today_schedules,
+
+            // 数据管理相关命令
+            get_database_statistics,
+            reset_user_data,
+            reset_selected_tables,
+
+            // 单词练习相关命令
+            start_practice_session,
+            submit_step_result,
+            pause_practice_session,
+            resume_practice_session,
+            complete_practice_session,
+            cancel_practice_session,
+            get_incomplete_practice_sessions,
+            get_practice_session_detail,
+            get_plan_practice_sessions,
+            get_practice_statistics,
+            get_study_plan_schedules
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

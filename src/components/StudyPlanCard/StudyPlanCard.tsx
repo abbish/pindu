@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import styles from './StudyPlanCard.module.css';
 import type { StudyPlanWithProgress, UnifiedStudyPlanStatus } from '../../types';
 import { getStatusDisplay } from '../../types/study';
@@ -16,8 +16,14 @@ export interface StudyPlanCardProps {
   onMenuAction?: (planId: number, action: string) => void;
 }
 
-// 辅助函数
+interface ScheduleProgress {
+  total: number;
+  completed: number;
+  overdue: number;
+  upcoming: number;
+}
 
+// 辅助函数
 function getMasteryDisplay(level: number) {
   const stars = Math.min(Math.max(Math.floor(level / 20), 1), 5);
   let text = '';
@@ -50,8 +56,47 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
   onActionClick,
   onMenuAction
 }) => {
-  const statusDisplay = getStatusDisplay(plan.unified_status as UnifiedStudyPlanStatus);
+  // Get unified status
+  const unifiedStatus = plan.unified_status ||
+    (plan.status === 'deleted' ? 'Deleted' :
+     plan.status === 'draft' ? 'Draft' :
+     plan.lifecycle_status === 'pending' ? 'Pending' :
+     plan.lifecycle_status === 'active' ? 'Active' :
+     plan.lifecycle_status === 'completed' ? 'Completed' :
+     plan.lifecycle_status === 'terminated' ? 'Terminated' : 'Draft');
+
+  const statusDisplay = getStatusDisplay(unifiedStatus as UnifiedStudyPlanStatus);
   const masteryDisplay = getMasteryDisplay(plan.mastery_level);
+
+  // 计算时间进度
+  const timeProgress = useMemo(() => {
+    if (!plan.start_date || !plan.end_date) return 0;
+
+    const startDate = new Date(plan.start_date);
+    const endDate = new Date(plan.end_date);
+    const today = new Date();
+
+    const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const passedDays = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    return Math.min(Math.max((passedDays / totalDays) * 100, 0), 100);
+  }, [plan.start_date, plan.end_date]);
+
+  // 计算实际进度
+  const actualProgress = useMemo(() => {
+    if (plan.total_words === 0) return 0;
+    return (plan.learned_words / plan.total_words) * 100;
+  }, [plan.learned_words, plan.total_words]);
+
+  // 模拟日程进度数据（实际应该从API获取）
+  const scheduleProgress: ScheduleProgress = useMemo(() => {
+    const total = plan.study_period_days || 10;
+    const completed = Math.floor(actualProgress / 100 * total);
+    const overdue = Math.max(0, Math.floor(timeProgress / 100 * total) - completed);
+    const upcoming = total - completed - overdue;
+
+    return { total, completed, overdue, upcoming };
+  }, [plan.study_period_days, actualProgress, timeProgress]);
 
   const handleCardClick = () => {
     onClick?.(plan.id);
@@ -66,6 +111,34 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
     e.stopPropagation();
     // TODO: Show context menu
     onMenuAction?.(plan.id, 'menu');
+  };
+
+  // 渲染日程进度小方块
+  const renderScheduleBlocks = () => {
+    const blocks = [];
+
+    // 已完成的日程（绿色）
+    for (let i = 0; i < scheduleProgress.completed; i++) {
+      blocks.push(
+        <div key={`completed-${i}`} className={`${styles.scheduleBlock} ${styles.completed}`} />
+      );
+    }
+
+    // 延期的日程（红色）
+    for (let i = 0; i < scheduleProgress.overdue; i++) {
+      blocks.push(
+        <div key={`overdue-${i}`} className={`${styles.scheduleBlock} ${styles.overdue}`} />
+      );
+    }
+
+    // 未开始的日程（灰色）
+    for (let i = 0; i < scheduleProgress.upcoming; i++) {
+      blocks.push(
+        <div key={`upcoming-${i}`} className={`${styles.scheduleBlock} ${styles.upcoming}`} />
+      );
+    }
+
+    return blocks;
   };
 
   const getProgressColor = () => {
@@ -111,45 +184,116 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
         <p className={styles.description}>{plan.description}</p>
       </div>
 
-      {/* Statistics - 核心数据展示 */}
-      <div className={styles.stats}>
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}>总单词数</span>
-          <span className={styles.statValue}>{plan.total_words}</span>
+      {/* 基本信息 */}
+      <div className={styles.basicInfo}>
+        <div className={styles.infoRow}>
+          <span className={styles.label}>总单词数:</span>
+          <span className={styles.value}>{plan.total_words}</span>
         </div>
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}>已学习</span>
+        <div className={`${styles.infoRow} ${styles.multiGroup}`}>
+          <div className={styles.infoGroup}>
+            <span className={styles.label}>学习强度:</span>
+            <span className={styles.value}>
+              {plan.intensity_level === 'easy' ? '轻松' :
+               plan.intensity_level === 'normal' ? '普通' :
+               plan.intensity_level === 'intensive' ? '密集' : '普通'}
+            </span>
+          </div>
+          <div className={styles.infoGroup}>
+            <span className={styles.label}>学习周期:</span>
+            <span className={styles.value}>{plan.study_period_days || 0} 天</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 时间信息 */}
+      {(plan.start_date || plan.end_date) && (
+        <div className={styles.timeInfo}>
+          <div className={`${styles.infoRow} ${styles.multiGroup}`}>
+            {plan.start_date && (
+              <div className={styles.infoGroup}>
+                <span className={styles.label}>开始时间:</span>
+                <span className={styles.value}>{plan.start_date}</span>
+              </div>
+            )}
+            {plan.end_date && (
+              <div className={styles.infoGroup}>
+                <span className={styles.label}>结束时间:</span>
+                <span className={styles.value}>{plan.end_date}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 进度信息 */}
+      <div className={styles.progressSection}>
+        <div className={styles.progressRow}>
+          <div className={styles.progressItem}>
+            <div className={styles.progressHeader}>
+              <span className={styles.progressLabel}>时间进度</span>
+              <span className={styles.progressValue}>{timeProgress.toFixed(1)}%</span>
+            </div>
+            <div className={styles.progressBar}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${timeProgress}%` }}
+              />
+            </div>
+          </div>
+
+          <div className={styles.progressItem}>
+            <div className={styles.progressHeader}>
+              <span className={styles.progressLabel}>学习进度</span>
+              <span className={styles.progressValue}>{actualProgress.toFixed(1)}%</span>
+            </div>
+            <div className={styles.progressBar}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${actualProgress}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 统计信息 */}
+      <div className={styles.statsSection}>
+        <div className={styles.statItem}>
+          <span className={styles.statLabel}>已学单词</span>
           <span className={styles.statValue}>{plan.learned_words}</span>
         </div>
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}>正确率</span>
-          <span 
-            className={styles.statValue}
-            style={{ color: plan.accuracy_rate >= 80 ? 'var(--color-green)' : 'var(--color-orange)' }}
-          >
-            {plan.accuracy_rate.toFixed(0)}%
+        <div className={styles.statItem}>
+          <span className={styles.statLabel}>平均正确率</span>
+          <span className={styles.statValue}>
+            {plan.accuracy_rate ? `${(plan.accuracy_rate * 100).toFixed(1)}%` : '暂无数据'}
           </span>
         </div>
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}>巩固强度</span>
-          <div className={styles.mastery}>
-            <span 
-              className={styles.masteryText}
-              style={{ color: masteryDisplay.color }}
-            >
-              {masteryDisplay.text}
-            </span>
-            <div className={styles.stars}>
-              {Array.from({ length: 5 }, (_, index) => (
-                <i
-                  key={index}
-                  className={`${index < masteryDisplay.stars ? 'fas' : 'far'} fa-star`}
-                  style={{ 
-                    color: index < masteryDisplay.stars ? masteryDisplay.color : 'var(--color-border-dark)'
-                  }}
-                />
-              ))}
-            </div>
+      </div>
+
+      {/* 日程进度 */}
+      <div className={styles.scheduleSection}>
+        <div className={styles.scheduleHeader}>
+          <span className={styles.scheduleLabel}>日程进度</span>
+          <span className={styles.scheduleStats}>
+            {scheduleProgress.completed}/{scheduleProgress.total}
+          </span>
+        </div>
+        <div className={styles.scheduleBlocks}>
+          {renderScheduleBlocks()}
+        </div>
+        <div className={styles.scheduleLegend}>
+          <div className={styles.legendItem}>
+            <div className={`${styles.legendBlock} ${styles.completed}`} />
+            <span>已完成</span>
+          </div>
+          <div className={styles.legendItem}>
+            <div className={`${styles.legendBlock} ${styles.overdue}`} />
+            <span>延期</span>
+          </div>
+          <div className={styles.legendItem}>
+            <div className={`${styles.legendBlock} ${styles.upcoming}`} />
+            <span>未开始</span>
           </div>
         </div>
       </div>

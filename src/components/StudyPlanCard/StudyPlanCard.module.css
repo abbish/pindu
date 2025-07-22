@@ -8,7 +8,8 @@
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  height: 400px;
+  /* 移除固定高度，改为自适应 */
+  gap: var(--spacing-md);
 }
 
 .card:hover {
@@ -202,17 +203,257 @@
   font-size: var(--font-size-sm);
 }
 
-/* 在小屏幕上进一步压缩紧凑布局 */
+/* 基本信息样式 */
+.basicInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 信息组样式 - 用于在一行中显示多个信息项 */
+.infoGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+/* 当infoRow包含多个infoGroup时，调整布局 */
+.infoRow.multiGroup {
+  justify-content: space-between;
+}
+
+.infoRow.multiGroup .infoGroup:first-child {
+  flex: 1;
+}
+
+.infoRow.multiGroup .infoGroup:last-child {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.value {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+/* 时间信息样式 */
+.timeInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+/* 进度信息样式 */
+.progressSection {
+  margin-bottom: var(--spacing-md);
+}
+
+.progressRow {
+  display: flex;
+  gap: var(--spacing-lg);
+}
+
+.progressItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  flex: 1;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progressLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.progressValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.progressBar {
+  height: 6px;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background-color: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+}
+
+/* 统计信息样式 */
+.statsSection {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.statLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.statValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* 日程进度样式 */
+.scheduleSection {
+  margin-bottom: var(--spacing-md);
+}
+
+.scheduleHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.scheduleLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.scheduleStats {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.scheduleBlocks {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.scheduleBlock {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-sm);
+}
+
+.scheduleBlock.completed {
+  background-color: var(--color-green);
+}
+
+.scheduleBlock.overdue {
+  background-color: var(--color-red);
+}
+
+.scheduleBlock.upcoming {
+  background-color: var(--color-border-light);
+}
+
+.scheduleLegend {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: center;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.legendBlock {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-sm);
+}
+
+.legendBlock.completed {
+  background-color: var(--color-green);
+}
+
+.legendBlock.overdue {
+  background-color: var(--color-red);
+}
+
+.legendBlock.upcoming {
+  background-color: var(--color-border-light);
+}
+
+/* 响应式布局 */
 @media (max-width: 768px) {
   .cardCompact {
     padding: var(--spacing-md);
   }
-  
+
   .cardCompact .title {
     font-size: var(--font-size-base);
   }
-  
+
   .cardCompact .statRow {
     margin-bottom: var(--spacing-xs);
+  }
+
+  /* 小屏幕上信息组垂直排列 */
+  .infoRow.multiGroup {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+
+  .infoRow.multiGroup .infoGroup {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  /* 小屏幕上进度条垂直排列 */
+  .progressRow {
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  .scheduleBlocks {
+    gap: var(--spacing-xs);
+  }
+
+  .scheduleBlock {
+    width: 10px;
+    height: 10px;
   }
 }
