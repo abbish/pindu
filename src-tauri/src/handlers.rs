@@ -4283,23 +4283,39 @@ pub async fn resume_practice_session(
     let now = chrono::Utc::now().to_rfc3339();
     logger.info("API", &format!("更新暂停记录，时间: {}", now));
 
-    match sqlx::query(
-        "UPDATE practice_pause_records SET pause_end = ?
+    // 先查找最新的未结束暂停记录
+    let latest_pause_record = sqlx::query(
+        "SELECT id FROM practice_pause_records
          WHERE session_id = ? AND pause_end IS NULL
          ORDER BY id DESC LIMIT 1"
     )
-    .bind(&now)
     .bind(&session_id)
-    .execute(pool.inner())
-    .await {
-        Ok(result) => {
-            logger.info("API", &format!("暂停记录更新成功，影响行数: {}", result.rows_affected()));
-        }
-        Err(e) => {
-            logger.info("API", &format!("暂停记录更新失败: {}", e));
-            return Err(AppError::DatabaseError(format!("更新暂停记录失败: {}", e)));
-        }
-    };
+    .fetch_optional(pool.inner())
+    .await?;
+
+    if let Some(record) = latest_pause_record {
+        let record_id: i64 = record.get("id");
+
+        // 更新找到的暂停记录
+        match sqlx::query(
+            "UPDATE practice_pause_records SET pause_end = ? WHERE id = ?"
+        )
+        .bind(&now)
+        .bind(record_id)
+        .execute(pool.inner())
+        .await {
+            Ok(result) => {
+                logger.info("API", &format!("暂停记录更新成功，影响行数: {}", result.rows_affected()));
+            }
+            Err(e) => {
+                logger.info("API", &format!("暂停记录更新失败: {}", e));
+                return Err(AppError::DatabaseError(format!("更新暂停记录失败: {}", e)));
+            }
+        };
+    } else {
+        logger.info("API", "未找到需要更新的暂停记录");
+        return Err(AppError::ValidationError("未找到需要更新的暂停记录".to_string()));
+    }
 
     // 更新会话的更新时间
     logger.info("API", "更新会话时间");
@@ -5518,6 +5534,98 @@ pub async fn reset_user_data(app: AppHandle) -> AppResult<ResetResult> {
 
     logger.api_response("reset_user_data", true, Some(&result.message));
     Ok(result)
+}
+
+/// 删除数据库文件并重启应用
+#[tauri::command]
+pub async fn delete_database_and_restart(app: AppHandle) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+
+    logger.api_request("delete_database_and_restart", None);
+    logger.info("DATABASE", "🗑️ Starting database deletion and app restart process");
+
+    // 获取应用数据目录
+    let app_data_dir = app.path()
+        .app_data_dir()
+        .map_err(|e| AppError::InternalError(format!("Failed to get app data directory: {}", e)))?;
+
+    // 构建数据库文件路径
+    let db_path = app_data_dir.join("vocabulary.db");
+    let wal_path = app_data_dir.join("vocabulary.db-wal");
+    let shm_path = app_data_dir.join("vocabulary.db-shm");
+
+    logger.info("DATABASE", &format!("Database file path: {}", db_path.display()));
+    logger.info("DATABASE", &format!("WAL file path: {}", wal_path.display()));
+    logger.info("DATABASE", &format!("SHM file path: {}", shm_path.display()));
+
+    // 检查数据库文件是否存在
+    if !db_path.exists() {
+        let error_msg = "数据库文件不存在";
+        logger.api_response("delete_database_and_restart", false, Some(error_msg));
+        return Err(AppError::NotFound(error_msg.to_string()));
+    }
+
+    // 获取数据库连接池并关闭所有连接
+    let pool = app.state::<SqlitePool>();
+    logger.info("DATABASE", "Closing database connections...");
+
+    // 关闭连接池
+    pool.close().await;
+    logger.info("DATABASE", "✅ Database connections closed");
+
+    // 等待一小段时间确保文件句柄被释放
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    logger.info("DATABASE", "Preparing to delete database file");
+
+    // 尝试删除数据库文件，如果失败则重试几次
+    let mut attempts = 0;
+    let max_attempts = 5;
+
+    loop {
+        attempts += 1;
+        logger.info("DATABASE", &format!("Delete attempt {} of {}", attempts, max_attempts));
+
+        // 尝试删除主数据库文件
+        match std::fs::remove_file(&db_path) {
+            Ok(_) => {
+                logger.info("DATABASE", "✅ Main database file deleted successfully");
+
+                // 删除WAL文件（如果存在）
+                if wal_path.exists() {
+                    match std::fs::remove_file(&wal_path) {
+                        Ok(_) => logger.info("DATABASE", "✅ WAL file deleted successfully"),
+                        Err(e) => logger.info("DATABASE", &format!("⚠️ Failed to delete WAL file (non-critical): {}", e)),
+                    }
+                }
+
+                // 删除SHM文件（如果存在）
+                if shm_path.exists() {
+                    match std::fs::remove_file(&shm_path) {
+                        Ok(_) => logger.info("DATABASE", "✅ SHM file deleted successfully"),
+                        Err(e) => logger.info("DATABASE", &format!("⚠️ Failed to delete SHM file (non-critical): {}", e)),
+                    }
+                }
+
+                logger.api_response("delete_database_and_restart", true, Some("All database files deleted, restarting app"));
+
+                // 重启应用程序
+                app.restart();
+                // 注意：restart() 会终止当前进程，所以这里不会返回
+            }
+            Err(e) => {
+                if attempts >= max_attempts {
+                    let error_msg = format!("删除数据库文件失败 (尝试{}次): {}", attempts, e);
+                    logger.error("DATABASE", "Failed to delete database file after multiple attempts", Some(&error_msg));
+                    logger.api_response("delete_database_and_restart", false, Some(&error_msg));
+                    return Err(AppError::InternalError(error_msg));
+                } else {
+                    logger.info("DATABASE", &format!("Delete attempt {} failed, retrying in 200ms: {}", attempts, e));
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                }
+            }
+        }
+    }
 }
 
 /// 选择性重置用户数据

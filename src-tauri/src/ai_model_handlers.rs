@@ -4,7 +4,7 @@ use crate::types::*;
 use crate::error::{AppResult, AppError};
 use crate::logger::Logger;
 
-/// 获取所有AI提供商
+/// 获取所有AI提供商（仅活跃的）
 #[tauri::command]
 pub async fn get_ai_providers(app: AppHandle) -> AppResult<Vec<AIProvider>> {
     let pool = app.state::<SqlitePool>();
@@ -48,6 +48,52 @@ pub async fn get_ai_providers(app: AppHandle) -> AppResult<Vec<AIProvider>> {
         .collect();
 
     logger.api_response("get_ai_providers", true, Some(&format!("Returned {} providers", providers.len())));
+    Ok(providers)
+}
+
+/// 获取所有AI提供商（包括禁用的，用于设置页面）
+#[tauri::command]
+pub async fn get_all_ai_providers(app: AppHandle) -> AppResult<Vec<AIProvider>> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("get_all_ai_providers", None);
+
+    let query = r#"
+        SELECT id, name, display_name, base_url, api_key, description, is_active, created_at, updated_at
+        FROM ai_providers
+        ORDER BY is_active DESC, display_name
+    "#;
+
+    let rows = match sqlx::query(query).fetch_all(pool.inner()).await {
+        Ok(rows) => {
+            logger.database_operation("SELECT", "ai_providers", true, Some(&format!("Found {} providers (including inactive)", rows.len())));
+            rows
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            logger.database_operation("SELECT", "ai_providers", false, Some(&error_msg));
+            logger.api_response("get_all_ai_providers", false, Some(&error_msg));
+            return Err(AppError::DatabaseError(error_msg));
+        }
+    };
+
+    let providers: Vec<AIProvider> = rows
+        .into_iter()
+        .map(|row| AIProvider {
+            id: row.get("id"),
+            name: row.get("name"),
+            display_name: row.get("display_name"),
+            base_url: row.get("base_url"),
+            api_key: row.get("api_key"),
+            description: row.get("description"),
+            is_active: row.get("is_active"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        })
+        .collect();
+
+    logger.api_response("get_all_ai_providers", true, Some(&format!("Returned {} providers (including inactive)", providers.len())));
     Ok(providers)
 }
 
@@ -129,6 +175,93 @@ pub async fn get_ai_models(
         .collect();
 
     logger.api_response("get_ai_models", true, Some(&format!("Returned {} models", models.len())));
+    Ok(models)
+}
+
+/// 获取所有AI模型（包括禁用的，用于设置页面）
+#[tauri::command]
+pub async fn get_all_ai_models(
+    app: AppHandle,
+    query: Option<AIModelQuery>,
+) -> AppResult<Vec<AIModelConfig>> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("get_all_ai_models", query.as_ref().map(|q| format!("provider_id: {:?}", q.provider_id)).as_deref());
+
+    let mut sql = r#"
+        SELECT
+            m.id, m.name, m.display_name, m.model_id, m.description,
+            m.max_tokens, m.temperature, m.is_active, m.is_default,
+            m.created_at, m.updated_at,
+            p.id as provider_id, p.name as provider_name, p.display_name as provider_display_name,
+            p.base_url, p.api_key, p.description as provider_description,
+            p.is_active as provider_is_active, p.created_at as provider_created_at,
+            p.updated_at as provider_updated_at
+        FROM ai_models m
+        JOIN ai_providers p ON m.provider_id = p.id
+    "#.to_string();
+
+    let mut where_conditions = Vec::new();
+
+    if let Some(q) = &query {
+        if let Some(provider_id) = q.provider_id {
+            where_conditions.push(format!("m.provider_id = {}", provider_id));
+        }
+        if let Some(is_default) = q.is_default {
+            where_conditions.push(format!("m.is_default = {}", if is_default { 1 } else { 0 }));
+        }
+    }
+
+    if !where_conditions.is_empty() {
+        sql.push_str(" WHERE ");
+        sql.push_str(&where_conditions.join(" AND "));
+    }
+
+    sql.push_str(" ORDER BY m.is_active DESC, m.is_default DESC, p.display_name, m.display_name");
+
+    let rows = match sqlx::query(&sql).fetch_all(pool.inner()).await {
+        Ok(rows) => {
+            logger.database_operation("SELECT", "ai_models", true, Some(&format!("Found {} models (including inactive)", rows.len())));
+            rows
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            logger.database_operation("SELECT", "ai_models", false, Some(&error_msg));
+            logger.api_response("get_all_ai_models", false, Some(&error_msg));
+            return Err(AppError::DatabaseError(error_msg));
+        }
+    };
+
+    let models: Vec<AIModelConfig> = rows
+        .into_iter()
+        .map(|row| AIModelConfig {
+            id: row.get("id"),
+            name: row.get("name"),
+            display_name: row.get("display_name"),
+            model_id: row.get("model_id"),
+            description: row.get("description"),
+            max_tokens: row.get("max_tokens"),
+            temperature: row.get("temperature"),
+            is_active: row.get("is_active"),
+            is_default: row.get("is_default"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+            provider: AIProvider {
+                id: row.get("provider_id"),
+                name: row.get("provider_name"),
+                display_name: row.get("provider_display_name"),
+                base_url: row.get("base_url"),
+                api_key: row.get("api_key"),
+                description: row.get("provider_description"),
+                is_active: row.get("provider_is_active"),
+                created_at: row.get("provider_created_at"),
+                updated_at: row.get("provider_updated_at"),
+            },
+        })
+        .collect();
+
+    logger.api_response("get_all_ai_models", true, Some(&format!("Returned {} models (including inactive)", models.len())));
     Ok(models)
 }
 

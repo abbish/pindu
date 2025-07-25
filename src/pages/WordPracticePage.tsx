@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Header,
-
+  Modal,
   PracticeWordCard,
   type PracticeWordData,
   useToast
@@ -58,6 +58,9 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const [totalTime, setTotalTime] = useState(0);
   const [activeTime, setActiveTime] = useState(0);
   const [, setPauseStartTime] = useState<number>(0);
+
+  // 退出确认对话框状态
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   // 从session中获取单词数据
   console.log('Session数据检查:', session);
@@ -347,9 +350,18 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
 
   // 处理退出练习
   const handleExit = () => {
-    if (window.confirm('确定要退出练习吗？当前进度将会保存。')) {
-      onNavigate?.('plan-detail', { planId });
-    }
+    setShowExitConfirm(true);
+  };
+
+  // 确认退出练习
+  const handleConfirmExit = () => {
+    setShowExitConfirm(false);
+    onNavigate?.('plan-detail', { planId });
+  };
+
+  // 取消退出练习
+  const handleCancelExit = () => {
+    setShowExitConfirm(false);
   };
 
 
@@ -511,6 +523,43 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
           )}
         </div>
       </main>
+
+      {/* 退出确认对话框 */}
+      {showExitConfirm && (
+        <Modal
+          isOpen={showExitConfirm}
+          onClose={handleCancelExit}
+          title="退出练习"
+          size="small"
+        >
+          <div className={styles.exitConfirmContent}>
+            <div className={styles.exitConfirmMessage}>
+              <i className={`fas fa-exclamation-triangle ${styles.exitConfirmIcon}`} />
+              <h3 className={styles.exitConfirmTitle}>确定要退出练习吗？</h3>
+              <p className={styles.exitConfirmDescription}>
+                退出后您的练习进度将会保存，可以稍后继续练习。
+              </p>
+            </div>
+
+            <div className={styles.exitConfirmActions}>
+              <button
+                type="button"
+                onClick={handleCancelExit}
+                className={`${styles.exitConfirmBtn} ${styles.exitConfirmBtnCancel}`}
+              >
+                继续练习
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmExit}
+                className={`${styles.exitConfirmBtn} ${styles.exitConfirmBtnConfirm}`}
+              >
+                确认退出
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

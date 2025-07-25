@@ -144,15 +144,15 @@ export const IncompletePracticeModal: React.FC<IncompletePracticeModalProps> = (
 
         <div className={styles.sessionList}>
           {(sessions || []).map((session) => {
-            // 支持两种字段命名格式
-            const sessionId = (session as any).session_id || session.sessionId;
-            const planId = (session as any).plan_id || session.planId;
-            const scheduleDate = (session as any).schedule_date || session.scheduleDate;
-            const startTime = (session as any).start_time || session.startTime;
-            const activeTime = (session as any).active_time || session.activeTime;
-            const pauseCount = (session as any).pause_count || session.pauseCount;
-            const wordStates = (session as any).word_states || session.wordStates;
-            const planTitle = (session as any).plan_title || session.planTitle || `学习计划 #${planId}`;
+            // 后端通过serde自动转换为camelCase，直接使用即可
+            const sessionId = session.sessionId;
+            const planId = session.planId;
+            const scheduleDate = session.scheduleDate;
+            const startTime = session.startTime;
+            const activeTime = session.activeTime;
+            const pauseCount = session.pauseCount;
+            const wordStates = session.wordStates;
+            const planTitle = session.planTitle || `学习计划 #${planId}`;
 
             return (
               <div key={sessionId} className={styles.sessionCard}>

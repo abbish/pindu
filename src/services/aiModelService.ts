@@ -19,7 +19,7 @@ import type {
  */
 export class AIModelService extends BaseService {
   /**
-   * 获取所有AI提供商
+   * 获取所有AI提供商（仅活跃的）
    */
   async getAIProviders(setLoading?: (state: LoadingState) => void): Promise<ApiResult<AIProvider[]>> {
     return this.executeWithLoading(async () => {
@@ -28,7 +28,16 @@ export class AIModelService extends BaseService {
   }
 
   /**
-   * 获取AI模型列表
+   * 获取所有AI提供商（包括禁用的，用于设置页面）
+   */
+  async getAllAIProviders(setLoading?: (state: LoadingState) => void): Promise<ApiResult<AIProvider[]>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<AIProvider[]>('get_all_ai_providers');
+    }, setLoading);
+  }
+
+  /**
+   * 获取AI模型列表（仅活跃的）
    */
   async getAIModels(
     query?: AIModelQuery,
@@ -36,6 +45,18 @@ export class AIModelService extends BaseService {
   ): Promise<ApiResult<AIModelConfig[]>> {
     return this.executeWithLoading(async () => {
       return this.client.invoke<AIModelConfig[]>('get_ai_models', query || {});
+    }, setLoading);
+  }
+
+  /**
+   * 获取所有AI模型（包括禁用的，用于设置页面）
+   */
+  async getAllAIModels(
+    query?: AIModelQuery,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<AIModelConfig[]>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<AIModelConfig[]>('get_all_ai_models', query || {});
     }, setLoading);
   }
 

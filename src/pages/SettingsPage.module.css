@@ -215,7 +215,7 @@
 .providerActions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md); /* 增加按钮间距，避免误点 */
 }
 
 /* Model Cards */
@@ -291,7 +291,7 @@
 .modelActions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md); /* 增加按钮间距，避免误点 */
 }
 
 /* Action Buttons */
@@ -366,23 +366,24 @@
 }
 
 .deleteButton {
-  padding: var(--spacing-sm);
-  border: 1px solid var(--color-danger-light);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid #dc3545;
   border-radius: var(--border-radius-sm);
-  background: var(--color-danger-light);
-  color: var(--color-danger);
+  background: #dc3545;
+  color: white;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
-  transition: all var(--transition-fast);
-  width: 36px;
-  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.deleteButton:hover {
-  background: var(--color-danger);
-  color: white;
+.deleteButton:disabled {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-disabled);
+  border-color: var(--color-border);
+  cursor: not-allowed;
 }
 
 .defaultBadge {
@@ -807,6 +808,44 @@
 
 .resetConfirmWarning li {
   margin: var(--spacing-xs) 0;
+}
+
+/* Delete Database Dialog Specific Styles */
+.warningDetails {
+  margin: var(--spacing-lg) 0;
+  padding: var(--spacing-md);
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--border-radius-md);
+  border-left: 4px solid var(--color-danger);
+}
+
+.warningDetails h5 {
+  margin: 0 0 var(--spacing-sm) 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.warningDetails ul {
+  margin: var(--spacing-sm) 0;
+}
+
+.warningDetails ul ul {
+  margin: var(--spacing-xs) 0 0 var(--spacing-md);
+}
+
+.warningNote {
+  margin: var(--spacing-lg) 0 0 0;
+  padding: var(--spacing-md);
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--border-radius-md);
+}
+
+.warningNote p {
+  margin: var(--spacing-xs) 0;
+  color: var(--color-warning-text);
+  font-size: var(--font-size-sm);
 }
 
 .confirmInput {

@@ -77,6 +77,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     confirmText: '',
   });
 
+  // 删除数据库确认对话框状态
+  const [deleteDbDialog, setDeleteDbDialog] = useState<{
+    isOpen: boolean;
+    step: 'warning' | 'confirm';
+    confirmText: string;
+  }>({
+    isOpen: false,
+    step: 'warning',
+    confirmText: '',
+  });
+
   // 表单数据
   const [providerForm, setProviderForm] = useState({
     name: '',
@@ -116,8 +127,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       setLoading(true);
       console.log('loadData: Calling API services...');
       const [providersResult, modelsResult, defaultModelResult] = await Promise.all([
-        aiModelService.getAIProviders(),
-        aiModelService.getAIModels(),
+        aiModelService.getAllAIProviders(), // 使用新的API获取所有供应商（包括禁用的）
+        aiModelService.getAllAIModels(),    // 使用新的API获取所有模型（包括禁用的）
         aiModelService.getDefaultAIModel()
       ]);
 
@@ -199,6 +210,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     });
   };
 
+  // 处理删除数据库按钮点击
+  const handleDeleteDatabase = () => {
+    setDeleteDbDialog({
+      isOpen: true,
+      step: 'warning',
+      confirmText: '',
+    });
+  };
+
   // 处理重置确认
   const handleResetConfirm = async () => {
     if (resetDialog.step === 'warning') {
@@ -246,6 +266,47 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   // 处理重置取消
   const handleResetCancel = () => {
     setResetDialog({
+      isOpen: false,
+      step: 'warning',
+      confirmText: '',
+    });
+  };
+
+  // 处理删除数据库确认
+  const handleDeleteDbConfirm = async () => {
+    if (deleteDbDialog.step === 'warning') {
+      // 第一步：显示警告，进入确认步骤
+      setDeleteDbDialog(prev => ({
+        ...prev,
+        step: 'confirm',
+        confirmText: '',
+      }));
+    } else if (deleteDbDialog.step === 'confirm') {
+      // 第二步：检查确认文本并执行删除
+      if (deleteDbDialog.confirmText !== 'DELETE DATABASE') {
+        showError(new Error('请输入正确的确认文本 "DELETE DATABASE"'));
+        return;
+      }
+
+      try {
+        setResetting(true);
+        // 调用删除数据库并重启的API
+        // 注意：这个调用可能不会返回，因为应用会重启
+        await dataManagementService.deleteDatabaseAndRestart();
+
+        // 如果到达这里，说明删除失败了
+        showError(new Error('删除数据库失败'));
+      } catch (error) {
+        showError(error);
+      } finally {
+        setResetting(false);
+      }
+    }
+  };
+
+  // 处理删除数据库取消
+  const handleDeleteDbCancel = () => {
+    setDeleteDbDialog({
       isOpen: false,
       step: 'warning',
       confirmText: '',
@@ -704,8 +765,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                                 handleToggleProviderActive(provider.id, provider.is_active);
                               }}
                               disabled={saving}
+                              title={provider.is_active ? '点击禁用此供应商' : '点击启用此供应商'}
                             >
-                              {provider.is_active ? '启用' : '禁用'}
+                              {provider.is_active ? '禁用' : '启用'}
                             </button>
                             <button
                               type="button"
@@ -715,6 +777,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                                 handleDeleteProvider(provider.id);
                               }}
                               disabled={saving}
+                              title="删除此供应商（危险操作）"
                             >
                               删除
                             </button>
@@ -785,8 +848,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                                 handleToggleModelActive(model.id, model.is_active);
                               }}
                               disabled={saving}
+                              title={model.is_active ? '点击禁用此模型' : '点击启用此模型'}
                             >
-                              {model.is_active ? '启用' : '禁用'}
+                              {model.is_active ? '禁用' : '启用'}
                             </button>
                             <button
                               type="button"
@@ -796,6 +860,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                                 handleDeleteModel(model.id);
                               }}
                               disabled={saving}
+                              title="删除此模型（危险操作）"
                             >
                               删除
                             </button>
@@ -989,6 +1054,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                           variant="danger"
                         >
                           🗑️ 重置所有用户数据
+                        </Button>
+
+                        <Button
+                          onClick={() => {
+                            console.log('Delete database button clicked!');
+                            handleDeleteDatabase();
+                          }}
+                          disabled={resetting || dataLoading}
+                          variant="danger"
+                        >
+                          💥 删除数据库并重启
                         </Button>
 
                         {selectiveResetMode && selectedTables.size > 0 && (
@@ -1310,6 +1386,94 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 >
                   {resetting ? '重置中...' : resetDialog.step === 'warning' ? '继续' :
                     (selectiveResetMode && selectedTables.size > 0 ? '确认重置选中表' : '确认重置')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Database Confirmation Dialog */}
+        {deleteDbDialog.isOpen && (
+          <div className={styles.modal}>
+            <div className={styles.modalContent}>
+              <div className={styles.modalHeader}>
+                <h3 className={styles.modalTitle}>
+                  {deleteDbDialog.step === 'warning' ? '⚠️ 删除数据库并重启' : '🔥 最终确认'}
+                </h3>
+                <button
+                  type="button"
+                  className={styles.modalClose}
+                  onClick={handleDeleteDbCancel}
+                  disabled={resetting}
+                  title="关闭对话框"
+                >
+                  <i className="fas fa-times" />
+                </button>
+              </div>
+              <div className={styles.modalBody}>
+                {deleteDbDialog.step === 'warning' ? (
+                  <div className={styles.resetConfirmWarning}>
+                    <div className={styles.warningIcon}>💥</div>
+                    <h4>极度危险操作！</h4>
+                    <p><strong>此操作将完全删除数据库文件并重启应用程序！</strong></p>
+                    <div className={styles.warningDetails}>
+                      <h5>将会发生的事情：</h5>
+                      <ul>
+                        <li>🗑️ 完全删除数据库文件 (vocabulary.db)</li>
+                        <li>🔄 自动重启应用程序</li>
+                        <li>🆕 重启后将创建全新的空数据库</li>
+                        <li>❌ 所有数据将永久丢失，包括：
+                          <ul>
+                            <li>所有单词本和单词</li>
+                            <li>所有学习计划和进度</li>
+                            <li>所有练习记录</li>
+                            <li>AI模型配置</li>
+                            <li>系统设置</li>
+                          </ul>
+                        </li>
+                      </ul>
+                    </div>
+                    <div className={styles.warningNote}>
+                      <p><strong>⚠️ 注意：此操作比"重置数据库"更彻底，连AI配置也会丢失！</strong></p>
+                      <p>如果您只想清理用户数据，请使用"重置所有用户数据"功能。</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.resetConfirmWarning}>
+                    <div className={styles.warningIcon}>🔥</div>
+                    <h4>最终确认</h4>
+                    <p>请在下方输入框中输入 <strong>"DELETE DATABASE"</strong> 来确认此操作：</p>
+                    <input
+                      type="text"
+                      className={styles.confirmInput}
+                      value={deleteDbDialog.confirmText}
+                      onChange={(e) => setDeleteDbDialog(prev => ({
+                        ...prev,
+                        confirmText: e.target.value
+                      }))}
+                      placeholder="请输入 DELETE DATABASE"
+                      autoFocus
+                    />
+                    <p className={styles.inputHint}>
+                      只有输入正确的确认文本才能执行删除操作
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className={styles.modalFooter}>
+                <Button
+                  variant="secondary"
+                  onClick={handleDeleteDbCancel}
+                  disabled={resetting}
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={handleDeleteDbConfirm}
+                  disabled={resetting || (deleteDbDialog.step === 'confirm' && deleteDbDialog.confirmText !== 'DELETE DATABASE')}
+                  variant="danger"
+                >
+                  {resetting ? '删除中...' : deleteDbDialog.step === 'warning' ? '继续' : '确认删除数据库'}
                 </Button>
               </div>
             </div>

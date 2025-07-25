@@ -264,11 +264,11 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
     console.log('=== 继续练习被点击 ===');
     console.log('会话数据:', session);
 
-    // 注意：后端返回的字段名是snake_case，需要正确访问
+    // 后端通过serde自动转换为camelCase，直接使用即可
     const navigationParams = {
-      planId: (session as any).plan_id,
-      scheduleId: (session as any).schedule_id,
-      sessionId: (session as any).session_id
+      planId: session.planId,
+      scheduleId: session.scheduleId,
+      sessionId: session.sessionId
     };
 
     console.log('导航参数:', navigationParams);

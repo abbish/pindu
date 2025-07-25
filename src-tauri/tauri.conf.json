@@ -29,6 +29,11 @@
     }
   },
   "plugins": {
+    "process": {
+      "all": false,
+      "exit": true,
+      "restart": true
+    },
     "sql": {
       "preload": ["sqlite:redlark.db"]
     }

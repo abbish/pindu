@@ -15,6 +15,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // 获取主窗口并打开开发者工具
             #[cfg(debug_assertions)]
@@ -121,6 +122,8 @@ pub fn run() {
             create_word_book_from_analysis,
             ai_model_handlers::get_ai_providers,
             ai_model_handlers::get_ai_models,
+            ai_model_handlers::get_all_ai_providers,
+            ai_model_handlers::get_all_ai_models,
             ai_model_handlers::get_default_ai_model,
             ai_model_handlers::set_default_ai_model,
             ai_model_handlers::create_ai_provider,
@@ -157,6 +160,7 @@ pub fn run() {
             get_database_statistics,
             reset_user_data,
             reset_selected_tables,
+            delete_database_and_restart,
 
             // 单词练习相关命令
             start_practice_session,

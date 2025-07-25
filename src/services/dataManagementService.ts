@@ -46,6 +46,18 @@ export class DataManagementService extends BaseService {
       });
     }, setLoading);
   }
+
+  /**
+   * 删除数据库文件并重启应用程序
+   * 注意：此操作会立即重启应用，无法获取返回结果
+   */
+  async deleteDatabaseAndRestart(
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('delete_database_and_restart', {});
+    }, setLoading);
+  }
 }
 
 // 导出服务实例

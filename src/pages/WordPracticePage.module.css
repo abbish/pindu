@@ -345,6 +345,73 @@
   transform: translateY(-1px);
 }
 
+/* 退出确认对话框样式 */
+.exitConfirmContent {
+  padding: var(--spacing-xl);
+  text-align: center;
+}
+
+.exitConfirmMessage {
+  margin-bottom: var(--spacing-xl);
+}
+
+.exitConfirmIcon {
+  font-size: 48px;
+  color: #f39c12;
+  margin-bottom: var(--spacing-md);
+}
+
+.exitConfirmTitle {
+  margin: 0 0 var(--spacing-sm) 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.exitConfirmDescription {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.exitConfirmActions {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: center;
+}
+
+.exitConfirmBtn {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.exitConfirmBtnCancel {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.exitConfirmBtnCancel:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.exitConfirmBtnConfirm {
+  background: #dc3545;
+  color: white;
+  border-color: #dc3545;
+}
+
+.exitConfirmBtnConfirm:hover {
+  background: #c82333;
+  border-color: #c82333;
+}
+
 /* 减少动画模式支持 */
 @media (prefers-reduced-motion: reduce) {
   .practiceArea > *,
