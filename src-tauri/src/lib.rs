@@ -5,6 +5,8 @@ mod handlers;
 mod logger;
 mod ai_service;
 mod ai_model_handlers;
+mod tts_service;
+mod tts_handlers;
 
 use handlers::*;
 use database::DatabaseManager;
@@ -173,7 +175,18 @@ pub fn run() {
             get_practice_session_detail,
             get_plan_practice_sessions,
             get_practice_statistics,
-            get_study_plan_schedules
+            get_study_plan_schedules,
+
+            // TTS相关命令
+            tts_handlers::text_to_speech,
+            tts_handlers::get_tts_voices,
+            tts_handlers::get_default_tts_voice,
+            tts_handlers::get_tts_providers,
+            tts_handlers::clear_tts_cache,
+
+            tts_handlers::set_default_tts_voice,
+            tts_handlers::get_elevenlabs_config,
+            tts_handlers::update_elevenlabs_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

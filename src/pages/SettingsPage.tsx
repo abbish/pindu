@@ -4,11 +4,14 @@ import {
   Header,
   Breadcrumb,
   Button,
-  LoadingSpinner
+  LoadingSpinner,
+  useToast
 } from '../components';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { VoiceSelector } from '../components/VoiceSelector';
 import { AIModelService } from '../services/aiModelService';
 import { dataManagementService } from '../services/dataManagementService';
+import { ttsService, type TTSProvider, type TTSVoice } from '../services/ttsService';
 import type {
   AIProvider,
   AIModelConfig,
@@ -29,12 +32,45 @@ export interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({
   onNavigate
 }) => {
-  const [activeTab, setActiveTab] = useState<'ai-models' | 'general' | 'data-management'>('ai-models');
+  const [activeTab, setActiveTab] = useState<'ai-models' | 'tts' | 'general' | 'data-management'>('ai-models');
   const [providers, setProviders] = useState<AIProvider[]>([]);
   const [models, setModels] = useState<AIModelConfig[]>([]);
   const [defaultModel, setDefaultModel] = useState<AIModelConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // TTS相关状态
+  const [ttsProviders, setTtsProviders] = useState<TTSProvider[]>([]);
+  const [ttsVoices, setTtsVoices] = useState<TTSVoice[]>([]);
+  const [defaultTtsVoice, setDefaultTtsVoice] = useState<TTSVoice | null>(null);
+  const [ttsLoading, setTtsLoading] = useState(false);
+  const [cacheLoading, setCacheLoading] = useState(false);
+  const [testingVoiceId, setTestingVoiceId] = useState<string | undefined>();
+
+  // ElevenLabs配置状态
+  const [elevenLabsConfig, setElevenLabsConfig] = useState({
+    apiKey: '',
+    modelId: 'eleven_multilingual_v2',
+    voiceStability: 0.75,
+    voiceSimilarity: 0.75,
+    voiceStyle: 0.0,
+    voiceBoost: true,
+    optimizeStreamingLatency: 0,
+    outputFormat: 'mp3_44100_128'
+  });
+
+  // ElevenLabs编辑状态（用于Modal）
+  const [editingElevenLabsConfig, setEditingElevenLabsConfig] = useState({
+    apiKey: '',
+    modelId: 'eleven_multilingual_v2',
+    voiceStability: 0.75,
+    voiceSimilarity: 0.75,
+    voiceStyle: 0.0,
+    voiceBoost: true,
+    optimizeStreamingLatency: 0,
+    outputFormat: 'mp3_44100_128',
+    defaultVoiceId: ''
+  });
 
   // 数据管理相关状态
   const [databaseOverview, setDatabaseOverview] = useState<DatabaseOverview | null>(null);
@@ -50,6 +86,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [editingModel, setEditingModel] = useState<AIModelConfig | null>(null);
   const [showAddProvider, setShowAddProvider] = useState(false);
   const [showAddModel, setShowAddModel] = useState(false);
+  const [showEditElevenLabs, setShowEditElevenLabs] = useState(false);
 
   // 确认对话框状态
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -91,23 +128,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   // 表单数据
   const [providerForm, setProviderForm] = useState({
     name: '',
-    display_name: '',
-    base_url: '',
-    api_key: '',
+    displayName: '',
+    baseUrl: '',
+    apiKey: '',
     description: '',
   });
 
   const [modelForm, setModelForm] = useState({
-    provider_id: 0,
-    display_name: '',
-    model_id: '',
+    providerId: 0,
+    displayName: '',
+    modelId: '',
     description: '',
-    max_tokens: 4000,
+    maxTokens: 4000,
     temperature: 0.3,
   });
 
   const { errorState, showError, hideError } = useErrorHandler();
-  
+  const toast = useToast();
+
   const aiModelService = new AIModelService();
 
   useEffect(() => {
@@ -132,6 +170,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         aiModelService.getDefaultAIModel()
       ]);
 
+      // 同时加载TTS数据
+      console.log('Calling TTS APIs...');
+      const [ttsProvidersResult, ttsVoicesResult, defaultTtsVoiceResult] = await Promise.all([
+        ttsService.getTTSProviders(),
+        ttsService.getTTSVoices(),
+        ttsService.getDefaultTTSVoice()
+      ]);
+      console.log('TTS API results:', { ttsProvidersResult, ttsVoicesResult, defaultTtsVoiceResult });
+
       // 检查API调用结果
       if (!providersResult.success) {
         throw new Error(providersResult.error || '获取AI提供商失败');
@@ -143,19 +190,59 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         throw new Error(defaultModelResult.error || '获取默认模型失败');
       }
 
+      // 检查TTS API调用结果
+      if (!ttsProvidersResult.success) {
+        console.warn('获取TTS提供商失败:', ttsProvidersResult.error);
+      }
+      if (!ttsVoicesResult.success) {
+        console.warn('获取TTS语音失败:', ttsVoicesResult.error);
+      }
+      if (!defaultTtsVoiceResult.success) {
+        console.warn('获取默认TTS语音失败:', defaultTtsVoiceResult.error);
+      }
+
       const providersData = providersResult.data || [];
       const modelsData = modelsResult.data || [];
       const defaultModelData = defaultModelResult.data;
 
+      // TTS数据
+      const ttsProvidersData = ttsProvidersResult.success ? (ttsProvidersResult.data || []) : [];
+      const ttsVoicesData = ttsVoicesResult.success ? (ttsVoicesResult.data || []) : [];
+      const defaultTtsVoiceData = defaultTtsVoiceResult.success ? defaultTtsVoiceResult.data : null;
+
       console.log('loadData: API calls successful:', {
         providersCount: providersData.length,
         modelsCount: modelsData.length,
-        defaultModel: defaultModelData
+        defaultModel: defaultModelData,
+        ttsProvidersCount: ttsProvidersData.length,
+        ttsVoicesCount: ttsVoicesData.length,
+        defaultTtsVoice: defaultTtsVoiceData
       });
 
       setProviders(providersData);
       setModels(modelsData);
       setDefaultModel(defaultModelData);
+      setTtsProviders(ttsProvidersData);
+      setTtsVoices(ttsVoicesData);
+      setDefaultTtsVoice(defaultTtsVoiceData);
+
+      // 加载ElevenLabs配置
+      const elevenLabsConfigResult = await ttsService.getElevenLabsConfig();
+      if (elevenLabsConfigResult.success) {
+        // 如果API Key是默认值，则显示为空
+        const apiKey = elevenLabsConfigResult.data.apiKey === 'PLEASE_SET_YOUR_API_KEY' ? '' : (elevenLabsConfigResult.data.apiKey || '');
+
+        setElevenLabsConfig({
+          apiKey: apiKey,
+          modelId: elevenLabsConfigResult.data.modelId || 'eleven_multilingual_v2',
+          voiceStability: elevenLabsConfigResult.data.voiceStability || 0.75,
+          voiceSimilarity: elevenLabsConfigResult.data.voiceSimilarity || 0.75,
+          voiceStyle: elevenLabsConfigResult.data.voiceStyle || 0.0,
+          voiceBoost: elevenLabsConfigResult.data.voiceBoost !== undefined ? elevenLabsConfigResult.data.voiceBoost : true,
+          optimizeStreamingLatency: elevenLabsConfigResult.data.optimizeStreamingLatency || 0,
+          outputFormat: elevenLabsConfigResult.data.outputFormat || 'mp3_44100_128'
+        });
+      }
       console.log('loadData: State updated successfully');
     } catch (error) {
       console.error('loadData: Error loading data:', error);
@@ -538,9 +625,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const handleEditProvider = (provider: AIProvider) => {
     setProviderForm({
       name: provider.name,
-      display_name: provider.display_name,
-      base_url: provider.base_url,
-      api_key: provider.api_key,
+      displayName: provider.displayName,
+      baseUrl: provider.baseUrl,
+      apiKey: provider.apiKey,
       description: provider.description || '',
     });
     setEditingProvider(provider);
@@ -553,9 +640,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       if (editingProvider) {
         // 更新提供商
         await aiModelService.updateAIProvider(editingProvider.id, {
-          display_name: providerForm.display_name,
-          base_url: providerForm.base_url,
-          api_key: providerForm.api_key,
+          displayName: providerForm.displayName,
+          baseUrl: providerForm.baseUrl,
+          apiKey: providerForm.apiKey,
           description: providerForm.description,
         });
       } else {
@@ -580,15 +667,73 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const handleEditModel = (model: AIModelConfig) => {
     setModelForm({
-      provider_id: model.provider.id,
-      display_name: model.display_name,
-      model_id: model.model_id,
+      providerId: model.provider.id,
+      displayName: model.displayName,
+      modelId: model.modelId,
       description: model.description || '',
-      max_tokens: model.max_tokens || 4000,
+      maxTokens: model.maxTokens || 4000,
       temperature: model.temperature || 0.3,
     });
     setEditingModel(model);
     setShowAddModel(true);
+  };
+
+  // ElevenLabs配置编辑
+  const handleEditElevenLabsConfig = () => {
+    setEditingElevenLabsConfig({
+      ...elevenLabsConfig,
+      defaultVoiceId: defaultTtsVoice?.voiceId || ''
+    });
+    setShowEditElevenLabs(true);
+  };
+
+  // 保存ElevenLabs配置（从Modal）
+  const handleSaveElevenLabsConfigFromModal = async () => {
+    try {
+      setTtsLoading(true);
+
+      // 准备配置数据，只有非空值才传递
+      const configData: any = {};
+
+      // API Key：只有当用户输入了有效值时才保存
+      if (editingElevenLabsConfig.apiKey && editingElevenLabsConfig.apiKey.trim() !== '') {
+        configData.apiKey = editingElevenLabsConfig.apiKey.trim();
+      }
+
+      // 其他配置项始终保存
+      configData.modelId = editingElevenLabsConfig.modelId || 'eleven_multilingual_v2';
+      configData.voiceStability = editingElevenLabsConfig.voiceStability || 0.75;
+      configData.voiceSimilarity = editingElevenLabsConfig.voiceSimilarity || 0.75;
+      configData.voiceStyle = editingElevenLabsConfig.voiceStyle || 0.0;
+      configData.voiceBoost = editingElevenLabsConfig.voiceBoost !== undefined ? editingElevenLabsConfig.voiceBoost : true;
+      configData.optimizeStreamingLatency = editingElevenLabsConfig.optimizeStreamingLatency || 0;
+      configData.outputFormat = editingElevenLabsConfig.outputFormat || 'mp3_44100_128';
+
+      console.log('Saving ElevenLabs config:', configData);
+
+      const result = await ttsService.updateElevenLabsConfig(configData, setTtsLoading);
+      if (result.success) {
+        // 如果设置了默认语音，也要更新默认语音设置
+        if (editingElevenLabsConfig.defaultVoiceId) {
+          await ttsService.setDefaultTTSVoice(editingElevenLabsConfig.defaultVoiceId);
+        }
+
+        toast.showSuccess('ElevenLabs配置保存成功');
+        // 更新主配置状态
+        setElevenLabsConfig({ ...editingElevenLabsConfig });
+        // 关闭Modal
+        setShowEditElevenLabs(false);
+        // 重新加载数据
+        await loadData();
+      } else {
+        showError(result.error || '保存配置失败');
+      }
+    } catch (error) {
+      console.error('Save ElevenLabs config error:', error);
+      showError('保存配置时发生错误');
+    } finally {
+      setTtsLoading(false);
+    }
   };
 
   const handleSaveModel = async () => {
@@ -597,10 +742,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       if (editingModel) {
         // 更新模型
         await aiModelService.updateAIModel(editingModel.id, {
-          display_name: modelForm.display_name,
-          model_id: modelForm.model_id,
+          displayName: modelForm.displayName,
+          modelId: modelForm.modelId,
           description: modelForm.description,
-          max_tokens: modelForm.max_tokens,
+          maxTokens: modelForm.maxTokens,
           temperature: modelForm.temperature,
         });
       } else {
@@ -623,6 +768,287 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     } finally {
       setSaving(false);
     }
+  };
+
+  // TTS相关处理函数
+  const handleUpdateTTSProvider = async (providerId: number, apiKey: string) => {
+    try {
+      setTtsLoading(true);
+      const result = await ttsService.updateTTSProvider(providerId, { apiKey });
+      if (result.success) {
+        await loadData(); // 重新加载数据
+        toast.showSuccess('TTS提供商配置已更新');
+      } else {
+        showError(result.error || '更新TTS提供商失败');
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setTtsLoading(false);
+    }
+  };
+
+  // 保存ElevenLabs配置
+  const handleSaveElevenLabsConfig = async () => {
+    try {
+      setTtsLoading(true);
+
+      // 准备配置数据，只有非空值才传递
+      const configData: any = {};
+
+      // API Key：只有当用户输入了有效值时才保存
+      if (elevenLabsConfig.apiKey && elevenLabsConfig.apiKey.trim() !== '') {
+        configData.apiKey = elevenLabsConfig.apiKey.trim();
+      }
+
+      // 其他配置项始终保存
+      configData.modelId = elevenLabsConfig.modelId || 'eleven_multilingual_v2';
+      configData.voiceStability = elevenLabsConfig.voiceStability || 0.75;
+      configData.voiceSimilarity = elevenLabsConfig.voiceSimilarity || 0.75;
+      configData.voiceStyle = elevenLabsConfig.voiceStyle || 0.0;
+      configData.voiceBoost = elevenLabsConfig.voiceBoost !== undefined ? elevenLabsConfig.voiceBoost : true;
+      configData.optimizeStreamingLatency = elevenLabsConfig.optimizeStreamingLatency || 0;
+      configData.outputFormat = elevenLabsConfig.outputFormat || 'mp3_44100_128';
+
+      // 保存完整的ElevenLabs配置
+      const result = await ttsService.updateElevenLabsConfig(configData);
+
+      if (result.success) {
+        // 同时更新TTS提供商的API密钥以保持兼容性（如果有API Key的话）
+        if (configData.apiKey) {
+          await ttsService.updateTTSProvider(1, { apiKey: configData.apiKey });
+        }
+        await loadData(); // 重新加载数据
+        toast.showSuccess('ElevenLabs配置已保存');
+      } else {
+        showError(result.error || '保存配置失败');
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setTtsLoading(false);
+    }
+  };
+
+  // 语音试听功能
+  const handleTestVoice = async (voiceId?: string) => {
+    try {
+      setTtsLoading(true);
+      const testText = "Hello, this is a test of the ElevenLabs voice synthesis.";
+      const result = await ttsService.textToSpeech({
+        text: testText,
+        voiceId: voiceId,
+        useCache: false // 试听时不使用缓存，确保使用最新配置
+      });
+
+      if (result.success && result.data) {
+        // 播放音频
+        const audio = new Audio(result.data.audioUrl);
+        audio.play().catch(error => {
+          console.error('播放音频失败:', error);
+          toast.showError('音频播放失败');
+        });
+        toast.showSuccess('语音试听开始播放');
+      } else {
+        showError(result.error || '语音生成失败');
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setTtsLoading(false);
+    }
+  };
+
+  // ElevenLabs配置试听功能
+  const handleTestElevenLabsConfig = async () => {
+    try {
+      setTtsLoading(true);
+
+      console.log('=== ElevenLabs试听调试信息 ===');
+      console.log('当前elevenLabsConfig:', elevenLabsConfig);
+      console.log('当前defaultTtsVoice:', defaultTtsVoice);
+      console.log('当前ttsVoices:', ttsVoices);
+
+      // 检查API Key是否已配置
+      if (!elevenLabsConfig.apiKey || elevenLabsConfig.apiKey.trim() === '' || elevenLabsConfig.apiKey === 'PLEASE_SET_YOUR_API_KEY') {
+        console.log('API Key检查失败:', elevenLabsConfig.apiKey);
+        showError('请先配置ElevenLabs API密钥');
+        return;
+      }
+
+      // 先保存当前配置
+      const configData: any = {};
+      configData.apiKey = elevenLabsConfig.apiKey.trim();
+      configData.modelId = elevenLabsConfig.modelId || 'eleven_multilingual_v2';
+      configData.voiceStability = elevenLabsConfig.voiceStability || 0.75;
+      configData.voiceSimilarity = elevenLabsConfig.voiceSimilarity || 0.75;
+      configData.voiceStyle = elevenLabsConfig.voiceStyle || 0.0;
+      configData.voiceBoost = elevenLabsConfig.voiceBoost !== undefined ? elevenLabsConfig.voiceBoost : true;
+      configData.optimizeStreamingLatency = elevenLabsConfig.optimizeStreamingLatency || 0;
+      configData.outputFormat = elevenLabsConfig.outputFormat || 'mp3_44100_128';
+
+      console.log('准备保存的ElevenLabs配置:', configData);
+
+      // 保存ElevenLabs配置
+      const saveResult = await ttsService.updateElevenLabsConfig(configData);
+      console.log('ElevenLabs配置保存结果:', saveResult);
+      if (!saveResult.success) {
+        showError(saveResult.error || '保存配置失败');
+        return;
+      }
+
+      // 注意：不再需要更新TTS提供商，因为现在直接使用ElevenLabs配置
+
+      // 使用当前配置进行试听
+      const testText = `Hello! This is a test of your ElevenLabs configuration. Voice stability is ${elevenLabsConfig.voiceStability.toFixed(2)}, similarity is ${elevenLabsConfig.voiceSimilarity.toFixed(2)}, and style is ${(elevenLabsConfig.voiceStyle || 0).toFixed(2)}.`;
+
+      // 确定要使用的语音ID
+      let voiceIdToUse = defaultTtsVoice?.voiceId;
+
+      // 如果没有默认语音，使用第一个可用的语音
+      if (!voiceIdToUse && ttsVoices.length > 0) {
+        voiceIdToUse = ttsVoices[0].voiceId;
+        console.log('没有默认语音，使用第一个可用语音:', ttsVoices[0]);
+      }
+
+      const ttsParams = {
+        text: testText,
+        voiceId: voiceIdToUse,
+        useCache: false // 试听时不使用缓存，确保使用最新配置
+      };
+
+      console.log('准备调用TTS服务，参数:', ttsParams);
+      console.log('使用的语音ID:', voiceIdToUse);
+      console.log('默认语音信息:', defaultTtsVoice);
+      console.log('所有可用语音:', ttsVoices);
+
+      const result = await ttsService.textToSpeech(ttsParams);
+      console.log('TTS服务调用结果:', result);
+
+      if (result.success && result.data) {
+        console.log('TTS成功，音频URL:', result.data.audioUrl);
+        // 播放音频
+        const audio = new Audio(result.data.audioUrl);
+        audio.play().catch(error => {
+          console.error('播放音频失败:', error);
+          toast.showError('音频播放失败');
+        });
+        toast.showSuccess('配置试听开始播放，您可以听到当前参数的效果');
+      } else {
+        console.error('TTS失败:', result.error);
+        showError(result.error || '语音生成失败');
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setTtsLoading(false);
+    }
+  };
+
+  const handleToggleTTSProviderActive = async (providerId: number, isActive: boolean) => {
+    try {
+      setTtsLoading(true);
+      const result = await ttsService.updateTTSProvider(providerId, { isActive: !isActive });
+      if (result.success) {
+        await loadData();
+        toast.showSuccess(`TTS提供商已${!isActive ? '启用' : '禁用'}`);
+      } else {
+        showError(result.error || '更新TTS提供商状态失败');
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setTtsLoading(false);
+    }
+  };
+
+  const handleSetDefaultTTSVoice = async (voiceId: string) => {
+    try {
+      setTtsLoading(true);
+      const result = await ttsService.setDefaultTTSVoice(voiceId);
+      if (result.success) {
+        await loadData(); // 重新加载数据
+        toast.showSuccess('默认语音已设置');
+      } else {
+        showError(result.error || '设置默认语音失败');
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setTtsLoading(false);
+    }
+  };
+
+  // 语音试听功能（在编辑页面中使用）
+  const handleVoiceTest = async (voiceId: string) => {
+    try {
+      setTestingVoiceId(voiceId);
+      const testText = "Hello, this is a test of the text-to-speech functionality. 你好，这是语音合成功能的测试。";
+
+      const result = await ttsService.textToSpeech({
+        text: testText,
+        voiceId: voiceId,
+        useCache: false // 试听时不使用缓存，确保使用最新配置
+      });
+
+      if (result.success && result.data) {
+        // 播放音频
+        const audio = new Audio(result.data.audioUrl);
+        audio.play().catch(error => {
+          console.error('播放音频失败:', error);
+          toast.showError('音频播放失败');
+        });
+        toast.showSuccess('语音试听开始播放');
+      } else {
+        showError(result.error || '语音试听失败');
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setTestingVoiceId(undefined);
+    }
+  };
+
+  const handleToggleTTSVoiceActive = async (voiceId: number, isActive: boolean) => {
+    try {
+      setTtsLoading(true);
+      // 注意：这里需要后端支持更新语音状态的API
+      // const result = await ttsService.updateTTSVoice(voiceId, { isActive: !isActive });
+      // 暂时显示提示，因为语音通常由提供商管理
+      toast.showInfo('语音状态由TTS服务提供商管理，无法手动修改');
+    } catch (error) {
+      showError(error);
+    } finally {
+      setTtsLoading(false);
+    }
+  };
+
+  const handleClearTTSCache = async () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '清理TTS缓存',
+      message: '确定要清理30天前的TTS缓存吗？这将删除本地存储的音频文件，下次播放时需要重新生成。',
+      type: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        try {
+          setCacheLoading(true);
+          const result = await ttsService.clearTTSCache(30);
+          if (result.success) {
+            toast.showSuccess(`已清理 ${result.data} 个缓存文件`);
+          } else {
+            showError(result.error || '清理缓存失败');
+          }
+        } catch (error) {
+          showError(error);
+        } finally {
+          setCacheLoading(false);
+        }
+      },
+      onCancel: () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   if (loading) {
@@ -676,6 +1102,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             </button>
             <button
               type="button"
+              className={`${styles.tab} ${activeTab === 'tts' ? styles.tabActive : ''}`}
+              onClick={() => handleTabChange('tts')}
+            >
+              <i className="fas fa-volume-up" />
+              语音合成
+            </button>
+            <button
+              type="button"
               className={`${styles.tab} ${activeTab === 'general' ? styles.tabActive : ''}`}
               onClick={() => handleTabChange('general')}
             >
@@ -707,8 +1141,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     {defaultModel ? (
                       <div className={styles.defaultModelCard}>
                         <div className={styles.modelInfo}>
-                          <h4 className={styles.modelName}>{defaultModel.display_name}</h4>
-                          <p className={styles.modelProvider}>{defaultModel.provider?.display_name || '未知提供商'}</p>
+                          <h4 className={styles.modelName}>{defaultModel.displayName}</h4>
+                          <p className={styles.modelProvider}>{defaultModel.provider?.displayName || '未知提供商'}</p>
                           <p className={styles.modelDescription}>{defaultModel.description}</p>
                         </div>
                         <div className={styles.modelActions}>
@@ -740,9 +1174,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       {Array.isArray(providers) && providers.map(provider => (
                         <div key={provider.id} className={styles.providerCard}>
                           <div className={styles.providerInfo}>
-                            <h4 className={styles.providerName}>{provider.display_name}</h4>
-                            <p className={styles.providerUrl}>{provider.base_url}</p>
-                            <p className={styles.providerApiKey}>API密钥: {provider.api_key ? '已配置' : '未配置'}</p>
+                            <h4 className={styles.providerName}>{provider.displayName}</h4>
+                            <p className={styles.providerUrl}>{provider.baseUrl}</p>
+                            <p className={styles.providerApiKey}>API密钥: {provider.apiKey ? '已配置' : '未配置'}</p>
                             {provider.description && (
                               <p className={styles.providerDescription}>{provider.description}</p>
                             )}
@@ -759,15 +1193,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                             </button>
                             <button
                               type="button"
-                              className={`${styles.toggleButton} ${provider.is_active ? styles.active : styles.inactive}`}
+                              className={`${styles.toggleButton} ${provider.isActive ? styles.active : styles.inactive}`}
                               onClick={() => {
-                                console.log('Provider toggle button clicked:', { providerId: provider.id, isActive: provider.is_active });
-                                handleToggleProviderActive(provider.id, provider.is_active);
+                                console.log('Provider toggle button clicked:', { providerId: provider.id, isActive: provider.isActive });
+                                handleToggleProviderActive(provider.id, provider.isActive);
                               }}
                               disabled={saving}
-                              title={provider.is_active ? '点击禁用此供应商' : '点击启用此供应商'}
+                              title={provider.isActive ? '点击禁用此供应商' : '点击启用此供应商'}
                             >
-                              {provider.is_active ? '禁用' : '启用'}
+                              {provider.isActive ? '禁用' : '启用'}
                             </button>
                             <button
                               type="button"
@@ -805,14 +1239,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       {Array.isArray(models) && models.map(model => (
                         <div key={model.id} className={styles.modelCard}>
                           <div className={styles.modelInfo}>
-                            <h4 className={styles.modelName}>{model.display_name}</h4>
-                            <p className={styles.modelProvider}>{model.provider?.display_name || '未知提供商'}</p>
+                            <h4 className={styles.modelName}>{model.displayName}</h4>
+                            <p className={styles.modelProvider}>{model.provider?.displayName || '未知提供商'}</p>
                             {model.description && (
                               <p className={styles.modelDescription}>{model.description}</p>
                             )}
                             <div className={styles.modelParams}>
-                              {model.max_tokens && (
-                                <span className={styles.param}>最大令牌: {model.max_tokens}</span>
+                              {model.maxTokens && (
+                                <span className={styles.param}>最大令牌: {model.maxTokens}</span>
                               )}
                               {model.temperature && (
                                 <span className={styles.param}>温度: {model.temperature}</span>
@@ -836,21 +1270,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                               type="button"
                               className={styles.setDefaultButton}
                               onClick={() => handleSetDefaultModel(model.id)}
-                              disabled={saving || model.is_default}
+                              disabled={saving || model.isDefault}
                             >
                               设为默认
                             </button>
                             <button
                               type="button"
-                              className={`${styles.toggleButton} ${model.is_active ? styles.active : styles.inactive}`}
+                              className={`${styles.toggleButton} ${model.isActive ? styles.active : styles.inactive}`}
                               onClick={() => {
-                                console.log('Model toggle button clicked:', { modelId: model.id, isActive: model.is_active });
-                                handleToggleModelActive(model.id, model.is_active);
+                                console.log('Model toggle button clicked:', { modelId: model.id, isActive: model.isActive });
+                                handleToggleModelActive(model.id, model.isActive);
                               }}
                               disabled={saving}
-                              title={model.is_active ? '点击禁用此模型' : '点击启用此模型'}
+                              title={model.isActive ? '点击禁用此模型' : '点击启用此模型'}
                             >
-                              {model.is_active ? '禁用' : '启用'}
+                              {model.isActive ? '禁用' : '启用'}
                             </button>
                             <button
                               type="button"
@@ -867,6 +1301,149 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'tts' && (
+              <div className={styles.ttsTab}>
+                {/* ElevenLabs配置 */}
+                <div className={styles.settingSection}>
+                  <div className={styles.sectionHeader}>
+                    <h3 className={styles.sectionTitle}>ElevenLabs 语音合成</h3>
+                    <p className={styles.sectionDescription}>
+                      管理ElevenLabs语音合成配置
+                    </p>
+                    <Button onClick={handleEditElevenLabsConfig} disabled={ttsLoading}>
+                      <i className="fas fa-edit" />
+                      编辑配置
+                    </Button>
+                  </div>
+                  <div className={styles.sectionContent}>
+                    <div className={styles.elevenLabsCard}>
+                      <div className={styles.configCard}>
+                        <div className={styles.configCardHeader}>
+                          <div className={styles.configCardTitle}>
+                            <i className="fas fa-microphone-alt" />
+                            <span>ElevenLabs 配置</span>
+                          </div>
+                          <div className={styles.configCardStatus}>
+                            {elevenLabsConfig.apiKey && elevenLabsConfig.apiKey.trim() !== '' ? (
+                              <span className={`${styles.statusIndicator} ${styles.configured}`}>
+                                <i className="fas fa-check-circle" /> 已配置
+                              </span>
+                            ) : (
+                              <span className={`${styles.statusIndicator} ${styles.notConfigured}`}>
+                                <i className="fas fa-exclamation-circle" /> 未配置
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className={styles.configCardContent}>
+                          <div className={styles.configInfo}>
+                            <div className={styles.configItem}>
+                              <span className={styles.configLabel}>API密钥:</span>
+                              <span className={styles.configValue}>
+                                {elevenLabsConfig.apiKey && elevenLabsConfig.apiKey.trim() !== ''
+                                  ? '••••••••••••••••••••••••••••••••••••••••••••••••••'
+                                  : '未设置'}
+                              </span>
+                            </div>
+                            <div className={styles.configItem}>
+                              <span className={styles.configLabel}>语音模型:</span>
+                              <span className={styles.configValue}>
+                                {elevenLabsConfig.modelId === 'eleven_multilingual_v2' ? 'Multilingual V2' :
+                                 elevenLabsConfig.modelId === 'eleven_multilingual_v1' ? 'Multilingual V1' :
+                                 elevenLabsConfig.modelId === 'eleven_monolingual_v1' ? 'Monolingual V1' :
+                                 elevenLabsConfig.modelId}
+                              </span>
+                            </div>
+                            <div className={styles.configItem}>
+                              <span className={styles.configLabel}>默认语音:</span>
+                              <span className={styles.configValue}>
+                                {defaultTtsVoice ? defaultTtsVoice.displayName : '未设置'}
+                              </span>
+                            </div>
+                            <div className={styles.configItem}>
+                              <span className={styles.configLabel}>语音质量:</span>
+                              <span className={styles.configValue}>
+                                稳定性 {elevenLabsConfig.voiceStability.toFixed(2)} |
+                                相似度 {elevenLabsConfig.voiceSimilarity.toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={styles.configActions}>
+                            <Button
+                              onClick={handleTestElevenLabsConfig}
+                              disabled={ttsLoading || !elevenLabsConfig.apiKey || elevenLabsConfig.apiKey === 'PLEASE_SET_YOUR_API_KEY'}
+                              variant="secondary"
+                              title="试听当前配置的语音效果"
+                            >
+                              {ttsLoading ? (
+                                <i className="fas fa-spinner fa-spin" />
+                              ) : (
+                                <i className="fas fa-play" />
+                              )}
+                              试听
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+
+
+                {/* 缓存管理 */}
+                <div className={styles.settingSection}>
+                  <div className={styles.sectionHeader}>
+                    <h3 className={styles.sectionTitle}>
+                      <i className="fas fa-hdd" />
+                      缓存管理
+                    </h3>
+                    <p className={styles.sectionDescription}>
+                      管理语音缓存，释放存储空间
+                    </p>
+                  </div>
+                  <div className={styles.sectionContent}>
+                    <div className={styles.simpleCacheManagement}>
+                      <div className={styles.cacheInfoSimple}>
+                        <div className={styles.cacheInfoIcon}>
+                          <i className="fas fa-info-circle" />
+                        </div>
+                        <div className={styles.cacheInfoText}>
+                          <p>
+                            系统会自动缓存生成的语音文件以提升播放速度。
+                            如果存储空间不足，可以清理旧的缓存文件。
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className={styles.cacheActionsSimple}>
+                        <Button
+                          onClick={handleClearTTSCache}
+                          disabled={cacheLoading}
+                          variant="secondary"
+                        >
+                          {cacheLoading ? (
+                            <>
+                              <i className="fas fa-spinner fa-spin" />
+                              清理中...
+                            </>
+                          ) : (
+                            <>
+                              <i className="fas fa-trash-alt" />
+                              清理缓存
+                            </>
+                          )}
+                        </Button>
+                        <p className={styles.cacheActionHint}>
+                          将清理30天前的缓存文件
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1130,8 +1707,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <input
                     type="text"
                     className={styles.formInput}
-                    value={providerForm.display_name}
-                    onChange={(e) => setProviderForm({...providerForm, display_name: e.target.value})}
+                    value={providerForm.displayName}
+                    onChange={(e) => setProviderForm({...providerForm, displayName: e.target.value})}
                     placeholder="例如: OpenAI"
                   />
                 </div>
@@ -1140,8 +1717,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <input
                     type="text"
                     className={styles.formInput}
-                    value={providerForm.base_url}
-                    onChange={(e) => setProviderForm({...providerForm, base_url: e.target.value})}
+                    value={providerForm.baseUrl}
+                    onChange={(e) => setProviderForm({...providerForm, baseUrl: e.target.value})}
                     placeholder="例如: https://api.openai.com/v1"
                   />
                 </div>
@@ -1150,8 +1727,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <input
                     type="password"
                     className={styles.formInput}
-                    value={providerForm.api_key}
-                    onChange={(e) => setProviderForm({...providerForm, api_key: e.target.value})}
+                    value={providerForm.apiKey}
+                    onChange={(e) => setProviderForm({...providerForm, apiKey: e.target.value})}
                     placeholder="请输入API密钥"
                   />
                 </div>
@@ -1176,7 +1753,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 </Button>
                 <Button
                   onClick={handleSaveProvider}
-                  disabled={saving || !providerForm.name || !providerForm.display_name || !providerForm.base_url || !providerForm.api_key}
+                  disabled={saving || !providerForm.name || !providerForm.displayName || !providerForm.baseUrl || !providerForm.apiKey}
                 >
                   {saving ? '保存中...' : '保存'}
                 </Button>
@@ -1207,14 +1784,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <label className={styles.formLabel}>提供商 *</label>
                   <select
                     className={styles.formSelect}
-                    value={modelForm.provider_id}
-                    onChange={(e) => setModelForm({...modelForm, provider_id: parseInt(e.target.value)})}
+                    value={modelForm.providerId}
+                    onChange={(e) => setModelForm({...modelForm, providerId: parseInt(e.target.value)})}
                     title="选择AI提供商"
                   >
                     <option value={0}>请选择提供商</option>
-                    {providers.filter(p => p.is_active).map(provider => (
+                    {providers.filter(p => p.isActive).map(provider => (
                       <option key={provider.id} value={provider.id}>
-                        {provider.display_name}
+                        {provider.displayName}
                       </option>
                     ))}
                   </select>
@@ -1225,8 +1802,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <input
                     type="text"
                     className={styles.formInput}
-                    value={modelForm.display_name}
-                    onChange={(e) => setModelForm({...modelForm, display_name: e.target.value})}
+                    value={modelForm.displayName}
+                    onChange={(e) => setModelForm({...modelForm, displayName: e.target.value})}
                     placeholder="例如: GPT-3.5 Turbo"
                   />
                 </div>
@@ -1235,8 +1812,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <input
                     type="text"
                     className={styles.formInput}
-                    value={modelForm.model_id}
-                    onChange={(e) => setModelForm({...modelForm, model_id: e.target.value})}
+                    value={modelForm.modelId}
+                    onChange={(e) => setModelForm({...modelForm, modelId: e.target.value})}
                     placeholder="例如: gpt-3.5-turbo"
                   />
                 </div>
@@ -1256,8 +1833,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     <input
                       type="number"
                       className={styles.formInput}
-                      value={modelForm.max_tokens}
-                      onChange={(e) => setModelForm({...modelForm, max_tokens: parseInt(e.target.value)})}
+                      value={modelForm.maxTokens}
+                      onChange={(e) => setModelForm({...modelForm, maxTokens: parseInt(e.target.value)})}
                       min={1}
                       max={200000}
                       title="设置模型最大令牌数"
@@ -1290,7 +1867,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 </Button>
                 <Button
                   onClick={handleSaveModel}
-                  disabled={saving || !modelForm.provider_id || !modelForm.display_name || !modelForm.model_id}
+                  disabled={saving || !modelForm.providerId || !modelForm.displayName || !modelForm.modelId}
                 >
                   {saving ? '保存中...' : '保存'}
                 </Button>
@@ -1474,6 +2051,267 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   variant="danger"
                 >
                   {resetting ? '删除中...' : deleteDbDialog.step === 'warning' ? '继续' : '确认删除数据库'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ElevenLabs Config Modal */}
+        {showEditElevenLabs && (
+          <div className={styles.modal}>
+            <div className={styles.modalContent}>
+              <div className={styles.modalHeader}>
+                <h3 className={styles.modalTitle}>
+                  <i className="fas fa-microphone-alt" />
+                  编辑 ElevenLabs 配置
+                </h3>
+                <button
+                  type="button"
+                  className={styles.modalClose}
+                  onClick={() => setShowEditElevenLabs(false)}
+                  title="关闭"
+                >
+                  <i className="fas fa-times" />
+                </button>
+              </div>
+              <div className={styles.modalBody}>
+                <div className={styles.elevenLabsConfigForm}>
+                  {/* API密钥配置 */}
+                  <div className={styles.configGroup}>
+                    <h4 className={styles.configGroupTitle}>
+                      <i className="fas fa-key" />
+                      API 认证
+                    </h4>
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>API密钥</label>
+                      <input
+                        type="password"
+                        className={styles.formInput}
+                        value={editingElevenLabsConfig.apiKey}
+                        placeholder="请输入您的ElevenLabs API密钥"
+                        onChange={(e) => {
+                          setEditingElevenLabsConfig(prev => ({
+                            ...prev,
+                            apiKey: e.target.value
+                          }));
+                        }}
+                      />
+                      <p className={styles.fieldHint}>
+                        在 <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener noreferrer">ElevenLabs 控制台</a> 获取您的API密钥
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 语音质量配置 */}
+                  <div className={styles.configGroup}>
+                    <h4 className={styles.configGroupTitle}>
+                      <i className="fas fa-sliders-h" />
+                      语音质量参数
+                    </h4>
+                    <div className={styles.formRow}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>
+                          语音稳定性
+                          <span className={styles.paramValue}>{editingElevenLabsConfig.voiceStability.toFixed(2)}</span>
+                        </label>
+                        <input
+                          type="range"
+                          className={styles.rangeInput}
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={editingElevenLabsConfig.voiceStability}
+                          onChange={(e) => {
+                            setEditingElevenLabsConfig(prev => ({
+                              ...prev,
+                              voiceStability: parseFloat(e.target.value)
+                            }));
+                          }}
+                        />
+                        <p className={styles.fieldHint}>控制语音的一致性，值越高越稳定</p>
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>
+                          语音相似度
+                          <span className={styles.paramValue}>{editingElevenLabsConfig.voiceSimilarity.toFixed(2)}</span>
+                        </label>
+                        <input
+                          type="range"
+                          className={styles.rangeInput}
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={editingElevenLabsConfig.voiceSimilarity}
+                          onChange={(e) => {
+                            setEditingElevenLabsConfig(prev => ({
+                              ...prev,
+                              voiceSimilarity: parseFloat(e.target.value)
+                            }));
+                          }}
+                        />
+                        <p className={styles.fieldHint}>控制与原始语音的相似程度</p>
+                      </div>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>
+                        语音风格强度
+                        <span className={styles.paramValue}>{editingElevenLabsConfig.voiceStyle.toFixed(2)}</span>
+                      </label>
+                      <input
+                        type="range"
+                        className={styles.rangeInput}
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={editingElevenLabsConfig.voiceStyle}
+                        onChange={(e) => {
+                          setEditingElevenLabsConfig(prev => ({
+                            ...prev,
+                            voiceStyle: parseFloat(e.target.value)
+                          }));
+                        }}
+                      />
+                      <p className={styles.fieldHint}>控制语音的表现力和情感强度，0为最自然</p>
+                    </div>
+                  </div>
+
+                  {/* 高级配置 */}
+                  <div className={styles.configGroup}>
+                    <h4 className={styles.configGroupTitle}>
+                      <i className="fas fa-cogs" />
+                      高级设置
+                    </h4>
+                    <div className={styles.formRow}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>语音模型</label>
+                        <select
+                          className={styles.formSelect}
+                          value={editingElevenLabsConfig.modelId}
+                          onChange={(e) => {
+                            setEditingElevenLabsConfig(prev => ({
+                              ...prev,
+                              modelId: e.target.value
+                            }));
+                          }}
+                        >
+                          <option value="eleven_multilingual_v2">Multilingual V2 (推荐)</option>
+                          <option value="eleven_multilingual_v1">Multilingual V1</option>
+                          <option value="eleven_monolingual_v1">Monolingual V1</option>
+                        </select>
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>输出格式</label>
+                        <select
+                          className={styles.formSelect}
+                          value={editingElevenLabsConfig.outputFormat}
+                          onChange={(e) => {
+                            setEditingElevenLabsConfig(prev => ({
+                              ...prev,
+                              outputFormat: e.target.value
+                            }));
+                          }}
+                        >
+                          <option value="mp3_44100_128">MP3 44.1kHz 128kbps (推荐)</option>
+                          <option value="mp3_22050_32">MP3 22.05kHz 32kbps</option>
+                          <option value="pcm_16000">PCM 16kHz</option>
+                          <option value="pcm_22050">PCM 22.05kHz</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className={styles.formRow}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>流式延迟优化</label>
+                        <select
+                          className={styles.formSelect}
+                          value={editingElevenLabsConfig.optimizeStreamingLatency}
+                          onChange={(e) => {
+                            setEditingElevenLabsConfig(prev => ({
+                              ...prev,
+                              optimizeStreamingLatency: parseInt(e.target.value)
+                            }));
+                          }}
+                        >
+                          <option value={0}>无优化 (最高质量)</option>
+                          <option value={1}>轻度优化</option>
+                          <option value={2}>中度优化</option>
+                          <option value={3}>重度优化</option>
+                          <option value={4}>最大优化 (最低延迟)</option>
+                        </select>
+                        <p className={styles.fieldHint}>优化级别越高，延迟越低但质量可能下降</p>
+                      </div>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.checkboxLabel}>
+                        <input
+                          type="checkbox"
+                          className={styles.checkbox}
+                          checked={editingElevenLabsConfig.voiceBoost}
+                          onChange={(e) => {
+                            setEditingElevenLabsConfig(prev => ({
+                              ...prev,
+                              voiceBoost: e.target.checked
+                            }));
+                          }}
+                        />
+                        <span className={styles.checkboxText}>启用语音增强</span>
+                      </label>
+                      <p className={styles.fieldHint}>提升语音质量，但会增加处理时间</p>
+                    </div>
+                  </div>
+
+                  {/* 默认语音配置 */}
+                  <div className={styles.configGroup}>
+                    <h4 className={styles.configGroupTitle}>
+                      <i className="fas fa-user-friends" />
+                      默认语音设置
+                    </h4>
+                    <div className={styles.formGroup}>
+                      <VoiceSelector
+                        voices={ttsVoices}
+                        selectedVoiceId={editingElevenLabsConfig.defaultVoiceId}
+                        onVoiceSelect={(voiceId) => {
+                          setEditingElevenLabsConfig(prev => ({
+                            ...prev,
+                            defaultVoiceId: voiceId
+                          }));
+                        }}
+                        onVoiceTest={handleVoiceTest}
+                        testingVoiceId={testingVoiceId}
+                        disabled={ttsLoading}
+                        title="选择默认语音"
+                        description="选择一个语音作为默认的文本转语音引擎，点击试听按钮可以预览语音效果"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className={styles.modalFooter}>
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowEditElevenLabs(false)}
+                  disabled={ttsLoading}
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={handleSaveElevenLabsConfigFromModal}
+                  disabled={ttsLoading}
+                >
+                  {ttsLoading ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin" />
+                      保存中...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-save" />
+                      保存配置
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

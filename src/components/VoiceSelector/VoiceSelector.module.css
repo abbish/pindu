@@ -1,0 +1,277 @@
+/* Voice Selector Component Styles */
+.section {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-md) 0;
+  line-height: var(--line-height-tight);
+}
+
+.description {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-normal);
+}
+
+.voicesList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.voiceItem {
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-lg);
+  background-color: var(--color-bg-primary);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.voiceItem:hover:not(.disabled) {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.voiceItem.selected {
+  border-color: var(--color-primary);
+  background-color: rgba(78, 205, 196, 0.05);
+}
+
+.voiceItem.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.voiceLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  cursor: pointer;
+  width: 100%;
+}
+
+.radioButton {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border-dark);
+  background-color: var(--color-bg-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  margin-top: 2px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radioButton.checked {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary);
+}
+
+.radioInner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: white;
+}
+
+.radioButton:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.voiceContent {
+  flex: 1;
+}
+
+.voiceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+  gap: var(--spacing-md);
+}
+
+.voiceTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+  line-height: var(--line-height-tight);
+}
+
+.voiceActions {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+.testButton {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-blue);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 80px;
+  justify-content: center;
+}
+
+.testButton:hover:not(:disabled) {
+  background: var(--color-blue-hover);
+  transform: translateY(-1px);
+}
+
+.testButton:disabled {
+  background: var(--color-secondary);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.testButton.testing {
+  background: var(--color-orange);
+}
+
+.testButton.testing:hover {
+  background: var(--color-orange-hover);
+}
+
+.voiceDetails {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.voiceInfo {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.voiceLanguage,
+.voiceGender {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.voiceLanguage {
+  background: var(--color-blue-light);
+  color: var(--color-blue);
+  border: 1px solid var(--color-blue);
+}
+
+.voiceGender {
+  background: var(--color-purple-light);
+  color: var(--color-purple);
+  border: 1px solid var(--color-purple);
+}
+
+.voiceDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-relaxed);
+}
+
+/* Empty state */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-3xl);
+  text-align: center;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-secondary);
+}
+
+.emptyState i {
+  font-size: var(--font-size-3xl);
+  margin-bottom: var(--spacing-lg);
+  color: var(--color-secondary);
+}
+
+.emptyState h4 {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
+.emptyState p {
+  font-size: var(--font-size-sm);
+  margin: 0;
+  line-height: var(--line-height-relaxed);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .voiceHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+  
+  .voiceActions {
+    align-self: flex-end;
+  }
+  
+  .voiceInfo {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+  
+  .testButton {
+    min-width: 70px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-xs);
+  }
+}
+
+@media (max-width: 480px) {
+  .voiceItem {
+    padding: var(--spacing-md);
+  }
+  
+  .voiceLabel {
+    gap: var(--spacing-sm);
+  }
+  
+  .voiceTitle {
+    font-size: var(--font-size-md);
+  }
+  
+  .testButton {
+    min-width: 60px;
+    padding: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+  }
+}

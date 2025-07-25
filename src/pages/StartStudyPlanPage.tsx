@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   Header,
   Breadcrumb,
   StudyProgress,
@@ -8,6 +8,7 @@ import {
   type WordData,
   type ExampleSentence
 } from '../components';
+import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import styles from './StartStudyPlanPage.module.css';
 
 export interface StartStudyPlanPageProps {
@@ -20,10 +21,11 @@ export interface StartStudyPlanPageProps {
 /**
  * 学习计划学习页面
  */
-export const StartStudyPlanPage: React.FC<StartStudyPlanPageProps> = ({ 
+export const StartStudyPlanPage: React.FC<StartStudyPlanPageProps> = ({
   planId,
-  onNavigate 
+  onNavigate
 }) => {
+  const audioPlayer = useAudioPlayer();
   // Mock study plan data
   const [studyPlan] = useState({
     id: planId || 1,
@@ -118,8 +120,7 @@ export const StartStudyPlanPage: React.FC<StartStudyPlanPageProps> = ({
   };
 
   const handlePlayPronunciation = (word: WordData) => {
-    console.log('Playing pronunciation for:', word.word);
-    // TODO: Implement text-to-speech
+    audioPlayer.playWord(word.word);
   };
 
   const handleShowWordDetails = (_word: WordData) => {
@@ -127,8 +128,7 @@ export const StartStudyPlanPage: React.FC<StartStudyPlanPageProps> = ({
   };
 
   const handlePlayExample = (example: ExampleSentence) => {
-    console.log('Playing example:', example.english);
-    // TODO: Implement text-to-speech for example
+    audioPlayer.playSentence(example.english);
   };
 
   const handleInputChange = (value: string) => {

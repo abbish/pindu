@@ -16,6 +16,7 @@ import { Modal } from '../components/Modal';
 import { EditPlanModal } from '../components/EditPlanModal';
 import { StudyService } from '../services/studyService';
 import { practiceService } from '../services';
+import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import type {
   StudyPlanWithProgress,
   StudyPlanAIResult,
@@ -126,6 +127,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 }) => {
   const { showToast } = useToast();
   const studyService = new StudyService();
+  const audioPlayer = useAudioPlayer();
 
   // 状态管理
   const [planData, setPlanData] = useState<StudyPlanWithProgress | null>(null);
@@ -1116,8 +1118,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   // 单词列表视图
   function renderWordsView() {
     const handlePlayPronunciation = (word: WordListDetail) => {
-      console.log('Playing pronunciation for:', word.word);
-      // TODO: Implement text-to-speech functionality
+      audioPlayer.playWord(word.word);
     };
 
 

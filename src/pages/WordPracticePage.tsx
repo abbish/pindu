@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Header,
   Modal,
@@ -11,6 +11,7 @@ import {
   type PracticeSession
 } from '../types/study';
 import { practiceService } from '../services/practiceService';
+import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import styles from './WordPracticePage.module.css';
 
 export interface WordPracticePageProps {
@@ -34,6 +35,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   onNavigate
 }) => {
   const toast = useToast();
+  const audioPlayer = useAudioPlayer();
 
   // 练习状态
   const [session, setSession] = useState<PracticeSession | null>(null);
@@ -74,6 +76,25 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   console.log('CurrentWordState:', currentWordState);
   console.log('CurrentWordState.wordInfo:', currentWordState?.wordInfo);
   console.log('CurrentWordState.word_info:', (currentWordState as any)?.word_info);
+
+  // 从session中获取当前单词数据
+  const currentWord: PracticeWordData | null = currentWordState ? (() => {
+    // 支持两种字段命名：camelCase 和 snake_case
+    const wordInfo = currentWordState.wordInfo || (currentWordState as any).word_info;
+    if (!wordInfo) return null;
+
+    return {
+      id: wordInfo.wordId || wordInfo.word_id,
+      word: wordInfo.word,
+      meaning: wordInfo.meaning,
+      description: wordInfo.description,
+      ipa: wordInfo.ipa,
+      syllables: wordInfo.syllables,
+      phonicsSegments: (wordInfo.phonicsSegments || wordInfo.phonics_segments) ?
+        (wordInfo.phonicsSegments || wordInfo.phonics_segments).split(',').map((s: string) => s.trim()) :
+        undefined
+    };
+  })() : null;
 
   const totalWords = words.length;
   const isLastWord = currentWordIndex === totalWords - 1;
@@ -319,10 +340,11 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   };
 
   // 处理发音播放
-  const handlePlayPronunciation = () => {
-    // TODO: 实现发音播放
-    console.log('播放发音:', currentWord?.word);
-  };
+  const handlePlayPronunciation = useCallback(() => {
+    if (currentWord?.word) {
+      audioPlayer.playWord(currentWord.word);
+    }
+  }, [currentWord?.word, audioPlayer]);
 
   // 处理练习完成
   const handleCompletePractice = async () => {
@@ -404,24 +426,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     );
   }
 
-  // 从session中获取当前单词数据
-  const currentWord: PracticeWordData | null = currentWordState ? (() => {
-    // 支持两种字段命名：camelCase 和 snake_case
-    const wordInfo = currentWordState.wordInfo || (currentWordState as any).word_info;
-    if (!wordInfo) return null;
 
-    return {
-      id: wordInfo.wordId || wordInfo.word_id,
-      word: wordInfo.word,
-      meaning: wordInfo.meaning,
-      description: wordInfo.description,
-      ipa: wordInfo.ipa,
-      syllables: wordInfo.syllables,
-      phonicsSegments: (wordInfo.phonicsSegments || wordInfo.phonics_segments) ?
-        (wordInfo.phonicsSegments || wordInfo.phonics_segments).split(',').map((s: string) => s.trim()) :
-        undefined
-    };
-  })() : null;
 
   // 没有单词数据
   if (!session || words.length === 0 || !currentWord) {

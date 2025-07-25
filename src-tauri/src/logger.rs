@@ -23,6 +23,7 @@ impl LogLevel {
     }
 }
 
+#[derive(Clone)]
 pub struct Logger {
     log_file_path: PathBuf,
 }

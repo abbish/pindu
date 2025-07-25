@@ -3,6 +3,7 @@ use crate::types::common::{Id, Timestamp};
 
 /// AI提供商
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct AIProvider {
     pub id: Id,
     pub name: String,
@@ -34,6 +35,7 @@ pub struct AIModel {
 
 /// AI模型配置（包含提供商信息）
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct AIModelConfig {
     pub id: Id,
     pub name: String,
@@ -51,6 +53,7 @@ pub struct AIModelConfig {
 
 /// 创建AI提供商请求
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateAIProviderRequest {
     pub name: String,
     pub display_name: String,
@@ -61,6 +64,7 @@ pub struct CreateAIProviderRequest {
 
 /// 更新AI提供商请求
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateAIProviderRequest {
     pub display_name: Option<String>,
     pub base_url: Option<String>,
@@ -71,6 +75,7 @@ pub struct UpdateAIProviderRequest {
 
 /// 创建AI模型请求
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateAIModelRequest {
     pub provider_id: Id,
     pub name: String,
@@ -83,6 +88,7 @@ pub struct CreateAIModelRequest {
 
 /// 更新AI模型请求
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateAIModelRequest {
     pub display_name: Option<String>,
     pub model_id: Option<String>,

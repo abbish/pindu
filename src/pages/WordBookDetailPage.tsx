@@ -18,6 +18,7 @@ import { BatchDeleteModal } from '../components/BatchDeleteModal';
 import { WordImporterModalV2 } from '../components/WordImporterModal/WordImporterModalV2';
 import { StatusTag } from '../components/StatusTag';
 import { WordBookService } from '../services';
+import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { type WordBook, type Word, type WordTypeDistribution, type UpdateWordBookRequest, type UpdateWordRequest } from '../types';
 import styles from './WordBookDetailPage.module.css';
 
@@ -79,6 +80,8 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({
   id,
   onNavigate
 }) => {
+  const audioPlayer = useAudioPlayer();
+
   // 状态管理
   const [wordBookData, setWordBookData] = useState<WordBook | null>(null);
   const [words, setWords] = useState<WordListDetail[]>([]);
@@ -325,8 +328,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({
   };
 
   const handlePlayPronunciation = (word: WordListDetail) => {
-    console.log('Playing pronunciation for:', word.word);
-    // TODO: Implement text-to-speech functionality
+    audioPlayer.playWord(word.word);
   };
 
   const handleEditWord = async (word: WordListDetail) => {

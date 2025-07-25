@@ -6,6 +6,7 @@ export * from './statisticsService';
 export * from './calendarService';
 export * from './dataManagementService';
 export * from './practiceService';
+export * from './ttsService';
 
 // 导出服务实例
 export { WordBookService } from './wordbookService';
@@ -14,3 +15,4 @@ export { statisticsService } from './statisticsService';
 export { calendarService } from './calendarService';
 export { dataManagementService } from './dataManagementService';
 export { practiceService } from './practiceService';
+export { ttsService } from './ttsService';
