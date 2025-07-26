@@ -1081,8 +1081,6 @@ pub async fn get_study_plan(app: AppHandle, plan_id: i64) -> AppResult<StudyPlan
             sp.status,
             sp.unified_status,
             sp.total_words,
-            sp.learned_words,
-            sp.accuracy_rate,
             sp.mastery_level,
             sp.intensity_level,
             sp.study_period_days,
@@ -1328,12 +1326,10 @@ pub async fn create_study_plan(app: AppHandle, request: CreateStudyPlanRequest) 
             status,
             unified_status,
             total_words,
-            learned_words,
-            accuracy_rate,
             mastery_level,
             created_at,
             updated_at
-        ) VALUES (?, ?, 'draft', 'Draft', ?, 0, 0.0, ?, datetime('now'), datetime('now'))
+        ) VALUES (?, ?, 'draft', 'Draft', ?, ?, datetime('now'), datetime('now'))
     "#;
 
     let mastery_level = request.mastery_level.unwrap_or(1);
@@ -1403,16 +1399,21 @@ pub async fn get_study_statistics(app: AppHandle) -> AppResult<StudyStatistics> 
 
     logger.api_request("get_study_statistics", None);
 
-    // 获取总学习单词数
-    let total_query = "SELECT COALESCE(SUM(learned_words), 0) as total FROM study_plans";
+    // 获取总学习单词数 - 从实际练习记录计算
+    let total_query = r#"
+        SELECT COALESCE(COUNT(DISTINCT wpr.word_id), 0) as total
+        FROM word_practice_records wpr
+        JOIN practice_sessions ps ON wpr.session_id = ps.id
+        WHERE ps.completed = TRUE AND wpr.is_correct = TRUE
+    "#;
     let total_row = match sqlx::query(total_query).fetch_one(pool.inner()).await {
         Ok(row) => {
-            logger.database_operation("SELECT", "study_plans", true, Some("Total words query successful"));
+            logger.database_operation("SELECT", "word_practice_records", true, Some("Total words query successful"));
             row
         }
         Err(e) => {
             let error_msg = e.to_string();
-            logger.database_operation("SELECT", "study_plans", false, Some(&error_msg));
+            logger.database_operation("SELECT", "word_practice_records", false, Some(&error_msg));
             logger.api_response("get_study_statistics", false, Some(&error_msg));
             return Err(AppError::DatabaseError(error_msg));
         }
@@ -3132,7 +3133,6 @@ pub async fn restart_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
     let update_query = r#"
         UPDATE study_plans
         SET unified_status = 'Pending',
-            learned_words = 0,
             actual_start_date = NULL,
             actual_end_date = NULL,
             actual_terminated_date = NULL,
@@ -3886,7 +3886,7 @@ pub async fn diagnose_study_plan_data(app: AppHandle, plan_name: String) -> AppR
     let mut diagnosis = serde_json::Map::new();
 
     // 检查学习计划基本信息
-    let plan_query = "SELECT id, name, status, unified_status, ai_plan_data, total_words, learned_words FROM study_plans WHERE name LIKE ?";
+    let plan_query = "SELECT id, name, status, unified_status, ai_plan_data, total_words FROM study_plans WHERE name LIKE ?";
     let plan_rows = sqlx::query(plan_query)
         .bind(format!("%{}%", plan_name))
         .fetch_all(pool.inner())
@@ -3901,7 +3901,18 @@ pub async fn diagnose_study_plan_data(app: AppHandle, plan_name: String) -> AppR
         let unified_status: String = row.get("unified_status");
         let ai_plan_data: Option<String> = row.get("ai_plan_data");
         let total_words: i32 = row.get("total_words");
-        let learned_words: i32 = row.get("learned_words");
+
+        // 从实际练习记录计算已学单词数
+        let learned_words: i64 = sqlx::query_scalar(r#"
+            SELECT COUNT(DISTINCT wpr.word_id)
+            FROM word_practice_records wpr
+            JOIN practice_sessions ps ON wpr.session_id = ps.id
+            WHERE ps.plan_id = ? AND ps.completed = TRUE AND wpr.is_correct = TRUE
+        "#)
+        .bind(plan_id)
+        .fetch_one(pool.inner())
+        .await
+        .unwrap_or(0);
 
         // 检查日程数据
         let schedule_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM study_plan_schedules WHERE plan_id = ?")
