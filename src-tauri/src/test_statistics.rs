@@ -331,4 +331,126 @@ mod tests {
 
         println!("\n=== 测试完成 ===");
     }
+
+    #[tokio::test]
+    async fn test_study_plan_data_integrity() {
+        println!("=== 学习计划数据完整性验证测试 ===");
+
+        let pool = setup_test_db().await;
+        let id = 1i64; // 测试学习计划ID
+
+        // 1. 验证学习计划基本信息
+        println!("\n1. 验证学习计划基本信息:");
+        let plan_query = "SELECT id, name, total_words, ai_plan_data FROM study_plans WHERE id = ?";
+        let plan_result = sqlx::query(plan_query).bind(id).fetch_one(&pool).await.unwrap();
+
+        let plan_id: i64 = plan_result.get("id");
+        let plan_name: String = plan_result.get("name");
+        let total_words: i32 = plan_result.get("total_words");
+        let ai_plan_data: Option<String> = plan_result.get("ai_plan_data");
+
+        println!("  计划ID: {}, 名称: {}, 总单词数: {}", plan_id, plan_name, total_words);
+        println!("  AI规划数据: {}", if ai_plan_data.is_some() { "存在" } else { "不存在" });
+
+        // 2. 验证 study_plan_words 表
+        println!("\n2. 验证 study_plan_words 表:");
+        let plan_words_query = "SELECT COUNT(*) as count FROM study_plan_words WHERE plan_id = ?";
+        let plan_words_count: i64 = sqlx::query_scalar(plan_words_query).bind(id).fetch_one(&pool).await.unwrap();
+        println!("  study_plan_words 记录数: {}", plan_words_count);
+
+        // 3. 验证 study_plan_schedules 表
+        println!("\n3. 验证 study_plan_schedules 表:");
+        let schedules_query = "SELECT COUNT(*) as count FROM study_plan_schedules WHERE plan_id = ?";
+        let schedules_count: i64 = sqlx::query_scalar(schedules_query).bind(id).fetch_one(&pool).await.unwrap();
+        println!("  study_plan_schedules 记录数: {}", schedules_count);
+
+        // 4. 验证 study_plan_schedule_words 表
+        println!("\n4. 验证 study_plan_schedule_words 表:");
+        let schedule_words_query = r#"
+            SELECT COUNT(*) as count
+            FROM study_plan_schedule_words spsw
+            JOIN study_plan_schedules sps ON spsw.schedule_id = sps.id
+            WHERE sps.plan_id = ?
+        "#;
+        let schedule_words_count: i64 = sqlx::query_scalar(schedule_words_query).bind(id).fetch_one(&pool).await.unwrap();
+        println!("  study_plan_schedule_words 记录数: {}", schedule_words_count);
+
+        // 5. 验证单词本关联
+        println!("\n5. 验证单词本关联:");
+        let wordbook_query = r#"
+            SELECT wb.id, wb.title, COUNT(w.id) as word_count
+            FROM word_books wb
+            JOIN words w ON wb.id = w.word_book_id
+            WHERE wb.id IN (
+                SELECT DISTINCT w2.word_book_id
+                FROM study_plan_words spw
+                JOIN words w2 ON spw.word_id = w2.id
+                WHERE spw.plan_id = ?
+            )
+            GROUP BY wb.id, wb.title
+        "#;
+        let wordbook_rows = sqlx::query(wordbook_query).bind(id).fetch_all(&pool).await.unwrap_or_default();
+        println!("  关联的单词本数量: {}", wordbook_rows.len());
+        for row in wordbook_rows {
+            let wb_id: i64 = row.get("id");
+            let wb_title: String = row.get("title");
+            let word_count: i64 = row.get("word_count");
+            println!("    单词本 {}: {} ({}个单词)", wb_id, wb_title, word_count);
+        }
+
+        // 6. 分析AI规划数据
+        if let Some(ai_data) = ai_plan_data {
+            println!("\n6. 分析AI规划数据:");
+            match serde_json::from_str::<serde_json::Value>(&ai_data) {
+                Ok(parsed) => {
+                    if let Some(daily_plans) = parsed.get("daily_plans").and_then(|v| v.as_array()) {
+                        println!("  AI规划包含 {} 天的日程", daily_plans.len());
+                        let mut total_ai_words = 0;
+                        for (day, plan) in daily_plans.iter().enumerate() {
+                            if let Some(words) = plan.get("words").and_then(|v| v.as_array()) {
+                                total_ai_words += words.len();
+                                println!("    第{}天: {}个单词", day + 1, words.len());
+                            }
+                        }
+                        println!("  AI规划总单词数: {}", total_ai_words);
+                    }
+                }
+                Err(e) => {
+                    println!("  AI规划数据解析失败: {}", e);
+                }
+            }
+        }
+
+        // 7. 数据一致性检查
+        println!("\n7. 数据一致性检查:");
+        println!("  学习计划总单词数: {}", total_words);
+        println!("  study_plan_words 记录数: {}", plan_words_count);
+        println!("  study_plan_schedules 记录数: {}", schedules_count);
+        println!("  study_plan_schedule_words 记录数: {}", schedule_words_count);
+
+        // 8. 问题诊断
+        println!("\n8. 问题诊断:");
+        if plan_words_count == 0 {
+            println!("  ❌ 关键问题: study_plan_words 表为空！");
+            println!("     这会导致 get_study_plan_words API 返回空结果");
+        } else {
+            println!("  ✅ study_plan_words 表有数据");
+        }
+
+        if schedules_count == 0 {
+            println!("  ❌ 关键问题: study_plan_schedules 表为空！");
+            println!("     这会导致日历和日程相关功能无法工作");
+        } else {
+            println!("  ✅ study_plan_schedules 表有数据");
+        }
+
+        if schedule_words_count == 0 {
+            println!("  ❌ 关键问题: study_plan_schedule_words 表为空！");
+            println!("     这会导致练习功能无法找到单词");
+        } else {
+            println!("  ✅ study_plan_schedule_words 表有数据");
+        }
+
+        println!("\n=== 数据完整性验证完成 ===");
+    }
 }
