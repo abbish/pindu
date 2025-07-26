@@ -9,8 +9,6 @@ pub struct StudyPlan {
     pub description: String,
     pub status: String,                    // 管理状态：normal, draft, deleted (保留用于兼容)
     pub total_words: i32,
-    pub learned_words: i32,
-    pub accuracy_rate: f64,
     pub mastery_level: i32,
     // AI规划相关字段
     pub intensity_level: Option<String>,
@@ -38,8 +36,6 @@ pub struct StudyPlanWithProgress {
     pub lifecycle_status: String,          // 生命周期状态：pending, active, completed (已废弃，保留用于兼容)
     pub unified_status: String,            // 统一状态：Draft, Pending, Active, Paused, Completed, Terminated, Deleted
     pub total_words: i32,
-    pub learned_words: i32,
-    pub accuracy_rate: f64,
     pub mastery_level: i32,
     // AI规划相关字段
     pub intensity_level: Option<String>,
@@ -195,28 +191,39 @@ impl WordPracticeStep {
 /// 练习单词信息
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PracticeWordInfo {
+    #[serde(rename = "wordId")]
     pub word_id: i64,
     pub word: String,
     pub meaning: String,
     pub description: Option<String>,
     pub ipa: Option<String>,
     pub syllables: Option<String>,
+    #[serde(rename = "phonicsSegments")]
     pub phonics_segments: Option<String>,
 }
 
 /// 单词练习状态
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WordPracticeState {
+    #[serde(rename = "wordId")]
     pub word_id: i64,
+    #[serde(rename = "planWordId")]
     pub plan_word_id: i64,        // study_plan_schedule_words 表的 ID
+    #[serde(rename = "wordInfo")]
     pub word_info: PracticeWordInfo, // 完整的单词信息
+    #[serde(rename = "currentStep")]
     pub current_step: WordPracticeStep,
+    #[serde(rename = "stepResults")]
     pub step_results: Vec<bool>,  // 三个步骤的结果 [step1, step2, step3]
+    #[serde(rename = "stepAttempts")]
     pub step_attempts: Vec<i32>,  // 每个步骤的尝试次数
+    #[serde(rename = "stepTimeSpent")]
     pub step_time_spent: Vec<i64>, // 每个步骤的用时（毫秒）
     pub completed: bool,          // 三个步骤是否全部完成
     pub passed: bool,             // 三步全对才算通过
+    #[serde(rename = "startTime")]
     pub start_time: String,       // 开始时间
+    #[serde(rename = "endTime")]
     pub end_time: Option<String>, // 结束时间
 }
 
@@ -295,6 +302,8 @@ pub struct PracticeResult {
     pub average_time_per_word: i64, // 平均每个单词用时（毫秒）
     #[serde(rename = "difficultWords")]
     pub difficult_words: Vec<WordPracticeState>, // 未通过的单词
+    #[serde(rename = "passedWordsList")]
+    pub passed_words_list: Vec<WordPracticeState>, // 通过的单词列表
     #[serde(rename = "completedAt")]
     pub completed_at: String,
 }
@@ -596,6 +605,7 @@ pub struct StudyPlanStatistics {
     // 学习效果
     pub average_accuracy_rate: f64,       // 平均练习正确率
     pub overdue_ratio: f64,              // 逾期比率 (逾期天数/总天数)
+    pub streak_days: i32,                // 该计划的连续练习天数
 
     // 详细数据
     pub total_days: i64,

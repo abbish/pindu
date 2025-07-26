@@ -172,8 +172,6 @@ pub async fn get_word_book_linked_plans(app: AppHandle, book_id: Id) -> AppResul
             sp.status,
             sp.unified_status,
             sp.total_words,
-            sp.learned_words,
-            sp.accuracy_rate,
             sp.mastery_level,
             sp.intensity_level,
             sp.study_period_days,
@@ -237,8 +235,6 @@ pub async fn get_word_book_linked_plans(app: AppHandle, book_id: Id) -> AppResul
                     lifecycle_status: "".to_string(), // 已废弃字段
                     unified_status: row.get("unified_status"),
                     total_words: row.get("total_words"),
-                    learned_words: row.get("learned_words"),
-                    accuracy_rate: row.get("accuracy_rate"),
                     mastery_level: row.get("mastery_level"),
                     intensity_level: row.get("intensity_level"),
                     study_period_days: row.get("study_period_days"),
@@ -997,8 +993,6 @@ pub async fn get_study_plans(app: AppHandle) -> AppResult<Vec<StudyPlanWithProgr
             sp.status,
             sp.unified_status,
             sp.total_words,
-            sp.learned_words,
-            sp.accuracy_rate,
             sp.mastery_level,
             sp.intensity_level,
             sp.study_period_days,
@@ -1041,8 +1035,6 @@ pub async fn get_study_plans(app: AppHandle) -> AppResult<Vec<StudyPlanWithProgr
                     lifecycle_status: "".to_string(), // 已废弃字段
                     unified_status: row.get("unified_status"),
                     total_words: row.get("total_words"),
-                    learned_words: row.get("learned_words"),
-                    accuracy_rate: row.get("accuracy_rate"),
                     mastery_level: row.get("mastery_level"),
                     intensity_level: row.get("intensity_level"),
                     study_period_days: row.get("study_period_days"),
@@ -1135,8 +1127,6 @@ pub async fn get_study_plan(app: AppHandle, plan_id: i64) -> AppResult<StudyPlan
                 lifecycle_status: "".to_string(), // 已废弃字段
                 unified_status: row.get("unified_status"),
                 total_words: row.get("total_words"),
-                learned_words: row.get("learned_words"),
-                accuracy_rate: row.get("accuracy_rate"),
                 mastery_level: row.get("mastery_level"),
                 intensity_level: row.get("intensity_level"),
                 study_period_days: row.get("study_period_days"),
@@ -1429,24 +1419,88 @@ pub async fn get_study_statistics(app: AppHandle) -> AppResult<StudyStatistics> 
     };
     let total_words_learned: i32 = total_row.get("total");
 
-    // 获取平均正确率
-    let accuracy_query = "SELECT COALESCE(AVG(accuracy_rate), 0.0) as avg_accuracy FROM study_plans WHERE learned_words > 0";
+    // 获取平均正确率 - 从实际练习记录计算
+    let accuracy_query = r#"
+        SELECT
+            COALESCE(
+                CASE
+                    WHEN COUNT(*) > 0 THEN
+                        (COUNT(CASE WHEN is_correct = TRUE THEN 1 END) * 100.0 / COUNT(*))
+                    ELSE 0.0
+                END,
+                0.0
+            ) as avg_accuracy
+        FROM word_practice_records wpr
+        JOIN practice_sessions ps ON wpr.session_id = ps.id
+        WHERE ps.completed = TRUE
+    "#;
     let accuracy_row = match sqlx::query(accuracy_query).fetch_one(pool.inner()).await {
         Ok(row) => {
-            logger.database_operation("SELECT", "study_plans", true, Some("Accuracy query successful"));
+            logger.database_operation("SELECT", "word_practice_records", true, Some("Accuracy query successful"));
             row
         }
         Err(e) => {
             let error_msg = e.to_string();
-            logger.database_operation("SELECT", "study_plans", false, Some(&error_msg));
+            logger.database_operation("SELECT", "word_practice_records", false, Some(&error_msg));
             logger.api_response("get_study_statistics", false, Some(&error_msg));
             return Err(AppError::DatabaseError(error_msg));
         }
     };
     let average_accuracy: f64 = accuracy_row.get("avg_accuracy");
 
-    // 简化的统计数据
-    let streak_days = 7;
+    // 计算连续学习天数 - 从今天开始往前数连续有练习记录的天数
+    let streak_query = r#"
+        SELECT DISTINCT DATE(ps.end_time) as study_date
+        FROM practice_sessions ps
+        WHERE ps.completed = TRUE
+        AND DATE(ps.end_time) >= DATE('now', '-30 days')
+        ORDER BY study_date DESC
+    "#;
+
+    let mut streak_days = 0i32;
+
+    match sqlx::query(streak_query)
+        .fetch_all(pool.inner())
+        .await
+    {
+        Ok(rows) => {
+            if !rows.is_empty() {
+                let today = chrono::Utc::now().date_naive();
+                let mut current_date = today;
+
+                // 将数据库日期转换为 NaiveDate 并排序
+                let mut study_dates: Vec<chrono::NaiveDate> = Vec::new();
+                for row in rows {
+                    let date_str: String = row.get("study_date");
+                    if let Ok(date) = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                        study_dates.push(date);
+                    }
+                }
+                study_dates.sort_by(|a, b| b.cmp(a)); // 降序排列，最新的在前
+
+                // 计算连续天数
+                for study_date in study_dates {
+                    if study_date == current_date {
+                        streak_days += 1;
+                        current_date = current_date - chrono::Duration::days(1);
+                    } else if study_date == current_date - chrono::Duration::days(1) {
+                        // 允许跳过今天（如果今天还没学习）
+                        current_date = study_date;
+                        streak_days += 1;
+                        current_date = current_date - chrono::Duration::days(1);
+                    } else {
+                        break; // 不连续，停止计算
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            streak_days = 0;
+        }
+    }
+
+    // 调试信息
+    logger.info("STREAK_DEBUG", &format!("计算连续学习天数: {}", streak_days));
     let completion_query = r#"
         SELECT
             CASE
@@ -1469,7 +1523,45 @@ pub async fn get_study_statistics(app: AppHandle) -> AppResult<StudyStatistics> 
     };
     let completion_rate: f64 = completion_row.get("completion_rate");
 
-    let weekly_progress = vec![15, 22, 18, 28, 35, 20, 25];
+    // 计算最近7天的学习进度
+    let weekly_progress_query = r#"
+        SELECT
+            DATE(ps.end_time) as study_date,
+            COUNT(DISTINCT wpr.word_id) as words_learned
+        FROM practice_sessions ps
+        JOIN word_practice_records wpr ON ps.id = wpr.session_id
+        WHERE ps.completed = TRUE
+        AND DATE(ps.end_time) >= DATE('now', '-7 days')
+        AND DATE(ps.end_time) <= DATE('now')
+        GROUP BY DATE(ps.end_time)
+        ORDER BY study_date ASC
+    "#;
+
+    let mut weekly_progress = vec![0; 7]; // 初始化7天的数据
+
+    match sqlx::query(weekly_progress_query)
+        .fetch_all(pool.inner())
+        .await
+    {
+        Ok(rows) => {
+            let today = chrono::Utc::now().date_naive();
+            for row in rows {
+                let study_date_str: String = row.get("study_date");
+                let words_learned: i64 = row.get("words_learned");
+
+                if let Ok(study_date) = chrono::NaiveDate::parse_from_str(&study_date_str, "%Y-%m-%d") {
+                    let days_ago = (today - study_date).num_days();
+                    if days_ago >= 0 && days_ago < 7 {
+                        let index = (6 - days_ago) as usize; // 最新的在最后
+                        weekly_progress[index] = words_learned as i32;
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            // 如果查询失败，保持默认的0值
+        }
+    };
 
     let result = StudyStatistics {
         total_words_learned,
@@ -2130,10 +2222,10 @@ pub async fn create_study_plan_with_schedule(
     // 创建学习计划 - 使用新的统一状态管理
     let insert_plan_query = r#"
         INSERT INTO study_plans (
-            name, description, status, unified_status, total_words, learned_words, accuracy_rate, mastery_level,
+            name, description, status, unified_status, total_words, mastery_level,
             intensity_level, study_period_days, review_frequency, start_date, end_date, ai_plan_data,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 0, 0.0, 1, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     "#;
 
     // 使用新的统一状态管理
@@ -2532,6 +2624,9 @@ pub async fn get_study_plan_statistics(app: AppHandle, plan_id: i64) -> AppResul
 
     logger.api_request("get_study_plan_statistics", Some(&format!("plan_id: {}", plan_id)));
 
+    // 调试信息
+    logger.info("STATISTICS_DEBUG", &format!("开始计算学习计划 {} 的统计数据", plan_id));
+
     // 获取基本计划信息
     let plan_query = r#"
         SELECT start_date, end_date, total_words
@@ -2561,22 +2656,46 @@ pub async fn get_study_plan_statistics(app: AppHandle, plan_id: i64) -> AppResul
     let end_date: Option<String> = plan_row.get("end_date");
     let total_words: i64 = plan_row.get("total_words");
 
+    // 调试信息
+    logger.info("STATISTICS_DEBUG", &format!("计划基本信息 - start_date: {:?}, end_date: {:?}, total_words: {}", start_date, end_date, total_words));
+
     // 计算时间相关统计
-    let (total_days, time_progress_percentage) = if let (Some(_start), Some(_end)) = (&start_date, &end_date) {
-        // 这里应该使用实际的日期计算，简化处理
-        let total_days = 30; // 临时值，实际应该计算日期差
-        let time_progress = 50.0; // 临时值，实际应该计算当前进度
+    let (total_days, time_progress_percentage) = if let (Some(start), Some(end)) = (&start_date, &end_date) {
+        // 解析日期
+        let start_date = chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d")
+            .map_err(|_| AppError::ValidationError("Invalid start date format".to_string()))?;
+        let end_date = chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d")
+            .map_err(|_| AppError::ValidationError("Invalid end date format".to_string()))?;
+
+        // 计算总天数
+        let total_days = (end_date - start_date).num_days() + 1; // +1 包含开始和结束日期
+
+        // 计算时间进度
+        let today = chrono::Utc::now().date_naive();
+        let time_progress = if today <= start_date {
+            0.0 // 还未开始
+        } else if today >= end_date {
+            100.0 // 已结束
+        } else {
+            let elapsed_days = (today - start_date).num_days() + 1;
+            (elapsed_days as f64 / total_days as f64) * 100.0
+        };
+
+        // 调试信息
+        logger.info("STATISTICS_DEBUG", &format!("时间计算 - total_days: {}, time_progress: {:.2}%", total_days, time_progress));
+
         (total_days, time_progress)
     } else {
+        logger.info("STATISTICS_DEBUG", "时间计算 - 缺少开始或结束日期，使用默认值");
         (0, 0.0)
     };
 
-    // 获取完成的单词数
+    // 实时计算已学单词数：基于练习记录中的单词（只要练习过就算）
     let completed_words_query = r#"
-        SELECT COUNT(*) as completed_count
-        FROM study_plan_schedule_words spw
-        JOIN study_plan_schedules sps ON spw.schedule_id = sps.id
-        WHERE sps.plan_id = ? AND spw.completed = true
+        SELECT COUNT(DISTINCT wpr.word_id) as completed_count
+        FROM word_practice_records wpr
+        JOIN practice_sessions ps ON wpr.session_id = ps.id
+        WHERE ps.plan_id = ? AND ps.completed = TRUE
     "#;
 
     let completed_words: i64 = match sqlx::query(completed_words_query)
@@ -2584,31 +2703,38 @@ pub async fn get_study_plan_statistics(app: AppHandle, plan_id: i64) -> AppResul
         .fetch_one(pool.inner())
         .await
     {
-        Ok(row) => row.get("completed_count"),
-        Err(_) => 0,
+        Ok(row) => {
+            let count = row.get("completed_count");
+            logger.info("STATISTICS_DEBUG", &format!("已学单词数查询结果: {}", count));
+            count
+        },
+        Err(e) => {
+            logger.info("STATISTICS_DEBUG", &format!("已学单词数查询失败: {}", e));
+            0
+        },
     };
 
-    // 获取练习记录统计（从 practice_sessions 表获取更准确的数据）
-    let practice_sessions_query = r#"
+    // 实时计算练习时间：基于已完成的练习会话
+    let practice_time_query = r#"
         SELECT
-            COUNT(*) as session_count,
             COUNT(CASE WHEN completed = TRUE THEN 1 END) as completed_sessions,
-            COALESCE(SUM(active_time), 0) as total_active_time
+            COALESCE(SUM(CASE WHEN completed = TRUE THEN
+                CAST((julianday(end_time) - julianday(start_time)) * 24 * 60 * 60 * 1000 AS INTEGER)
+            END), 0) as total_active_time_ms
         FROM practice_sessions
         WHERE plan_id = ?
     "#;
 
-    let (_session_count, completed_sessions, total_active_time) = match sqlx::query(practice_sessions_query)
+    let (completed_sessions, total_active_time) = match sqlx::query(practice_time_query)
         .bind(plan_id)
         .fetch_one(pool.inner())
         .await
     {
         Ok(row) => (
-            row.get::<i64, _>("session_count"),
             row.get::<i64, _>("completed_sessions"),
-            row.get::<i64, _>("total_active_time"),
+            row.get::<i64, _>("total_active_time_ms"),
         ),
-        Err(_) => (0, 0, 0),
+        Err(_) => (0, 0),
     };
 
     // 获取练习准确率（从 word_practice_records 表计算）
@@ -2641,15 +2767,86 @@ pub async fn get_study_plan_statistics(app: AppHandle, plan_id: i64) -> AppResul
     // 将毫秒转换为分钟
     let total_minutes = total_active_time / (1000 * 60);
 
+    // 计算逾期统计
+    let (overdue_days, overdue_ratio) = if let Some(start) = &start_date {
+        let start_date = chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d").unwrap_or_default();
+        let today = chrono::Utc::now().date_naive();
+
+        if today > start_date {
+            // 获取逾期的日程数量
+            let overdue_query = r#"
+                SELECT COUNT(*) as overdue_count
+                FROM study_plan_schedules sps
+                LEFT JOIN (
+                    SELECT schedule_id, COUNT(*) as completed_words
+                    FROM study_plan_schedule_words
+                    WHERE completed = TRUE
+                    GROUP BY schedule_id
+                ) completed ON sps.id = completed.schedule_id
+                LEFT JOIN (
+                    SELECT schedule_id, COUNT(*) as total_words
+                    FROM study_plan_schedule_words
+                    GROUP BY schedule_id
+                ) total ON sps.id = total.schedule_id
+                WHERE sps.plan_id = ?
+                AND sps.schedule_date < date('now')
+                AND (completed.completed_words IS NULL OR completed.completed_words < total.total_words)
+            "#;
+
+            let overdue_count = match sqlx::query(overdue_query)
+                .bind(plan_id)
+                .fetch_one(pool.inner())
+                .await
+            {
+                Ok(row) => row.get::<i64, _>("overdue_count"),
+                Err(_) => 0,
+            };
+
+            let overdue_ratio = if total_days > 0 {
+                (overdue_count as f64 / total_days as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            (overdue_count, overdue_ratio)
+        } else {
+            (0, 0.0)
+        }
+    } else {
+        (0, 0.0)
+    };
+
+    // 简化连续学习天数计算：统计最近有练习记录的天数
+    let plan_streak_query = r#"
+        SELECT COUNT(DISTINCT DATE(ps.end_time)) as streak_days
+        FROM practice_sessions ps
+        WHERE ps.completed = TRUE
+        AND ps.plan_id = ?
+        AND DATE(ps.end_time) >= DATE('now', '-7 days')
+    "#;
+
+    let plan_streak_days = match sqlx::query(plan_streak_query)
+        .bind(plan_id)
+        .fetch_one(pool.inner())
+        .await
+    {
+        Ok(row) => row.get::<i64, _>("streak_days") as i32,
+        Err(_) => 0,
+    };
+
+    // 调试信息
+    logger.info("PLAN_STREAK_DEBUG", &format!("学习计划 {} 的连续练习天数: {}", plan_id, plan_streak_days));
+
     let statistics = StudyPlanStatistics {
         average_daily_study_minutes: if completed_sessions > 0 { total_minutes / completed_sessions } else { 0 },
         time_progress_percentage,
         actual_progress_percentage: if total_words > 0 { (completed_words as f64 / total_words as f64) * 100.0 } else { 0.0 },
         average_accuracy_rate: avg_accuracy,
-        overdue_ratio: 0.0, // 临时值，需要实际计算
+        overdue_ratio,
+        streak_days: plan_streak_days,
         total_days,
         completed_days: completed_sessions,
-        overdue_days: 0, // 临时值，需要实际计算
+        overdue_days,
         total_words,
         completed_words,
         total_study_minutes: total_minutes,
@@ -4355,47 +4552,132 @@ pub async fn complete_practice_session(
     // 开始事务
     let mut tx = pool.inner().begin().await?;
 
-    // 获取会话信息
+    // 获取会话信息（允许已完成的会话）
     let session_row = sqlx::query(
-        "SELECT plan_id, schedule_id, schedule_date, pause_count FROM practice_sessions WHERE id = ? AND completed = FALSE"
+        "SELECT plan_id, schedule_id, schedule_date, pause_count, completed FROM practice_sessions WHERE id = ?"
     )
     .bind(&session_id)
     .fetch_optional(&mut *tx)
     .await?;
 
     let session_row = session_row.ok_or_else(|| {
-        AppError::ValidationError("练习会话不存在或已完成".to_string())
+        AppError::ValidationError("练习会话不存在".to_string())
     })?;
 
     let plan_id: i64 = session_row.get("plan_id");
     let schedule_id: i64 = session_row.get("schedule_id");
     let schedule_date: String = session_row.get("schedule_date");
     let pause_count: i32 = session_row.get("pause_count");
+    let is_completed: bool = session_row.get("completed");
+
+    // 如果会话已完成，直接返回已有的结果
+    if is_completed {
+        logger.info("API", &format!("会话已完成，返回已有结果: {}", session_id));
+
+        // 获取已有的练习结果
+        let word_states = get_word_practice_states(&session_id, &mut tx).await?;
+
+        // 分离通过和困难的单词
+        let (passed_words, difficult_words): (Vec<_>, Vec<_>) = word_states.into_iter()
+            .partition(|state| state.passed);
+
+        let total_words = passed_words.len() + difficult_words.len();
+        let word_accuracy = if total_words > 0 {
+            passed_words.len() as f64 / total_words as f64
+        } else {
+            0.0
+        };
+
+        let total_steps = total_words * 3;
+        let correct_steps = passed_words.iter()
+            .map(|w| w.step_results.iter().filter(|&&r| r).count())
+            .sum::<usize>() + difficult_words.iter()
+            .map(|w| w.step_results.iter().filter(|&&r| r).count())
+            .sum::<usize>();
+
+        let step_accuracy = if total_steps > 0 {
+            correct_steps as f64 / total_steps as f64
+        } else {
+            0.0
+        };
+
+        // 从数据库获取会话的时间信息
+        let session_time_row = sqlx::query(
+            "SELECT total_time, active_time, end_time FROM practice_sessions WHERE id = ?"
+        )
+        .bind(&session_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let total_time: i64 = session_time_row.get("total_time");
+        let active_time: i64 = session_time_row.get("active_time");
+        let end_time: Option<String> = session_time_row.get("end_time");
+
+        let average_time_per_word = if total_words > 0 {
+            active_time as f64 / total_words as f64
+        } else {
+            0.0
+        };
+
+        let existing_result = crate::types::study::PracticeResult {
+            session_id: session_id.clone(),
+            plan_id,
+            schedule_id,
+            schedule_date: schedule_date.clone(),
+            total_words: total_words as i32,
+            passed_words: passed_words.len() as i32,
+            total_steps: total_steps as i32,
+            correct_steps: correct_steps as i32,
+            step_accuracy,
+            word_accuracy,
+            total_time,
+            active_time,
+            pause_count,
+            average_time_per_word: average_time_per_word as i64,
+            difficult_words: difficult_words,
+            passed_words_list: passed_words,
+            completed_at: end_time.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+        };
+
+        tx.commit().await?;
+
+        logger.info("API", &format!("练习会话结果已返回，正确率: {:.1}%", existing_result.word_accuracy * 100.0));
+        return Ok(existing_result);
+    }
 
     // 获取所有练习记录
     let practice_records = sqlx::query(
-        "SELECT word_id, plan_word_id, step, is_correct, time_spent, attempts
+        "SELECT word_id, plan_word_id, step, is_correct, time_spent, attempts, created_at
          FROM word_practice_records
          WHERE session_id = ?
-         ORDER BY word_id, step"
+         ORDER BY word_id, step, created_at"
     )
     .bind(&session_id)
     .fetch_all(&mut *tx)
     .await?;
 
-    // 统计结果
+    // 统计结果 - 只记录每个步骤的第一次尝试
     let mut word_results: std::collections::HashMap<i64, Vec<bool>> = std::collections::HashMap::new();
+    let mut word_step_seen: std::collections::HashMap<(i64, i32), bool> = std::collections::HashMap::new();
     let mut total_steps = 0;
     let mut correct_steps = 0;
 
     for record in &practice_records {
         let word_id: i64 = record.get("word_id");
+        let step: i32 = record.get("step");
         let is_correct: bool = record.get("is_correct");
 
-        word_results.entry(word_id).or_insert_with(Vec::new).push(is_correct);
-        total_steps += 1;
-        if is_correct {
-            correct_steps += 1;
+        let step_key = (word_id, step);
+
+        // 只处理每个步骤的第一次尝试
+        if !word_step_seen.contains_key(&step_key) {
+            word_step_seen.insert(step_key, true);
+
+            word_results.entry(word_id).or_insert_with(Vec::new).push(is_correct);
+            total_steps += 1;
+            if is_correct {
+                correct_steps += 1;
+            }
         }
     }
 
@@ -4419,29 +4701,33 @@ pub async fn complete_practice_session(
     .execute(&mut *tx)
     .await?;
 
-    // 更新 study_plan_schedule_words 表中已学会单词的完成状态
-    for (word_id, steps) in &word_results {
-        if steps.len() == 3 && steps.iter().all(|&x| x) {
-            // 单词已学会（3步全部正确），更新完成状态
-            let update_word_query = r#"
-                UPDATE study_plan_schedule_words
-                SET completed = TRUE, updated_at = ?
-                WHERE schedule_id = ? AND word_id = ?
-            "#;
+    // 更新单词完成状态到 study_plan_schedule_words 表
+    // 获取所有通过的单词ID
+    let passed_word_ids: Vec<i64> = word_results.iter()
+        .filter(|(_, steps)| steps.len() == 3 && steps.iter().all(|&x| x))
+        .map(|(word_id, _)| *word_id)
+        .collect();
 
-            if let Err(e) = sqlx::query(update_word_query)
-                .bind(&now)
-                .bind(schedule_id)
-                .bind(word_id)
-                .execute(&mut *tx)
-                .await
-            {
-                logger.database_operation("UPDATE", "study_plan_schedule_words", false,
-                    Some(&format!("Failed to update word completion status for word_id {}: {}", word_id, e)));
-            } else {
-                logger.database_operation("UPDATE", "study_plan_schedule_words", true,
-                    Some(&format!("Updated completion status for word_id {}", word_id)));
-            }
+    // 批量更新通过的单词为已完成状态
+    if !passed_word_ids.is_empty() {
+        let placeholders = passed_word_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let update_completed_query = format!(
+            "UPDATE study_plan_schedule_words SET completed = TRUE
+             WHERE schedule_id = ? AND word_id IN ({})",
+            placeholders
+        );
+
+        let mut query = sqlx::query(&update_completed_query).bind(schedule_id);
+        for word_id in &passed_word_ids {
+            query = query.bind(word_id);
+        }
+
+        if let Err(e) = query.execute(&mut *tx).await {
+            logger.database_operation("UPDATE", "study_plan_schedule_words", false,
+                Some(&format!("Failed to update word completion status: {}", e)));
+        } else {
+            logger.database_operation("UPDATE", "study_plan_schedule_words", true,
+                Some(&format!("Updated {} words to completed status", passed_word_ids.len())));
         }
     }
 
@@ -4483,6 +4769,36 @@ pub async fn complete_practice_session(
         logger.database_operation("INSERT", "study_sessions", true, Some("Successfully synced practice session to study sessions"));
     }
 
+    // 获取详细的单词练习状态（通过和未通过的单词）
+    let word_states = get_word_practice_states(&session_id, &mut tx).await?;
+
+    logger.info("COMPLETE_PRACTICE_DEBUG", &format!("获取到 {} 个单词状态", word_states.len()));
+
+    // 分离通过和未通过的单词
+    let mut passed_words_list = Vec::new();
+    let mut difficult_words = Vec::new();
+
+    for word_state in &word_states {
+        logger.info("COMPLETE_PRACTICE_DEBUG", &format!(
+            "单词: {}, 通过: {}, 步骤结果: {:?}",
+            word_state.word_info.word,
+            word_state.passed,
+            word_state.step_results
+        ));
+
+        if word_state.passed {
+            passed_words_list.push(word_state.clone());
+        } else {
+            difficult_words.push(word_state.clone());
+        }
+    }
+
+    logger.info("COMPLETE_PRACTICE_DEBUG", &format!(
+        "分离结果: 通过 {} 个单词, 困难 {} 个单词",
+        passed_words_list.len(),
+        difficult_words.len()
+    ));
+
     // 提交事务
     tx.commit().await?;
 
@@ -4501,7 +4817,8 @@ pub async fn complete_practice_session(
         active_time,
         pause_count,
         average_time_per_word,
-        difficult_words: Vec::new(), // 暂时为空，后续可以添加详细的困难单词信息
+        difficult_words,
+        passed_words_list,
         completed_at: now,
     };
 
@@ -4961,7 +5278,7 @@ pub async fn get_study_plan_calendar_data(
         calendar_data.push(crate::types::study::CalendarDayData {
             date: date_str,
             is_today,
-            is_in_plan: is_in_plan && is_in_current_month,
+            is_in_plan, // 移除月份限制，让所有有计划的日期都显示
             status: status.to_string(),
             new_words_count: new_words,
             review_words_count: review_words,
@@ -4979,6 +5296,140 @@ pub async fn get_study_plan_calendar_data(
 
     logger.api_response("get_study_plan_calendar_data", true, Some(&format!("Generated {} calendar days", calendar_data.len())));
     Ok(calendar_data)
+}
+
+/// 获取练习会话中所有单词的练习状态
+async fn get_word_practice_states(
+    session_id: &str,
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+) -> AppResult<Vec<crate::types::study::WordPracticeState>> {
+    // 获取会话信息
+    let session_row = sqlx::query(
+        "SELECT schedule_id FROM practice_sessions WHERE id = ?"
+    )
+    .bind(session_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    let schedule_id: i64 = session_row.get("schedule_id");
+
+    // 获取该日程的所有单词
+    let words = sqlx::query(
+        "SELECT spsw.id as plan_word_id, spsw.word_id,
+                w.word, w.meaning, w.description, w.ipa, w.syllables, w.phonics_segments, w.phonics_rule
+         FROM study_plan_schedule_words spsw
+         JOIN words w ON spsw.word_id = w.id
+         WHERE spsw.schedule_id = ?
+         ORDER BY spsw.id"
+    )
+    .bind(schedule_id)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    // 获取练习记录，按时间排序确保第一次尝试在前
+    let completed_records = sqlx::query(
+        "SELECT word_id, plan_word_id, step, is_correct, time_spent, attempts, created_at
+         FROM word_practice_records
+         WHERE session_id = ?
+         ORDER BY word_id, step, created_at"
+    )
+    .bind(session_id)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let start_time = chrono::Utc::now().to_rfc3339();
+    let mut word_states = Vec::new();
+
+    for word_row in words {
+        let word_id: i64 = word_row.get("word_id");
+        let plan_word_id: i64 = word_row.get("plan_word_id");
+
+        // 分析该单词的练习记录
+        let word_records: Vec<_> = completed_records.iter()
+            .filter(|r| r.get::<i64, _>("word_id") == word_id)
+            .collect();
+
+        // 确定当前步骤和结果
+        let mut current_step = crate::types::study::WordPracticeStep::Step1;
+        let mut step_results = vec![false, false, false];
+        let mut step_attempts = vec![0, 0, 0];
+        let mut step_time_spent = vec![0i64, 0i64, 0i64];
+        let mut completed = false;
+        let mut passed = false;
+        let mut max_completed_step = 0;
+
+        // 按步骤分组处理记录，只记录第一次尝试的结果
+        for step_num in 1..=3 {
+            let step_records: Vec<_> = word_records.iter()
+                .filter(|r| r.get::<i32, _>("step") == step_num)
+                .collect();
+
+            if !step_records.is_empty() {
+                let step_index = (step_num - 1) as usize;
+                max_completed_step = step_num;
+
+                // 只取第一次尝试的结果（新逻辑：每步只允许一次尝试）
+                let first_record = step_records.first().unwrap();
+                let is_correct: bool = first_record.get("is_correct");
+                let time_spent: i64 = first_record.get("time_spent");
+                let attempts: i32 = first_record.get("attempts");
+
+                step_results[step_index] = is_correct;
+                step_attempts[step_index] = attempts;
+                step_time_spent[step_index] = time_spent;
+
+                // 更新当前步骤
+                if is_correct && step_num < 3 {
+                    current_step = match step_num {
+                        1 => crate::types::study::WordPracticeStep::Step2,
+                        2 => crate::types::study::WordPracticeStep::Step3,
+                        _ => current_step,
+                    };
+                } else if step_num == 3 {
+                    current_step = crate::types::study::WordPracticeStep::Step3;
+                }
+            }
+        }
+
+        // 判断是否完成和通过
+        completed = max_completed_step == 3;
+        if completed {
+            passed = step_results.iter().all(|&r| r);
+        }
+
+        // 优先使用phonics_rule，如果没有则使用phonics_segments
+        let phonics_rule: Option<String> = word_row.get("phonics_rule");
+        let phonics_segments: Option<String> = word_row.get("phonics_segments");
+        let final_phonics = phonics_rule.or(phonics_segments);
+
+        let word_info = crate::types::study::PracticeWordInfo {
+            word_id,
+            word: word_row.get("word"),
+            meaning: word_row.get("meaning"),
+            description: word_row.get("description"),
+            ipa: word_row.get("ipa"),
+            syllables: word_row.get("syllables"),
+            phonics_segments: final_phonics,
+        };
+
+        let word_state = crate::types::study::WordPracticeState {
+            word_id,
+            plan_word_id,
+            word_info,
+            current_step,
+            step_results,
+            step_attempts,
+            step_time_spent,
+            completed,
+            passed,
+            start_time: start_time.clone(),
+            end_time: None,
+        };
+
+        word_states.push(word_state);
+    }
+
+    Ok(word_states)
 }
 
 /// 根据会话ID获取完整的练习会话信息

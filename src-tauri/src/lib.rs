@@ -8,6 +8,9 @@ mod ai_model_handlers;
 mod tts_service;
 mod tts_handlers;
 
+#[cfg(test)]
+mod test_statistics;
+
 use handlers::*;
 use database::DatabaseManager;
 use logger::Logger;
