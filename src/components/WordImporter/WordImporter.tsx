@@ -114,8 +114,8 @@ export const WordImporter: React.FC<WordImporterProps> = ({
         if (modelsResult.success) {
           modelOptions = modelsResult.data.map(model => ({
             id: model.id.toString(),
-            label: `${model.display_name} (${model.provider?.display_name || '未知提供商'})`,
-            description: model.description || `${model.provider?.display_name || '未知提供商'}提供的${model.display_name}模型`,
+            label: `${model.displayName} (${model.provider?.displayName || '未知提供商'})`,
+            description: model.description || `${model.provider?.displayName || '未知提供商'}提供的${model.displayName}模型`,
           }));
         } else {
           console.error('Failed to load AI models:', modelsResult.error);
@@ -124,7 +124,7 @@ export const WordImporter: React.FC<WordImporterProps> = ({
         setAvailableModels(modelOptions);
 
         // 设置默认选中的模型
-        const defaultModel = modelsResult.success ? modelsResult.data.find(m => m.is_default) : null;
+        const defaultModel = modelsResult.success ? modelsResult.data.find(m => m.isDefault) : null;
         if (defaultModel && !selectedModel) {
           console.log('Setting default model:', defaultModel.id.toString());
           setSelectedModelId(defaultModel.id.toString());

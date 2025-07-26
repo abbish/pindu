@@ -11,7 +11,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { VoiceSelector } from '../components/VoiceSelector';
 import { AIModelService } from '../services/aiModelService';
 import { dataManagementService } from '../services/dataManagementService';
-import { ttsService, type TTSProvider, type TTSVoice } from '../services/ttsService';
+import { ttsService, type TTSVoice } from '../services/ttsService';
 import type {
   AIProvider,
   AIModelConfig,
@@ -40,7 +40,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [saving, setSaving] = useState(false);
 
   // TTS相关状态
-  const [ttsProviders, setTtsProviders] = useState<TTSProvider[]>([]);
+  // const [ttsProviders, setTtsProviders] = useState<TTSProvider[]>([]);
   const [ttsVoices, setTtsVoices] = useState<TTSVoice[]>([]);
   const [defaultTtsVoice, setDefaultTtsVoice] = useState<TTSVoice | null>(null);
   const [ttsLoading, setTtsLoading] = useState(false);
@@ -222,7 +222,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       setProviders(providersData);
       setModels(modelsData);
       setDefaultModel(defaultModelData);
-      setTtsProviders(ttsProvidersData);
+      // setTtsProviders(ttsProvidersData);
       setTtsVoices(ttsVoicesData);
       setDefaultTtsVoice(defaultTtsVoiceData);
 
@@ -279,7 +279,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   };
 
   // 处理标签切换
-  const handleTabChange = (tab: 'ai-models' | 'general' | 'data-management') => {
+  const handleTabChange = (tab: 'ai-models' | 'tts' | 'general' | 'data-management') => {
     setActiveTab(tab);
 
     // 如果切换到数据管理标签，加载数据库统计
@@ -564,7 +564,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     try {
       console.log('Starting model toggle...');
       setSaving(true);
-      await aiModelService.updateAIModel(modelId, { is_active: !isActive });
+      await aiModelService.updateAIModel(modelId, { isActive: !isActive });
       console.log('Model toggle successful, reloading data...');
       await loadData();
       console.log('Data reloaded after model toggle');
@@ -582,7 +582,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     try {
       console.log('Starting provider toggle...');
       setSaving(true);
-      await aiModelService.updateAIProvider(providerId, { is_active: !isActive });
+      await aiModelService.updateAIProvider(providerId, { isActive: !isActive });
       console.log('Provider toggle successful, reloading data...');
       await loadData();
       console.log('Data reloaded after provider toggle');
@@ -598,20 +598,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const resetProviderForm = () => {
     setProviderForm({
       name: '',
-      display_name: '',
-      base_url: '',
-      api_key: '',
+      displayName: '',
+      baseUrl: '',
+      apiKey: '',
       description: '',
     });
   };
 
   const resetModelForm = () => {
     setModelForm({
-      provider_id: 0,
-      display_name: '',
-      model_id: '',
+      providerId: 0,
+      displayName: '',
+      modelId: '',
       description: '',
-      max_tokens: 4000,
+      maxTokens: 4000,
       temperature: 0.3,
     });
   };
@@ -711,7 +711,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
       console.log('Saving ElevenLabs config:', configData);
 
-      const result = await ttsService.updateElevenLabsConfig(configData, setTtsLoading);
+      const result = await ttsService.updateElevenLabsConfig(configData);
       if (result.success) {
         // 如果设置了默认语音，也要更新默认语音设置
         if (editingElevenLabsConfig.defaultVoiceId) {
@@ -751,12 +751,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       } else {
         // 创建新模型
         await aiModelService.createAIModel({
-          providerId: modelForm.provider_id,
-          name: modelForm.display_name, // 使用display_name作为name
-          displayName: modelForm.display_name,
-          modelId: modelForm.model_id,
+          providerId: modelForm.providerId,
+          name: modelForm.displayName, // 使用displayName作为name
+          displayName: modelForm.displayName,
+          modelId: modelForm.modelId,
           description: modelForm.description,
-          maxTokens: modelForm.max_tokens,
+          maxTokens: modelForm.maxTokens,
           temperature: modelForm.temperature,
         });
       }
@@ -771,93 +771,93 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   };
 
   // TTS相关处理函数
-  const handleUpdateTTSProvider = async (providerId: number, apiKey: string) => {
-    try {
-      setTtsLoading(true);
-      const result = await ttsService.updateTTSProvider(providerId, { apiKey });
-      if (result.success) {
-        await loadData(); // 重新加载数据
-        toast.showSuccess('TTS提供商配置已更新');
-      } else {
-        showError(result.error || '更新TTS提供商失败');
-      }
-    } catch (error) {
-      showError(error);
-    } finally {
-      setTtsLoading(false);
-    }
-  };
+  // const handleUpdateTTSProvider = async (providerId: number, apiKey: string) => {
+  //   try {
+  //     setTtsLoading(true);
+  //     const result = await ttsService.updateTTSProvider(providerId, { apiKey });
+  //     if (result.success) {
+  //       await loadData(); // 重新加载数据
+  //       toast.showSuccess('TTS提供商配置已更新');
+  //     } else {
+  //       showError(result.error || '更新TTS提供商失败');
+  //     }
+  //   } catch (error) {
+  //     showError(error);
+  //   } finally {
+  //     setTtsLoading(false);
+  //   }
+  // };
 
   // 保存ElevenLabs配置
-  const handleSaveElevenLabsConfig = async () => {
-    try {
-      setTtsLoading(true);
+  // const handleSaveElevenLabsConfig = async () => {
+  //   try {
+  //     setTtsLoading(true);
 
-      // 准备配置数据，只有非空值才传递
-      const configData: any = {};
+  //     // 准备配置数据，只有非空值才传递
+  //     const configData: any = {};
 
-      // API Key：只有当用户输入了有效值时才保存
-      if (elevenLabsConfig.apiKey && elevenLabsConfig.apiKey.trim() !== '') {
-        configData.apiKey = elevenLabsConfig.apiKey.trim();
-      }
+  //     // API Key：只有当用户输入了有效值时才保存
+  //     if (elevenLabsConfig.apiKey && elevenLabsConfig.apiKey.trim() !== '') {
+  //       configData.apiKey = elevenLabsConfig.apiKey.trim();
+  //     }
 
-      // 其他配置项始终保存
-      configData.modelId = elevenLabsConfig.modelId || 'eleven_multilingual_v2';
-      configData.voiceStability = elevenLabsConfig.voiceStability || 0.75;
-      configData.voiceSimilarity = elevenLabsConfig.voiceSimilarity || 0.75;
-      configData.voiceStyle = elevenLabsConfig.voiceStyle || 0.0;
-      configData.voiceBoost = elevenLabsConfig.voiceBoost !== undefined ? elevenLabsConfig.voiceBoost : true;
-      configData.optimizeStreamingLatency = elevenLabsConfig.optimizeStreamingLatency || 0;
-      configData.outputFormat = elevenLabsConfig.outputFormat || 'mp3_44100_128';
+  //     // 其他配置项始终保存
+  //     configData.modelId = elevenLabsConfig.modelId || 'eleven_multilingual_v2';
+  //     configData.voiceStability = elevenLabsConfig.voiceStability || 0.75;
+  //     configData.voiceSimilarity = elevenLabsConfig.voiceSimilarity || 0.75;
+  //     configData.voiceStyle = elevenLabsConfig.voiceStyle || 0.0;
+  //     configData.voiceBoost = elevenLabsConfig.voiceBoost !== undefined ? elevenLabsConfig.voiceBoost : true;
+  //     configData.optimizeStreamingLatency = elevenLabsConfig.optimizeStreamingLatency || 0;
+  //     configData.outputFormat = elevenLabsConfig.outputFormat || 'mp3_44100_128';
 
-      // 保存完整的ElevenLabs配置
-      const result = await ttsService.updateElevenLabsConfig(configData);
+  //     // 保存完整的ElevenLabs配置
+  //     const result = await ttsService.updateElevenLabsConfig(configData);
 
-      if (result.success) {
-        // 同时更新TTS提供商的API密钥以保持兼容性（如果有API Key的话）
-        if (configData.apiKey) {
-          await ttsService.updateTTSProvider(1, { apiKey: configData.apiKey });
-        }
-        await loadData(); // 重新加载数据
-        toast.showSuccess('ElevenLabs配置已保存');
-      } else {
-        showError(result.error || '保存配置失败');
-      }
-    } catch (error) {
-      showError(error);
-    } finally {
-      setTtsLoading(false);
-    }
-  };
+  //     if (result.success) {
+  //       // 同时更新TTS提供商的API密钥以保持兼容性（如果有API Key的话）
+  //       if (configData.apiKey) {
+  //         await ttsService.updateTTSProvider(1, { apiKey: configData.apiKey });
+  //       }
+  //       await loadData(); // 重新加载数据
+  //       toast.showSuccess('ElevenLabs配置已保存');
+  //     } else {
+  //       showError(result.error || '保存配置失败');
+  //     }
+  //   } catch (error) {
+  //     showError(error);
+  //   } finally {
+  //     setTtsLoading(false);
+  //   }
+  // };
 
   // 语音试听功能
-  const handleTestVoice = async (voiceId?: string) => {
-    try {
-      setTtsLoading(true);
-      const testText = "Hello, this is a test of the ElevenLabs voice synthesis.";
-      const result = await ttsService.textToSpeech({
-        text: testText,
-        voiceId: voiceId,
-        useCache: false // 试听时不使用缓存，确保使用最新配置
-      });
+  // const handleTestVoice = async (voiceId?: string) => {
+  //   try {
+  //     setTtsLoading(true);
+  //     const testText = "Hello, this is a test of the ElevenLabs voice synthesis.";
+  //     const result = await ttsService.textToSpeech({
+  //       text: testText,
+  //       voiceId: voiceId,
+  //       useCache: false // 试听时不使用缓存，确保使用最新配置
+  //     });
 
-      if (result.success && result.data) {
-        // 播放音频
-        const audio = new Audio(result.data.audioUrl);
-        audio.play().catch(error => {
-          console.error('播放音频失败:', error);
-          toast.showError('音频播放失败');
-        });
-        toast.showSuccess('语音试听开始播放');
-      } else {
-        showError(result.error || '语音生成失败');
-      }
-    } catch (error) {
-      showError(error);
-    } finally {
-      setTtsLoading(false);
-    }
-  };
+  //     if (result.success && result.data) {
+  //       // 播放音频
+  //       const audio = new Audio(result.data.audioUrl);
+  //       audio.play().catch(error => {
+  //         console.error('播放音频失败:', error);
+  //         toast.showError('音频播放失败');
+  //       });
+  //       toast.showSuccess('语音试听开始播放');
+  //     } else {
+  //       showError(result.error || '语音生成失败');
+  //     }
+  //   } catch (error) {
+  //     showError(error);
+  //   } finally {
+  //     setTtsLoading(false);
+  //   }
+  // };
 
   // ElevenLabs配置试听功能
   const handleTestElevenLabsConfig = async () => {
@@ -935,8 +935,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         });
         toast.showSuccess('配置试听开始播放，您可以听到当前参数的效果');
       } else {
-        console.error('TTS失败:', result.error);
-        showError(result.error || '语音生成失败');
+        console.error('TTS失败:', result.success ? 'Unknown error' : result.error);
+        showError(result.success ? '语音生成失败' : result.error);
       }
     } catch (error) {
       showError(error);
@@ -945,39 +945,39 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     }
   };
 
-  const handleToggleTTSProviderActive = async (providerId: number, isActive: boolean) => {
-    try {
-      setTtsLoading(true);
-      const result = await ttsService.updateTTSProvider(providerId, { isActive: !isActive });
-      if (result.success) {
-        await loadData();
-        toast.showSuccess(`TTS提供商已${!isActive ? '启用' : '禁用'}`);
-      } else {
-        showError(result.error || '更新TTS提供商状态失败');
-      }
-    } catch (error) {
-      showError(error);
-    } finally {
-      setTtsLoading(false);
-    }
-  };
+  // const handleToggleTTSProviderActive = async (providerId: number, isActive: boolean) => {
+  //   try {
+  //     setTtsLoading(true);
+  //     const result = await ttsService.updateTTSProvider(providerId, { isActive: !isActive });
+  //     if (result.success) {
+  //       await loadData();
+  //       toast.showSuccess(`TTS提供商已${!isActive ? '启用' : '禁用'}`);
+  //     } else {
+  //       showError(result.error || '更新TTS提供商状态失败');
+  //     }
+  //   } catch (error) {
+  //     showError(error);
+  //   } finally {
+  //     setTtsLoading(false);
+  //   }
+  // };
 
-  const handleSetDefaultTTSVoice = async (voiceId: string) => {
-    try {
-      setTtsLoading(true);
-      const result = await ttsService.setDefaultTTSVoice(voiceId);
-      if (result.success) {
-        await loadData(); // 重新加载数据
-        toast.showSuccess('默认语音已设置');
-      } else {
-        showError(result.error || '设置默认语音失败');
-      }
-    } catch (error) {
-      showError(error);
-    } finally {
-      setTtsLoading(false);
-    }
-  };
+  // const handleSetDefaultTTSVoice = async (voiceId: string) => {
+  //   try {
+  //     setTtsLoading(true);
+  //     const result = await ttsService.setDefaultTTSVoice(voiceId);
+  //     if (result.success) {
+  //       await loadData(); // 重新加载数据
+  //       toast.showSuccess('默认语音已设置');
+  //     } else {
+  //       showError(result.error || '设置默认语音失败');
+  //     }
+  //   } catch (error) {
+  //     showError(error);
+  //   } finally {
+  //     setTtsLoading(false);
+  //   }
+  // };
 
   // 语音试听功能（在编辑页面中使用）
   const handleVoiceTest = async (voiceId: string) => {
@@ -1000,7 +1000,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         });
         toast.showSuccess('语音试听开始播放');
       } else {
-        showError(result.error || '语音试听失败');
+        showError(result.success ? '语音试听失败' : result.error);
       }
     } catch (error) {
       showError(error);
@@ -1009,19 +1009,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     }
   };
 
-  const handleToggleTTSVoiceActive = async (voiceId: number, isActive: boolean) => {
-    try {
-      setTtsLoading(true);
-      // 注意：这里需要后端支持更新语音状态的API
-      // const result = await ttsService.updateTTSVoice(voiceId, { isActive: !isActive });
-      // 暂时显示提示，因为语音通常由提供商管理
-      toast.showInfo('语音状态由TTS服务提供商管理，无法手动修改');
-    } catch (error) {
-      showError(error);
-    } finally {
-      setTtsLoading(false);
-    }
-  };
+  // const handleToggleTTSVoiceActive = async (voiceId: number, isActive: boolean) => {
+  //   try {
+  //     setTtsLoading(true);
+  //     // 注意：这里需要后端支持更新语音状态的API
+  //     // const result = await ttsService.updateTTSVoice(voiceId, { isActive: !isActive });
+  //     // 暂时显示提示，因为语音通常由提供商管理
+  //     toast.showInfo('语音状态由TTS服务提供商管理，无法手动修改');
+  //   } catch (error) {
+  //     showError(error);
+  //   } finally {
+  //     setTtsLoading(false);
+  //   }
+  // };
 
   const handleClearTTSCache = async () => {
     setConfirmDialog({
@@ -1045,9 +1045,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           setCacheLoading(false);
         }
       },
-      onCancel: () => {
-        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-      }
+      // onCancel: () => {
+      //   setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      // }
     });
   };
 
@@ -1254,7 +1254,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                             </div>
                           </div>
                           <div className={styles.modelActions}>
-                            {model.is_default && (
+                            {model.isDefault && (
                               <span className={styles.defaultBadge}>默认</span>
                             )}
                             <button
@@ -1379,7 +1379,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                               onClick={handleTestElevenLabsConfig}
                               disabled={ttsLoading || !elevenLabsConfig.apiKey || elevenLabsConfig.apiKey === 'PLEASE_SET_YOUR_API_KEY'}
                               variant="secondary"
-                              title="试听当前配置的语音效果"
                             >
                               {ttsLoading ? (
                                 <i className="fas fa-spinner fa-spin" />

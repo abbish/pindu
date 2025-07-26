@@ -138,7 +138,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   const [needsRegeneration] = useState(false);
 
   // 统计数据
-  const [studyStreak, setStudyStreak] = useState(0);
+  // const [studyStreak, setStudyStreak] = useState(0);
   const [todayWords, setTodayWords] = useState<DailyStudyWord[]>([]);
 
   // 扁平化单词列表
@@ -292,11 +292,11 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
         console.log('loadStatistics: setting statistics:', result.data);
         setStatistics(result.data);
         // 同时设置该计划的连续练习天数
-        setStudyStreak(result.data?.streakDays || 0);
+        // setStudyStreak(result.data?.streakDays || 0);
         console.log('loadStatistics: set streakDays to:', result.data?.streakDays || 0);
       } else {
         console.warn('Failed to load statistics:', result.error);
-        setStudyStreak(0);
+        // setStudyStreak(0);
       }
     } catch (error) {
       console.warn('Failed to load statistics:', error);

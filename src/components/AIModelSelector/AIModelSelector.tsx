@@ -47,7 +47,7 @@ export const AIModelSelector: React.FC<AIModelSelectorProps> = ({
         
         // 如果没有选中模型且有默认模型，自动选择默认模型
         if (!selectedModel) {
-          const defaultModel = result.data.find(model => model.is_default);
+          const defaultModel = result.data.find(model => model.isDefault);
           if (defaultModel) {
             onModelChange(defaultModel.id);
           }
@@ -131,8 +131,8 @@ export const AIModelSelector: React.FC<AIModelSelectorProps> = ({
         <option value="">使用系统推荐模型</option>
         {models.map(model => (
           <option key={model.id} value={model.id}>
-            {model.display_name}
-            {model.is_default && ' (默认)'}
+            {model.displayName}
+            {model.isDefault && ' (默认)'}
           </option>
         ))}
       </select>
@@ -147,8 +147,8 @@ export const AIModelSelector: React.FC<AIModelSelectorProps> = ({
               <div className={styles.modelDetails}>
                 <div className={styles.modelName}>
                   <i className="fas fa-robot" />
-                  <span>{model.display_name}</span>
-                  {model.is_default && (
+                  <span>{model.displayName}</span>
+                  {model.isDefault && (
                     <span className={styles.defaultBadge}>默认</span>
                   )}
                 </div>
@@ -159,7 +159,7 @@ export const AIModelSelector: React.FC<AIModelSelectorProps> = ({
                 )}
                 <div className={styles.modelParams}>
                   <span className={styles.param}>
-                    最大令牌: {model.max_tokens || 4000}
+                    最大令牌: {model.maxTokens || 4000}
                   </span>
                   <span className={styles.param}>
                     温度: {model.temperature || 0.3}

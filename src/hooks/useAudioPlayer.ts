@@ -22,7 +22,7 @@ export interface UseAudioPlayerOptions {
 export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
   const toast = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<number | null>(null);
   
   const {
     defaultVoiceId,
@@ -85,38 +85,38 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
     return audioUrl;
   }, []);
 
-  const setupAudioEvents = useCallback((audio: HTMLAudioElement) => {
-    audio.addEventListener('loadedmetadata', () => {
-      updateState({ duration: audio.duration });
-    });
+  // const setupAudioEvents = useCallback((audio: HTMLAudioElement) => {
+  //   audio.addEventListener('loadedmetadata', () => {
+  //     updateState({ duration: audio.duration });
+  //   });
 
-    audio.addEventListener('timeupdate', () => {
-      updateState({ currentTime: audio.currentTime });
-    });
+  //   audio.addEventListener('timeupdate', () => {
+  //     updateState({ currentTime: audio.currentTime });
+  //   });
 
-    audio.addEventListener('play', () => {
-      updateState({ isPlaying: true, isLoading: false });
-    });
+  //   audio.addEventListener('play', () => {
+  //     updateState({ isPlaying: true, isLoading: false });
+  //   });
 
-    audio.addEventListener('pause', () => {
-      updateState({ isPlaying: false });
-    });
+  //   audio.addEventListener('pause', () => {
+  //     updateState({ isPlaying: false });
+  //   });
 
-    audio.addEventListener('ended', () => {
-      updateState({ isPlaying: false, currentTime: 0 });
-    });
+  //   audio.addEventListener('ended', () => {
+  //     updateState({ isPlaying: false, currentTime: 0 });
+  //   });
 
-    audio.addEventListener('error', (e) => {
-      console.error('Audio playback error:', e);
-      const errorMessage = '音频播放失败';
-      updateState({ 
-        isPlaying: false, 
-        isLoading: false, 
-        error: errorMessage 
-      });
-      toast.showError('播放失败', '音频播放时发生错误');
-    });
-  }, [updateState, toast]);
+  //   audio.addEventListener('error', (e) => {
+  //     console.error('Audio playback error:', e);
+  //     const errorMessage = '音频播放失败';
+  //     updateState({
+  //       isPlaying: false,
+  //       isLoading: false,
+  //       error: errorMessage
+  //     });
+  //     toast.showError('播放失败', '音频播放时发生错误');
+  //   });
+  // }, [updateState, toast]);
 
   const playText = useCallback(async (text: string, voiceId?: string): Promise<void> => {
     return new Promise(async (resolve, reject) => {

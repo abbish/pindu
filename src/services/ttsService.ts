@@ -1,4 +1,5 @@
-import { BaseService, type LoadingState, type ApiResult } from './baseService';
+import { BaseService } from './baseService';
+import type { LoadingState, ApiResult } from '../types';
 
 export interface TTSProvider {
   id: number;

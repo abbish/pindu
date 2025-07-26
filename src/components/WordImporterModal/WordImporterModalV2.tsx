@@ -234,17 +234,17 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
           // 转换AIModelConfig到AIModel格式
           const models: AIModel[] = result.data.map(config => ({
             id: config.id,
-            provider_id: config.provider.id,
+            providerId: config.provider.id,
             name: config.name,
-            display_name: config.display_name,
-            model_id: config.model_id,
+            displayName: config.displayName,
+            modelId: config.modelId,
             description: config.description,
-            max_tokens: config.max_tokens,
+            maxTokens: config.maxTokens,
             temperature: config.temperature,
-            is_active: config.is_active,
-            is_default: config.is_default,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            isActive: config.isActive,
+            isDefault: config.isDefault,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
           }));
           setAvailableModels(models);
           // 自动选择第一个模型
@@ -683,7 +683,7 @@ export const WordImporterModalV2: React.FC<WordImporterModalV2Props> = ({
           <option value="">请选择模型</option>
           {availableModels.map(model => (
             <option key={model.id} value={model.id.toString()}>
-              {model.display_name}
+              {model.displayName}
             </option>
           ))}
         </select>
