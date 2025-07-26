@@ -236,9 +236,6 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
         }
       }
 
-      // 加载学习统计数据
-      await loadStudyStatistics();
-
       // 加载扁平化单词列表
       await loadPlanWords();
 
@@ -252,17 +249,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     }
   };
 
-  const loadStudyStatistics = async () => {
-    try {
-      // 模拟加载学习统计数据
-      // TODO: 替换为真实的API调用
-      const mockStreak = 7;
 
-      setStudyStreak(mockStreak);
-    } catch (err) {
-      console.warn('Failed to load study statistics:', err);
-    }
-  };
 
   // 加载扁平化单词列表
   const loadPlanWords = async () => {
@@ -290,15 +277,26 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
 
   // 加载统计数据
   const loadStatistics = async () => {
-    if (!planId) return;
+    console.log('loadStatistics called, planId:', planId);
+    if (!planId) {
+      console.log('loadStatistics: planId is empty, returning');
+      return;
+    }
 
     try {
+      console.log('loadStatistics: calling getStudyPlanStatistics with planId:', planId);
       const result = await studyService.getStudyPlanStatistics(planId);
+      console.log('loadStatistics: API result:', result);
 
       if (result.success) {
+        console.log('loadStatistics: setting statistics:', result.data);
         setStatistics(result.data);
+        // 同时设置该计划的连续练习天数
+        setStudyStreak(result.data?.streakDays || 0);
+        console.log('loadStatistics: set streakDays to:', result.data?.streakDays || 0);
       } else {
         console.warn('Failed to load statistics:', result.error);
+        setStudyStreak(0);
       }
     } catch (error) {
       console.warn('Failed to load statistics:', error);
@@ -672,21 +670,36 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
     const endDate = new Date(planData.end_date);
     const today = new Date();
 
+    // 设置时间为当天开始，避免时区问题
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+    today.setHours(0, 0, 0, 0);
+
     // 如果还没开始，时间进度为0%
     if (today < startDate) return 0;
 
     // 如果已经结束，时间进度为100%
     if (today > endDate) return 100;
 
-    // 计算当前时间进度
-    const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-    const passedDays = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    // 计算当前时间进度 - 修复计算逻辑
+    const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1; // +1 包含开始日期
+    const passedDays = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)); // 开始日期当天为0
+
+    console.log('时间进度计算:', {
+      startDate: planData.start_date,
+      endDate: planData.end_date,
+      today: today.toISOString().split('T')[0],
+      totalDays,
+      passedDays,
+      progress: (passedDays / totalDays) * 100
+    });
 
     return Math.min(100, Math.max(0, (passedDays / totalDays) * 100));
   };
 
   const timeProgress = calculateTimeProgress();
-  const actualProgress = planData.progress_percentage;
+  // 使用统计数据的实际进度，如果没有则显示0
+  const actualProgress = statistics ? (statistics as any).actual_progress_percentage || 0 : 0;
 
   return (
     <div className={styles.page}>
@@ -918,21 +931,21 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
             icon="check"
             iconColor="green"
             label="已学单词"
-            value={planData.learned_words}
+            value={(statistics as any)?.completed_words || 0}
             unit="个"
           />
           <StatCard
             icon="star"
             iconColor="yellow"
             label="平均正确率"
-            value={`${Math.round(planData.accuracy_rate || 0)}%`}
+            value={`${Math.round((statistics as any)?.average_accuracy_rate || 0)}%`}
             unit=""
           />
           <StatCard
             icon="fire"
             iconColor="orange"
             label="连续学习"
-            value={studyStreak}
+            value={(statistics as any)?.streak_days || 0}
             unit="天"
           />
           {todayWords.length > 0 && (
@@ -1160,21 +1173,21 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
           <div className={styles.statsGrid}>
             <StatCard
               label="平均每日学习时长"
-              value={statistics?.averageDailyStudyMinutes || 0}
+              value={(statistics as any)?.average_daily_study_minutes || 0}
               unit="分钟"
               icon="clock"
               iconColor="blue"
             />
             <StatCard
               label="时间进度"
-              value={Math.round(timeProgress).toString()}
+              value={Math.round((statistics as any)?.time_progress_percentage || 0).toString()}
               unit="%"
               icon="calendar"
               iconColor="green"
             />
             <StatCard
               label="按时完成率"
-              value={Math.round(100 - (statistics?.overdueRatio || 0)).toString()}
+              value={Math.round((statistics as any)?.actual_progress_percentage || 0).toString()}
               unit="%"
               icon="clock-check"
               iconColor="orange"
@@ -1208,23 +1221,28 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
           <div className={styles.statsTable}>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>总学习时间</span>
-              <span className={styles.statsValue}>24小时 30分钟</span>
+              <span className={styles.statsValue}>
+                {(statistics as any)?.total_study_minutes ?
+                  `${Math.floor((statistics as any).total_study_minutes / 60)}小时 ${(statistics as any).total_study_minutes % 60}分钟` :
+                  '0小时 0分钟'
+                }
+              </span>
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>平均每日学习</span>
-              <span className={styles.statsValue}>{statistics?.averageDailyStudyMinutes || 0}分钟</span>
+              <span className={styles.statsValue}>{(statistics as any)?.average_daily_study_minutes || 0}分钟</span>
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>最长连续学习</span>
-              <span className={styles.statsValue}>{studyStreak}天</span>
+              <span className={styles.statsValue}>{(statistics as any)?.streak_days || 0}天</span>
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>计划完成率</span>
-              <span className={styles.statsValue}>{Math.round(planData?.progress_percentage || 0)}%</span>
+              <span className={styles.statsValue}>{Math.round((statistics as any)?.actual_progress_percentage || 0)}%</span>
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>时间完成率</span>
-              <span className={styles.statsValue}>{Math.round(timeProgress)}%</span>
+              <span className={styles.statsValue}>{Math.round((statistics as any)?.time_progress_percentage || 0)}%</span>
             </div>
           </div>
         </div>

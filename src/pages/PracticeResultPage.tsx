@@ -16,10 +16,17 @@ export interface PracticeResultPageProps {
 /**
  * 单词练习结果页面
  */
-export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({ 
+export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({
   result,
-  onNavigate 
+  onNavigate
 }) => {
+  // 调试信息
+  console.log('PracticeResultPage received result:', result);
+  console.log('passedWordsList:', result?.passedWordsList);
+  console.log('difficultWords:', result?.difficultWords);
+  console.log('passedWordsList length:', result?.passedWordsList?.length);
+  console.log('difficultWords length:', result?.difficultWords?.length);
+
   // 后端现在返回 camelCase 格式，直接使用
   const practiceResult: PracticeResult = result || {
     // 默认数据（用于开发测试）
@@ -38,6 +45,7 @@ export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({
     pauseCount: 0,
     averageTimePerWord: 0,
     difficultWords: [],
+    passedWordsList: [],
     completedAt: new Date().toISOString()
   };
 
@@ -87,17 +95,7 @@ export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({
     onNavigate?.('plan-detail', { planId: practiceResult.planId });
   };
 
-  const handleReviewMistakes = () => {
-    // 复习错误的单词
-    if (practiceResult.difficultWords.length > 0) {
-      onNavigate?.('word-practice', { 
-        planId: practiceResult.planId,
-        scheduleId: practiceResult.scheduleId,
-        reviewMode: true,
-        words: practiceResult.difficultWords
-      });
-    }
-  };
+
 
   const handleBackToHome = () => {
     onNavigate?.('home');
@@ -218,6 +216,87 @@ export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({
           </div>
         </section>
 
+        {/* 单词列表 */}
+        <section className={styles.wordsSection}>
+          <h3 className={styles.sectionTitle}>练习详情</h3>
+
+          {/* 完全掌握的单词 */}
+          {practiceResult.passedWordsList && practiceResult.passedWordsList.length > 0 && (
+            <div className={styles.wordListContainer}>
+              <h4 className={styles.wordListTitle}>
+                <i className="fas fa-check-circle" style={{ color: 'var(--color-success)' }} />
+                完全掌握 ({practiceResult.passedWordsList.length} 个)
+              </h4>
+              <div className={styles.wordGrid}>
+                {practiceResult.passedWordsList
+                  .filter(wordState => wordState && wordState.wordInfo && wordState.wordInfo.word)
+                  .map((wordState) => (
+                  <div key={wordState.wordId || Math.random()} className={styles.wordCard}>
+                    <div className={styles.wordHeader}>
+                      <span className={styles.wordText}>{wordState.wordInfo.word}</span>
+                      <div className={styles.wordBadge}>
+                        <i className="fas fa-check" />
+                      </div>
+                    </div>
+                    <div className={styles.wordMeaning}>{wordState.wordInfo.meaning || '暂无释义'}</div>
+                    {wordState.wordInfo.ipa && (
+                      <div className={styles.wordIpa}>{wordState.wordInfo.ipa}</div>
+                    )}
+                    <div className={styles.stepResults}>
+                      {(wordState.stepResults || []).map((result, index) => (
+                        <span
+                          key={index}
+                          className={`${styles.stepBadge} ${result ? styles.correct : styles.incorrect}`}
+                        >
+                          步骤{index + 1}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 需要复习的单词 */}
+          {practiceResult.difficultWords && practiceResult.difficultWords.length > 0 && (
+            <div className={styles.wordListContainer}>
+              <h4 className={styles.wordListTitle}>
+                <i className="fas fa-exclamation-triangle" style={{ color: 'var(--color-warning)' }} />
+                需要复习 ({practiceResult.difficultWords.length} 个)
+              </h4>
+              <div className={styles.wordGrid}>
+                {practiceResult.difficultWords
+                  .filter(wordState => wordState && wordState.wordInfo && wordState.wordInfo.word)
+                  .map((wordState) => (
+                  <div key={wordState.wordId || Math.random()} className={styles.wordCard}>
+                    <div className={styles.wordHeader}>
+                      <span className={styles.wordText}>{wordState.wordInfo.word}</span>
+                      <div className={styles.wordBadge}>
+                        <i className="fas fa-times" />
+                      </div>
+                    </div>
+                    <div className={styles.wordMeaning}>{wordState.wordInfo.meaning || '暂无释义'}</div>
+                    {wordState.wordInfo.ipa && (
+                      <div className={styles.wordIpa}>{wordState.wordInfo.ipa}</div>
+                    )}
+                    <div className={styles.stepResults}>
+                      {(wordState.stepResults || []).map((result, index) => (
+                        <span
+                          key={index}
+                          className={`${styles.stepBadge} ${result ? styles.correct : styles.incorrect}`}
+                        >
+                          步骤{index + 1}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
         {/* 操作按钮 */}
         <section className={styles.actionsSection}>
           <div className={styles.actionButtons}>
@@ -228,18 +307,8 @@ export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({
               <i className="fas fa-arrow-right" />
               继续学习
             </button>
-            
-            {practiceResult.difficultWords.length > 0 && (
-              <button 
-                className={styles.secondaryBtn}
-                onClick={handleReviewMistakes}
-              >
-                <i className="fas fa-redo" />
-                复习错误
-              </button>
-            )}
-            
-            <button 
+
+            <button
               className={styles.outlineBtn}
               onClick={handleBackToHome}
             >

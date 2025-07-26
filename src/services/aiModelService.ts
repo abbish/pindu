@@ -91,14 +91,14 @@ export class AIModelService extends BaseService {
     setLoading?: (state: LoadingState) => void
   ): Promise<ApiResult<Id>> {
     return this.executeWithLoading(async () => {
-      this.validateRequired(request, ['name', 'display_name', 'base_url', 'api_key']);
-      
+      this.validateRequired(request, ['name', 'displayName', 'baseUrl', 'apiKey']);
+
       // 直接传递请求对象的所有字段作为参数
       return this.client.invoke<Id>('create_ai_provider', {
         name: request.name,
-        displayName: request.display_name,
-        baseUrl: request.base_url,
-        apiKey: request.api_key,
+        displayName: request.displayName,
+        baseUrl: request.baseUrl,
+        apiKey: request.apiKey,
         description: request.description
       });
     }, setLoading);
@@ -117,13 +117,14 @@ export class AIModelService extends BaseService {
       this.validateRequired({ providerId }, ['providerId']);
 
       // 扁平化参数，将 providerId 和 request 的所有字段作为单独的参数
+      // 注意：前端使用驼峰命名，后端期望驼峰命名（Tauri会自动转换为下划线）
       const params = {
         providerId: providerId,
-        displayName: request.display_name,
-        baseUrl: request.base_url,
-        apiKey: request.api_key,
+        displayName: request.displayName,
+        baseUrl: request.baseUrl,
+        apiKey: request.apiKey,
         description: request.description,
-        isActive: request.is_active
+        isActive: request.isActive
       };
 
       console.log('Calling update_ai_provider with params:', params);
@@ -160,15 +161,15 @@ export class AIModelService extends BaseService {
     setLoading?: (state: LoadingState) => void
   ): Promise<ApiResult<Id>> {
     return this.executeWithLoading(async () => {
-      this.validateRequired(request, ['provider_id', 'name', 'display_name', 'model_id']);
-      
+      this.validateRequired(request, ['providerId', 'name', 'displayName', 'modelId']);
+
       return this.client.invoke<Id>('create_ai_model', {
-        providerId: request.provider_id,
+        providerId: request.providerId,
         name: request.name,
-        displayName: request.display_name,
-        modelId: request.model_id,
+        displayName: request.displayName,
+        modelId: request.modelId,
         description: request.description,
-        maxTokens: request.max_tokens,
+        maxTokens: request.maxTokens,
         temperature: request.temperature
       });
     }, setLoading);
@@ -188,13 +189,13 @@ export class AIModelService extends BaseService {
 
       const params = {
         modelId: modelId,
-        displayName: request.display_name,
-        modelIdParam: request.model_id,
+        displayName: request.displayName,
+        modelIdParam: request.modelId,
         description: request.description,
-        maxTokens: request.max_tokens,
+        maxTokens: request.maxTokens,
         temperature: request.temperature,
-        isActive: request.is_active,
-        isDefault: request.is_default
+        isActive: request.isActive,
+        isDefault: request.isDefault
       };
 
       console.log('Calling update_ai_model with params:', params);

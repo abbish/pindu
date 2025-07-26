@@ -10,8 +10,6 @@ export interface StudyPlan {
   lifecycle_status?: StudyPlanLifecycleStatus; // 生命周期状态：pending, active, completed (已废弃)
   unified_status: UnifiedStudyPlanStatus;     // 统一状态字段
   total_words: number;
-  learned_words: number;
-  accuracy_rate: number;
   mastery_level: number;
   // AI规划相关字段
   intensity_level?: IntensityLevel;
@@ -213,6 +211,7 @@ export interface PracticeResult {
   pauseCount: number;
   averageTimePerWord: number; // 平均每个单词用时（毫秒）
   difficultWords: WordPracticeState[]; // 未通过的单词
+  passedWordsList: WordPracticeState[]; // 通过的单词列表
   completedAt: string;
 }
 
@@ -444,6 +443,7 @@ export interface StudyPlanStatistics {
   // 学习效果
   averageAccuracyRate: number;       // 平均练习正确率
   overdueRatio: number;              // 逾期比率 (逾期天数/总天数)
+  streakDays: number;                // 该计划的连续练习天数
 
   // 详细数据
   totalDays: number;

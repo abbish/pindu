@@ -350,3 +350,101 @@
     transition: none;
   }
 }
+
+/* 单词列表样式 */
+.wordsSection {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.wordListContainer {
+  margin-bottom: var(--spacing-xl);
+}
+
+.wordListTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-lg) 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.wordGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.wordCard {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-lg);
+  transition: all var(--transition-fast);
+}
+
+.wordCard:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-border-dark);
+}
+
+.wordHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.wordText {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.wordBadge {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--border-radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xs);
+  color: white;
+  background: var(--color-success);
+}
+
+.wordMeaning {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.wordIpa {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  margin-bottom: var(--spacing-sm);
+}
+
+.stepResults {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.stepBadge {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: white;
+}
+
+.stepBadge.correct {
+  background: var(--color-success);
+}
+
+.stepBadge.incorrect {
+  background: var(--color-error);
+}

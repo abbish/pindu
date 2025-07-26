@@ -751,12 +751,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       } else {
         // 创建新模型
         await aiModelService.createAIModel({
-          provider_id: modelForm.provider_id,
+          providerId: modelForm.provider_id,
           name: modelForm.display_name, // 使用display_name作为name
-          display_name: modelForm.display_name,
-          model_id: modelForm.model_id,
+          displayName: modelForm.display_name,
+          modelId: modelForm.model_id,
           description: modelForm.description,
-          max_tokens: modelForm.max_tokens,
+          maxTokens: modelForm.max_tokens,
           temperature: modelForm.temperature,
         });
       }

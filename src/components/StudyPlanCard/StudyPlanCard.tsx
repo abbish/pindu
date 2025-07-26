@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import styles from './StudyPlanCard.module.css';
-import type { StudyPlanWithProgress, UnifiedStudyPlanStatus } from '../../types';
+import type { StudyPlanWithProgress, UnifiedStudyPlanStatus, StudyPlanStatistics } from '../../types';
 import { getStatusDisplay } from '../../types/study';
+import { studyService } from '../../services/studyService';
 
 export interface StudyPlanCardProps {
   /** Study plan data */
@@ -36,6 +37,29 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
   onActionClick,
   onMenuAction
 }) => {
+  // 统计数据状态
+  const [statistics, setStatistics] = useState<StudyPlanStatistics | null>(null);
+  const [statisticsLoading, setStatisticsLoading] = useState(false);
+
+  // 获取统计数据
+  useEffect(() => {
+    const loadStatistics = async () => {
+      setStatisticsLoading(true);
+      try {
+        const result = await studyService.getStudyPlanStatistics(plan.id);
+        if (result.success) {
+          setStatistics(result.data);
+        }
+      } catch (error) {
+        console.warn('Failed to load plan statistics:', error);
+      } finally {
+        setStatisticsLoading(false);
+      }
+    };
+
+    loadStatistics();
+  }, [plan.id]);
+
   // Get unified status
   const unifiedStatus = plan.unified_status ||
     (plan.status === 'deleted' ? 'Deleted' :
@@ -48,7 +72,7 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
   const statusDisplay = getStatusDisplay(unifiedStatus as UnifiedStudyPlanStatus);
 
 
-  // 计算时间进度
+  // 计算时间进度 - 与详情页面保持一致
   const timeProgress = useMemo(() => {
     if (!plan.start_date || !plan.end_date) return 0;
 
@@ -56,27 +80,53 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
     const endDate = new Date(plan.end_date);
     const today = new Date();
 
-    const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-    const passedDays = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    // 设置时间为当天开始，避免时区问题
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+    today.setHours(0, 0, 0, 0);
 
-    return Math.min(Math.max((passedDays / totalDays) * 100, 0), 100);
+    // 如果还没开始，时间进度为0%
+    if (today < startDate) return 0;
+
+    // 如果已经结束，时间进度为100%
+    if (today > endDate) return 100;
+
+    // 计算当前时间进度 - 与详情页面相同的逻辑
+    const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1; // +1 包含开始日期
+    const passedDays = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)); // 开始日期当天为0
+
+    return Math.min(100, Math.max(0, (passedDays / totalDays) * 100));
   }, [plan.start_date, plan.end_date]);
 
-  // 计算实际进度
+  // 计算实际进度 - 使用统计数据
   const actualProgress = useMemo(() => {
-    if (plan.total_words === 0) return 0;
-    return (plan.learned_words / plan.total_words) * 100;
-  }, [plan.learned_words, plan.total_words]);
+    if (statistics) {
+      return (statistics as any).actual_progress_percentage || 0;
+    }
+    // 如果统计数据还在加载，返回0作为占位符
+    return 0;
+  }, [statistics]);
 
-  // 模拟日程进度数据（实际应该从API获取）
+  // 计算日程进度数据 - 基于统计数据
   const scheduleProgress: ScheduleProgress = useMemo(() => {
-    const total = plan.study_period_days || 10;
-    const completed = Math.floor(actualProgress / 100 * total);
-    const overdue = Math.max(0, Math.floor(timeProgress / 100 * total) - completed);
-    const upcoming = total - completed - overdue;
+    if (statistics) {
+      // 使用统计数据中的实际天数信息
+      const total = (statistics as any).total_days || plan.study_period_days || 3;
+      const completed = (statistics as any).completed_days || 0;
+      const overdue = (statistics as any).overdue_days || 0;
+      const upcoming = total - completed - overdue;
 
-    return { total, completed, overdue, upcoming };
-  }, [plan.study_period_days, actualProgress, timeProgress]);
+      return { total, completed, overdue, upcoming };
+    } else {
+      // 如果统计数据还在加载，使用保守的估算
+      const total = plan.study_period_days || 3;
+      const completed = 0; // 保守估计，等待统计数据
+      const overdue = 0;
+      const upcoming = total;
+
+      return { total, completed, overdue, upcoming };
+    }
+  }, [statistics, plan.study_period_days]);
 
   const handleCardClick = () => {
     onClick?.(plan.id);
@@ -241,12 +291,18 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
       <div className={styles.statsSection}>
         <div className={styles.statItem}>
           <span className={styles.statLabel}>已学单词</span>
-          <span className={styles.statValue}>{plan.learned_words}</span>
+          <span className={styles.statValue}>
+            {statisticsLoading ? '加载中...' :
+             statistics ? (statistics as any).completed_words || 0 :
+             0}
+          </span>
         </div>
         <div className={styles.statItem}>
           <span className={styles.statLabel}>平均正确率</span>
           <span className={styles.statValue}>
-            {plan.accuracy_rate ? `${(plan.accuracy_rate * 100).toFixed(1)}%` : '暂无数据'}
+            {statisticsLoading ? '加载中...' :
+             statistics ? `${Math.round((statistics as any).average_accuracy_rate || 0)}%` :
+             '暂无数据'}
           </span>
         </div>
       </div>
@@ -256,7 +312,9 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
         <div className={styles.scheduleHeader}>
           <span className={styles.scheduleLabel}>日程进度</span>
           <span className={styles.scheduleStats}>
-            {scheduleProgress.completed}/{scheduleProgress.total}
+            {statisticsLoading ? '加载中...' :
+             statistics ? `${(statistics as any).completed_days || 0}/${(statistics as any).total_days || plan.study_period_days || 0}` :
+             `${scheduleProgress.completed}/${scheduleProgress.total}`}
           </span>
         </div>
         <div className={styles.scheduleBlocks}>
@@ -282,13 +340,13 @@ export const StudyPlanCard: React.FC<StudyPlanCardProps> = ({
       <div className={styles.progress}>
         <div className={styles.progressHeader}>
           <span className={styles.progressLabel}>学习进度</span>
-          <span className={styles.progressValue}>{plan.progress_percentage.toFixed(0)}%</span>
+          <span className={styles.progressValue}>{actualProgress.toFixed(0)}%</span>
         </div>
         <div className={styles.progressBar}>
-          <div 
+          <div
             className={styles.progressFill}
-            style={{ 
-              width: `${plan.progress_percentage}%`,
+            style={{
+              width: `${actualProgress}%`,
               backgroundColor: getProgressColor()
             }}
           />

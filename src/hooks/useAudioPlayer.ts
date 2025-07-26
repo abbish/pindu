@@ -118,61 +118,100 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
     });
   }, [updateState, toast]);
 
-  const playText = useCallback(async (text: string, voiceId?: string) => {
-    try {
-      updateState({ isLoading: true, error: null });
+  const playText = useCallback(async (text: string, voiceId?: string): Promise<void> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        updateState({ isLoading: true, error: null });
 
-      // 清理之前的音频
-      cleanupAudio();
+        // 清理之前的音频
+        cleanupAudio();
 
-      // 调用TTS服务
-      const result = await ttsService.textToSpeech({
-        text,
-        voiceId: voiceId || defaultVoiceId,
-        useCache: true
-      });
+        // 调用TTS服务
+        const result = await ttsService.textToSpeech({
+          text,
+          voiceId: voiceId || defaultVoiceId,
+          useCache: true
+        });
 
-      if (!result.success) {
-        throw new Error(result.error || 'TTS服务调用失败');
+        if (!result.success) {
+          throw new Error(result.error || 'TTS服务调用失败');
+        }
+
+        // 处理音频URL
+        const audioUrl = convertAudioUrl(result.data.audioUrl);
+
+        // 创建音频元素
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+
+        // 设置事件监听器，包括播放完成的Promise resolve
+        const setupAudioEventsWithPromise = (audio: HTMLAudioElement) => {
+          audio.addEventListener('loadedmetadata', () => {
+            updateState({ duration: audio.duration });
+          });
+
+          audio.addEventListener('timeupdate', () => {
+            updateState({ currentTime: audio.currentTime });
+          });
+
+          audio.addEventListener('play', () => {
+            updateState({ isPlaying: true, isLoading: false });
+          });
+
+          audio.addEventListener('pause', () => {
+            updateState({ isPlaying: false });
+          });
+
+          audio.addEventListener('ended', () => {
+            updateState({ isPlaying: false, currentTime: 0 });
+            resolve(); // 播放完成时resolve Promise
+          });
+
+          audio.addEventListener('error', (e) => {
+            console.error('Audio playback error:', e);
+            const errorMessage = '音频播放失败';
+            updateState({
+              isPlaying: false,
+              isLoading: false,
+              error: errorMessage
+            });
+            toast.showError('播放失败', '音频播放时发生错误');
+            reject(new Error(errorMessage));
+          });
+        };
+
+        setupAudioEventsWithPromise(audio);
+
+        // 开始播放
+        await audio.play();
+
+        if (result.data.cached) {
+          console.log('使用缓存的音频文件');
+        } else {
+          console.log('生成新的音频文件');
+        }
+
+      } catch (error) {
+        console.error('TTS播放失败:', error);
+        const errorMessage = error instanceof Error ? error.message : '未知错误';
+        updateState({
+          isLoading: false,
+          error: errorMessage
+        });
+
+        // 根据错误类型显示不同的提示
+        if (errorMessage.includes('API key')) {
+          toast.showError('配置错误', '请在设置中配置有效的TTS API密钥');
+        } else if (errorMessage.includes('网络')) {
+          toast.showError('网络错误', '请检查网络连接后重试');
+        } else {
+          toast.showError('播放失败', '语音生成失败，请稍后重试');
+        }
+
+        reject(error);
       }
-
-      // 处理音频URL
-      const audioUrl = convertAudioUrl(result.data.audioUrl);
-
-      // 创建音频元素
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-
-      // 设置事件监听器
-      setupAudioEvents(audio);
-
-      // 开始播放
-      await audio.play();
-
-      if (result.data.cached) {
-        console.log('使用缓存的音频文件');
-      } else {
-        console.log('生成新的音频文件');
-      }
-
-    } catch (error) {
-      console.error('TTS播放失败:', error);
-      const errorMessage = error instanceof Error ? error.message : '未知错误';
-      updateState({ 
-        isLoading: false, 
-        error: errorMessage 
-      });
-      
-      // 根据错误类型显示不同的提示
-      if (errorMessage.includes('API key')) {
-        toast.showError('配置错误', '请在设置中配置有效的TTS API密钥');
-      } else if (errorMessage.includes('网络')) {
-        toast.showError('网络错误', '请检查网络连接后重试');
-      } else {
-        toast.showError('播放失败', '语音生成失败，请稍后重试');
-      }
-    }
-  }, [updateState, cleanupAudio, convertAudioUrl, setupAudioEvents, defaultVoiceId, toast]);
+    });
+  }, [updateState, cleanupAudio, convertAudioUrl, defaultVoiceId, toast]);
 
   const playWord = useCallback(async (word: string, voiceId?: string) => {
     return playText(word, voiceId);

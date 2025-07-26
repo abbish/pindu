@@ -92,13 +92,21 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
       showPhonetic: false,
       showMeaning: true,
       showPhonics: true,
-      showSyllables: true, // ✅ 修改为 true，显示音节
+      showSyllables: false, // ❌ 第三步骤隐藏音节提示
       showAudio: true,
       placeholder: "根据中文释义输入单词..."
     }
   };
 
-  const config = stepConfig[currentStep];
+  const config = stepConfig[currentStep] || {
+    showWord: true,
+    showPhonetic: true,
+    showMeaning: true,
+    showPhonics: true,
+    showSyllables: true,
+    showAudio: true,
+    placeholder: "请输入单词拼写..."
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!disabled) {
@@ -241,7 +249,7 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
               <i className={`fas fa-${isCorrect ? 'check-circle' : 'times-circle'}`} />
             </div>
             <div className={styles.resultText}>
-              {isCorrect ? '正确！' : '再试一次'}
+              {isCorrect ? '正确！' : '答案错误'}
             </div>
             {!isCorrect && (
               <div className={styles.correctAnswer}>

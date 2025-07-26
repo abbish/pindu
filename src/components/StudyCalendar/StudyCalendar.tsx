@@ -112,37 +112,45 @@ export const StudyCalendar: React.FC<StudyCalendarProps> = ({
     const dayNumber = date.getDate();
     const isCurrentMonth = date.getMonth() === currentMonth.getMonth();
 
+    // 修复字段访问 - 后端返回下划线命名的字段
+    const dayAny = dayData as any;
+    const isInPlan = dayAny.is_in_plan || dayData.isInPlan;
+    const isToday = dayAny.is_today || dayData.isToday;
+    const newWordsCount = dayAny.new_words_count || dayData.newWordsCount || 0;
+    const reviewWordsCount = dayAny.review_words_count || dayData.reviewWordsCount || 0;
+    const progressPercentage = dayAny.progress_percentage || dayData.progressPercentage || 0;
+
     const cellClasses = [
       styles.dayCell,
-      dayData.isToday ? styles.today : '',
+      isToday ? styles.today : '',
       !isCurrentMonth ? styles.otherMonth : '',
-      dayData.isInPlan ? styles.inPlan : '',
-      dayData.isInPlan ? styles[dayData.status] : ''
+      isInPlan ? styles.inPlan : '',
+      isInPlan ? styles[dayData.status] : ''
     ].filter(Boolean).join(' ');
 
     return (
       <div
         key={dayData.date}
         className={cellClasses}
-        onClick={() => dayData.isInPlan && onDateClick(dayData.date)}
+        onClick={() => isInPlan && onDateClick(dayData.date)}
       >
         <div className={styles.dayNumber}>{dayNumber}</div>
 
-        {dayData.isInPlan && (
+        {isInPlan && (
           <>
             <div className={styles.wordCounts}>
-              {dayData.newWordsCount > 0 && (
-                <span className={styles.newWords}>新{dayData.newWordsCount}</span>
+              {newWordsCount > 0 && (
+                <span className={styles.newWords}>新{newWordsCount}</span>
               )}
-              {dayData.reviewWordsCount > 0 && (
-                <span className={styles.reviewWords}>复{dayData.reviewWordsCount}</span>
+              {reviewWordsCount > 0 && (
+                <span className={styles.reviewWords}>复{reviewWordsCount}</span>
               )}
             </div>
 
             <div className={styles.progressBar}>
               <div
                 className={styles.progressFill}
-                style={{ '--progress-width': `${dayData.progressPercentage}%` } as React.CSSProperties}
+                style={{ '--progress-width': `${progressPercentage}%` } as React.CSSProperties}
               />
             </div>
           </>

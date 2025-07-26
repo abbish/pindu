@@ -48,6 +48,10 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 自动播放相关状态
+  const [autoPlayCount, setAutoPlayCount] = useState(0);
+  const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // 步骤计时状态
   const [stepStartTime, setStepStartTime] = useState<number>(0);
   const [currentAttempts, setCurrentAttempts] = useState(1);
@@ -116,6 +120,99 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     }
   };
 
+  // 获取当前步骤配置，添加安全检查
+  const getCurrentStepConfig = () => {
+    return stepConfigs[currentStep] || {
+      title: "练习步骤",
+      description: "请按照提示完成练习"
+    };
+  };
+
+  // 清理自动播放定时器
+  const clearAutoPlay = useCallback(() => {
+    if (autoPlayTimerRef.current) {
+      clearTimeout(autoPlayTimerRef.current);
+      autoPlayTimerRef.current = null;
+    }
+    setAutoPlayCount(0);
+  }, []);
+
+  // 自动播放功能：进入步骤后1秒开始，播放3次，每次在上一次播放完成后1秒播放
+  const startAutoPlay = useCallback(() => {
+    console.log('startAutoPlay 被调用', {
+      hasWord: !!currentWord?.word,
+      isPaused,
+      showResult,
+      isCorrect
+    });
+
+    // 如果没有单词或者暂停了，直接返回
+    if (!currentWord?.word || isPaused) {
+      console.log('startAutoPlay 提前返回 - 没有单词或已暂停');
+      return;
+    }
+
+    // 如果显示结果且答案正确，不需要朗读
+    if (showResult && isCorrect) {
+      console.log('startAutoPlay 提前返回 - 答案正确');
+      return;
+    }
+
+    // 清除之前的定时器
+    clearAutoPlay();
+
+    setAutoPlayCount(0);
+    console.log('开始自动播放序列');
+
+    // 1秒后开始第一次播放
+    autoPlayTimerRef.current = setTimeout(() => {
+      console.log('1秒延迟后检查状态', { isPaused, showResult, isCorrect });
+      // 只有暂停或者答案正确时才停止
+      if (isPaused || (showResult && isCorrect)) return;
+
+      const playSequence = async (count: number) => {
+        console.log('playSequence 被调用', { count, isPaused, showResult, isCorrect });
+
+        // 检查是否应该停止播放：播放3次完成、暂停、或者答案正确
+        if (count >= 3 || isPaused || (showResult && isCorrect)) {
+          console.log('播放序列结束', { count, isPaused, showResult, isCorrect });
+          setAutoPlayCount(0);
+          return;
+        }
+
+        // 播放当前单词（允许在显示错误结果时播放）
+        if (currentWord?.word && !isPaused && !(showResult && isCorrect)) {
+          console.log(`播放第 ${count + 1} 次:`, currentWord.word);
+          setAutoPlayCount(count + 1);
+
+          try {
+            // 等待音频播放完成
+            await audioPlayer.playWord(currentWord.word);
+            console.log(`第 ${count + 1} 次播放完成`);
+
+            // 如果还没播放完3次，1秒后播放下一次（允许在显示错误结果时继续）
+            if (count + 1 < 3 && !isPaused && !(showResult && isCorrect)) {
+              console.log('1秒后播放下一次');
+              autoPlayTimerRef.current = setTimeout(() => {
+                playSequence(count + 1);
+              }, 1000);
+            } else {
+              // 播放完3次后清理状态
+              console.log('播放完成，清理状态');
+              setAutoPlayCount(0);
+            }
+          } catch (error) {
+            console.error('播放失败:', error);
+            setAutoPlayCount(0);
+          }
+        }
+      };
+
+      // 立即开始第一次播放
+      playSequence(0);
+    }, 1000);
+  }, [currentWord?.word, audioPlayer]);
+
   // 计时器效果
   useEffect(() => {
     if (!isPaused && startTime > 0) {
@@ -127,6 +224,33 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       return () => clearInterval(timer);
     }
   }, [isPaused, startTime]);
+
+  // 自动播放效果：当步骤或单词变化时触发
+  useEffect(() => {
+    // 只在新步骤或新单词时自动开始播放，不在显示结果时开始
+    if (!isPaused && currentWord?.word && !showResult) {
+      console.log('触发自动播放:', { currentStep, currentWordIndex, showResult });
+      startAutoPlay();
+    } else if (isPaused) {
+      // 暂停时清理播放
+      clearAutoPlay();
+    } else if (showResult) {
+      // 显示结果时清理播放，避免重复播放
+      clearAutoPlay();
+    }
+
+    // 清理函数
+    return () => {
+      clearAutoPlay();
+    };
+  }, [currentStep, currentWordIndex, isPaused, currentWord?.word, showResult]);
+
+  // 组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      clearAutoPlay();
+    };
+  }, [clearAutoPlay]);
 
   // 初始化练习
   useEffect(() => {
@@ -220,6 +344,9 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const handleSubmitAnswer = async (userAnswer: string) => {
     if (!currentWord || !currentWordState || !session) return;
 
+    // 立即停止自动播放
+    clearAutoPlay();
+
     const correct = userAnswer.toLowerCase() === currentWord.word.toLowerCase();
     setIsCorrect(correct);
     setShowResult(true);
@@ -229,6 +356,17 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     const timeSpent = stepStartTime > 0 ? now - stepStartTime : 0;
 
     try {
+      // 调试信息
+      console.log('提交步骤结果 - 调试信息:', {
+        currentStep,
+        currentStepType: typeof currentStep,
+        currentStepValue: currentStep,
+        WordPracticeStep: WordPracticeStep,
+        STEP_1: WordPracticeStep.STEP_1,
+        STEP_2: WordPracticeStep.STEP_2,
+        STEP_3: WordPracticeStep.STEP_3
+      });
+
       // 调用API提交步骤结果
       const result = await practiceService.submitStepResult({
         sessionId: (session as any).session_id || session.sessionId,
@@ -250,17 +388,14 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       toast.showError('提交失败', '提交步骤结果时发生错误');
     }
 
-    // 自动进入下一步或下一个单词
-    setTimeout(() => {
-      if (correct) {
-        handleNextStep();
-      } else {
-        // 错误时增加尝试次数，重置输入，允许重试
-        setCurrentAttempts(prev => prev + 1);
-        setShowResult(false);
-        setUserInput('');
-      }
-    }, correct ? 1500 : 2000);
+    // 根据答案正确性设置不同的延迟时间
+    const delayTime = correct ? 1500 : 2000; // 正确1.5秒，错误2秒
+    console.log(`答案${correct ? '正确' : '错误'}，${delayTime/1000}秒后自动进入下一步`);
+
+    // 设置自动进入下一步的定时器
+    autoPlayTimerRef.current = setTimeout(() => {
+      handleNextStep();
+    }, delayTime);
   };
 
   // 处理下一步
@@ -273,6 +408,9 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       isLastWord,
       isLastStep
     });
+
+    // 清理当前的自动播放
+    clearAutoPlay();
 
     if (isLastStep) {
       // 当前单词的三个步骤完成，进入下一个单词
@@ -290,15 +428,28 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
         // 重置步骤计时和尝试次数
         setStepStartTime(Date.now());
         setCurrentAttempts(1);
+
+        // 自动播放将由useEffect自动处理
       }
     } else {
-      // 进入下一步
-      setCurrentStep(prev => prev + 1);
-      setUserInput('');
-      setShowResult(false);
-      // 重置步骤计时和尝试次数
-      setStepStartTime(Date.now());
-      setCurrentAttempts(1);
+      // 进入下一步，确保不超出范围
+      if (currentStep === WordPracticeStep.STEP_1) {
+        console.log('进入步骤2');
+        setShowResult(false);
+        setCurrentStep(WordPracticeStep.STEP_2);
+        setUserInput('');
+        setStepStartTime(Date.now());
+        setCurrentAttempts(1);
+      } else if (currentStep === WordPracticeStep.STEP_2) {
+        console.log('进入步骤3');
+        setShowResult(false);
+        setCurrentStep(WordPracticeStep.STEP_3);
+        setUserInput('');
+        setStepStartTime(Date.now());
+        setCurrentAttempts(1);
+      } else {
+        console.error('当前已是最后一步，无法进入下一步:', currentStep);
+      }
     }
   };
 
@@ -346,10 +497,16 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     }
   }, [currentWord?.word, audioPlayer]);
 
+
+
+  // 防止重复完成的标志
+  const [isCompleting, setIsCompleting] = useState(false);
+
   // 处理练习完成
   const handleCompletePractice = async () => {
-    if (!session) return;
+    if (!session || isCompleting) return;
 
+    setIsCompleting(true);
     try {
       // 调用API完成练习会话
       const result = await practiceService.completePracticeSession({
@@ -363,10 +520,12 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
         onNavigate?.('practice-result', result.data);
       } else {
         toast.showError('完成失败', result.error || '完成练习会话失败');
+        setIsCompleting(false); // 失败时重置标志，允许重试
       }
     } catch (error) {
       console.error('完成练习失败:', error);
       toast.showError('完成失败', '完成练习时发生错误');
+      setIsCompleting(false); // 错误时重置标志，允许重试
     }
   };
 
@@ -514,8 +673,8 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
             <PracticeWordCard
               word={currentWord!}
               currentStep={currentStep}
-              stepTitle={stepConfigs[currentStep].title}
-              stepDescription={stepConfigs[currentStep].description}
+              stepTitle={getCurrentStepConfig().title}
+              stepDescription={getCurrentStepConfig().description}
               userInput={userInput}
               onInputChange={handleInputChange}
               onSubmitAnswer={handleSubmitAnswer}
