@@ -49,7 +49,14 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // 自动播放相关状态
-  // const [autoPlayCount, setAutoPlayCount] = useState(0);
+  const [autoPlayCount, setAutoPlayCount] = useState(0);
+
+  // 调试日志：监听自动播放计数变化
+  useEffect(() => {
+    if (autoPlayCount > 0) {
+      console.log(`自动播放计数: ${autoPlayCount}/3`);
+    }
+  }, [autoPlayCount]);
   const autoPlayTimerRef = useRef<number | null>(null);
 
   // 步骤计时状态
@@ -134,7 +141,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       clearTimeout(autoPlayTimerRef.current);
       autoPlayTimerRef.current = null;
     }
-    // setAutoPlayCount(0);
+    setAutoPlayCount(0);
   }, []);
 
   // 自动播放功能：进入步骤后1秒开始，播放3次，每次在上一次播放完成后1秒播放
@@ -161,7 +168,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     // 清除之前的定时器
     clearAutoPlay();
 
-    // setAutoPlayCount(0);
+    setAutoPlayCount(0);
     console.log('开始自动播放序列');
 
     // 1秒后开始第一次播放
@@ -176,14 +183,14 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
         // 检查是否应该停止播放：播放3次完成、暂停、或者答案正确
         if (count >= 3 || isPaused || (showResult && isCorrect)) {
           console.log('播放序列结束', { count, isPaused, showResult, isCorrect });
-          // setAutoPlayCount(0);
+          setAutoPlayCount(0);
           return;
         }
 
         // 播放当前单词（允许在显示错误结果时播放）
         if (currentWord?.word && !isPaused && !(showResult && isCorrect)) {
           console.log(`播放第 ${count + 1} 次:`, currentWord.word);
-          // setAutoPlayCount(count + 1);
+          setAutoPlayCount(count + 1);
 
           try {
             // 等待音频播放完成
@@ -199,11 +206,11 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
             } else {
               // 播放完3次后清理状态
               console.log('播放完成，清理状态');
-              // setAutoPlayCount(0);
+              setAutoPlayCount(0);
             }
           } catch (error) {
             console.error('播放失败:', error);
-            // setAutoPlayCount(0);
+            setAutoPlayCount(0);
           }
         }
       };

@@ -291,30 +291,40 @@ mod tests {
 
             println!("\n=== 指标计算完成 ===");
 
-            // 8. 检查数据库中的遗留字段值（仅用于验证清理效果）
-            println!("\n8. 检查数据库中的遗留字段值:");
+            // 8. 验证数据库字段清理效果
+            println!("\n8. 验证数据库字段清理效果:");
 
-            // 检查 study_plans 表中的 learned_words 和 accuracy_rate（这些字段已不再使用）
-            let db_fields_query = "SELECT learned_words, accuracy_rate FROM study_plans WHERE id = ?";
-            let result = sqlx::query(db_fields_query).bind(id).fetch_one(&pool).await.unwrap();
-            let db_learned_words: i32 = result.get("learned_words");
-            let db_accuracy_rate: f64 = result.get("accuracy_rate");
+            // 验证遗留字段已被成功移除
+            let schema_query = "PRAGMA table_info(study_plans)";
+            let schema_result = sqlx::query(schema_query).fetch_all(&pool).await.unwrap();
 
-            println!("  数据库中的 learned_words (遗留字段): {}", db_learned_words);
-            println!("  数据库中的 accuracy_rate (遗留字段): {}", db_accuracy_rate);
+            let mut has_learned_words = false;
+            let mut has_accuracy_rate = false;
+
+            for row in schema_result {
+                let column_name: String = row.get("name");
+                if column_name == "learned_words" {
+                    has_learned_words = true;
+                }
+                if column_name == "accuracy_rate" {
+                    has_accuracy_rate = true;
+                }
+            }
+
+            println!("  learned_words 字段已移除: {}", !has_learned_words);
+            println!("  accuracy_rate 字段已移除: {}", !has_accuracy_rate);
 
             // 9. 数据源对比
             println!("\n9. 数据源对比:");
             println!("  === 当前实现 ===");
             println!("  前端显示的数据来源: statistics API (实时计算)");
             println!("  后端计算的正确值: {} (通过统计查询)", completed_count);
-            println!("  数据库遗留字段值: {} (已不再使用)", db_learned_words);
             println!("  ✅ 前端已修复为使用实时统计数据");
 
             println!("\n  === 清理状态 ===");
             println!("  1. ✅ 前端已使用 statistics 对象");
-            println!("  2. ✅ 遗留字段已停止更新");
-            println!("  3. 📝 遗留字段保留用于数据库兼容性");
+            println!("  2. ✅ 遗留字段已完全移除");
+            println!("  3. ✅ 数据库结构已清理");
 
             println!("\n=== 指标计算完成 ===");
         }

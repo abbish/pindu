@@ -137,8 +137,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [needsRegeneration] = useState(false);
 
-  // 统计数据
-  // const [studyStreak, setStudyStreak] = useState(0);
+  // 统计数据 - studyStreak 已合并到 statistics 对象中
   const [todayWords, setTodayWords] = useState<DailyStudyWord[]>([]);
 
   // 扁平化单词列表
@@ -291,12 +290,11 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
       if (result.success) {
         console.log('loadStatistics: setting statistics:', result.data);
         setStatistics(result.data);
-        // 同时设置该计划的连续练习天数
-        // setStudyStreak(result.data?.streakDays || 0);
-        console.log('loadStatistics: set streakDays to:', result.data?.streakDays || 0);
+        // 连续练习天数已包含在 statistics 对象中
+        console.log('loadStatistics: streakDays:', result.data?.streakDays || 0);
       } else {
         console.warn('Failed to load statistics:', result.error);
-        // setStudyStreak(0);
+        // 统计数据加载失败，使用默认值
       }
     } catch (error) {
       console.warn('Failed to load statistics:', error);
@@ -945,7 +943,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
             icon="fire"
             iconColor="orange"
             label="连续学习"
-            value={(statistics as any)?.streak_days || 0}
+            value={(statistics as any)?.streakDays || 0}
             unit="天"
           />
           {todayWords.length > 0 && (
@@ -1222,27 +1220,27 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>总学习时间</span>
               <span className={styles.statsValue}>
-                {(statistics as any)?.total_study_minutes ?
-                  `${Math.floor((statistics as any).total_study_minutes / 60)}小时 ${(statistics as any).total_study_minutes % 60}分钟` :
+                {(statistics as any)?.totalStudyMinutes ?
+                  `${Math.floor((statistics as any).totalStudyMinutes / 60)}小时 ${(statistics as any).totalStudyMinutes % 60}分钟` :
                   '0小时 0分钟'
                 }
               </span>
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>平均每日学习</span>
-              <span className={styles.statsValue}>{(statistics as any)?.average_daily_study_minutes || 0}分钟</span>
+              <span className={styles.statsValue}>{(statistics as any)?.averageDailyStudyMinutes || 0}分钟</span>
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>最长连续学习</span>
-              <span className={styles.statsValue}>{(statistics as any)?.streak_days || 0}天</span>
+              <span className={styles.statsValue}>{(statistics as any)?.streakDays || 0}天</span>
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>计划完成率</span>
-              <span className={styles.statsValue}>{Math.round((statistics as any)?.actual_progress_percentage || 0)}%</span>
+              <span className={styles.statsValue}>{Math.round((statistics as any)?.actualProgressPercentage || 0)}%</span>
             </div>
             <div className={styles.statsRow}>
               <span className={styles.statsLabel}>时间完成率</span>
-              <span className={styles.statsValue}>{Math.round((statistics as any)?.time_progress_percentage || 0)}%</span>
+              <span className={styles.statsValue}>{Math.round((statistics as any)?.timeProgressPercentage || 0)}%</span>
             </div>
           </div>
         </div>
