@@ -36,9 +36,9 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Logo and Title */}
           <div className={styles.brand}>
             <div className={styles.logo}>
-              <i className="fas fa-book" />
+              <img src="/logo-maskable.png" alt="Pindu Logo" className={styles.logoImage} />
             </div>
-            <h1 className={styles.title}>自然拼读大师</h1>
+            <h1 className={styles.title}>自然拼读 Pindu.app</h1>
           </div>
 
           {/* Navigation */}
@@ -47,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
               {navItems.map((item) => (
                 <button
                   key={item.key}
+                  type="button"
                   className={`${styles.navItem} ${activeNav === item.key ? styles.navItemActive : ''}`}
                   onClick={() => onNavChange?.(item.key)}
                 >

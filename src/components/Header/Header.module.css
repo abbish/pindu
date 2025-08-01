@@ -17,7 +17,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-md) 0;
+  padding: 0; /* 移除所有内边距，让logo可以填满整个高度 */
+  min-height: 60px; /* 设置最小高度 */
 }
 
 /* Brand Section */
@@ -28,15 +29,22 @@
 }
 
 .logo {
-  width: 40px;
-  height: 40px;
-  background-color: var(--color-primary);
-  border-radius: var(--radius-lg);
+  height: 60px; /* 填满整个header高度 */
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-text-inverse);
-  font-size: var(--font-size-lg);
+  overflow: hidden;
+  padding: 0; /* 确保没有内边距 */
+  margin: 0; /* 确保没有外边距 */
+}
+
+.logoImage {
+  height: 100%; /* 高度填满logo容器，无留白 */
+  width: auto; /* 宽度按比例自适应 */
+  object-fit: contain; /* 保持图片完整性 */
+  object-position: center; /* 图片居中 */
+  display: block; /* 移除默认的inline间距 */
+  vertical-align: top; /* 移除基线对齐的空白 */
 }
 
 .title {
