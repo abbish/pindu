@@ -7,6 +7,8 @@ mod ai_service;
 mod ai_model_handlers;
 mod tts_service;
 mod tts_handlers;
+mod progress_manager;
+mod word_analysis_handlers;
 
 #[cfg(test)]
 mod test_statistics;
@@ -138,9 +140,17 @@ pub fn run() {
             ai_model_handlers::update_ai_model,
             ai_model_handlers::delete_ai_model,
             ai_model_handlers::analyze_phonics_with_model,
+            ai_model_handlers::test_ai_model,
             get_analysis_progress,
             clear_analysis_progress,
             cancel_analysis,
+
+            // 批量分析相关命令
+            word_analysis_handlers::extract_words_from_text,
+            word_analysis_handlers::analyze_extracted_words,
+            word_analysis_handlers::analyze_text_with_batching,
+            word_analysis_handlers::get_batch_analysis_progress,
+            word_analysis_handlers::cancel_batch_analysis,
 
             // 学习计划AI规划命令
             generate_study_plan_schedule,

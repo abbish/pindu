@@ -184,6 +184,38 @@ pub struct ChatCompletionResponse {
     pub usage: Option<HashMap<String, u32>>,
 }
 
+/// CSV 记录结构（用于批量分析）
+#[derive(Debug, Deserialize)]
+struct CsvPhonicsRecord {
+    word: String,
+    frequency: i32,
+    chinese_translation: String,
+    pos_abbreviation: String,
+    pos_english: String,
+    pos_chinese: String,
+    ipa: String,
+    syllables: String,
+    phonics_rule: String,
+    analysis_explanation: String,
+}
+
+impl CsvPhonicsRecord {
+    fn into_phonics_word(self) -> PhonicsWord {
+        PhonicsWord {
+            word: self.word,
+            frequency: self.frequency,
+            chinese_translation: self.chinese_translation,
+            pos_abbreviation: self.pos_abbreviation,
+            pos_english: self.pos_english,
+            pos_chinese: self.pos_chinese,
+            ipa: self.ipa,
+            syllables: self.syllables,
+            phonics_rule: self.phonics_rule,
+            analysis_explanation: self.analysis_explanation,
+        }
+    }
+}
+
 /// 通用 AI 服务
 pub struct AIService {
     provider: AIProvider,
@@ -228,6 +260,187 @@ impl AIService {
     }
 
     // 移除了传统词汇分析方法，只保留自然拼读分析
+
+    /// 提取单词列表（用于批量分析的第一步）
+    pub async fn extract_words(
+        &self,
+        text: &str,
+        logger: &Logger,
+    ) -> Result<crate::types::word_analysis::WordExtractionResult, Box<dyn std::error::Error>> {
+        let start_time = std::time::Instant::now();
+
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "🚀 Starting word extraction for text: {}",
+                if text.len() > 100 { &text[..100] } else { text }
+            ),
+        );
+
+        // 读取单词提取提示词
+        let extraction_prompt = include_str!("prompts/word_extraction_agent.md");
+
+        // 构建完整的提示词
+        let system_message = extraction_prompt.replace("{original_text}", text);
+
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "📄 Built extraction prompt: {} chars",
+                system_message.len()
+            ),
+        );
+
+        // 构建请求（使用小 max_tokens，因为只需要单词列表）
+        let request = CreateChatCompletionRequestArgs::default()
+            .model(self.provider.get_default_model())
+            .messages([ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessage {
+                    content: system_message,
+                    role: Role::System,
+                    name: None,
+                },
+            )])
+            .max_tokens(2000u16)  // 限制输出长度
+            .temperature(0.1)    // 低温度保证稳定性
+            .stream(false)        // 非流式，快速获取结果
+            .build()?;
+
+        logger.info("AI_SERVICE", "📤 Sending word extraction request...");
+
+        // 发送请求
+        let response = self.client.chat().create(request).await
+            .map_err(|e| {
+                logger.info("AI_SERVICE", &format!("❌ Word extraction failed: {}", e));
+                format!("Word extraction failed: {}", e)
+            })?;
+
+        // 提取响应内容
+        let content = response.choices.first()
+            .and_then(|choice| choice.message.content.as_ref())
+            .ok_or("No content in word extraction response")?;
+
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "✅ Word extraction successful - Response length: {} chars",
+                content.len()
+            ),
+        );
+
+        // 解析 CSV 响应
+        let words = self.parse_csv_response(content, &logger)?;
+
+        let total_count = words.len();
+        let unique_count = words.len();
+
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "📊 Extracted {} unique words (total occurrences: {}) in {:?}",
+                unique_count,
+                total_count,
+                start_time.elapsed()
+            ),
+        );
+
+        Ok(crate::types::word_analysis::WordExtractionResult {
+            words,
+            total_count,
+            unique_count,
+        })
+    }
+
+    /// 批量分析单词（用于批量分析的第二步）
+    pub async fn analyze_words_batch(
+        &self,
+        words: Vec<String>,
+        batch_index: usize,
+        total_batches: usize,
+        logger: &Logger,
+    ) -> Result<Vec<PhonicsWord>, Box<dyn std::error::Error>> {
+        let start_time = std::time::Instant::now();
+        
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "🚀 Starting batch analysis: batch {}/{}, {} words",
+                batch_index + 1,
+                total_batches,
+                words.len()
+            ),
+        );
+        
+        // 读取批量自然拼读分析提示词（CSV格式）
+        let phonics_prompt_template = include_str!("prompts/batch_phonics_agent.md");
+        
+        // 构建批量分析提示词
+        let words_list = words.join(", ");
+        
+        let batch_prompt = phonics_prompt_template.replace("{word_list}", &words_list);
+        
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "📄 Built batch prompt: {} chars",
+                batch_prompt.len()
+            ),
+        );
+        
+        // 构建请求
+        let request = CreateChatCompletionRequestArgs::default()
+            .model(self.provider.get_default_model())
+            .messages([ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessage {
+                    content: batch_prompt,
+                    role: Role::System,
+                    name: None,
+                },
+            )])
+            .max_tokens(8000u16)  // 每批 5 个单词
+            .temperature(0.1)
+            .stream(false)        // 使用非流式输出，直接获取完整 CSV
+            .build()?;
+        
+        logger.info("AI_SERVICE", "📤 Sending batch analysis request...");
+        
+        // 发送请求并获取完整响应
+        let response = self.client.chat().create(request).await
+            .map_err(|e| {
+                logger.info("AI_SERVICE", &format!("❌ Batch analysis failed: {}", e));
+                format!("Batch analysis failed: {}", e)
+            })?;
+        
+        // 提取响应内容
+        let content = response.choices.first()
+            .and_then(|choice| choice.message.content.as_ref())
+            .ok_or("No content in batch analysis response")?;
+        
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "✅ Batch analysis successful - Response length: {} chars in {:?}",
+                content.len(),
+                start_time.elapsed()
+            ),
+        );
+        
+        // 解析 CSV 响应
+        let result_words = self.parse_batch_csv_response(content, logger)?;
+        
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "📊 Batch {}/{} completed: {} words analyzed in {:?}",
+                batch_index + 1,
+                total_batches,
+                result_words.len(),
+                start_time.elapsed()
+            ),
+        );
+        
+        Ok(result_words)
+    }
 
     /// 自然拼读分析
     pub async fn analyze_phonics(
@@ -350,7 +563,7 @@ impl AIService {
             ),
         );
 
-        // 步骤4: 构建 AI 请求（启用流式输出）
+        // 步骤4: 构建 AI 请求（不使用流式输出，一次性获取完整结果）
         progress_manager.update_step("构建AI请求...", start_time);
         let step4_start = std::time::Instant::now();
         let request = CreateChatCompletionRequestArgs::default()
@@ -364,7 +577,7 @@ impl AIService {
             )])
             .max_tokens(final_max_tokens.min(65535) as u16)
             .temperature(final_temperature)
-            .stream(true) // 启用流式输出
+            .stream(false) // 不使用流式输出，一次性获取完整结果
             .build()?;
         let step4_duration = step4_start.elapsed();
         logger.info(
@@ -390,213 +603,85 @@ impl AIService {
             ),
         );
 
-        let mut stream = self.client.chat().create_stream(request).await
+        let response = self.client.chat().create(request).await
             .map_err(|e| {
-                logger.info("AI_SERVICE", &format!("❌ Stream creation failed: {}", e));
-                format!("Stream creation failed: {}", e)
+                logger.info("AI_SERVICE", &format!("❌ Request failed: {}", e));
+                format!("Request failed: {}", e)
             })?;
         let step5_duration = step5_start.elapsed();
         logger.info(
             "AI_SERVICE",
             &format!(
-                "📡 Step 5 - Stream connection established in {:?}",
+                "📡 Step 5 - Response received in {:?}",
                 step5_duration
             ),
         );
 
-        // 步骤6: 处理流式响应
+        // 步骤6: 提取响应内容
         let step6_start = std::time::Instant::now();
-        logger.info(
-            "AI_SERVICE",
-            "✅ Successfully established stream connection",
-        );
-
-        // 步骤7: 收集流式响应内容
-        progress_manager.update_step("接收AI分析结果...", start_time);
-        logger.info(
-            "AI_SERVICE",
-            "📡 Step 6 - Starting to collect streaming response...",
-        );
-        let mut full_content = String::new();
-        let mut chunk_count = 0;
-        let mut last_log_time = std::time::Instant::now();
-
-        while let Some(result) = stream.next().await {
-            // 检查是否已取消
-            if progress_manager.is_cancelled() {
-                logger.info("AI_SERVICE", "🚫 Analysis cancelled by user, stopping stream processing");
-                // 返回一个空的结果而不是错误
-                return Ok(PhonicsAnalysisResult { words: vec![] });
-            }
-
-            match result {
-                Ok(response) => {
-                    chunk_count += 1;
-
-                    if let Some(choice) = response.choices.first() {
-                        if let Some(delta) = &choice.delta.content {
-                            full_content.push_str(delta);
-
-                            // 更新进度管理器
-                            progress_manager.update_chunk(chunk_count, full_content.len(), start_time);
-
-                            // 每5秒记录一次进度
-                            if last_log_time.elapsed().as_secs() >= 5 {
-                                logger.info(
-                                    "AI_SERVICE",
-                                    &format!(
-                                        "📥 Received {} chunks, total: {} chars",
-                                        chunk_count,
-                                        full_content.len()
-                                    ),
-                                );
-                                last_log_time = std::time::Instant::now();
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    let total_duration = start_time.elapsed();
-                    let error_msg = format!("Stream error: {}", e);
-                    progress_manager.error_analysis(&error_msg);
-                    logger.info(
-                        "AI_SERVICE",
-                        &format!("❌ Stream error after {:?}: {}", total_duration, e),
-                    );
-                    return Err(error_msg.into());
-                }
-            }
-        }
+        let content = response.choices.first()
+            .and_then(|choice| choice.message.content.as_ref())
+            .ok_or("No content in word extraction response")?;
 
         let step6_duration = step6_start.elapsed();
         logger.info(
             "AI_SERVICE",
             &format!(
-                "📦 Step 6 - Collected {} chunks, {} total chars in {:?}",
-                chunk_count,
-                full_content.len(),
-                step6_duration
+                "✅ Step 6 - Extracted content in {:?}: {} chars",
+                step6_duration,
+                content.len()
             ),
         );
 
-        // 步骤8: 解析完整的流式响应内容
-        let _step8_start = std::time::Instant::now();
-        if !full_content.is_empty() {
-            let content_length = full_content.len();
-            logger.info(
-                "AI_SERVICE",
-                &format!(
-                    "📄 Step 8 - Processing complete response: {} chars",
-                    content_length
-                ),
-            );
-
-            // 显示响应内容的前500字符用于调试（安全截取，避免 UTF-8 边界问题）
-            let preview = if full_content.len() > 500 {
-                full_content.chars().take(500).collect::<String>()
-            } else {
-                full_content.clone()
-            };
-            logger.info(
-                "AI_SERVICE",
-                &format!("🔍 AI Response Preview: {}", preview),
-            );
-
-            // 检查响应是否包含 JSON 结构
-            let has_opening_brace = full_content.contains("{");
-            let has_words_array = full_content.contains("\"words\"");
-            let has_closing_brace = full_content.contains("}");
-
-            logger.info("AI_SERVICE", &format!("🔍 JSON Structure Check:"));
-            logger.info(
-                "AI_SERVICE",
-                &format!("   📋 Has opening brace: {}", has_opening_brace),
-            );
-            logger.info(
-                "AI_SERVICE",
-                &format!("   📝 Has words array: {}", has_words_array),
-            );
-            logger.info(
-                "AI_SERVICE",
-                &format!("   📋 Has closing brace: {}", has_closing_brace),
-            );
-
-            if has_opening_brace && has_closing_brace {
-                logger.info("AI_SERVICE", "✅ Response contains expected JSON structure");
-            } else {
-                logger.info(
-                    "AI_SERVICE",
-                    "⚠️  Response does not contain complete JSON structure",
-                );
+        // 步骤7: 解析 JSON 响应
+        let step7_start = std::time::Instant::now();
+        match self.parse_phonics_json(&content) {
+            Ok(result) => {
+                let step7_duration = step7_start.elapsed();
+                let total_duration = start_time.elapsed();
                 logger.info(
                     "AI_SERVICE",
                     &format!(
-                        "📄 First 1000 chars: {}",
-                        full_content.chars().take(1000).collect::<String>()
+                        "🎉 Step 7 - Successfully parsed {} phonics entries in {:?}",
+                        result.words.len(),
+                        step7_duration
                     ),
                 );
+                logger.info(
+                    "AI_SERVICE",
+                    &format!("⏱️  Total analysis time: {:?}", total_duration),
+                );
+
+                // 标记分析完成
+                progress_manager.complete_analysis();
+
+                Ok(result)
             }
+            Err(e) => {
+                let step7_duration = step7_start.elapsed();
+                let total_duration = start_time.elapsed();
+                logger.info(
+                    "AI_SERVICE",
+                    &format!(
+                        "❌ Step 7 - JSON parsing failed in {:?}: {}",
+                        step7_duration, e
+                    ),
+                );
+                logger.info(
+                    "AI_SERVICE",
+                    &format!("📄 Full AI response for debugging: {}", content),
+                );
+                logger.info(
+                    "AI_SERVICE",
+                    &format!("⏱️  Total time before failure: {:?}", total_duration),
+                );
 
-            // 步骤9: 解析 JSON 响应
-            let step9_start = std::time::Instant::now();
-            match self.parse_phonics_json(&full_content) {
-                Ok(result) => {
-                    let step9_duration = step9_start.elapsed();
-                    let total_duration = start_time.elapsed();
-                    logger.info(
-                        "AI_SERVICE",
-                        &format!(
-                            "🎉 Step 9 - Successfully parsed {} phonics entries in {:?}",
-                            result.words.len(),
-                            step9_duration
-                        ),
-                    );
-                    logger.info(
-                        "AI_SERVICE",
-                        &format!("⏱️  Total analysis time: {:?}", total_duration),
-                    );
+                // 标记分析失败
+                let error_msg = format!("Failed to parse phonics analysis: JSON parsing error: {}", e);
+                progress_manager.error_analysis(&error_msg);
 
-                    // 标记分析完成
-                    progress_manager.complete_analysis();
-
-                    Ok(result)
-                }
-                Err(e) => {
-                    let step9_duration = step9_start.elapsed();
-                    let total_duration = start_time.elapsed();
-                    logger.info(
-                        "AI_SERVICE",
-                        &format!(
-                            "❌ Step 9 - XML parsing failed in {:?}: {}",
-                            step9_duration, e
-                        ),
-                    );
-                    logger.info(
-                        "AI_SERVICE",
-                        &format!("📄 Full AI response for debugging: {}", full_content),
-                    );
-                    logger.info(
-                        "AI_SERVICE",
-                        &format!("⏱️  Total time before failure: {:?}", total_duration),
-                    );
-
-                    // 标记分析失败
-                    let error_msg = format!("Failed to parse phonics analysis: JSON parsing error: {}", e);
-                    progress_manager.error_analysis(&error_msg);
-
-                    Err(error_msg.into())
-                }
+                Err(error_msg.into())
             }
-        } else {
-            let total_duration = start_time.elapsed();
-            logger.info(
-                "AI_SERVICE",
-                &format!(
-                    "❌ No content received from streaming response after {:?}",
-                    total_duration
-                ),
-            );
-            Err("No content received from streaming response".into())
         }
     }
 
@@ -1073,7 +1158,7 @@ impl AIService {
 
         // 2. 修复无引号的日期值（如 "date": 2025-08-27 应该是 "date": "2025-08-27"）
         // 查找 "date": 后面跟着无引号的日期
-        if let Some(pos) = cleaned.find(r#""date": 2025-08-27"#) {
+        if cleaned.find(r#""date": 2025-08-27"#).is_some() {
             cleaned = cleaned.replace(r#""date": 2025-08-27"#, r#""date": "2025-08-27""#);
         }
 
@@ -1217,6 +1302,177 @@ impl AIService {
         Ok(PhonicsAnalysisResult { words })
     }
 
+    /// 简单的对话完成（用于模型测试）
+    pub async fn chat_completion(
+        &self,
+        prompt: &str,
+        max_tokens: Option<u32>,
+        temperature: Option<f32>,
+        logger: &Logger,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "🚀 Starting chat completion for prompt: {}",
+                if prompt.len() > 100 { &prompt[..100] } else { prompt }
+            ),
+        );
+        
+        let model_name = self.provider.get_default_model();
+        let final_max_tokens = max_tokens.unwrap_or(100);
+        let final_temperature = temperature.unwrap_or(0.7);
+        
+        logger.info("AI_SERVICE", &format!(
+            "Chat completion parameters - model: {}, max_tokens: {}, temperature: {}",
+            model_name, final_max_tokens, final_temperature
+        ));
+        
+        // 构建请求
+        let request = CreateChatCompletionRequestArgs::default()
+            .model(model_name)
+            .messages([
+                ChatCompletionRequestMessage::System(
+                    ChatCompletionRequestSystemMessage {
+                        content: "You are a helpful assistant. Please respond briefly and concisely.".to_string(),
+                        role: Role::System,
+                        name: None,
+                    },
+                ),
+                ChatCompletionRequestMessage::User(
+                    async_openai::types::ChatCompletionRequestUserMessage {
+                        role: async_openai::types::Role::User,
+                        content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(prompt.to_string()),
+                        name: None,
+                    },
+                ),
+            ])
+            .max_tokens(final_max_tokens as u16)
+            .temperature(final_temperature)
+            .stream(false) // 不使用流式输出，直接获取完整响应
+            .build()?;
+        
+        logger.info("AI_SERVICE", "📤 Sending chat completion request...");
+        
+        // 发送请求
+        let response = self.client.chat().create(request).await
+            .map_err(|e| {
+                logger.info("AI_SERVICE", &format!("❌ Chat completion failed: {}", e));
+                format!("Chat completion failed: {}", e)
+            })?;
+        
+        // 提取响应内容
+        if let Some(choice) = response.choices.first() {
+            if let Some(content) = &choice.message.content {
+                logger.info("AI_SERVICE", &format!(
+                    "✅ Chat completion successful - Response length: {} chars",
+                    content.len()
+                ));
+                return Ok(content.clone());
+            }
+        }
+        
+        Err("No response content received".into())
+    }
+
+    /// 解析 CSV 格式的单词提取响应
+    fn parse_csv_response(
+        &self,
+        content: &str,
+        logger: &Logger,
+    ) -> Result<Vec<crate::types::word_analysis::ExtractedWord>, Box<dyn std::error::Error>> {
+        // 清理可能的 markdown 代码块格式
+        let cleaned_content = self.clean_csv_markdown(content);
+        
+        let mut words = Vec::new();
+        let lines: Vec<&str> = cleaned_content.lines().collect();
+        
+        // 跳过标题行（第一行）
+        for line in lines.iter().skip(1) {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            
+            // 解析 CSV 行：格式为 "word,frequency"
+            let parts: Vec<&str> = trimmed.split(',').collect();
+            if parts.len() >= 2 {
+                let word = parts[0].trim().to_string();
+                let frequency = parts[1].trim().parse::<i32>().unwrap_or(1);
+                
+                if !word.is_empty() && word.len() >= 2 && word.len() <= 20 {
+                    words.push(crate::types::word_analysis::ExtractedWord {
+                        word,
+                        frequency,
+                    });
+                }
+            }
+        }
+        
+        if words.is_empty() {
+            logger.info("AI_SERVICE", &format!("❌ CSV parsing failed: no valid words found"));
+            logger.info("AI_SERVICE", &format!("📄 Response content: {}", content));
+            return Err("No valid words found in CSV response".into());
+        }
+        
+        Ok(words)
+    }
+
+    /// 清理CSV响应中的markdown代码块格式
+    fn clean_csv_markdown(&self, content: &str) -> String {
+        let cleaned = content.trim();
+        
+        // 移除 markdown 代码块标记
+        if cleaned.starts_with("```csv") {
+            cleaned[6..].trim_end_matches('`').to_string()
+        } else if cleaned.starts_with("```") {
+            // 移除任何代码块标记
+            let lines: Vec<&str> = cleaned.lines().collect();
+            if lines.len() > 1 {
+                lines[1..lines.len()-1].join("\n")
+            } else {
+                cleaned.to_string()
+            }
+        } else {
+            cleaned.to_string()
+        }
+    }
+
+    /// 解析批量分析的 CSV 响应
+    fn parse_batch_csv_response(
+        &self,
+        content: &str,
+        logger: &Logger,
+    ) -> Result<Vec<PhonicsWord>, Box<dyn std::error::Error>> {
+        // 清理可能的 markdown 代码块格式
+        let cleaned_content = self.clean_csv_markdown(content);
+        
+        let mut words = Vec::new();
+        let mut rdr = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .from_reader(cleaned_content.as_bytes());
+        
+        for result in rdr.deserialize::<CsvPhonicsRecord>() {
+            match result {
+                Ok(record) => {
+                    words.push(record.into_phonics_word());
+                }
+                Err(e) => {
+                    logger.info("AI_SERVICE", &format!("❌ CSV parsing error for row: {}", e));
+                    // 继续处理其他行，不中断整个批次
+                }
+            }
+        }
+        
+        if words.is_empty() {
+            logger.info("AI_SERVICE", &format!("❌ CSV parsing failed: no valid words found"));
+            logger.info("AI_SERVICE", &format!("📄 Response content: {}", content));
+            return Err("No valid words found in CSV response".into());
+        }
+        
+        Ok(words)
+    }
+
+
     /// 从响应中提取JSON部分
     fn extract_json_from_response(&self, content: &str) -> String {
         // 查找JSON开始和结束位置
@@ -1227,7 +1483,7 @@ impl AIService {
                 }
             }
         }
-
+        
         // 如果没找到完整的JSON，返回原内容
         content.to_string()
     }

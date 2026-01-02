@@ -110,3 +110,17 @@ export interface PhonicsWord {
   phonicsRule: string;
   analysisExplanation: string;
 }
+
+/// AI模型测试结果
+export interface AIModelTestResult {
+  success: boolean;
+  responseTime: number; // 响应时间（毫秒）
+  message: string; // 响应消息或错误信息
+  error?: string; // 错误详情
+}
+
+/// AI模型测试请求
+export interface AIModelTestRequest {
+  modelId: Id;
+  testText?: string; // 测试文本，如果不提供则使用默认文本
+}

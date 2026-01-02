@@ -1007,3 +1007,124 @@ pub async fn analyze_phonics_with_model(
         }
     }
 }
+
+/// 测试AI模型 - 发送简单对话指令
+#[tauri::command]
+pub async fn test_ai_model(
+    app: AppHandle,
+    model_id: i64,
+    test_text: Option<String>,
+) -> AppResult<TestAIModelResult> {
+    use crate::ai_service::AIService;
+    
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    
+    logger.api_request("test_ai_model", Some(&format!("model_id: {}, test_text: {:?}", model_id, test_text)));
+    
+    // 使用默认测试文本
+    let text_to_test = test_text.unwrap_or_else(|| "Hello".to_string());
+    
+    // 查询模型配置
+    let query = r#"
+        SELECT m.id, m.model_id, m.display_name, m.description, m.max_tokens, m.temperature, m.is_active, m.is_default,
+               m.created_at, m.updated_at,
+               p.id as provider_id, p.name as provider_name, p.display_name as provider_display_name,
+               p.base_url, p.api_key, p.description as provider_description, p.is_active as provider_is_active,
+               p.created_at as provider_created_at, p.updated_at as provider_updated_at
+        FROM ai_models m
+        JOIN ai_providers p ON m.provider_id = p.id
+        WHERE m.id = ? AND m.is_active = 1 AND p.is_active = 1
+    "#;
+    
+    let row = match sqlx::query(query).bind(model_id).fetch_optional(pool.inner()).await {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            let error_msg = format!("Model not found or inactive: {}", model_id);
+            logger.api_response("test_ai_model", false, Some(&error_msg));
+            return Err(AppError::NotFound(error_msg));
+        }
+        Err(e) => {
+            let error_msg = format!("Database error: {}", e);
+            logger.api_response("test_ai_model", false, Some(&error_msg));
+            return Err(AppError::InternalError(error_msg));
+        }
+    };
+    
+    let model_config = AIModelConfig {
+        id: row.get("id"),
+        name: row.get("model_id"),
+        model_id: row.get("model_id"),
+        display_name: row.get("display_name"),
+        description: row.get("description"),
+        max_tokens: row.get("max_tokens"),
+        temperature: row.get("temperature"),
+        is_active: row.get("is_active"),
+        is_default: row.get("is_default"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+        provider: AIProvider {
+            id: row.get("provider_id"),
+            name: row.get("provider_name"),
+            display_name: row.get("provider_display_name"),
+            base_url: row.get("base_url"),
+            api_key: row.get("api_key"),
+            description: row.get("provider_description"),
+            is_active: row.get("provider_is_active"),
+            created_at: row.get("provider_created_at"),
+            updated_at: row.get("provider_updated_at"),
+        },
+    };
+    
+    logger.info("TEST_AI_MODEL", &format!(
+        "Testing model - ID: {}, model_id: {}, test_text: {}",
+        model_config.id, model_config.model_id, text_to_test
+    ));
+    
+    // 创建AI服务
+    let ai_service = match AIService::from_model_config(&model_config) {
+        Ok(service) => service,
+        Err(e) => {
+            let error_msg = format!("Failed to create AI service from model config: {}", e);
+            logger.api_response("test_ai_model", false, Some(&error_msg));
+            return Err(AppError::InternalError(error_msg));
+        }
+    };
+    
+    // 发送简单的对话请求
+    let max_tokens_u32 = model_config.max_tokens.map(|t| t as u32);
+    let temperature_f32 = model_config.temperature.map(|t| t as f32);
+    
+    logger.info("TEST_AI_MODEL", &format!(
+        "Sending test request with parameters - max_tokens: {:?}, temperature: {:?}",
+        max_tokens_u32, temperature_f32
+    ));
+    
+    // 构建简单的提示词
+    let prompt = format!("Please respond to: {}", text_to_test);
+    
+    match ai_service.chat_completion(
+        &prompt,
+        max_tokens_u32,
+        temperature_f32,
+        &logger
+    ).await {
+        Ok(response) => {
+            logger.info("TEST_AI_MODEL", &format!(
+                "Test successful - Response length: {} chars",
+                response.len()
+            ));
+            logger.api_response("test_ai_model", true, Some("Model test successful"));
+            
+            Ok(TestAIModelResult {
+                success: true,
+                message: response,
+            })
+        }
+        Err(e) => {
+            let error_msg = format!("AI model test failed: {}", e);
+            logger.api_response("test_ai_model", false, Some(&error_msg));
+            Err(AppError::InternalError(error_msg))
+        }
+}
+}

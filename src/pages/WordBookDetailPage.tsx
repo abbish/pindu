@@ -15,7 +15,7 @@ import {
 
 } from '../components';
 import { BatchDeleteModal } from '../components/BatchDeleteModal';
-import { WordImporterModalV2 } from '../components/WordImporterModal/WordImporterModalV2';
+import { WordImporterModal } from '../components/WordImporterModal';
 import { StatusTag } from '../components/StatusTag';
 import { WordBookService } from '../services';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
@@ -857,8 +857,8 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({
         saving={editWordLoading}
       />
 
-      {/* Word Importer Modal V2 */}
-      <WordImporterModalV2
+      {/* Word Importer Modal */}
+      <WordImporterModal
         isOpen={showImporterModal}
         onClose={handleCloseImporter}
         onSaveWords={handleSaveWords}

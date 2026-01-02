@@ -10,7 +10,7 @@ import {
   type ExtractedWord,
 
 } from '../components';
-import { WordImporterModalV2 } from '../components/WordImporterModal/WordImporterModalV2';
+import { WordImporterModal } from '../components/WordImporterModal';
 import { WordBookService } from '../services/wordbookService';
 import type { AnalyzedWord, ThemeTag } from '../types';
 import styles from './CreateWordBookPage.module.css';
@@ -589,7 +589,7 @@ export const CreateWordBookPageV2: React.FC<CreateWordBookPageV2Props> = ({ onNa
         {currentStep === 'preview' && renderPreviewStep()}
 
         {/* 单词导入模态框 */}
-        <WordImporterModalV2
+        <WordImporterModal
           isOpen={showImporter}
           onClose={() => setShowImporter(false)}
           onSaveWords={handleWordsImported}

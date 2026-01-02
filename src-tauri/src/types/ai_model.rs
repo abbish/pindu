@@ -106,3 +106,11 @@ pub struct AIModelQuery {
     pub is_active: Option<bool>,
     pub is_default: Option<bool>,
 }
+
+/// AI模型测试结果
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestAIModelResult {
+    pub success: bool,
+    pub message: String,
+}

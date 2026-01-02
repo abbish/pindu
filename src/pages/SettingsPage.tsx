@@ -88,6 +88,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [showAddModel, setShowAddModel] = useState(false);
   const [showEditElevenLabs, setShowEditElevenLabs] = useState(false);
 
+  // AI模型测试相关状态
+  const [testingModelId, setTestingModelId] = useState<number | undefined>();
+  const [testResult, setTestResult] = useState<import('../types').AIModelTestResult | null>(null);
+  const [showTestResult, setShowTestResult] = useState(false);
+
   // 确认对话框状态
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -770,6 +775,33 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     }
   };
 
+  // AI模型测试功能
+  const handleTestAIModel = async (modelId: number) => {
+    try {
+      setTestingModelId(modelId);
+      setShowTestResult(false);
+
+      const result = await aiModelService.testAIModel(modelId);
+
+      if (result.success && result.data) {
+        setTestResult(result.data);
+        setShowTestResult(true);
+
+        if (result.data.success) {
+          toast.showSuccess(`模型测试成功！响应时间：${result.data.responseTime}ms`);
+        } else {
+          toast.showError(`模型测试失败：${result.data.error || '未知错误'}`);
+        }
+      } else {
+        showError(!result.success ? result.error : '模型测试失败');
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setTestingModelId(undefined);
+    }
+  };
+
   // TTS相关处理函数
   // const handleUpdateTTSProvider = async (providerId: number, apiKey: string) => {
   //   try {
@@ -1273,6 +1305,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                               disabled={saving || model.isDefault}
                             >
                               设为默认
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.testButton}
+                              onClick={() => handleTestAIModel(model.id)}
+                              disabled={saving || testingModelId === model.id || !model.isActive}
+                              title="测试模型连接和响应"
+                            >
+                              {testingModelId === model.id ? (
+                                <i className="fas fa-spinner fa-spin" />
+                              ) : (
+                                <i className="fas fa-play" />
+                              )}
+                              测试
                             </button>
                             <button
                               type="button"
@@ -2311,6 +2357,78 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       保存配置
                     </>
                   )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* AI Model Test Result Modal */}
+        {showTestResult && testResult && (
+          <div className={styles.modal}>
+            <div className={styles.modalContent}>
+              <div className={styles.modalHeader}>
+                <h3 className={styles.modalTitle}>
+                  <i className="fas fa-flask" />
+                  AI模型测试结果
+                </h3>
+                <button
+                  type="button"
+                  className={styles.modalClose}
+                  onClick={() => setShowTestResult(false)}
+                  title="关闭"
+                >
+                  <i className="fas fa-times" />
+                </button>
+              </div>
+              <div className={styles.modalBody}>
+                <div className={styles.testResultContent}>
+                  {/* 测试状态 */}
+                  <div className={`${styles.testStatus} ${testResult.success ? styles.success : styles.error}`}>
+                    <div className={styles.statusIcon}>
+                      {testResult.success ? (
+                        <i className="fas fa-check-circle" />
+                      ) : (
+                        <i className="fas fa-times-circle" />
+                      )}
+                    </div>
+                    <div className={styles.statusText}>
+                      <h4>{testResult.success ? '测试成功' : '测试失败'}</h4>
+                      {testResult.error && (
+                        <p className={styles.errorMessage}>{testResult.error}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 响应时间 */}
+                  <div className={styles.testMetric}>
+                    <div className={styles.metricIcon}>
+                      <i className="fas fa-clock" />
+                    </div>
+                    <div className={styles.metricInfo}>
+                      <span className={styles.metricLabel}>响应时间</span>
+                      <span className={styles.metricValue}>{testResult.responseTime} ms</span>
+                    </div>
+                  </div>
+
+                  {/* 响应消息 */}
+                  <div className={styles.testMetric}>
+                    <div className={styles.metricIcon}>
+                      <i className="fas fa-comment" />
+                    </div>
+                    <div className={styles.metricInfo}>
+                      <span className={styles.metricLabel}>响应消息</span>
+                      <span className={styles.metricValue}>{testResult.message}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className={styles.modalFooter}>
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowTestResult(false)}
+                >
+                  关闭
                 </Button>
               </div>
             </div>

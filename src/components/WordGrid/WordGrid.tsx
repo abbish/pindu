@@ -244,8 +244,8 @@ export const WordGrid: React.FC<WordGridProps> = ({
 
                 <div className={styles.wordMeta}>
                   <span
-                    className={`${styles.partOfSpeech} ${styles[posConfig.color]}`}
-                    title={posConfig.label}
+                    className={`${styles.partOfSpeech} ${styles[posConfig?.color || 'primary']}`}
+                    title={posConfig?.label || word.partOfSpeech}
                   >
                     {word.partOfSpeech}
                   </span>

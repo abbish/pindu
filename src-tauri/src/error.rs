@@ -3,6 +3,13 @@ use thiserror::Error;
 
 pub type AppResult<T> = Result<T, AppError>;
 
+// 为 Box<dyn std::error::Error> 实现 From trait
+impl From<Box<dyn std::error::Error>> for AppError {
+    fn from(err: Box<dyn std::error::Error>) -> Self {
+        AppError::InternalError(err.to_string())
+    }
+}
+
 #[derive(Error, Debug, Serialize, Deserialize)]
 pub enum AppError {
     #[error("数据库错误: {0}")]

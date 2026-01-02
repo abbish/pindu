@@ -54,3 +54,4 @@ export { AIModelSelector, type AIModelSelectorProps } from './AIModelSelector';
 export { PlanningProgress, type PlanningProgressProps } from './PlanningProgress';
 export { StudySchedulePreview, type StudySchedulePreviewProps } from './StudySchedulePreview';
 export { WordImporterModal, type WordImporterModalProps } from './WordImporterModal';
+export { WordAnalysisProgressModal } from './WordAnalysisProgressModal';

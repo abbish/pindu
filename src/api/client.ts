@@ -34,14 +34,34 @@ export class TauriApiClient {
         windowTauri: typeof window !== 'undefined' ? (window as any).__TAURI__ : 'window undefined'
       });
 
-      // 返回错误格式的ApiResult
+      // 返回错误格式的ApiResult，增强错误信息
       let errorMessage: string;
       if (typeof error === 'string') {
         errorMessage = error;
-      } else if (error && typeof error === 'object' && 'message' in error) {
-        errorMessage = (error as any).message;
+      } else if (error && typeof error === 'object') {
+        // 尝试从错误对象中提取更多信息
+        const errorObj = error as any;
+        
+        if ('message' in errorObj) {
+          errorMessage = errorObj.message;
+        } else if ('error' in errorObj) {
+          errorMessage = errorObj.error;
+        } else if ('data' in errorObj) {
+          errorMessage = errorObj.data;
+        } else {
+          // 将整个错误对象转换为字符串，包含所有属性
+          errorMessage = JSON.stringify(errorObj, null, 2);
+        }
+        
+        // 添加额外的错误信息（如果有的话）
+        if ('cause' in errorObj && errorObj.cause) {
+          errorMessage += ` (Cause: ${errorObj.cause})`;
+        }
+        if ('code' in errorObj && errorObj.code) {
+          errorMessage += ` (Code: ${errorObj.code})`;
+        }
       } else {
-        errorMessage = 'Unknown error occurred';
+        errorMessage = `Unknown error occurred (Type: ${typeof error}, Value: ${String(error)})`;
       }
 
       return {

@@ -278,4 +278,68 @@ export class AIModelService extends BaseService {
       return result;
     }, setLoading);
   }
+
+  /**
+   * 测试AI模型 - 发送简单对话指令
+   */
+  async testAIModel(
+    modelId: number,
+    testText?: string,
+    setLoading?: (state: LoadingState) => void
+  ): Promise<ApiResult<import('../types').AIModelTestResult>> {
+    return this.executeWithLoading(async () => {
+      console.log('testAIModel called with:', { modelId, testText });
+
+      // 使用简单的测试文本
+      const textToTest = testText?.trim() || "Hello";
+
+      // 记录开始时间
+      const startTime = performance.now();
+
+      try {
+        // 调用简单的测试API
+        const result = await this.client.invoke<{ message: string }>('test_ai_model', {
+          modelId: modelId,
+          testText: textToTest
+        });
+
+        // 计算响应时间
+        const responseTime = Math.round(performance.now() - startTime);
+
+        console.log('test_ai_model result:', result);
+
+        // 构建测试结果
+        if (result.success && result.data) {
+          const testResult: import('../types').AIModelTestResult = {
+            success: true,
+            responseTime: responseTime,
+            message: result.data.message
+          };
+          return { success: true, data: testResult };
+        } else {
+          const errorMsg = !result.success ? (result as any).error : '未知错误';
+          const testResult: import('../types').AIModelTestResult = {
+            success: false,
+            responseTime: responseTime,
+            message: '测试失败',
+            error: errorMsg
+          };
+          return { success: true, data: testResult };
+        }
+      } catch (error: any) {
+        // 计算响应时间
+        const responseTime = Math.round(performance.now() - startTime);
+        
+        console.error('test_ai_model error:', error);
+        
+        const testResult: import('../types').AIModelTestResult = {
+          success: false,
+          responseTime: responseTime,
+          message: '测试失败',
+          error: error.message || error.toString() || '未知错误'
+        };
+        return { success: true, data: testResult };
+      }
+    }, setLoading);
+  }
 }
