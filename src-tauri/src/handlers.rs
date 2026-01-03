@@ -1982,40 +1982,42 @@ pub async fn generate_study_plan_schedule(
         return Err(AppError::ValidationError(error_msg.to_string()));
     }
 
-    // 获取选中单词本的所有单词
-    let mut all_words = Vec::new();
-    for wordbook_id in &request.wordbook_ids {
-        let query = r#"
-            SELECT id, word, word_book_id
-            FROM words
-            WHERE word_book_id = ? AND word_book_id IN (
+    // 获取选中单词本的所有单词 (优化：使用 IN 查询避免 N+1 问题)
+    let wordbook_ids_str = request.wordbook_ids.iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let query = format!(r#"
+        SELECT id, word, word_book_id
+        FROM words
+        WHERE word_book_id IN ({})
+            AND word_book_id IN (
                 SELECT id FROM word_books WHERE status = 'normal'
             )
-            ORDER BY id
-        "#;
+        ORDER BY word_book_id, id
+    "#, wordbook_ids_str);
 
-        match sqlx::query(query)
-            .bind(wordbook_id)
-            .fetch_all(pool.inner())
-            .await
-        {
-            Ok(rows) => {
-                for row in rows {
-                    all_words.push(StudyWordInfo {
-                        word: row.get("word"),
-                        word_id: row.get::<i64, _>("id").to_string(),
-                        wordbook_id: row.get::<i64, _>("word_book_id").to_string(),
-                    });
-                }
-            }
-            Err(e) => {
-                let error_msg = format!("Failed to fetch words from wordbook {}: {}", wordbook_id, e);
-                logger.database_operation("SELECT", "words", false, Some(&error_msg));
-                logger.api_response("generate_study_plan_schedule", false, Some(&error_msg));
-                return Err(AppError::DatabaseError(error_msg));
-            }
+    let rows = match sqlx::query(&query)
+        .fetch_all(pool.inner())
+        .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            let error_msg = format!("Failed to fetch words from wordbooks: {}", e);
+            logger.database_operation("SELECT", "words", false, Some(&error_msg));
+            logger.api_response("generate_study_plan_schedule", false, Some(&error_msg));
+            return Err(AppError::DatabaseError(error_msg));
         }
-    }
+    };
+
+    let all_words: Vec<StudyWordInfo> = rows.iter().map(|row| {
+        StudyWordInfo {
+            word: row.get("word"),
+            word_id: row.get::<i64, _>("id").to_string(),
+            wordbook_id: row.get::<i64, _>("word_book_id").to_string(),
+        }
+    }).collect();
 
     if all_words.is_empty() {
         let error_msg = "No words found in selected wordbooks";
