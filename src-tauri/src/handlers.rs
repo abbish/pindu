@@ -560,16 +560,18 @@ pub async fn create_word_book(app: AppHandle, request: CreateWordBookRequest) ->
 
     // 如果提供了主题标签ID，创建关联
     if let Some(theme_tag_ids) = &request.theme_tag_ids {
-        for theme_tag_id in theme_tag_ids {
-            let insert_query = r#"
-                INSERT INTO word_book_theme_tags (word_book_id, theme_tag_id)
-                VALUES (?, ?)
-            "#;
-            sqlx::query(insert_query)
-                .bind(book_id)
-                .bind(theme_tag_id)
-                .execute(&mut *tx)
-                .await?;
+        if !theme_tag_ids.is_empty() {
+            // 优化：使用批量插入而不是循环插入
+            let values: Vec<String> = theme_tag_ids.iter()
+                .map(|id| format!("({}, {})", book_id, id))
+                .collect();
+
+            let bulk_insert_query = format!(
+                "INSERT INTO word_book_theme_tags (word_book_id, theme_tag_id) VALUES {}",
+                values.join(", ")
+            );
+
+            sqlx::query(&bulk_insert_query).execute(&mut *tx).await?;
         }
     }
 
@@ -622,17 +624,18 @@ pub async fn update_word_book(
             .execute(&mut *tx)
             .await?;
 
-        // 添加新的主题标签关联
-        for theme_tag_id in theme_tag_ids {
-            let insert_query = r#"
-                INSERT INTO word_book_theme_tags (word_book_id, theme_tag_id)
-                VALUES (?, ?)
-            "#;
-            sqlx::query(insert_query)
-                .bind(book_id)
-                .bind(theme_tag_id)
-                .execute(&mut *tx)
-                .await?;
+        // 优化：批量插入新的主题标签关联
+        if !theme_tag_ids.is_empty() {
+            let values: Vec<String> = theme_tag_ids.iter()
+                .map(|id| format!("({}, {})", book_id, id))
+                .collect();
+
+            let bulk_insert_query = format!(
+                "INSERT INTO word_book_theme_tags (word_book_id, theme_tag_id) VALUES {}",
+                values.join(", ")
+            );
+
+            sqlx::query(&bulk_insert_query).execute(&mut *tx).await?;
         }
     }
 
@@ -1286,31 +1289,37 @@ pub async fn create_study_plan(app: AppHandle, request: CreateStudyPlanRequest) 
         return Err(AppError::ValidationError(error_msg.to_string()));
     }
 
-    // 验证单词是否存在 - 使用简单的方法逐个检查
-    let mut valid_word_count = 0;
-    for word_id in &request.word_ids {
-        let word_check_query = "SELECT COUNT(*) as count FROM words WHERE id = ?";
-        match sqlx::query(word_check_query)
-            .bind(word_id)
-            .fetch_one(pool.inner())
-            .await
-        {
-            Ok(row) => {
-                let count: i64 = row.get("count");
-                if count > 0 {
-                    valid_word_count += 1;
-                }
-            }
-            Err(e) => {
-                let error_msg = format!("Failed to validate word {}: {}", word_id, e);
-                logger.database_operation("SELECT", "words", false, Some(&error_msg));
-                logger.api_response("create_study_plan", false, Some(&error_msg));
-                return Err(AppError::DatabaseError(error_msg));
-            }
-        }
+    // 验证单词是否存在 - 优化：使用 IN 查询避免 N+1 问题
+    if request.word_ids.is_empty() {
+        let error_msg = "Word IDs list cannot be empty";
+        logger.api_response("create_study_plan", false, Some(error_msg));
+        return Err(AppError::ValidationError(error_msg.to_string()));
     }
 
-    if valid_word_count != request.word_ids.len() {
+    let word_ids_str = request.word_ids.iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let word_check_query = format!(
+        "SELECT COUNT(*) as count FROM words WHERE id IN ({})",
+        word_ids_str
+    );
+
+    let valid_word_count: i64 = match sqlx::query(&word_check_query)
+        .fetch_one(pool.inner())
+        .await
+    {
+        Ok(row) => row.get("count"),
+        Err(e) => {
+            let error_msg = format!("Failed to validate words: {}", e);
+            logger.database_operation("SELECT", "words", false, Some(&error_msg));
+            logger.api_response("create_study_plan", false, Some(&error_msg));
+            return Err(AppError::DatabaseError(error_msg));
+        }
+    };
+
+    if valid_word_count != request.word_ids.len() as i64 {
         let error_msg = format!("Some words do not exist. Expected: {}, Found: {}", request.word_ids.len(), valid_word_count);
         logger.api_response("create_study_plan", false, Some(&error_msg));
         return Err(AppError::ValidationError(error_msg));
@@ -1657,23 +1666,40 @@ pub async fn create_word_book_from_analysis(
 
     if book_id_for_check > 0 {
         // 如果是向现有单词本添加单词，需要检查数据库重复
-        for word in &unique_words {
-            let check_query = "SELECT id FROM words WHERE word_book_id = ? AND LOWER(word) = LOWER(?)";
-            let existing_word: Option<(i64,)> = match sqlx::query_as(check_query)
-                .bind(book_id_for_check)
-                .bind(&word.word)
-                .fetch_optional(pool.inner())
-                .await
-            {
-                Ok(result) => result,
-                Err(e) => {
-                    let error_msg = format!("Failed to check word duplication: {}", e);
-                    logger.api_response("create_word_book_from_analysis", false, Some(&error_msg));
-                    return Err(AppError::DatabaseError(error_msg));
-                }
-            };
+        // 优化：使用单次 IN 查询而不是循环查询
+        let word_list: Vec<String> = unique_words.iter().map(|w| w.word.to_lowercase()).collect();
+        let word_list_str = word_list.iter()
+            .map(|w| format!("'{}'", w.replace("'", "''")))
+            .collect::<Vec<_>>()
+            .join(",");
 
-            if let Some((existing_id,)) = existing_word {
+        let check_query = format!(
+            "SELECT id, LOWER(word) as word_lower FROM words WHERE word_book_id = {} AND LOWER(word) IN ({})",
+            book_id_for_check, word_list_str
+        );
+
+        let existing_words: Vec<(i64, String)> = match sqlx::query_as(&check_query)
+            .fetch_all(pool.inner())
+            .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                let error_msg = format!("Failed to check word duplication: {}", e);
+                logger.api_response("create_word_book_from_analysis", false, Some(&error_msg));
+                return Err(AppError::DatabaseError(error_msg));
+            }
+        };
+
+        // 构建已存在单词的映射
+        let existing_map: std::collections::HashMap<String, i64> = existing_words
+            .into_iter()
+            .map(|(id, word)| (word, id))
+            .collect();
+
+        // 分类处理
+        for word in &unique_words {
+            let word_lower = word.word.to_lowercase();
+            if let Some(&existing_id) = existing_map.get(&word_lower) {
                 // 单词已存在，标记为更新
                 words_to_update.push((existing_id, word.clone()));
                 logger.info("DEDUPLICATION", &format!("Will update existing word: {} (ID: {})", word.word, existing_id));
@@ -1749,23 +1775,29 @@ pub async fn create_word_book_from_analysis(
 
         // 如果是新创建的单词本且提供了主题标签ID，创建关联
         if let Some(theme_tag_ids) = &request.theme_tag_ids {
-            for theme_tag_id in theme_tag_ids {
-                let insert_theme_query = r#"
-                    INSERT INTO word_book_theme_tags (word_book_id, theme_tag_id)
-                    VALUES (?, ?)
-                "#;
-                if let Err(e) = sqlx::query(insert_theme_query)
-                    .bind(new_book_id)
-                    .bind(theme_tag_id)
-                    .execute(pool.inner())
-                    .await
-                {
-                    let error_msg = format!("Failed to create theme tag association: {}", e);
-                    logger.database_operation("INSERT", "word_book_theme_tags", false, Some(&error_msg));
-                    // 不返回错误，因为单词本已经创建成功
-                    logger.info("WORD_BOOK", &format!("Warning: Failed to associate theme tag {} with book {}: {}", theme_tag_id, new_book_id, e));
-                } else {
-                    logger.database_operation("INSERT", "word_book_theme_tags", true, Some(&format!("Associated theme tag {} with book {}", theme_tag_id, new_book_id)));
+            // 优化：使用批量插入而不是循环插入
+            if !theme_tag_ids.is_empty() {
+                // 构建批量插入语句
+                let values: Vec<String> = theme_tag_ids.iter()
+                    .map(|id| format!("({}, {})", new_book_id, id))
+                    .collect();
+
+                let bulk_insert_query = format!(
+                    "INSERT INTO word_book_theme_tags (word_book_id, theme_tag_id) VALUES {}",
+                    values.join(", ")
+                );
+
+                match sqlx::query(&bulk_insert_query).execute(pool.inner()).await {
+                    Ok(_) => {
+                        logger.database_operation("INSERT", "word_book_theme_tags", true,
+                            Some(&format!("Associated {} theme tags with book {}", theme_tag_ids.len(), new_book_id)));
+                    }
+                    Err(e) => {
+                        let error_msg = format!("Failed to create theme tag associations: {}", e);
+                        logger.database_operation("INSERT", "word_book_theme_tags", false, Some(&error_msg));
+                        // 不返回错误，因为单词本已经创建成功
+                        logger.info("WORD_BOOK", &format!("Warning: Failed to associate theme tags with book {}: {}", new_book_id, e));
+                    }
                 }
             }
         }
