@@ -242,44 +242,27 @@ export class WordAnalysisService {
     onProgress: (progress: BatchAnalysisProgress) => void,
     onError?: (error: Error) => void
   ): void {
-    // 清除之前的定时器
     this.stopProgressPolling();
 
-    // 立即获取一次进度
-    this.getBatchAnalysisProgress()
-      .then(progress => {
-        onProgress(progress);
+    this.progressPollingTimer = window.setInterval(async () => {
+      try {
+        const currentProgress = await this.getBatchAnalysisProgress();
+        onProgress(currentProgress);
 
-        // 如果还在运行，启动轮询
-        if (progress.status === 'extracting' || progress.status === 'analyzing') {
-          this.progressPollingTimer = window.setInterval(async () => {
-            try {
-              const currentProgress = await this.getBatchAnalysisProgress();
-              onProgress(currentProgress);
-
-              // 如果分析完成或取消，停止轮询
-              if (
-                currentProgress.status === 'completed' ||
-                currentProgress.status === 'error'
-              ) {
-                this.stopProgressPolling();
-              }
-            } catch (error) {
-              console.error('WordAnalysisService: Progress polling error', error);
-              this.stopProgressPolling();
-              if (onError) {
-                onError(error instanceof Error ? error : new Error(String(error)));
-              }
-            }
-          }, 500); // 每 500ms 轮询一次
+        if (
+          currentProgress.status === 'completed' ||
+          currentProgress.status === 'error'
+        ) {
+          this.stopProgressPolling();
         }
-      })
-      .catch(error => {
-        console.error('WordAnalysisService: Initial progress fetch failed', error);
+      } catch (error) {
+        console.error('WordAnalysisService: Progress polling error', error);
+        this.stopProgressPolling();
         if (onError) {
           onError(error instanceof Error ? error : new Error(String(error)));
         }
-      });
+      }
+    }, 500); // 每 500ms 轮询一次
   }
 
   /**

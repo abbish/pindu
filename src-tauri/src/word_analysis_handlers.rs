@@ -490,12 +490,14 @@ async fn analyze_words_parallel(
                 }
 
                 // 发送批次开始事件
-                let _ = app_handle.emit_to("main", "batch-start", crate::types::word_analysis::BatchStartEvent {
+                if let Err(e) = app_handle.emit_to("main", "batch-start", crate::types::word_analysis::BatchStartEvent {
                     batch_index: batch_index_clone,
                     total_batches,
                     words: batch_words_clone.clone(),
-                });
-                
+                }) {
+                    logger.error("WORD_ANALYSIS", &format!("Failed to emit batch-start event: {}", e), None);
+                }
+
                 // 更新批次开始状态 - 立即更新单词状态为"analyzing"
                 for word in &batch_words_clone {
                     progress_manager.update_word_status(
@@ -506,34 +508,18 @@ async fn analyze_words_parallel(
                             result: None,
                         },
                     );
-                    
+
                     // 发送单词状态更新事件
-                    let _ = app_handle.emit_to("main", "word-status-update", crate::types::word_analysis::WordStatusUpdateEvent {
+                    if let Err(e) = app_handle.emit_to("main", "word-status-update", crate::types::word_analysis::WordStatusUpdateEvent {
                         word: word.clone(),
                         status: "analyzing".to_string(),
                         error: None,
-                    });
+                    }) {
+                        logger.error("WORD_ANALYSIS", &format!("Failed to emit word-status-update event for word '{}': {}", word, e), None);
+                    }
                 }
                 
                 // 在批次开始时更新进度，让进度条能够移动
-                progress_manager.update_analysis_progress(
-                    &crate::types::word_analysis::AnalysisProgress {
-                        total_words: total_words_count,
-                        completed_words: batch_index_clone * config.batch_size,
-                        failed_words: 0,
-                        current_word: None,
-                        batch_info: crate::types::word_analysis::BatchInfo {
-                            total_batches,
-                            completed_batches: batch_index_clone,
-                            current_batch: batch_index_clone,
-                            batch_size: config.batch_size,
-                        },
-                        elapsed_seconds: start_time.elapsed().as_secs_f64(),
-                    },
-                );
-                
-                // 预估更新分析进度 - 让进度条能够移动
-                // 假设这个批次的单词都在分析中
                 progress_manager.update_analysis_progress(
                     &crate::types::word_analysis::AnalysisProgress {
                         total_words: total_words_count,
@@ -571,22 +557,26 @@ async fn analyze_words_parallel(
                                     result: Some(word.clone()),
                                 },
                             );
-                            
+
                             // 发送单词状态更新事件
-                            let _ = app_handle.emit_to("main", "word-status-update", crate::types::word_analysis::WordStatusUpdateEvent {
+                            if let Err(e) = app_handle.emit_to("main", "word-status-update", crate::types::word_analysis::WordStatusUpdateEvent {
                                 word: word.word.clone(),
                                 status: "completed".to_string(),
                                 error: None,
-                            });
+                            }) {
+                                logger.error("WORD_ANALYSIS", &format!("Failed to emit word-status-update event for word '{}': {}", word.word, e), None);
+                            }
                         }
-                        
+
                         // 发送批次完成事件
-                        let _ = app_handle.emit_to("main", "batch-complete", crate::types::word_analysis::BatchCompleteEvent {
+                        if let Err(e) = app_handle.emit_to("main", "batch-complete", crate::types::word_analysis::BatchCompleteEvent {
                             batch_index: batch_index_clone,
                             completed_words: batch_results.len(),
                             failed_words: 0,
-                        });
-                        
+                        }) {
+                            logger.error("WORD_ANALYSIS", &format!("Failed to emit batch-complete event for batch {}: {}", batch_index_clone, e), None);
+                        }
+
                         (batch_index, Some(batch_results), Vec::new())
                     }
                     Err(e) => {
@@ -600,15 +590,17 @@ async fn analyze_words_parallel(
                                     result: None,
                                 },
                             );
-                            
+
                             // 发送单词状态更新事件
-                            let _ = app_handle.emit_to("main", "word-status-update", crate::types::word_analysis::WordStatusUpdateEvent {
+                            if let Err(e) = app_handle.emit_to("main", "word-status-update", crate::types::word_analysis::WordStatusUpdateEvent {
                                 word: word.clone(),
                                 status: "failed".to_string(),
                                 error: Some(e.to_string()),
-                            });
+                            }) {
+                                logger.error("WORD_ANALYSIS", &format!("Failed to emit word-status-update event for word '{}': {}", word, e), None);
+                            }
                         }
-                        
+
                         (batch_index, None, batch_words_clone)
                     }
                 }
@@ -664,14 +656,16 @@ async fn analyze_words_parallel(
     let total_words_count = words.len();
     let completed_words_count = analysis_results.len();
     let failed_words_count = failed_words.len();
-    
+
     // 发送分析完成事件
-    let _ = app_handle.emit_to("main", "analysis-complete", crate::types::word_analysis::AnalysisCompleteEvent {
+    if let Err(e) = app_handle.emit_to("main", "analysis-complete", crate::types::word_analysis::AnalysisCompleteEvent {
         total_words: total_words_count,
         completed_words: completed_words_count,
         failed_words: failed_words_count,
         elapsed_seconds: start_time.elapsed().as_secs_f64(),
-    });
+    }) {
+        logger.error("WORD_ANALYSIS", &format!("Failed to emit analysis-complete event: {}", e), None);
+    }
     
     Ok(BatchAnalysisResult {
         words: analysis_results,

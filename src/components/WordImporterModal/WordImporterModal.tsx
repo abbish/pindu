@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, WordGrid } from '../';
-import type { AIModel } from '../../types';
+import { WordAnalysisProgressModal } from '../WordAnalysisProgressModal';
+import type { AIModel, WordExtractionMode } from '../../types';
 import type { ExtractedWord } from '../WordGrid';
-import { WordBookService } from '../../services/wordbookService';
+import type { WordExtractionResult } from '../../types/word-analysis';
 import { AIModelService } from '../../services/aiModelService';
-import { WordAnalysisService } from '../../services/wordAnalysisService';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { wordAnalysisService } from '../../services/wordAnalysisService';
 import styles from './WordImporterModal.module.css';
+
+// 定义步骤类型
+type Step = 'input' | 'extraction' | 'confirmation' | 'batch-analysis' | 'selection';
 
 export interface WordImporterModalProps {
   /** 是否显示模态框 */
@@ -19,14 +22,6 @@ export interface WordImporterModalProps {
   saving: boolean;
 }
 
-type Step = 'input' | 'extraction' | 'confirmation' | 'batch-analysis' | 'result';
-
-// 单词分析状态
-type WordAnalysisStatus = 'pending' | 'analyzing' | 'completed' | 'failed';
-
-/**
- * 单词导入模态框组件 - 三步骤交互
- */
 export const WordImporterModal: React.FC<WordImporterModalProps> = ({
   isOpen,
   onClose,
@@ -34,51 +29,31 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
   saving
 }) => {
   const [currentStep, setCurrentStep] = useState<Step>('input');
-  const [extractedWordList, setExtractedWordList] = useState<string[]>([]);
   const [textContent, setTextContent] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
   const [extractedWords, setExtractedWords] = useState<ExtractedWord[]>([]);
-  const [wordAnalysisStatuses, setWordAnalysisStatuses] = useState<Record<string, WordAnalysisStatus>>({});
-  const [batchProgress, setBatchProgress] = useState<{
-    totalWords: number;
-    completedWords: number;
-    currentBatch: number;
-    totalBatches: number;
-  } | null>(null);
-  const [batchError, setBatchError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorType, setErrorType] = useState<'network' | 'parsing' | 'timeout' | 'validation' | 'size' | 'auth' | 'rate_limit' | 'unknown'>('unknown');
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [eventListenersRef, setEventListenersRef] = useState<UnlistenFn[]>([]);
+  const [extractionMode, setExtractionMode] = useState<WordExtractionMode>('focus');
+  const [extractedWordList, setExtractedWordList] = useState<WordExtractionResult | null>(null);
+  const [showProgressModal, setShowProgressModal] = useState(false);
 
-  const wordBookService = new WordBookService();
-  const aiModelService = new AIModelService();
-  const wordAnalysisService = new WordAnalysisService();
-
-  // 清理事件监听器的函数
-  const clearEventListeners = () => {
-    console.log('Clearing event listeners...');
-    eventListenersRef.forEach(unlisten => {
-      try {
-        unlisten();
-      } catch (err) {
-        console.error('Failed to unlisten event:', err);
-      }
-    });
-    setEventListenersRef([]);
+  // 添加状态变化监听
+  const handleExtractionModeChange = (mode: WordExtractionMode) => {
+    console.log('🎯 Extraction Mode Changed:', mode);
+    setExtractionMode(mode);
   };
+  const aiModelService = new AIModelService();
 
-  // 组件卸载时清理事件监听器和取消后端分析
+  // 组件卸载时取消批量分析
   useEffect(() => {
     return () => {
       console.log('Component unmounting, cleaning up...');
-      clearEventListeners();
-
-      // 组件卸载时尝试取消后端分析
-      if (currentStep === 'extraction' || currentStep === 'batch-analysis') {
-        wordBookService.cancelAnalysis().catch(err => {
-          console.error('Failed to cancel analysis on unmount:', err);
+      if (currentStep === 'batch-analysis') {
+        wordAnalysisService.cancelBatchAnalysis().catch(err => {
+          console.error('Failed to cancel batch analysis on unmount:', err);
         });
       }
     };
@@ -119,9 +94,6 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
       userFriendlyMessage = `分析过程中出现问题：\n\n具体错误：${errorMessage}\n\n建议解决方案：\n• 检查文本内容和格式\n• 尝试更换AI模型\n• 减少文本长度后重试\n• 如问题持续，请联系技术支持`;
     }
 
-    // 清理事件监听器和进度
-    clearEventListeners();
-
     setError(userFriendlyMessage);
     setErrorType(errorType);
     setCurrentStep('input');
@@ -160,6 +132,8 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
       default: return '分析错误';
     }
   };
+
+
 
   // 转换词性缩写
   const convertPOSAbbreviation = (pos: string): ExtractedWord['partOfSpeech'] => {
@@ -264,22 +238,14 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
   // 重置状态
   const resetState = () => {
     console.log('Resetting all state...');
-
-    // 清理事件监听器
-    clearEventListeners();
-
-    // 重置所有状态
     setCurrentStep('input');
     setTextContent('');
     setExtractedWords([]);
-    setExtractedWordList([]);
     setError(null);
     setErrorType('unknown');
     setUploadedFileName(null);
-    setWordAnalysisStatuses({});
-    setBatchProgress(null);
-    setBatchError(null);
-
+    setExtractedWordList(null);
+    setShowProgressModal(false);
     console.log('State reset completed');
   };
 
@@ -328,44 +294,16 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
     setError(null);
   };
 
-  // 取消分析
-  const handleCancelAnalysis = async () => {
-    console.log('Cancelling analysis...');
-
-    // 立即清理前端状态，避免用户等待
-    clearEventListeners();
-
-    try {
-      // 通知后端取消分析
-      console.log('Sending cancel request to backend...');
-      await wordBookService.cancelAnalysis();
-      console.log('Backend cancel request completed');
-    } catch (error) {
-      console.error('Failed to cancel backend analysis:', error);
-      // 即使后端取消失败，也要清理前端状态
-    }
-
-    // 重置所有状态
-    resetState();
-    setCurrentStep('input');
-    console.log('Analysis cancelled and state reset');
-  };
 
   // 关闭模态框
   const handleClose = async () => {
-    // 如果正在分析中，询问用户是否确认关闭
-    if (currentStep === 'extraction' || currentStep === 'batch-analysis') {
+    if (currentStep === 'batch-analysis') {
       if (window.confirm('分析正在进行中，确定要关闭吗？这将中断当前分析。')) {
-        console.log('User confirmed to close during analysis');
-
-        // 先取消分析
         try {
-          await wordBookService.cancelAnalysis();
-          console.log('Analysis cancelled before closing');
+          await wordAnalysisService.cancelBatchAnalysis();
         } catch (error) {
-          console.error('Failed to cancel analysis before closing:', error);
+          console.error('Failed to cancel batch analysis before closing:', error);
         }
-
         resetState();
         onClose();
       }
@@ -375,8 +313,8 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
     }
   };
 
-  // 开始分析（单词提取）
-  const handleStartAnalysis = async () => {
+  // 开始提取单词
+  const handleStartExtraction = async () => {
     if (!textContent.trim()) {
       handleError('请输入要分析的文本内容', 'Empty text content');
       return;
@@ -397,65 +335,80 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
     // 如果文本较长，给出警告但允许继续
     if (textLength > 3000) {
       const shouldContinue = window.confirm(
-        `文本内容较长（${textLength} 字符），分析可能需要较长时间。\n\n建议：\n• 分段处理可以提高成功率\n• 较长文本可能导致AI输出不稳定\n\n是否继续分析？`
+        `文本内容较长（${textLength} 字符），提取可能需要较长时间。\n\n建议：\n• 分段处理可以提高成功率\n• 较长文本可能导致AI输出不稳定\n\n是否继续提取？`
       );
       if (!shouldContinue) {
         return;
       }
     }
 
-    // 清除之前的错误状态
     clearError();
     setCurrentStep('extraction');
 
     try {
-      // 清除之前的进度
-      await wordAnalysisService.cancelBatchAnalysis();
-
-      // 开始提取单词（这是异步的，会在后台进行）
-      const extractionPromise = wordAnalysisService.extractWordsFromText(
+      const result = await wordAnalysisService.extractWordsFromText(
         textContent,
         parseInt(selectedModel)
       );
 
-      // 启动事件监听器
-      setupEventListeners().catch(err => {
-        console.error('Failed to setup event listeners:', err);
-      });
-
-      // 不等待分析完成，让轮询来处理进度更新
-      // 但同时监听Promise完成，作为备用机制
-      extractionPromise.then(result => {
-        if (result && result.words && result.words.length > 0) {
-          // 提取成功且有结果
-          const wordList = result.words.map((w: any) => w.word);
-          setExtractedWordList(wordList);
-          setCurrentStep('confirmation');
-        } else if (result && result.words && result.words.length === 0) {
-          // 提取成功但没有单词，可能是被取消了
-          console.log('Extraction completed with empty result, likely cancelled');
-          // 不需要处理，取消操作已经在handleCancelAnalysis中处理了
-        } else {
-          // 真正的错误
-          handleError('提取完成但未获取到有效结果', 'Promise resolved with invalid result');
-        }
-      }).catch(err => {
-        console.error('Extraction promise rejected:', err);
-        // 尝试从错误对象中提取更详细的信息
-        let errorMessage = '提取失败';
-        if (err instanceof Error) {
-          errorMessage = err.message;
-        } else if (typeof err === 'string') {
-          errorMessage = err;
-        } else if (err && typeof err === 'object' && err.error) {
-          errorMessage = err.error;
-        }
-        handleError(errorMessage, 'Promise rejected');
-      });
-
+      setExtractedWordList(result);
+      setCurrentStep('confirmation');
     } catch (err) {
-      handleError(err instanceof Error ? err.message : '提取失败', 'Extraction initiation failed');
+      handleError(err instanceof Error ? err.message : '提取失败', 'Extraction failed');
     }
+  };
+
+  // 开始批量分析
+  const handleStartBatchAnalysis = async () => {
+    if (!extractedWordList || extractedWordList.words.length === 0) {
+      handleError('没有可分析的单词', 'No words to analyze');
+      return;
+    }
+
+    const wordsToAnalyze = extractedWordList.words.map(w => w.word);
+    clearError();
+    setCurrentStep('batch-analysis');
+    setShowProgressModal(true);
+
+    try {
+      await wordAnalysisService.analyzeExtractedWords(
+        wordsToAnalyze,
+        parseInt(selectedModel),
+        {
+          batchSize: 5,
+          maxConcurrentBatches: 5,
+          retryFailedWords: true,
+          maxRetries: 2,
+          timeoutPerBatch: 60,
+        },
+        {
+          onProgress: () => {},
+          onComplete: (result) => {
+            setShowProgressModal(false);
+            const convertedWords = convertPhonicsToExtracted(result.words);
+            setExtractedWords(convertedWords);
+            setCurrentStep('selection');
+          },
+          onError: (err) => {
+            handleError(err.message, 'Batch analysis failed');
+            setShowProgressModal(false);
+            setCurrentStep('confirmation');
+          },
+        }
+      );
+    } catch (err) {
+      handleError(err instanceof Error ? err.message : '批量分析失败', 'Batch analysis failed');
+      setShowProgressModal(false);
+      setCurrentStep('confirmation');
+    }
+  };
+
+  // 重新提取
+  const handleReextract = () => {
+    setExtractedWords([]);
+    setError(null);
+    setExtractedWordList(null);
+    setCurrentStep('input');
   };
 
   // 显示大文件处理帮助
@@ -480,158 +433,22 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
    • 可以多次使用导入功能
    • 系统会自动去重和合并单词
 
-是否要继续尝试分析当前文本？`;
+ 是否要继续尝试提取当前文本？`;
 
     if (window.confirm(helpMessage)) {
-      handleStartAnalysis();
+      handleStartExtraction();
     }
   };
 
-  // 开始批量分析
-  const handleStartBatchAnalysis = async () => {
-    clearError();
-    setBatchError(null);
-    setCurrentStep('batch-analysis');
-
-    try {
-      // 设置初始进度
-      setBatchProgress({
-        totalWords: extractedWordList.length,
-        completedWords: 0,
-        currentBatch: 0,
-        totalBatches: Math.ceil(extractedWordList.length / 5)
-      });
-      setWordAnalysisStatuses(
-        extractedWordList.reduce((acc, word) => {
-          acc[word] = 'pending';
-          return acc;
-        }, {} as Record<string, WordAnalysisStatus>)
-      );
-
-      // 开始批量分析，使用进度轮询
-      await wordAnalysisService.analyzeExtractedWords(
-        extractedWordList,
-        undefined,
-        {
-          batchSize: 5,
-          maxConcurrentBatches: 5,
-          retryFailedWords: true,
-          maxRetries: 2,
-          timeoutPerBatch: 60
-        },
-        {
-          onProgress: (progress) => {
-            console.log('Batch analysis progress:', progress);
-            
-            // 更新批次进度
-            if (progress.analysisProgress) {
-              const { totalWords, completedWords, batchInfo } = progress.analysisProgress;
-              setBatchProgress({
-                totalWords,
-                completedWords,
-                currentBatch: batchInfo.completedBatches,
-                totalBatches: batchInfo.totalBatches
-              });
-            }
-
-            // 更新单词状态 - wordStatuses 是数组
-            if (progress.wordStatuses && progress.wordStatuses.length > 0) {
-              setWordAnalysisStatuses(prev => {
-                const newStatuses = { ...prev };
-                progress.wordStatuses!.forEach(wordStatus => {
-                  newStatuses[wordStatus.word] = wordStatus.status as WordAnalysisStatus;
-                });
-                return newStatuses;
-              });
-            }
-          },
-          onComplete: (batchResult) => {
-            console.log('Batch analysis completed:', batchResult);
-            // 分析完成
-            const convertedWords = convertPhonicsToExtracted(batchResult.words);
-            setExtractedWords(convertedWords);
-            setBatchError(null);
-            setCurrentStep('result');
-          },
-          onError: (error) => {
-            console.error('Batch analysis error:', error);
-            // 在当前页面显示错误，不跳转回输入页面
-            setBatchError(error.message || '批量分析失败');
-          }
-        }
-      );
-    } catch (err) {
-      // 在当前页面显示错误，不跳转回输入页面
-      setBatchError(err instanceof Error ? err.message : '批量分析失败');
-    }
-  };
-
-  // 重试批量分析
-  const handleRetryBatchAnalysis = () => {
-    setBatchError(null);
-    handleStartBatchAnalysis();
-  };
-
-  // 设置事件监听器
-  const setupEventListeners = async () => {
-    console.log('Setting up event listeners...');
-    
-    const unlistenFns: UnlistenFn[] = [];
-
-    try {
-      // 监听批次开始事件
-      const unlistenBatchStart = await listen('batch-start', (event) => {
-        console.log('Batch start event:', event.payload);
-      });
-      unlistenFns.push(unlistenBatchStart);
-
-      // 监听单词状态更新事件
-      const unlistenWordStatus = await listen('word-status-update', (event) => {
-        console.log('Word status update event:', event.payload);
-        const payload = event.payload as { word: string; status: string; error?: string };
-        setWordAnalysisStatuses(prev => ({
-          ...prev,
-          [payload.word]: payload.status as WordAnalysisStatus
-        }));
-      });
-      unlistenFns.push(unlistenWordStatus);
-
-      // 监听批次完成事件
-      const unlistenBatchComplete = await listen('batch-complete', (event) => {
-        console.log('Batch complete event:', event.payload);
-        const payload = event.payload as { batchIndex: number; completedWords: number; failedWords: number };
-        setBatchProgress(prev => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            completedWords: prev.completedWords + payload.completedWords,
-            currentBatch: payload.batchIndex + 1
-          };
-        });
-      });
-      unlistenFns.push(unlistenBatchComplete);
-
-      // 监听分析完成事件
-      const unlistenAnalysisComplete = await listen('analysis-complete', (event) => {
-        console.log('Analysis complete event:', event.payload);
-        // 分析完成后，前端会通过 Promise 的 then/catch 处理结果
-      });
-      unlistenFns.push(unlistenAnalysisComplete);
-
-      // 监听分析错误事件
-      const unlistenAnalysisError = await listen('analysis-error', (event) => {
-        console.error('Analysis error event:', event.payload);
-        const payload = event.payload as { message: string };
-        setBatchError(payload.message);
-      });
-      unlistenFns.push(unlistenAnalysisError);
-
-      setEventListenersRef(unlistenFns);
-      console.log('Event listeners set up:', unlistenFns.length);
-    } catch (err) {
-      console.error('Failed to setup event listeners:', err);
-    }
-  };
+  // 返回输入步骤
+  // const handleBackToInput = () => {
+  //   setCurrentStep('input');
+  //   setExtractedWords([]);
+  //   setAnalysisProgress(null);
+  //   setError(null);
+  //   setAnalysisResult(null);
+  //   setAnalysisPromiseRef(null);
+  // };
 
   // 单词选择切换
   const handleWordToggle = (wordId: string) => {
@@ -743,6 +560,52 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
         </select>
       </div>
 
+      {/* 提取模式选择 */}
+      <div className={styles.extractionModeSection}>
+        <label className={styles.modelLabel}>提取模式:</label>
+        <div className={styles.modeOptions}>
+          <label className={`${styles.modeOption} ${extractionMode === 'focus' ? styles.selected : ''}`}>
+            <input
+              type="radio"
+              name="extractionMode"
+              value="focus"
+              checked={extractionMode === 'focus'}
+              onChange={(e) => handleExtractionModeChange(e.target.value as WordExtractionMode)}
+              className={styles.modeRadio}
+            />
+            <div className={styles.modeContent}>
+              <div className={styles.modeTitle}>
+                <i className="fas fa-bullseye" />
+                重点模式（推荐）
+              </div>
+              <div className={styles.modeDescription}>
+                过滤掉 a、the、is 等简单词汇，专注于有学习价值的单词
+              </div>
+            </div>
+          </label>
+
+          <label className={`${styles.modeOption} ${extractionMode === 'all' ? styles.selected : ''}`}>
+            <input
+              type="radio"
+              name="extractionMode"
+              value="all"
+              checked={extractionMode === 'all'}
+              onChange={(e) => handleExtractionModeChange(e.target.value as WordExtractionMode)}
+              className={styles.modeRadio}
+            />
+            <div className={styles.modeContent}>
+              <div className={styles.modeTitle}>
+                <i className="fas fa-list" />
+                全量模式
+              </div>
+              <div className={styles.modeDescription}>
+                提取文本中的所有单词，包括简单的功能词
+              </div>
+            </div>
+          </label>
+        </div>
+      </div>
+
       {error && (
         <div className={`${styles.error} ${styles[`error${errorType.charAt(0).toUpperCase() + errorType.slice(1)}`] || ''}`}>
           <div className={styles.errorHeader}>
@@ -770,10 +633,10 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
                 size="sm"
                 onClick={() => {
                   clearError();
-                  handleStartAnalysis();
+                  handleStartExtraction();
                 }}
               >
-                重新分析
+                重新提取
               </Button>
             )}
             {errorType === 'size' && (
@@ -798,228 +661,96 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
         </Button>
         <Button 
           variant="primary" 
-          onClick={handleStartAnalysis}
+          onClick={handleStartExtraction}
           disabled={!textContent.trim() || !selectedModel}
         >
-          开始分析
+          提取单词
         </Button>
       </div>
     </div>
   );
 
-  // 渲染单词提取步骤
+  // 渲染提取进度步骤
   const renderExtractionStep = () => (
     <div className={styles.stepContent}>
       <div className={styles.stepHeader}>
         <h3>步骤 2: 提取单词</h3>
-        <p>AI 正在分析文本并提取单词，请稍候...</p>
+        <p>正在从文本中提取单词，请稍候...</p>
       </div>
 
       <div className={styles.progressSection}>
-        <div className={styles.loadingContainer}>
-          <div className={styles.spinner}>
-            <i className="fas fa-spinner fa-spin" />
+        <div className={styles.progressInfo}>
+          <div className={styles.progressStep}>
+            <i className="fas fa-cog fa-spin" />
+            AI 正在分析文本
           </div>
-          <p className={styles.loadingText}>正在提取单词...</p>
         </div>
-      </div>
-
-      <div className={styles.stepActions}>
-        <Button
-          variant="secondary"
-          onClick={handleCancelAnalysis}
-        >
-          取消
-        </Button>
       </div>
     </div>
   );
 
-  // 渲染单词确认步骤
-  const renderConfirmationStep = () => (
-    <div className={styles.stepContent}>
-      <div className={styles.stepHeader}>
-        <h3>步骤 3: 确认单词</h3>
-        <p>请确认提取的单词，然后开始批量分析</p>
-      </div>
+  // 渲染确认步骤
+  const renderConfirmationStep = () => {
+    if (!extractedWordList) {
+      return null;
+    }
 
-      <div className={styles.confirmationSection}>
-        <div className={styles.wordList}>
-          {extractedWordList.map((word, index) => (
-            <div key={index} className={styles.wordItem}>
-              <span className={styles.wordIndex}>{index + 1}.</span>
-              <span className={styles.wordText}>{word}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+    const words = extractedWordList.words.map((w, index) => ({
+      id: `${index}`,
+      word: w.word,
+      meaning: '',
+      partOfSpeech: 'n.' as const,
+      frequency: w.frequency,
+      selected: true,
+    }));
 
-      {error && (
-        <div className={`${styles.error} ${styles[`error${errorType.charAt(0).toUpperCase() + errorType.slice(1)}`] || ''}`}>
-          <div className={styles.errorHeader}>
-            <i className={`fas ${getErrorIcon(errorType)}`} />
-            <span className={styles.errorTitle}>{getErrorTitle(errorType)}</span>
-          </div>
-          <div className={styles.errorMessage}>
-            {error.split('\n').map((line, index) => (
-              <div key={index} className={styles.errorLine}>
-                {line}
-              </div>
-            ))}
-          </div>
-          <div className={styles.errorActions}>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={clearError}
-            >
-              知道了
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <div className={styles.stepActions}>
-        <Button variant="secondary" onClick={handleClose}>
-          取消
-        </Button>
-        <Button 
-          variant="primary" 
-          onClick={handleStartBatchAnalysis}
-        >
-          开始批量分析 ({extractedWordList.length} 个单词)
-        </Button>
-      </div>
-    </div>
-  );
-
-  // 渲染批量分析步骤
-  const renderBatchAnalysisStep = () => {
-    if (!batchProgress) return null;
-    
-    const progress = (batchProgress.completedWords / batchProgress.totalWords) * 100;
-    
     return (
       <div className={styles.stepContent}>
         <div className={styles.stepHeader}>
-          <h3>步骤 4: 批量分析中</h3>
-          <p>AI 正在分析每个单词的自然拼读信息</p>
+          <h3>步骤 3: 确认单词</h3>
+          <p>共提取 {extractedWordList.uniqueCount} 个不重复单词，请确认要分析的单词</p>
         </div>
 
-        {/* 错误显示 */}
-        {batchError && (
-          <div className={`${styles.error} ${styles.batchError}`}>
-            <div className={styles.errorHeader}>
-              <i className="fas fa-exclamation-triangle" />
-              <span className={styles.errorTitle}>分析失败</span>
-            </div>
-            <div className={styles.errorMessage}>
-              {batchError.split('\n').map((line, index) => (
-                <div key={index} className={styles.errorLine}>
-                  {line}
-                </div>
-              ))}
-            </div>
-            <div className={styles.errorActions}>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleCancelAnalysis}
-              >
-                取消
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleRetryBatchAnalysis}
-              >
-                重试
-              </Button>
-            </div>
-          </div>
-        )}
-
-        <div className={styles.resultSection}>
-          <div className={styles.resultHeader}>
-            <h3>批量分析中...</h3>
-            <p>
-              批次 {batchProgress.currentBatch}/{batchProgress.totalBatches} ·
-              已完成 {batchProgress.completedWords}/{batchProgress.totalWords} 个单词
-            </p>
-          </div>
-
-          {/* 总体进度条 */}
-          <div className={styles.progressBar}>
-            <div className={styles.progressFill} style={{ width: `${progress}%` }} />
-          </div>
-          <div className={styles.progressText}>{progress.toFixed(1)}%</div>
-        </div>
-
-        {/* 单词列表表格 */}
-        <div className={styles.wordTable}>
-          <table>
-            <thead>
-              <tr>
-                <th>单词</th>
-                <th>状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {extractedWordList.map((word, index) => {
-                const status = wordAnalysisStatuses[word] || 'pending';
-                return (
-                  <tr key={index}>
-                    <td>{word}</td>
-                    <td>
-                      {status === 'pending' && (
-                        <span className={styles.statusPending}>
-                          <i className="fas fa-clock" />
-                          等待中
-                        </span>
-                      )}
-                      {status === 'analyzing' && (
-                        <span className={styles.statusAnalyzing}>
-                          <i className="fas fa-spinner fa-spin" />
-                          分析中
-                        </span>
-                      )}
-                      {status === 'completed' && (
-                        <span className={styles.statusCompleted}>
-                          <i className="fas fa-check-circle" />
-                          已完成
-                        </span>
-                      )}
-                      {status === 'failed' && (
-                        <span className={styles.statusFailed}>
-                          <i className="fas fa-times-circle" />
-                          失败
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className={styles.selectionSection}>
+          <WordGrid
+            words={words}
+            onWordToggle={(wordId) => {
+              const newWords = words.map(w => 
+                w.id === wordId ? { ...w, selected: !w.selected } : w
+              );
+              setExtractedWords(newWords);
+            }}
+            onSelectAll={(selected) => {
+              const newWords = words.map(w => ({ ...w, selected }));
+              setExtractedWords(newWords);
+            }}
+          />
         </div>
 
         <div className={styles.stepActions}>
-          <Button
-            variant="secondary"
-            onClick={handleCancelAnalysis}
+          <Button variant="secondary" onClick={handleReextract}>
+            重新提取
+          </Button>
+          <Button variant="secondary" onClick={handleClose}>
+            取消
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleStartBatchAnalysis}
+            disabled={words.filter(w => w.selected).length === 0}
           >
-            取消分析
+            批量分析 ({words.filter(w => w.selected).length})
           </Button>
         </div>
       </div>
     );
   };
 
-  // 渲染结果步骤
-  const renderResultStep = () => (
+  // 渲染单词选择步骤
+  const renderSelectionStep = () => (
     <div className={styles.stepContent}>
       <div className={styles.stepHeader}>
-        <h3>步骤 5: 选择单词</h3>
+        <h3>步骤 3: 选择单词</h3>
         <p>请选择要添加到单词本的单词</p>
       </div>
 
@@ -1057,6 +788,9 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
       )}
 
       <div className={styles.stepActions}>
+        <Button variant="secondary" onClick={handleReextract}>
+          重新提取
+        </Button>
         <Button variant="secondary" onClick={handleClose}>
           取消
         </Button>
@@ -1081,10 +815,8 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
         return renderExtractionStep();
       case 'confirmation':
         return renderConfirmationStep();
-      case 'batch-analysis':
-        return renderBatchAnalysisStep();
-      case 'result':
-        return renderResultStep();
+      case 'selection':
+        return renderSelectionStep();
       default:
         return renderInputStep();
     }
@@ -1100,27 +832,27 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
       <div className={styles.modalContent}>
         {/* 步骤指示器 */}
         <div className={styles.stepIndicator}>
-          <div className={`${styles.step} ${currentStep === 'input' ? styles.active : ''} ${['extraction', 'confirmation', 'batch-analysis', 'result'].includes(currentStep) ? styles.completed : ''}`}>
+          <div className={`${styles.step} ${currentStep === 'input' ? styles.active : ''} ${currentStep !== 'input' ? styles.completed : ''}`}>
             <div className={styles.stepNumber}>1</div>
             <div className={styles.stepLabel}>输入文本</div>
           </div>
           <div className={styles.stepConnector} />
-          <div className={`${styles.step} ${currentStep === 'extraction' ? styles.active : ''} ${['confirmation', 'batch-analysis', 'result'].includes(currentStep) ? styles.completed : ''}`}>
+          <div className={`${styles.step} ${currentStep === 'extraction' ? styles.active : ''} ${currentStep !== 'input' && currentStep !== 'extraction' ? styles.completed : ''}`}>
             <div className={styles.stepNumber}>2</div>
             <div className={styles.stepLabel}>提取单词</div>
           </div>
           <div className={styles.stepConnector} />
-          <div className={`${styles.step} ${currentStep === 'confirmation' ? styles.active : ''} ${['batch-analysis', 'result'].includes(currentStep) ? styles.completed : ''}`}>
+          <div className={`${styles.step} ${currentStep === 'confirmation' ? styles.active : ''} ${currentStep !== 'input' && currentStep !== 'extraction' && currentStep !== 'confirmation' ? styles.completed : ''}`}>
             <div className={styles.stepNumber}>3</div>
             <div className={styles.stepLabel}>确认单词</div>
           </div>
           <div className={styles.stepConnector} />
-          <div className={`${styles.step} ${currentStep === 'batch-analysis' ? styles.active : ''} ${currentStep === 'result' ? styles.completed : ''}`}>
+          <div className={`${styles.step} ${currentStep === 'batch-analysis' ? styles.active : ''} ${currentStep === 'selection' ? styles.completed : ''}`}>
             <div className={styles.stepNumber}>4</div>
             <div className={styles.stepLabel}>批量分析</div>
           </div>
           <div className={styles.stepConnector} />
-          <div className={`${styles.step} ${currentStep === 'result' ? styles.active : ''}`}>
+          <div className={`${styles.step} ${currentStep === 'selection' ? styles.active : ''}`}>
             <div className={styles.stepNumber}>5</div>
             <div className={styles.stepLabel}>选择单词</div>
           </div>
@@ -1129,6 +861,17 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
         {/* 当前步骤内容 */}
         {renderCurrentStep()}
       </div>
+
+      {/* 批量分析进度模态框 */}
+      <WordAnalysisProgressModal
+        isOpen={showProgressModal}
+        onClose={() => setShowProgressModal(false)}
+        onError={(err) => {
+          handleError(err.message, 'Batch analysis failed');
+          setShowProgressModal(false);
+          setCurrentStep('confirmation');
+        }}
+      />
     </Modal>
   );
 };
