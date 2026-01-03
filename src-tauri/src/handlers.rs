@@ -5208,7 +5208,7 @@ pub async fn get_study_plan_calendar_data(
     let start_date = chrono::NaiveDate::from_ymd_opt(year, month as u32, 1)
         .ok_or_else(|| AppError::ValidationError("Invalid date".to_string()))?;
 
-    let end_date = if month == 12 {
+    let _end_date = if month == 12 {
         chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
     } else {
         chrono::NaiveDate::from_ymd_opt(year, month as u32 + 1, 1)
@@ -5261,7 +5261,7 @@ pub async fn get_study_plan_calendar_data(
     while current_date <= calendar_end {
         let date_str = current_date.format("%Y-%m-%d").to_string();
         let is_today = current_date == today;
-        let is_in_current_month = current_date.month() == month as u32;
+        let _is_in_current_month = current_date.month() == month as u32;
 
         let (total_words, new_words, review_words, completed_words) =
             schedule_map.get(&date_str).copied().unwrap_or((0, 0, 0, 0));

@@ -159,7 +159,7 @@ pub async fn analyze_text_with_batching(
 /// 获取批量分析进度（新命令）
 #[tauri::command]
 pub async fn get_batch_analysis_progress(
-    app: AppHandle,
+    _app: AppHandle,
 ) -> AppResult<BatchAnalysisProgress> {
     let progress_manager = get_enhanced_progress_manager();
     Ok(progress_manager.get_full_progress())
@@ -167,7 +167,7 @@ pub async fn get_batch_analysis_progress(
 
 /// 取消批量分析（新命令）
 #[tauri::command]
-pub async fn cancel_batch_analysis(app: AppHandle) -> AppResult<()> {
+pub async fn cancel_batch_analysis(_app: AppHandle) -> AppResult<()> {
     let progress_manager = get_enhanced_progress_manager();
     progress_manager.cancel_analysis();
     Ok(())
