@@ -4,6 +4,7 @@ mod error;
 mod handlers;
 mod logger;
 mod validator;
+mod repositories;
 mod ai_service;
 mod ai_model_handlers;
 mod tts_service;
