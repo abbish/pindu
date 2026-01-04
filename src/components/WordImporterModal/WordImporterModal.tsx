@@ -3,7 +3,7 @@ import { Modal, Button, WordGrid } from '../';
 import { WordAnalysisProgressModal } from '../WordAnalysisProgressModal';
 import type { AIModel, WordExtractionMode } from '../../types';
 import type { ExtractedWord } from '../WordGrid';
-import type { WordExtractionResult } from '../../types/word-analysis';
+import type { WordExtractionResult, BatchAnalysisProgress } from '../../types/word-analysis';
 import { AIModelService } from '../../services/aiModelService';
 import { wordAnalysisService } from '../../services/wordAnalysisService';
 import styles from './WordImporterModal.module.css';
@@ -39,6 +39,7 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
   const [extractionMode, setExtractionMode] = useState<WordExtractionMode>('focus');
   const [extractedWordList, setExtractedWordList] = useState<WordExtractionResult | null>(null);
   const [showProgressModal, setShowProgressModal] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<BatchAnalysisProgress | null>(null);
 
   // 添加状态变化监听
   const handleExtractionModeChange = (mode: WordExtractionMode) => {
@@ -382,17 +383,22 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
           timeoutPerBatch: 60,
         },
         {
-          onProgress: () => {},
+          onProgress: (progress) => {
+            // ✅ 更新进度信息，包括 wordStatuses
+            setAnalysisProgress(progress);
+          },
           onComplete: (result) => {
             setShowProgressModal(false);
             const convertedWords = convertPhonicsToExtracted(result.words);
             setExtractedWords(convertedWords);
             setCurrentStep('selection');
+            setAnalysisProgress(null);
           },
           onError: (err) => {
             handleError(err.message, 'Batch analysis failed');
             setShowProgressModal(false);
             setCurrentStep('confirmation');
+            setAnalysisProgress(null);
           },
         }
       );
@@ -695,14 +701,17 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
       return null;
     }
 
-    const words = extractedWordList.words.map((w, index) => ({
-      id: `${index}`,
-      word: w.word,
-      meaning: '',
-      partOfSpeech: 'n.' as const,
-      frequency: w.frequency,
-      selected: true,
-    }));
+    const words = extractedWordList.words.map((w, index) => {
+      const pos = convertPOSAbbreviation(w.partOfSpeech || 'n.');
+      return {
+        id: `${index}`,
+        word: w.word,
+        meaning: w.meaning || '', // 使用提取时提供的中文翻译
+        partOfSpeech: pos,
+        frequency: w.frequency,
+        selected: true,
+      };
+    });
 
     return (
       <div className={styles.stepContent}>
@@ -865,6 +874,7 @@ export const WordImporterModal: React.FC<WordImporterModalProps> = ({
       {/* 批量分析进度模态框 */}
       <WordAnalysisProgressModal
         isOpen={showProgressModal}
+        progress={analysisProgress || undefined}  // ✅ 传递进度信息（将 null 转换为 undefined）
         onClose={() => setShowProgressModal(false)}
         onError={(err) => {
           handleError(err.message, 'Batch analysis failed');

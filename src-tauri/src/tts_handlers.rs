@@ -1,9 +1,9 @@
-use tauri::{AppHandle, Manager};
-use sqlx::{SqlitePool, Row};
-use crate::error::{AppResult, AppError};
-use crate::types::tts::*;
-use crate::tts_service::TTSService;
+use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::tts_service::TTSService;
+use crate::types::tts::*;
+use sqlx::{Row, SqlitePool};
+use tauri::{AppHandle, Manager};
 
 /// 文本转语音
 #[tauri::command]
@@ -16,7 +16,14 @@ pub async fn text_to_speech(
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("text_to_speech", Some(&format!("text_length: {}, voice_id: {:?}", text.len(), voice_id)));
+    logger.api_request(
+        "text_to_speech",
+        Some(&format!(
+            "text_length: {}, voice_id: {:?}",
+            text.len(),
+            voice_id
+        )),
+    );
 
     // 获取缓存目录
     let cache_dir = match app.path().app_cache_dir() {
@@ -30,12 +37,14 @@ pub async fn text_to_speech(
 
     let tts_service = TTSService::new(cache_dir, (*logger).clone());
 
-    let result = tts_service.text_to_speech(
-        &text,
-        voice_id.as_deref(),
-        use_cache.unwrap_or(true),
-        pool.inner(),
-    ).await;
+    let result = tts_service
+        .text_to_speech(
+            &text,
+            voice_id.as_deref(),
+            use_cache.unwrap_or(true),
+            pool.inner(),
+        )
+        .await;
 
     match &result {
         Ok(_) => logger.api_response("text_to_speech", true, None),
@@ -114,7 +123,11 @@ pub async fn get_tts_voices(app: AppHandle) -> AppResult<Vec<TTSVoice>> {
         },
     ];
 
-    logger.api_response("get_tts_voices", true, Some(&format!("Returned {} voices", voices.len())));
+    logger.api_response(
+        "get_tts_voices",
+        true,
+        Some(&format!("Returned {} voices", voices.len())),
+    );
     Ok(voices)
 }
 
@@ -140,13 +153,24 @@ pub async fn get_default_tts_voice(app: AppHandle) -> AppResult<Option<TTSVoice>
             let default_voice = voices.into_iter().find(|v| v.voice_id == default_voice_id);
 
             if let Some(voice) = default_voice {
-                logger.api_response("get_default_tts_voice", true, Some(&format!("Found default voice: {}", voice.display_name)));
+                logger.api_response(
+                    "get_default_tts_voice",
+                    true,
+                    Some(&format!("Found default voice: {}", voice.display_name)),
+                );
                 Ok(Some(voice))
             } else {
                 // 如果没找到配置的默认语音，返回第一个语音作为默认
                 let voices = get_tts_voices(app.clone()).await?;
                 if let Some(first_voice) = voices.into_iter().next() {
-                    logger.api_response("get_default_tts_voice", true, Some(&format!("Using first voice as default: {}", first_voice.display_name)));
+                    logger.api_response(
+                        "get_default_tts_voice",
+                        true,
+                        Some(&format!(
+                            "Using first voice as default: {}",
+                            first_voice.display_name
+                        )),
+                    );
                     Ok(Some(first_voice))
                 } else {
                     logger.api_response("get_default_tts_voice", true, Some("No voices available"));
@@ -155,7 +179,11 @@ pub async fn get_default_tts_voice(app: AppHandle) -> AppResult<Option<TTSVoice>
             }
         }
         Ok(None) => {
-            logger.api_response("get_default_tts_voice", true, Some("No ElevenLabs config found"));
+            logger.api_response(
+                "get_default_tts_voice",
+                true,
+                Some("No ElevenLabs config found"),
+            );
             Ok(None)
         }
         Err(e) => {
@@ -170,29 +198,24 @@ pub async fn get_default_tts_voice(app: AppHandle) -> AppResult<Option<TTSVoice>
 #[tauri::command]
 pub async fn get_tts_providers(_app: AppHandle) -> AppResult<Vec<TTSProvider>> {
     // 返回固定的ElevenLabs提供商信息
-    let providers = vec![
-        TTSProvider {
-            id: 1,
-            name: "elevenlabs".to_string(),
-            display_name: "ElevenLabs".to_string(),
-            base_url: "https://api.elevenlabs.io".to_string(),
-            api_key: "".to_string(), // 不在这里暴露API Key
-            description: Some("ElevenLabs Text-to-Speech服务".to_string()),
-            is_active: true,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
-        }
-    ];
+    let providers = vec![TTSProvider {
+        id: 1,
+        name: "elevenlabs".to_string(),
+        display_name: "ElevenLabs".to_string(),
+        base_url: "https://api.elevenlabs.io".to_string(),
+        api_key: "".to_string(), // 不在这里暴露API Key
+        description: Some("ElevenLabs Text-to-Speech服务".to_string()),
+        is_active: true,
+        created_at: "2024-01-01T00:00:00Z".to_string(),
+        updated_at: "2024-01-01T00:00:00Z".to_string(),
+    }];
 
     Ok(providers)
 }
 
 /// 清理TTS缓存 - 简化实现
 #[tauri::command]
-pub async fn clear_tts_cache(
-    _app: AppHandle,
-    _older_than_days: Option<i32>,
-) -> AppResult<i32> {
+pub async fn clear_tts_cache(_app: AppHandle, _older_than_days: Option<i32>) -> AppResult<i32> {
     // 模拟清理结果
     Ok(10)
 }
@@ -223,8 +246,6 @@ pub async fn get_elevenlabs_config(app: AppHandle) -> AppResult<ElevenLabsConfig
         default_voice_id: row.get("default_voice_id"),
     };
 
-
-
     logger.api_response("get_elevenlabs_config", true, None);
     Ok(config)
 }
@@ -246,9 +267,10 @@ pub async fn update_elevenlabs_config(
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("update_elevenlabs_config", Some(&format!("api_key: {:?}, model_id: {:?}", api_key, model_id)));
-
-
+    logger.api_request(
+        "update_elevenlabs_config",
+        Some(&format!("api_key: {:?}, model_id: {:?}", api_key, model_id)),
+    );
 
     // 构建动态更新查询
     let mut query_parts = Vec::new();
@@ -298,9 +320,10 @@ pub async fn update_elevenlabs_config(
     }
 
     query_parts.push("updated_at = CURRENT_TIMESTAMP");
-    let update_query = format!("UPDATE elevenlabs_config SET {} WHERE id = 1", query_parts.join(", "));
-
-
+    let update_query = format!(
+        "UPDATE elevenlabs_config SET {} WHERE id = 1",
+        query_parts.join(", ")
+    );
 
     let mut query = sqlx::query(&update_query);
 
@@ -343,22 +366,27 @@ pub async fn update_elevenlabs_config(
 
     // 注意：不再需要同步到tts_providers表，因为现在只使用elevenlabs_config表
 
-    logger.api_response("update_elevenlabs_config", true, Some("Config updated successfully"));
+    logger.api_response(
+        "update_elevenlabs_config",
+        true,
+        Some("Config updated successfully"),
+    );
     Ok(())
 }
-
-
 
 /// 设置默认语音 - 更新ElevenLabs配置中的默认语音ID
 #[tauri::command]
 pub async fn set_default_tts_voice(
     app: AppHandle,
-    voice_id: String,  // 现在使用voice_id字符串而不是数据库ID
+    voice_id: String, // 现在使用voice_id字符串而不是数据库ID
 ) -> AppResult<()> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("set_default_tts_voice", Some(&format!("voice_id: {}", voice_id)));
+    logger.api_request(
+        "set_default_tts_voice",
+        Some(&format!("voice_id: {}", voice_id)),
+    );
 
     // 验证voice_id是否有效
     let voices = get_tts_voices(app.clone()).await?;

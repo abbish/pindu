@@ -1,22 +1,23 @@
-mod types;
 mod database;
 mod error;
 mod handlers;
 mod logger;
-mod validator;
 mod repositories;
-mod ai_service;
+mod services;
+mod types;
+
 mod ai_model_handlers;
-mod tts_service;
-mod tts_handlers;
+mod ai_service;
 mod progress_manager;
+mod tts_handlers;
+mod tts_service;
 mod word_analysis_handlers;
 
 #[cfg(test)]
 mod test_statistics;
 
-use handlers::*;
 use database::DatabaseManager;
+use handlers::*;
 use logger::Logger;
 use tauri::Manager;
 
@@ -36,7 +37,8 @@ pub fn run() {
 
             tauri::async_runtime::block_on(async {
                 // 获取应用数据目录
-                let app_data_dir = app.path()
+                let app_data_dir = app
+                    .path()
                     .app_data_dir()
                     .expect("Failed to get app data directory");
 
@@ -45,11 +47,13 @@ pub fn run() {
                     .expect("Failed to create app data directory");
 
                 // 初始化日志系统
-                let logger = Logger::new(&app_data_dir)
-                    .expect("Failed to initialize logger");
+                let logger = Logger::new(&app_data_dir).expect("Failed to initialize logger");
 
                 logger.info("APP", "Application starting up");
-                logger.info("APP", &format!("App data directory: {}", app_data_dir.display()));
+                logger.info(
+                    "APP",
+                    &format!("App data directory: {}", app_data_dir.display()),
+                );
 
                 #[cfg(debug_assertions)]
                 logger.info("APP", "Running in development mode with DevTools enabled");
@@ -68,10 +72,15 @@ pub fn run() {
                         // 运行迁移
                         match db_manager.migrate().await {
                             Ok(_) => {
-                                logger.info("DATABASE", "Database migrations completed successfully");
+                                logger
+                                    .info("DATABASE", "Database migrations completed successfully");
                             }
                             Err(e) => {
-                                logger.error("DATABASE", "Failed to run migrations", Some(&e.to_string()));
+                                logger.error(
+                                    "DATABASE",
+                                    "Failed to run migrations",
+                                    Some(&e.to_string()),
+                                );
                                 panic!("Failed to run migrations: {}", e);
                             }
                         }
@@ -81,7 +90,11 @@ pub fn run() {
                         app.manage(logger);
                     }
                     Err(e) => {
-                        logger.error("DATABASE", "Failed to initialize database", Some(&e.to_string()));
+                        logger.error(
+                            "DATABASE",
+                            "Failed to initialize database",
+                            Some(&e.to_string()),
+                        );
                         panic!("Failed to initialize database: {}", e);
                     }
                 }
@@ -127,7 +140,6 @@ pub fn run() {
             delete_study_plan,
             get_study_plan_status_history,
             get_system_logs,
-
             create_word_book_from_analysis,
             ai_model_handlers::get_ai_providers,
             ai_model_handlers::get_ai_models,
@@ -146,25 +158,21 @@ pub fn run() {
             get_analysis_progress,
             clear_analysis_progress,
             cancel_analysis,
-
             // 批量分析相关命令
             word_analysis_handlers::extract_words_from_text,
             word_analysis_handlers::analyze_extracted_words,
             word_analysis_handlers::analyze_text_with_batching,
             word_analysis_handlers::get_batch_analysis_progress,
             word_analysis_handlers::cancel_batch_analysis,
-
             // 学习计划AI规划命令
             generate_study_plan_schedule,
             create_study_plan_with_schedule,
-
             // 新增的学习计划单词管理命令
             get_study_plan_words,
             get_study_plan_word_books,
             remove_word_from_plan,
             batch_remove_words_from_plan,
             get_study_plan_statistics,
-
             // 日历相关命令
             get_calendar_month_data,
             get_today_study_schedules,
@@ -172,13 +180,11 @@ pub fn run() {
             diagnose_calendar_data,
             diagnose_study_plan_data,
             diagnose_today_schedules,
-
             // 数据管理相关命令
             get_database_statistics,
             reset_user_data,
             reset_selected_tables,
             delete_database_and_restart,
-
             // 单词练习相关命令
             start_practice_session,
             submit_step_result,
@@ -191,14 +197,12 @@ pub fn run() {
             get_plan_practice_sessions,
             get_practice_statistics,
             get_study_plan_schedules,
-
             // TTS相关命令
             tts_handlers::text_to_speech,
             tts_handlers::get_tts_voices,
             tts_handlers::get_default_tts_voice,
             tts_handlers::get_tts_providers,
             tts_handlers::clear_tts_cache,
-
             tts_handlers::set_default_tts_voice,
             tts_handlers::get_elevenlabs_config,
             tts_handlers::update_elevenlabs_config
@@ -206,4 +210,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

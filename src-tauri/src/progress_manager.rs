@@ -70,7 +70,7 @@ impl EnhancedProgressManager {
         let extraction = self.extraction_progress.lock().unwrap().clone();
         let analysis = self.analysis_progress.lock().unwrap().clone();
         let word_statuses = self.word_statuses.lock().unwrap().clone();
-        
+
         // 转换 word_statuses HashMap 到 Vec<WordAnalysisStatus>
         let word_statuses_vec: Vec<WordAnalysisStatus> = word_statuses
             .into_iter()
@@ -81,7 +81,7 @@ impl EnhancedProgressManager {
                 result: status.result.clone(),
             })
             .collect();
-        
+
         BatchAnalysisProgress {
             status: if let Some(ref analysis) = analysis {
                 if analysis.completed_words == analysis.total_words {
@@ -101,7 +101,10 @@ impl EnhancedProgressManager {
                     analysis.batch_info.total_batches
                 )
             } else if let Some(ref extraction) = extraction {
-                format!("提取单词 {}/{}", extraction.extracted_words, extraction.total_words)
+                format!(
+                    "提取单词 {}/{}",
+                    extraction.extracted_words, extraction.total_words
+                )
             } else {
                 "准备中".to_string()
             },
@@ -124,6 +127,7 @@ impl EnhancedProgressManager {
     }
 
     /// 清除进度
+    
     pub fn clear_progress(&self) {
         let mut extraction = self.extraction_progress.lock().unwrap();
         *extraction = None;

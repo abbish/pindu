@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::{Id, Timestamp};
+use serde::{Deserialize, Serialize};
 
 /// 主题标签
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,13 +48,6 @@ pub struct UpdateWordBookRequest {
     pub icon_color: Option<String>,
     pub status: Option<String>,
     pub theme_tag_ids: Option<Vec<Id>>,
-}
-
-/// 单词本查询参数
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WordBookQuery {
-    pub keyword: Option<String>,
-    pub icon_color: Option<String>,
 }
 
 /// 单词
@@ -120,27 +113,6 @@ pub struct UpdateWordRequest {
     pub analysis_explanation: Option<String>,
 }
 
-/// 单词查询参数
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WordQuery {
-    pub keyword: Option<String>,
-    pub difficulty_level: Option<i32>,
-    pub category_id: Option<Id>,
-    pub part_of_speech: Option<String>,
-}
-
-/// 单词分类
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Category {
-    pub id: Id,
-    pub name: String,
-    pub description: Option<String>,
-    pub color: String,
-    pub icon: String,
-    pub word_count: i32,
-    pub created_at: Timestamp,
-}
-
 /// 单词本统计
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WordBookStatistics {
@@ -156,14 +128,6 @@ pub struct WordTypeDistribution {
     pub verbs: i32,
     pub adjectives: i32,
     pub others: i32,
-}
-
-/// 批量导入单词请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ImportWordsRequest {
-    pub book_id: Id,
-    pub words: Vec<CreateWordRequest>,
-    pub overwrite_existing: bool,
 }
 
 /// AI分析的单词信息

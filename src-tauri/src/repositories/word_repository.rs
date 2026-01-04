@@ -1,10 +1,17 @@
 //! 单词数据访问层
 //!
 //! 封装所有与单词（words表）相关的数据库操作
+//!
+//! # 注意
+//! 此模块当前独立实现,未来将集成到 Service 层
 
+
+
+use crate::{
+    error::AppError, error::AppResult, logger::Logger, types::common::Id, types::wordbook::Word,
+};
+use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
-use sqlx::{SqlitePool, Row};
-use crate::{error::AppError, types::common::Id, types::wordbook::Word, logger::Logger, error::AppResult};
 
 /// 单词数据仓库
 pub struct WordRepository {
@@ -16,6 +23,270 @@ impl WordRepository {
     /// 创建新的单词仓库实例
     pub fn new(pool: Arc<SqlitePool>, logger: Arc<Logger>) -> Self {
         Self { pool, logger }
+    }
+
+    /// 查找单词本中已存在的单词（用于去重）
+    pub async fn find_existing_words_by_book(
+        &self,
+        book_id: Id,
+        word_list: &[String],
+    ) -> AppResult<std::collections::HashMap<String, Id>> {
+        if word_list.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        // 构建 IN 查询
+        let placeholders: Vec<String> = (0..word_list.len()).map(|_| "?".to_string()).collect();
+        let query = format!(
+            "SELECT id, LOWER(word) as word_lower FROM words WHERE word_book_id = ? AND LOWER(word) IN ({})",
+            placeholders.join(",")
+        );
+
+        let mut query_builder = sqlx::query(&query).bind(book_id);
+        for word in word_list {
+            query_builder = query_builder.bind(word.to_lowercase());
+        }
+
+        let rows = query_builder
+            .fetch_all(self.pool.as_ref())
+            .await
+            .map_err(|e| {
+                self.logger
+                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
+                AppError::DatabaseError(e.to_string())
+            })?;
+
+        let mut result = std::collections::HashMap::new();
+        for row in rows {
+            let id: Id = row.get("id");
+            let word_lower: String = row.get("word_lower");
+            result.insert(word_lower, id);
+        }
+
+        Ok(result)
+    }
+
+    /// 批量创建单词
+    pub async fn create_batch(&self, words: &[Word]) -> AppResult<Vec<Id>> {
+        if words.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let query = r#"
+            INSERT INTO words (
+                word, meaning, description, ipa, syllables, phonics_segments,
+                part_of_speech, pos_abbreviation, pos_english, pos_chinese,
+                phonics_rule, analysis_explanation, word_book_id,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        "#;
+
+        let mut word_ids = Vec::new();
+        for word in words {
+            let result = sqlx::query(r#"
+                INSERT INTO words (
+                    word, meaning, description, ipa, syllables, phonics_segments,
+                    part_of_speech, pos_abbreviation, pos_english, pos_chinese,
+                    phonics_rule, analysis_explanation, word_book_id,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            "#)
+                .bind(&word.word)
+                .bind(&word.meaning)
+                .bind(&word.description)
+                .bind(&word.ipa)
+                .bind(&word.syllables)
+                .bind(&word.phonics_segments)
+                .bind(&word.part_of_speech)
+                .bind(&word.pos_abbreviation)
+                .bind(&word.pos_english)
+                .bind(&word.pos_chinese)
+                .bind(&word.phonics_rule)
+                .bind(&word.analysis_explanation)
+                .bind(word.word_book_id)
+                .execute(self.pool.as_ref())
+                .await
+                .map_err(|e| {
+                    self.logger
+                        .database_operation("INSERT", "words", false, Some(&e.to_string()));
+                    AppError::DatabaseError(format!("Failed to insert word '{}': {}", word.word, e))
+                })?;
+
+            word_ids.push(result.last_insert_rowid());
+        }
+
+        self.logger.database_operation(
+            "INSERT",
+            "words",
+            true,
+            Some(&format!("Created {} words in batch", words.len())),
+        );
+
+        Ok(word_ids)
+    }
+
+    /// 批量更新单词
+    pub async fn update_batch(&self, words: &[(Id, Word)]) -> AppResult<()> {
+        if words.is_empty() {
+            return Ok(());
+        }
+
+        let query = r#"
+            UPDATE words SET
+                meaning = ?,
+                ipa = ?,
+                syllables = ?,
+                part_of_speech = ?,
+                pos_abbreviation = ?,
+                pos_english = ?,
+                pos_chinese = ?,
+                phonics_rule = ?,
+                analysis_explanation = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+        "#;
+
+        for (word_id, word) in words {
+            sqlx::query(query)
+                .bind(&word.meaning)
+                .bind(&word.ipa)
+                .bind(&word.syllables)
+                .bind(&word.part_of_speech)
+                .bind(&word.pos_abbreviation)
+                .bind(&word.pos_english)
+                .bind(&word.pos_chinese)
+                .bind(&word.phonics_rule)
+                .bind(&word.analysis_explanation)
+                .bind(word_id)
+                .execute(self.pool.as_ref())
+                .await
+                .map_err(|e| {
+                    self.logger
+                        .database_operation("UPDATE", "words", false, Some(&e.to_string()));
+                    AppError::DatabaseError(format!("Failed to update word '{}': {}", word.word, e))
+                })?;
+        }
+
+        self.logger.database_operation(
+            "UPDATE",
+            "words",
+            true,
+            Some(&format!("Updated {} words in batch", words.len())),
+        );
+
+        Ok(())
+    }
+
+    /// 根据单词本ID列表查询单词（用于AI规划）
+    pub async fn find_words_by_wordbook_ids(
+        &self,
+        wordbook_ids: &[Id],
+    ) -> AppResult<Vec<(Id, String, Id)>> {
+        if wordbook_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let placeholders: Vec<String> = (0..wordbook_ids.len()).map(|_| "?".to_string()).collect();
+        let query = format!(
+            r#"
+            SELECT id, word, word_book_id
+            FROM words
+            WHERE word_book_id IN ({})
+                AND word_book_id IN (
+                    SELECT id FROM word_books WHERE status = 'normal'
+                )
+            ORDER BY word_book_id, id
+            "#,
+            placeholders.join(",")
+        );
+
+        let mut query_builder = sqlx::query(&query);
+        for wordbook_id in wordbook_ids {
+            query_builder = query_builder.bind(wordbook_id);
+        }
+
+        let rows = query_builder
+            .fetch_all(self.pool.as_ref())
+            .await
+            .map_err(|e| {
+                self.logger
+                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
+                AppError::DatabaseError(e.to_string())
+            })?;
+
+        let words: Vec<(Id, String, Id)> = rows
+            .into_iter()
+            .map(|row| {
+                (
+                    row.get("id"),
+                    row.get("word"),
+                    row.get("word_book_id"),
+                )
+            })
+            .collect();
+
+        self.logger.database_operation(
+            "SELECT",
+            "words",
+            true,
+            Some(&format!("Found {} words from {} wordbooks", words.len(), wordbook_ids.len())),
+        );
+
+        Ok(words)
+    }
+
+    /// 验证单词ID是否存在
+    pub async fn validate_word_ids(&self, word_ids: &[Id]) -> AppResult<usize> {
+        if word_ids.is_empty() {
+            return Ok(0);
+        }
+
+        // 构建 IN 查询
+        let placeholders: Vec<String> = (0..word_ids.len()).map(|_| "?".to_string()).collect();
+        let query = format!(
+            "SELECT COUNT(*) as count FROM words WHERE id IN ({})",
+            placeholders.join(",")
+        );
+
+        let mut query_builder = sqlx::query(&query);
+        for word_id in word_ids {
+            query_builder = query_builder.bind(word_id);
+        }
+
+        let row = query_builder
+            .fetch_one(self.pool.as_ref())
+            .await
+            .map_err(|e| {
+                self.logger
+                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
+                AppError::DatabaseError(e.to_string())
+            })?;
+
+        let count: i64 = row.get("count");
+        Ok(count as usize)
+    }
+
+    /// 获取单词的单词本ID
+    pub async fn get_word_book_id(&self, word_id: Id) -> AppResult<Option<Id>> {
+        let query = "SELECT word_book_id FROM words WHERE id = ?";
+
+        let row = sqlx::query(query)
+            .bind(word_id)
+            .fetch_optional(self.pool.as_ref())
+            .await
+            .map_err(|e| {
+                self.logger
+                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
+                AppError::DatabaseError(e.to_string())
+            })?;
+
+        match row {
+            Some(row) => {
+                let book_id: Option<Id> = row.get("word_book_id");
+                Ok(book_id)
+            }
+            None => Ok(None),
+        }
     }
 
     /// 根据ID查询单词
@@ -34,7 +305,8 @@ impl WordRepository {
             .fetch_optional(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -43,7 +315,7 @@ impl WordRepository {
                 "SELECT",
                 "words",
                 true,
-                Some(&format!("Found word by ID: {}", word_id))
+                Some(&format!("Found word by ID: {}", word_id)),
             );
             Ok(Some(self.row_to_word(row)?))
         } else {
@@ -51,257 +323,10 @@ impl WordRepository {
                 "SELECT",
                 "words",
                 true,
-                Some(&format!("Word not found: {}", word_id))
+                Some(&format!("Word not found: {}", word_id)),
             );
             Ok(None)
         }
-    }
-
-    /// 根据单词本ID查询所有单词
-    pub async fn find_by_wordbook_id(&self, wordbook_id: Id) -> AppResult<Vec<Word>> {
-        let query = r#"
-            SELECT id, word, meaning, description, ipa, syllables, phonics_segments,
-                   part_of_speech, pos_abbreviation, pos_english, pos_chinese,
-                   phonics_rule, analysis_explanation, word_book_id,
-                   created_at, updated_at
-            FROM words
-            WHERE word_book_id = ?
-            ORDER BY id
-        "#;
-
-        let rows = sqlx::query(query)
-            .bind(wordbook_id)
-            .fetch_all(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        self.logger.database_operation(
-            "SELECT",
-            "words",
-            true,
-            Some(&format!("Found {} words for wordbook {}", rows.len(), wordbook_id))
-        );
-
-        rows.into_iter()
-            .map(|row| self.row_to_word(row))
-            .collect()
-    }
-
-    /// 分页查询单词本中的单词
-    pub async fn find_by_wordbook_id_paginated(
-        &self,
-        wordbook_id: Id,
-        offset: i64,
-        limit: i64,
-    ) -> AppResult<Vec<Word>> {
-        let query = r#"
-            SELECT id, word, meaning, description, ipa, syllables, phonics_segments,
-                   part_of_speech, pos_abbreviation, pos_english, pos_chinese,
-                   phonics_rule, analysis_explanation, word_book_id,
-                   created_at, updated_at
-            FROM words
-            WHERE word_book_id = ?
-            ORDER BY id
-            LIMIT ? OFFSET ?
-        "#;
-
-        let rows = sqlx::query(query)
-            .bind(wordbook_id)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        self.logger.database_operation(
-            "SELECT",
-            "words",
-            true,
-            Some(&format!("Paginated query: {} words for wordbook {}", rows.len(), wordbook_id))
-        );
-
-        rows.into_iter()
-            .map(|row| self.row_to_word(row))
-            .collect()
-    }
-
-    /// 搜索单词（按关键词和词性过滤）
-    pub async fn search(
-        &self,
-        wordbook_id: Id,
-        keyword: Option<String>,
-        part_of_speech: Option<String>,
-        offset: i64,
-        limit: i64,
-    ) -> AppResult<Vec<Word>> {
-        let mut query = String::from(r#"
-            SELECT id, word, meaning, description, ipa, syllables, phonics_segments,
-                   part_of_speech, pos_abbreviation, pos_english, pos_chinese,
-                   phonics_rule, analysis_explanation, word_book_id,
-                   created_at, updated_at
-            FROM words
-            WHERE word_book_id = ?
-        "#);
-
-        if keyword.is_some() || part_of_speech.is_some() {
-            if let Some(keyword) = &keyword {
-                query.push_str(&format!(" AND (word LIKE '%{}%' OR meaning LIKE '%{}%')",
-                    keyword.replace("'", "''"),
-                    keyword.replace("'", "''")
-                ));
-            }
-
-            if let Some(pos) = &part_of_speech {
-                query.push_str(&format!(" AND part_of_speech = '{}'", pos));
-            }
-        }
-
-        query.push_str(" ORDER BY id LIMIT ? OFFSET ?");
-
-        let rows = sqlx::query(&query)
-            .bind(wordbook_id)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        self.logger.database_operation(
-            "SELECT",
-            "words",
-            true,
-            Some(&format!("Search: {} words for wordbook {}", rows.len(), wordbook_id))
-        );
-
-        rows.into_iter()
-            .map(|row| self.row_to_word(row))
-            .collect()
-    }
-
-    /// 统计单词本中的单词数量
-    pub async fn count_by_wordbook_id(&self, wordbook_id: Id) -> AppResult<i64> {
-        let query = "SELECT COUNT(*) as count FROM words WHERE word_book_id = ?";
-
-        let row = sqlx::query(query)
-            .bind(wordbook_id)
-            .fetch_one(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let count: i64 = row.get("count");
-        self.logger.database_operation(
-            "SELECT",
-            "words",
-            true,
-            Some(&format!("Count: {} words in wordbook {}", count, wordbook_id))
-        );
-
-        Ok(count)
-    }
-
-    /// 统计搜索结果数量
-    pub async fn count_search(
-        &self,
-        wordbook_id: Id,
-        keyword: Option<String>,
-        part_of_speech: Option<String>,
-    ) -> AppResult<i64> {
-        let mut query = String::from("SELECT COUNT(*) as count FROM words WHERE word_book_id = ?");
-
-        if keyword.is_some() || part_of_speech.is_some() {
-            if let Some(keyword) = &keyword {
-                query.push_str(&format!(" AND (word LIKE '%{}%' OR meaning LIKE '%{}%')",
-                    keyword.replace("'", "''"),
-                    keyword.replace("'", "''")
-                ));
-            }
-
-            if let Some(pos) = &part_of_speech {
-                query.push_str(&format!(" AND part_of_speech = '{}'", pos));
-            }
-        }
-
-        let row = sqlx::query(&query)
-            .bind(wordbook_id)
-            .fetch_one(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let count: i64 = row.get("count");
-        self.logger.database_operation(
-            "SELECT",
-            "words",
-            true,
-            Some(&format!("Search count: {} words in wordbook {}", count, wordbook_id))
-        );
-
-        Ok(count)
-    }
-
-    /// 批量查询单词是否存在
-    pub async fn find_existing_words(
-        &self,
-        wordbook_id: Id,
-        words: &[String],
-    ) -> AppResult<Vec<(String, Id)>> {
-        if words.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // 构建IN查询
-        let word_list: Vec<String> = words.iter()
-            .map(|w| w.to_lowercase())
-            .collect();
-
-        let word_list_str = word_list.iter()
-            .map(|w| format!("'{}'", w.replace("'", "''")))
-            .collect::<Vec<_>>()
-            .join(",");
-
-        let query = format!(
-            "SELECT id, LOWER(word) as word_lower FROM words WHERE word_book_id = {} AND LOWER(word) IN ({})",
-            wordbook_id, word_list_str
-        );
-
-        let rows = sqlx::query(&query)
-            .fetch_all(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        self.logger.database_operation(
-            "SELECT",
-            "words",
-            true,
-            Some(&format!("Found {} existing words for wordbook {}", rows.len(), wordbook_id))
-        );
-
-        let result: Vec<(String, Id)> = rows.into_iter()
-            .map(|row| {
-                let word: String = row.get("word_lower");
-                let id: Id = row.get("id");
-                (word, id)
-            })
-            .collect();
-
-        Ok(result)
     }
 
     /// 添加新单词
@@ -332,7 +357,8 @@ impl WordRepository {
             .execute(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("INSERT", "words", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("INSERT", "words", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -341,7 +367,7 @@ impl WordRepository {
             "INSERT",
             "words",
             true,
-            Some(&format!("Created word '{}' with ID {}", word.word, word_id))
+            Some(&format!("Created word '{}' with ID {}", word.word, word_id)),
         );
 
         Ok(word_id)
@@ -384,7 +410,8 @@ impl WordRepository {
             .execute(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("UPDATE", "words", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("UPDATE", "words", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -393,7 +420,7 @@ impl WordRepository {
                 "UPDATE",
                 "words",
                 false,
-                Some(&format!("Word not found: {}", word.id))
+                Some(&format!("Word not found: {}", word.id)),
             );
             return Err(AppError::NotFound(format!("单词未找到: {}", word.id)));
         }
@@ -402,7 +429,7 @@ impl WordRepository {
             "UPDATE",
             "words",
             true,
-            Some(&format!("Updated word '{}' (ID {})", word.word, word.id))
+            Some(&format!("Updated word '{}' (ID {})", word.word, word.id)),
         );
 
         Ok(())
@@ -417,7 +444,8 @@ impl WordRepository {
             .execute(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("DELETE", "words", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("DELETE", "words", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -426,7 +454,7 @@ impl WordRepository {
                 "DELETE",
                 "words",
                 false,
-                Some(&format!("Word not found: {}", word_id))
+                Some(&format!("Word not found: {}", word_id)),
             );
             return Err(AppError::NotFound(format!("单词未找到: {}", word_id)));
         }
@@ -435,63 +463,128 @@ impl WordRepository {
             "DELETE",
             "words",
             true,
-            Some(&format!("Deleted word ID {}", word_id))
+            Some(&format!("Deleted word ID {}", word_id)),
         );
 
         Ok(())
     }
 
-    /// 批量删除单词
-    pub async fn delete_batch(&self, word_ids: &[Id]) -> AppResult<usize> {
-        if word_ids.is_empty() {
-            return Ok(0);
+    /// 分页查询单词本中的单词
+    pub async fn find_by_book_paginated(
+        &self,
+        book_id: Id,
+        page: u32,
+        page_size: u32,
+        search_term: Option<&str>,
+        part_of_speech: Option<&str>,
+    ) -> AppResult<(Vec<Word>, u32)> {
+        let offset = (page - 1) * page_size;
+
+        // 构建 WHERE 条件
+        let mut where_conditions = vec!["word_book_id = ?".to_string()];
+        
+        if let Some(term) = search_term {
+            if !term.trim().is_empty() {
+                where_conditions.push("word LIKE ?".to_string());
+            }
         }
 
-        let ids_str = word_ids.iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
+        if let Some(pos) = part_of_speech {
+            if !pos.trim().is_empty() && pos != "all" {
+                where_conditions.push("part_of_speech = ?".to_string());
+            }
+        }
 
-        let query = format!("DELETE FROM words WHERE id IN ({})", ids_str);
+        let where_clause = where_conditions.join(" AND ");
 
-        let result = sqlx::query(&query)
-            .execute(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation("DELETE", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let affected = result.rows_affected();
-        self.logger.database_operation(
-            "DELETE",
-            "words",
-            true,
-            Some(&format!("Batch deleted {} words", affected))
+        // 构建查询
+        let query = format!(
+            r#"
+            SELECT
+                id, word, meaning, description, ipa, syllables, phonics_segments,
+                image_path, audio_path, part_of_speech, category_id, word_book_id,
+                pos_abbreviation, pos_english, pos_chinese, phonics_rule,
+                analysis_explanation, created_at, updated_at
+            FROM words
+            WHERE {}
+            ORDER BY word
+            LIMIT ? OFFSET ?
+            "#,
+            where_clause
         );
 
-        Ok(affected as usize)
-    }
+        let mut query_builder = sqlx::query(&query).bind(book_id);
 
-    /// 检查单词是否存在（不区分大小写）
-    pub async fn exists_case_insensitive(
-        &self,
-        wordbook_id: Id,
-        word: &str,
-    ) -> AppResult<Option<Id>> {
-        let query = "SELECT id FROM words WHERE word_book_id = ? AND LOWER(word) = LOWER(?)";
+        if let Some(term) = search_term {
+            if !term.trim().is_empty() {
+                let search_pattern = format!("{}%", term.trim());
+                query_builder = query_builder.bind(search_pattern);
+            }
+        }
 
-        let row = sqlx::query(query)
-            .bind(wordbook_id)
-            .bind(word)
-            .fetch_optional(self.pool.as_ref())
+        if let Some(pos) = part_of_speech {
+            if !pos.trim().is_empty() && pos != "all" {
+                query_builder = query_builder.bind(pos);
+            }
+        }
+
+        query_builder = query_builder.bind(page_size as i64).bind(offset as i64);
+
+        let rows = query_builder
+            .fetch_all(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        Ok(row.map(|r| r.get("id")))
+        let words: Vec<Word> = rows
+            .into_iter()
+            .map(|row| self.row_to_word(row))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // 构建计数查询
+        let count_query = format!("SELECT COUNT(*) as count FROM words WHERE {}", where_clause);
+        let mut count_query_builder = sqlx::query(&count_query).bind(book_id);
+
+        if let Some(term) = search_term {
+            if !term.trim().is_empty() {
+                let search_pattern = format!("{}%", term.trim());
+                count_query_builder = count_query_builder.bind(search_pattern);
+            }
+        }
+
+        if let Some(pos) = part_of_speech {
+            if !pos.trim().is_empty() && pos != "all" {
+                count_query_builder = count_query_builder.bind(pos);
+            }
+        }
+
+        let count_row = count_query_builder
+            .fetch_one(self.pool.as_ref())
+            .await
+            .map_err(|e| {
+                self.logger
+                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
+                AppError::DatabaseError(e.to_string())
+            })?;
+
+        let total: i64 = count_row.get("count");
+
+        self.logger.database_operation(
+            "SELECT",
+            "words",
+            true,
+            Some(&format!(
+                "Found {} words (page {}, total: {})",
+                words.len(),
+                page,
+                total
+            )),
+        );
+
+        Ok((words, total as u32))
     }
 
     /// 将数据库行转换为Word对象

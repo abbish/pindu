@@ -1,5 +1,5 @@
 // 测试工具模块
-use sqlx::{SqlitePool, Row};
+use sqlx::{Row, SqlitePool};
 use std::path::PathBuf;
 
 /// 创建内存测试数据库

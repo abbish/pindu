@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use sqlx::{SqlitePool, Row};
+    use sqlx::{Row, SqlitePool};
 
     async fn setup_test_db() -> SqlitePool {
         // 连接到实际的数据库文件，而不是内存数据库
@@ -8,7 +8,9 @@ mod tests {
             .map(|appdata| format!("{}/com.redlark.vocabulary-app/vocabulary.db", appdata))
             .unwrap_or_else(|_| "vocabulary.db".to_string());
 
-        let pool = SqlitePool::connect(&format!("sqlite:{}", db_path)).await.unwrap();
+        let pool = SqlitePool::connect(&format!("sqlite:{}", db_path))
+            .await
+            .unwrap();
         pool
     }
 
@@ -22,7 +24,7 @@ mod tests {
         println!("\n1. 查询学习计划基本信息:");
         let plan_query = "SELECT id, name, total_words, start_date, end_date, created_at FROM study_plans WHERE name LIKE '%20250726%'";
         let plans = sqlx::query(plan_query).fetch_all(&pool).await.unwrap();
-        
+
         for plan in &plans {
             let id: i64 = plan.get("id");
             let name: String = plan.get("name");
@@ -31,26 +33,35 @@ mod tests {
             let end_date: Option<String> = plan.get("end_date");
             let created_at: Option<String> = plan.get("created_at");
 
-            println!("  计划ID: {}, 名称: {}, 总单词数: {}", id, name, total_words);
+            println!(
+                "  计划ID: {}, 名称: {}, 总单词数: {}",
+                id, name, total_words
+            );
             println!("  开始日期: {:?}, 结束日期: {:?}", start_date, end_date);
             println!("  创建时间: {:?}", created_at);
-            
+
             // 2. 查询练习会话数据
             println!("\n2. 查询练习会话数据:");
             let sessions_query = "SELECT id, completed, start_time, end_time FROM practice_sessions WHERE plan_id = ?";
-            let sessions = sqlx::query(sessions_query).bind(id).fetch_all(&pool).await.unwrap();
-            
+            let sessions = sqlx::query(sessions_query)
+                .bind(id)
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+
             println!("  总练习会话数: {}", sessions.len());
             for session in &sessions {
                 let session_id: String = session.get("id");
                 let completed: bool = session.get("completed");
                 let start_time: Option<String> = session.get("start_time");
                 let end_time: Option<String> = session.get("end_time");
-                
-                println!("    会话ID: {}, 已完成: {}, 开始: {:?}, 结束: {:?}", 
-                    session_id, completed, start_time, end_time);
+
+                println!(
+                    "    会话ID: {}, 已完成: {}, 开始: {:?}, 结束: {:?}",
+                    session_id, completed, start_time, end_time
+                );
             }
-            
+
             // 3. 查询练习记录数据
             println!("\n3. 查询练习记录数据:");
             let records_query = r#"
@@ -60,31 +71,37 @@ mod tests {
                 WHERE ps.plan_id = ?
                 ORDER BY wpr.word_id, wpr.step
             "#;
-            let records = sqlx::query(records_query).bind(id).fetch_all(&pool).await.unwrap();
-            
+            let records = sqlx::query(records_query)
+                .bind(id)
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+
             println!("  总练习记录数: {}", records.len());
             let mut word_stats = std::collections::HashMap::new();
-            
+
             for record in &records {
                 let word_id: i64 = record.get("word_id");
                 let is_correct: bool = record.get("is_correct");
                 let step: i32 = record.get("step");
                 let session_completed: bool = record.get("session_completed");
-                
-                let entry = word_stats.entry(word_id).or_insert_with(|| {
-                    (Vec::new(), session_completed)
-                });
+
+                let entry = word_stats
+                    .entry(word_id)
+                    .or_insert_with(|| (Vec::new(), session_completed));
                 entry.0.push((step, is_correct));
             }
-            
+
             for (word_id, (steps, session_completed)) in &word_stats {
-                println!("    单词ID: {}, 会话已完成: {}, 步骤记录: {:?}", 
-                    word_id, session_completed, steps);
+                println!(
+                    "    单词ID: {}, 会话已完成: {}, 步骤记录: {:?}",
+                    word_id, session_completed, steps
+                );
             }
-            
+
             // 4. 测试当前的统计查询
             println!("\n4. 测试当前的统计查询:");
-            
+
             // 4.1 已学单词数查询（当前逻辑）
             let completed_words_query = r#"
                 SELECT COUNT(DISTINCT wpr.word_id) as completed_count
@@ -92,22 +109,30 @@ mod tests {
                 JOIN practice_sessions ps ON wpr.session_id = ps.id
                 WHERE ps.plan_id = ? AND ps.completed = TRUE
             "#;
-            
-            let result = sqlx::query(completed_words_query).bind(id).fetch_one(&pool).await.unwrap();
+
+            let result = sqlx::query(completed_words_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let completed_count: i64 = result.get("completed_count");
             println!("  当前逻辑 - 已学单词数: {}", completed_count);
-            
+
             // 4.2 已完成会话数查询
             let completed_sessions_query = r#"
                 SELECT COUNT(*) as completed_sessions
                 FROM practice_sessions
                 WHERE plan_id = ? AND completed = TRUE
             "#;
-            
-            let result = sqlx::query(completed_sessions_query).bind(id).fetch_one(&pool).await.unwrap();
+
+            let result = sqlx::query(completed_sessions_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let completed_sessions: i64 = result.get("completed_sessions");
             println!("  已完成会话数: {}", completed_sessions);
-            
+
             // 4.3 总练习记录数
             let total_records_query = r#"
                 SELECT COUNT(*) as total_records
@@ -115,14 +140,18 @@ mod tests {
                 JOIN practice_sessions ps ON wpr.session_id = ps.id
                 WHERE ps.plan_id = ?
             "#;
-            
-            let result = sqlx::query(total_records_query).bind(id).fetch_one(&pool).await.unwrap();
+
+            let result = sqlx::query(total_records_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let total_records: i64 = result.get("total_records");
             println!("  总练习记录数: {}", total_records);
-            
+
             // 4.4 不同统计方法对比
             println!("\n5. 不同统计方法对比:");
-            
+
             // 方法1：只要有练习记录就算已学
             let method1_query = r#"
                 SELECT COUNT(DISTINCT wpr.word_id) as count
@@ -130,10 +159,14 @@ mod tests {
                 JOIN practice_sessions ps ON wpr.session_id = ps.id
                 WHERE ps.plan_id = ?
             "#;
-            let result = sqlx::query(method1_query).bind(id).fetch_one(&pool).await.unwrap();
+            let result = sqlx::query(method1_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let method1_count: i64 = result.get("count");
             println!("  方法1 - 有练习记录的单词数: {}", method1_count);
-            
+
             // 方法2：要求所有3个步骤都正确
             let method2_query = r#"
                 SELECT COUNT(DISTINCT word_id) as count
@@ -146,10 +179,14 @@ mod tests {
                     HAVING COUNT(DISTINCT wpr.step) = 3
                 ) as completed_words
             "#;
-            let result = sqlx::query(method2_query).bind(id).fetch_one(&pool).await.unwrap();
+            let result = sqlx::query(method2_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let method2_count: i64 = result.get("count");
             println!("  方法2 - 所有3步都正确的单词数: {}", method2_count);
-            
+
             // 方法3：至少有一个步骤正确
             let method3_query = r#"
                 SELECT COUNT(DISTINCT wpr.word_id) as count
@@ -157,13 +194,17 @@ mod tests {
                 JOIN practice_sessions ps ON wpr.session_id = ps.id
                 WHERE ps.plan_id = ? AND ps.completed = TRUE AND wpr.is_correct = TRUE
             "#;
-            let result = sqlx::query(method3_query).bind(id).fetch_one(&pool).await.unwrap();
+            let result = sqlx::query(method3_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let method3_count: i64 = result.get("count");
             println!("  方法3 - 至少一步正确的单词数: {}", method3_count);
-            
+
             // 6. 检查数据完整性
             println!("\n6. 数据完整性检查:");
-            
+
             // 检查是否有孤立的练习记录
             let orphan_records_query = r#"
                 SELECT COUNT(*) as orphan_count
@@ -171,10 +212,13 @@ mod tests {
                 LEFT JOIN practice_sessions ps ON wpr.session_id = ps.id
                 WHERE ps.id IS NULL
             "#;
-            let result = sqlx::query(orphan_records_query).fetch_one(&pool).await.unwrap();
+            let result = sqlx::query(orphan_records_query)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let orphan_count: i64 = result.get("orphan_count");
             println!("  孤立的练习记录数: {}", orphan_count);
-            
+
             // 检查是否有未完成的会话但有练习记录
             let incomplete_with_records_query = r#"
                 SELECT COUNT(DISTINCT ps.id) as count
@@ -182,7 +226,11 @@ mod tests {
                 JOIN word_practice_records wpr ON ps.id = wpr.session_id
                 WHERE ps.plan_id = ? AND ps.completed = FALSE
             "#;
-            let result = sqlx::query(incomplete_with_records_query).bind(id).fetch_one(&pool).await.unwrap();
+            let result = sqlx::query(incomplete_with_records_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let incomplete_with_records: i64 = result.get("count");
             println!("  有练习记录但未完成的会话数: {}", incomplete_with_records);
 
@@ -207,11 +255,22 @@ mod tests {
                 JOIN practice_sessions ps ON wpr.session_id = ps.id
                 WHERE ps.plan_id = ? AND ps.completed = TRUE
             "#;
-            let result = sqlx::query(accuracy_query).bind(id).fetch_one(&pool).await.unwrap();
+            let result = sqlx::query(accuracy_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let correct_count: i64 = result.get("correct_count");
             let total_count: i64 = result.get("total_count");
-            let accuracy = if total_count > 0 { (correct_count as f64 / total_count as f64) * 100.0 } else { 0.0 };
-            println!("  平均正确率: {:.1}% (正确: {}, 总计: {})", accuracy, correct_count, total_count);
+            let accuracy = if total_count > 0 {
+                (correct_count as f64 / total_count as f64) * 100.0
+            } else {
+                0.0
+            };
+            println!(
+                "  平均正确率: {:.1}% (正确: {}, 总计: {})",
+                accuracy, correct_count, total_count
+            );
 
             // 连续学习天数计算
             let streak_query = r#"
@@ -220,7 +279,11 @@ mod tests {
                 WHERE ps.plan_id = ? AND ps.completed = TRUE
                 AND DATE(ps.start_time) >= DATE('now', '-7 days')
             "#;
-            let result = sqlx::query(streak_query).bind(id).fetch_one(&pool).await.unwrap();
+            let result = sqlx::query(streak_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let study_days: i64 = result.get("study_days");
             println!("  连续学习天数: {} 天", study_days);
 
@@ -238,14 +301,25 @@ mod tests {
                 FROM practice_sessions ps
                 WHERE ps.plan_id = ? AND ps.completed = TRUE
             "#;
-            let result = sqlx::query(time_query).bind(id).fetch_one(&pool).await.unwrap();
+            let result = sqlx::query(time_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let total_minutes: f64 = result.get::<Option<f64>, _>("total_minutes").unwrap_or(0.0);
             let total_hours = (total_minutes / 60.0) as i32;
             let remaining_minutes = (total_minutes % 60.0) as i32;
-            println!("  总学习时间: {}小时 {}分钟 (总计: {:.1}分钟)", total_hours, remaining_minutes, total_minutes);
+            println!(
+                "  总学习时间: {}小时 {}分钟 (总计: {:.1}分钟)",
+                total_hours, remaining_minutes, total_minutes
+            );
 
             // 平均每日学习时长
-            let avg_daily_minutes = if study_days > 0 { total_minutes / study_days as f64 } else { 0.0 };
+            let avg_daily_minutes = if study_days > 0 {
+                total_minutes / study_days as f64
+            } else {
+                0.0
+            };
             println!("  平均每日学习时长: {:.0} 分钟", avg_daily_minutes);
 
             // 时间进度计算
@@ -256,18 +330,32 @@ mod tests {
                 let end_date_parsed = chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d").ok();
                 let today_parsed = chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d").ok();
 
-                if let (Some(start), Some(end), Some(today)) = (start_date_parsed, end_date_parsed, today_parsed) {
+                if let (Some(start), Some(end), Some(today)) =
+                    (start_date_parsed, end_date_parsed, today_parsed)
+                {
                     let total_days = (end - start).num_days() + 1;
                     let elapsed_days = (today - start).num_days() + 1;
                     if total_days > 0 {
-                        ((elapsed_days as f64 / total_days as f64) * 100.0).min(100.0).max(0.0)
-                    } else { 0.0 }
-                } else { 0.0 }
-            } else { 0.0 };
+                        ((elapsed_days as f64 / total_days as f64) * 100.0)
+                            .min(100.0)
+                            .max(0.0)
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            };
             println!("  时间进度: {:.0}%", time_progress);
 
             // 按时完成率 (需要更复杂的逻辑，这里简化)
-            let completion_rate = if total_words > 0 { (completed_count as f64 / total_words as f64) * 100.0 } else { 0.0 };
+            let completion_rate = if total_words > 0 {
+                (completed_count as f64 / total_words as f64) * 100.0
+            } else {
+                0.0
+            };
             println!("  按时完成率: {:.0}%", completion_rate);
 
             // 7.3 详细统计指标
@@ -279,7 +367,11 @@ mod tests {
                 FROM practice_sessions ps
                 WHERE ps.plan_id = ? AND ps.completed = TRUE
             "#;
-            let result = sqlx::query(max_streak_query).bind(id).fetch_one(&pool).await.unwrap();
+            let result = sqlx::query(max_streak_query)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let max_streak: i64 = result.get("max_streak");
             println!("  最长连续学习: {} 天", max_streak);
 
@@ -342,26 +434,49 @@ mod tests {
         // 1. 验证学习计划基本信息
         println!("\n1. 验证学习计划基本信息:");
         let plan_query = "SELECT id, name, total_words, ai_plan_data FROM study_plans WHERE id = ?";
-        let plan_result = sqlx::query(plan_query).bind(id).fetch_one(&pool).await.unwrap();
+        let plan_result = sqlx::query(plan_query)
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
         let plan_id: i64 = plan_result.get("id");
         let plan_name: String = plan_result.get("name");
         let total_words: i32 = plan_result.get("total_words");
         let ai_plan_data: Option<String> = plan_result.get("ai_plan_data");
 
-        println!("  计划ID: {}, 名称: {}, 总单词数: {}", plan_id, plan_name, total_words);
-        println!("  AI规划数据: {}", if ai_plan_data.is_some() { "存在" } else { "不存在" });
+        println!(
+            "  计划ID: {}, 名称: {}, 总单词数: {}",
+            plan_id, plan_name, total_words
+        );
+        println!(
+            "  AI规划数据: {}",
+            if ai_plan_data.is_some() {
+                "存在"
+            } else {
+                "不存在"
+            }
+        );
 
         // 2. 验证 study_plan_words 表
         println!("\n2. 验证 study_plan_words 表:");
         let plan_words_query = "SELECT COUNT(*) as count FROM study_plan_words WHERE plan_id = ?";
-        let plan_words_count: i64 = sqlx::query_scalar(plan_words_query).bind(id).fetch_one(&pool).await.unwrap();
+        let plan_words_count: i64 = sqlx::query_scalar(plan_words_query)
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         println!("  study_plan_words 记录数: {}", plan_words_count);
 
         // 3. 验证 study_plan_schedules 表
         println!("\n3. 验证 study_plan_schedules 表:");
-        let schedules_query = "SELECT COUNT(*) as count FROM study_plan_schedules WHERE plan_id = ?";
-        let schedules_count: i64 = sqlx::query_scalar(schedules_query).bind(id).fetch_one(&pool).await.unwrap();
+        let schedules_query =
+            "SELECT COUNT(*) as count FROM study_plan_schedules WHERE plan_id = ?";
+        let schedules_count: i64 = sqlx::query_scalar(schedules_query)
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         println!("  study_plan_schedules 记录数: {}", schedules_count);
 
         // 4. 验证 study_plan_schedule_words 表
@@ -372,8 +487,15 @@ mod tests {
             JOIN study_plan_schedules sps ON spsw.schedule_id = sps.id
             WHERE sps.plan_id = ?
         "#;
-        let schedule_words_count: i64 = sqlx::query_scalar(schedule_words_query).bind(id).fetch_one(&pool).await.unwrap();
-        println!("  study_plan_schedule_words 记录数: {}", schedule_words_count);
+        let schedule_words_count: i64 = sqlx::query_scalar(schedule_words_query)
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        println!(
+            "  study_plan_schedule_words 记录数: {}",
+            schedule_words_count
+        );
 
         // 5. 验证单词本关联
         println!("\n5. 验证单词本关联:");
@@ -389,7 +511,11 @@ mod tests {
             )
             GROUP BY wb.id, wb.title
         "#;
-        let wordbook_rows = sqlx::query(wordbook_query).bind(id).fetch_all(&pool).await.unwrap_or_default();
+        let wordbook_rows = sqlx::query(wordbook_query)
+            .bind(id)
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default();
         println!("  关联的单词本数量: {}", wordbook_rows.len());
         for row in wordbook_rows {
             let wb_id: i64 = row.get("id");
@@ -403,7 +529,8 @@ mod tests {
             println!("\n6. 分析AI规划数据:");
             match serde_json::from_str::<serde_json::Value>(&ai_data) {
                 Ok(parsed) => {
-                    if let Some(daily_plans) = parsed.get("daily_plans").and_then(|v| v.as_array()) {
+                    if let Some(daily_plans) = parsed.get("daily_plans").and_then(|v| v.as_array())
+                    {
                         println!("  AI规划包含 {} 天的日程", daily_plans.len());
                         let mut total_ai_words = 0;
                         for (day, plan) in daily_plans.iter().enumerate() {
@@ -426,7 +553,10 @@ mod tests {
         println!("  学习计划总单词数: {}", total_words);
         println!("  study_plan_words 记录数: {}", plan_words_count);
         println!("  study_plan_schedules 记录数: {}", schedules_count);
-        println!("  study_plan_schedule_words 记录数: {}", schedule_words_count);
+        println!(
+            "  study_plan_schedule_words 记录数: {}",
+            schedule_words_count
+        );
 
         // 8. 问题诊断
         println!("\n8. 问题诊断:");

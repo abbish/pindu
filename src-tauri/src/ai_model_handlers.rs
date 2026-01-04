@@ -1,8 +1,8 @@
-use tauri::{AppHandle, Manager};
-use sqlx::{SqlitePool, Row};
-use crate::types::*;
-use crate::error::{AppResult, AppError};
+use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::types::*;
+use sqlx::{Row, SqlitePool};
+use tauri::{AppHandle, Manager};
 
 /// 获取所有AI提供商（仅活跃的，不包含敏感信息）
 #[tauri::command]
@@ -21,7 +21,12 @@ pub async fn get_ai_providers(app: AppHandle) -> AppResult<Vec<AIProviderSafe>> 
 
     let rows = match sqlx::query(query).fetch_all(pool.inner()).await {
         Ok(rows) => {
-            logger.database_operation("SELECT", "ai_providers", true, Some(&format!("Found {} providers", rows.len())));
+            logger.database_operation(
+                "SELECT",
+                "ai_providers",
+                true,
+                Some(&format!("Found {} providers", rows.len())),
+            );
             rows
         }
         Err(e) => {
@@ -52,7 +57,11 @@ pub async fn get_ai_providers(app: AppHandle) -> AppResult<Vec<AIProviderSafe>> 
         })
         .collect();
 
-    logger.api_response("get_ai_providers", true, Some(&format!("Returned {} providers (safe)", providers.len())));
+    logger.api_response(
+        "get_ai_providers",
+        true,
+        Some(&format!("Returned {} providers (safe)", providers.len())),
+    );
     Ok(providers)
 }
 
@@ -72,7 +81,15 @@ pub async fn get_all_ai_providers(app: AppHandle) -> AppResult<Vec<AIProviderSaf
 
     let rows = match sqlx::query(query).fetch_all(pool.inner()).await {
         Ok(rows) => {
-            logger.database_operation("SELECT", "ai_providers", true, Some(&format!("Found {} providers (including inactive)", rows.len())));
+            logger.database_operation(
+                "SELECT",
+                "ai_providers",
+                true,
+                Some(&format!(
+                    "Found {} providers (including inactive)",
+                    rows.len()
+                )),
+            );
             rows
         }
         Err(e) => {
@@ -101,7 +118,14 @@ pub async fn get_all_ai_providers(app: AppHandle) -> AppResult<Vec<AIProviderSaf
         })
         .collect();
 
-    logger.api_response("get_all_ai_providers", true, Some(&format!("Returned {} providers (including inactive, safe)", providers.len())));
+    logger.api_response(
+        "get_all_ai_providers",
+        true,
+        Some(&format!(
+            "Returned {} providers (including inactive, safe)",
+            providers.len()
+        )),
+    );
     Ok(providers)
 }
 
@@ -114,7 +138,13 @@ pub async fn get_ai_models(
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("get_ai_models", query.as_ref().map(|q| format!("provider_id: {:?}", q.provider_id)).as_deref());
+    logger.api_request(
+        "get_ai_models",
+        query
+            .as_ref()
+            .map(|q| format!("provider_id: {:?}", q.provider_id))
+            .as_deref(),
+    );
 
     let mut sql = r#"
         SELECT
@@ -128,14 +158,18 @@ pub async fn get_ai_models(
         FROM ai_models m
         JOIN ai_providers p ON m.provider_id = p.id
         WHERE m.is_active = 1 AND p.is_active = 1
-    "#.to_string();
+    "#
+    .to_string();
 
     if let Some(q) = &query {
         if let Some(provider_id) = q.provider_id {
             sql.push_str(&format!(" AND m.provider_id = {}", provider_id));
         }
         if let Some(is_default) = q.is_default {
-            sql.push_str(&format!(" AND m.is_default = {}", if is_default { 1 } else { 0 }));
+            sql.push_str(&format!(
+                " AND m.is_default = {}",
+                if is_default { 1 } else { 0 }
+            ));
         }
     }
 
@@ -143,7 +177,12 @@ pub async fn get_ai_models(
 
     let rows = match sqlx::query(&sql).fetch_all(pool.inner()).await {
         Ok(rows) => {
-            logger.database_operation("SELECT", "ai_models", true, Some(&format!("Found {} models", rows.len())));
+            logger.database_operation(
+                "SELECT",
+                "ai_models",
+                true,
+                Some(&format!("Found {} models", rows.len())),
+            );
             rows
         }
         Err(e) => {
@@ -185,7 +224,11 @@ pub async fn get_ai_models(
         })
         .collect();
 
-    logger.api_response("get_ai_models", true, Some(&format!("Returned {} models (safe)", models.len())));
+    logger.api_response(
+        "get_ai_models",
+        true,
+        Some(&format!("Returned {} models (safe)", models.len())),
+    );
     Ok(models)
 }
 
@@ -198,7 +241,13 @@ pub async fn get_all_ai_models(
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("get_all_ai_models", query.as_ref().map(|q| format!("provider_id: {:?}", q.provider_id)).as_deref());
+    logger.api_request(
+        "get_all_ai_models",
+        query
+            .as_ref()
+            .map(|q| format!("provider_id: {:?}", q.provider_id))
+            .as_deref(),
+    );
 
     let mut sql = r#"
         SELECT
@@ -211,7 +260,8 @@ pub async fn get_all_ai_models(
             p.updated_at as provider_updated_at
         FROM ai_models m
         JOIN ai_providers p ON m.provider_id = p.id
-    "#.to_string();
+    "#
+    .to_string();
 
     let mut where_conditions = Vec::new();
 
@@ -233,7 +283,12 @@ pub async fn get_all_ai_models(
 
     let rows = match sqlx::query(&sql).fetch_all(pool.inner()).await {
         Ok(rows) => {
-            logger.database_operation("SELECT", "ai_models", true, Some(&format!("Found {} models (including inactive)", rows.len())));
+            logger.database_operation(
+                "SELECT",
+                "ai_models",
+                true,
+                Some(&format!("Found {} models (including inactive)", rows.len())),
+            );
             rows
         }
         Err(e) => {
@@ -272,7 +327,14 @@ pub async fn get_all_ai_models(
         })
         .collect();
 
-    logger.api_response("get_all_ai_models", true, Some(&format!("Returned {} models (including inactive)", models.len())));
+    logger.api_response(
+        "get_all_ai_models",
+        true,
+        Some(&format!(
+            "Returned {} models (including inactive)",
+            models.len()
+        )),
+    );
     Ok(models)
 }
 
@@ -301,7 +363,12 @@ pub async fn get_default_ai_model(app: AppHandle) -> AppResult<Option<AIModelCon
 
     let row = match sqlx::query(query).fetch_optional(pool.inner()).await {
         Ok(row) => {
-            logger.database_operation("SELECT", "ai_models", true, Some("Default model query successful"));
+            logger.database_operation(
+                "SELECT",
+                "ai_models",
+                true,
+                Some("Default model query successful"),
+            );
             row
         }
         Err(e) => {
@@ -340,7 +407,14 @@ pub async fn get_default_ai_model(app: AppHandle) -> AppResult<Option<AIModelCon
         AIModelConfigSafe::from(config)
     });
 
-    logger.api_response("get_default_ai_model", true, Some(&format!("Default model: {:?}", model.as_ref().map(|m| &m.display_name))));
+    logger.api_response(
+        "get_default_ai_model",
+        true,
+        Some(&format!(
+            "Default model: {:?}",
+            model.as_ref().map(|m| &m.display_name)
+        )),
+    );
     Ok(model)
 }
 
@@ -350,7 +424,10 @@ pub async fn set_default_ai_model(app: AppHandle, model_id: Id) -> AppResult<()>
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("set_default_ai_model", Some(&format!("model_id: {}", model_id)));
+    logger.api_request(
+        "set_default_ai_model",
+        Some(&format!("model_id: {}", model_id)),
+    );
 
     // 开始事务
     let mut tx = match pool.inner().begin().await {
@@ -373,8 +450,13 @@ pub async fn set_default_ai_model(app: AppHandle, model_id: Id) -> AppResult<()>
     }
 
     // 设置新的默认模型
-    let set_query = "UPDATE ai_models SET is_default = 1, updated_at = datetime('now') WHERE id = ?";
-    let result = match sqlx::query(set_query).bind(model_id).execute(&mut *tx).await {
+    let set_query =
+        "UPDATE ai_models SET is_default = 1, updated_at = datetime('now') WHERE id = ?";
+    let result = match sqlx::query(set_query)
+        .bind(model_id)
+        .execute(&mut *tx)
+        .await
+    {
         Ok(result) => result,
         Err(e) => {
             let error_msg = format!("Failed to set default model: {}", e);
@@ -398,8 +480,17 @@ pub async fn set_default_ai_model(app: AppHandle, model_id: Id) -> AppResult<()>
         return Err(AppError::DatabaseError(error_msg));
     }
 
-    logger.database_operation("UPDATE", "ai_models", true, Some(&format!("Set model {} as default", model_id)));
-    logger.api_response("set_default_ai_model", true, Some("Default model updated successfully"));
+    logger.database_operation(
+        "UPDATE",
+        "ai_models",
+        true,
+        Some(&format!("Set model {} as default", model_id)),
+    );
+    logger.api_response(
+        "set_default_ai_model",
+        true,
+        Some("Default model updated successfully"),
+    );
     Ok(())
 }
 
@@ -446,7 +537,12 @@ pub async fn create_ai_provider(
         .await
     {
         Ok(result) => {
-            logger.database_operation("INSERT", "ai_providers", true, Some(&format!("Created provider: {}", name)));
+            logger.database_operation(
+                "INSERT",
+                "ai_providers",
+                true,
+                Some(&format!("Created provider: {}", name)),
+            );
             result
         }
         Err(e) => {
@@ -458,7 +554,11 @@ pub async fn create_ai_provider(
     };
 
     let provider_id = result.last_insert_rowid();
-    logger.api_response("create_ai_provider", true, Some(&format!("Created provider with ID: {}", provider_id)));
+    logger.api_response(
+        "create_ai_provider",
+        true,
+        Some(&format!("Created provider with ID: {}", provider_id)),
+    );
     Ok(provider_id)
 }
 
@@ -476,7 +576,10 @@ pub async fn update_ai_provider(
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("update_ai_provider", Some(&format!("provider_id: {}", provider_id)));
+    logger.api_request(
+        "update_ai_provider",
+        Some(&format!("provider_id: {}", provider_id)),
+    );
 
     // Build query dynamically
     let mut query_parts = Vec::new();
@@ -510,7 +613,10 @@ pub async fn update_ai_provider(
     }
 
     query_parts.push("updated_at = datetime('now')");
-    let update_query = format!("UPDATE ai_providers SET {} WHERE id = ?", query_parts.join(", "));
+    let update_query = format!(
+        "UPDATE ai_providers SET {} WHERE id = ?",
+        query_parts.join(", ")
+    );
 
     let mut query = sqlx::query(&update_query);
 
@@ -547,25 +653,38 @@ pub async fn update_ai_provider(
         return Err(AppError::NotFound(error_msg.to_string()));
     }
 
-    logger.database_operation("UPDATE", "ai_providers", true, Some(&format!("Updated provider: {}", provider_id)));
-    logger.api_response("update_ai_provider", true, Some("Provider updated successfully"));
+    logger.database_operation(
+        "UPDATE",
+        "ai_providers",
+        true,
+        Some(&format!("Updated provider: {}", provider_id)),
+    );
+    logger.api_response(
+        "update_ai_provider",
+        true,
+        Some("Provider updated successfully"),
+    );
     Ok(())
 }
 
 /// 删除AI提供商
 #[tauri::command]
-pub async fn delete_ai_provider(
-    app: AppHandle,
-    provider_id: Id,
-) -> AppResult<()> {
+pub async fn delete_ai_provider(app: AppHandle, provider_id: Id) -> AppResult<()> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("delete_ai_provider", Some(&format!("provider_id: {}", provider_id)));
+    logger.api_request(
+        "delete_ai_provider",
+        Some(&format!("provider_id: {}", provider_id)),
+    );
 
     // 首先删除关联的模型
     let delete_models_query = "DELETE FROM ai_models WHERE provider_id = ?";
-    let models_result = match sqlx::query(delete_models_query).bind(provider_id).execute(pool.inner()).await {
+    let models_result = match sqlx::query(delete_models_query)
+        .bind(provider_id)
+        .execute(pool.inner())
+        .await
+    {
         Ok(result) => result,
         Err(e) => {
             let error_msg = format!("Failed to delete associated models: {}", e);
@@ -577,11 +696,23 @@ pub async fn delete_ai_provider(
 
     let deleted_models_count = models_result.rows_affected();
     if deleted_models_count > 0 {
-        logger.database_operation("DELETE", "ai_models", true, Some(&format!("Deleted {} associated models for provider: {}", deleted_models_count, provider_id)));
+        logger.database_operation(
+            "DELETE",
+            "ai_models",
+            true,
+            Some(&format!(
+                "Deleted {} associated models for provider: {}",
+                deleted_models_count, provider_id
+            )),
+        );
     }
 
     let delete_query = "DELETE FROM ai_providers WHERE id = ?";
-    let result = match sqlx::query(delete_query).bind(provider_id).execute(pool.inner()).await {
+    let result = match sqlx::query(delete_query)
+        .bind(provider_id)
+        .execute(pool.inner())
+        .await
+    {
         Ok(result) => result,
         Err(e) => {
             let error_msg = format!("Failed to delete provider: {}", e);
@@ -597,8 +728,17 @@ pub async fn delete_ai_provider(
         return Err(AppError::NotFound(error_msg.to_string()));
     }
 
-    logger.database_operation("DELETE", "ai_providers", true, Some(&format!("Deleted provider: {}", provider_id)));
-    logger.api_response("delete_ai_provider", true, Some("Provider deleted successfully"));
+    logger.database_operation(
+        "DELETE",
+        "ai_providers",
+        true,
+        Some(&format!("Deleted provider: {}", provider_id)),
+    );
+    logger.api_response(
+        "delete_ai_provider",
+        true,
+        Some("Provider deleted successfully"),
+    );
     Ok(())
 }
 
@@ -617,7 +757,10 @@ pub async fn create_ai_model(
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("create_ai_model", Some(&format!("name: {}, provider_id: {}", name, provider_id)));
+    logger.api_request(
+        "create_ai_model",
+        Some(&format!("name: {}, provider_id: {}", name, provider_id)),
+    );
 
     // 验证输入
     if name.trim().is_empty() {
@@ -640,7 +783,11 @@ pub async fn create_ai_model(
 
     // 验证提供商是否存在
     let provider_check = "SELECT id FROM ai_providers WHERE id = ? AND is_active = 1";
-    let provider_exists = match sqlx::query(provider_check).bind(provider_id).fetch_optional(pool.inner()).await {
+    let provider_exists = match sqlx::query(provider_check)
+        .bind(provider_id)
+        .fetch_optional(pool.inner())
+        .await
+    {
         Ok(row) => row.is_some(),
         Err(e) => {
             let error_msg = format!("Failed to check provider: {}", e);
@@ -674,7 +821,12 @@ pub async fn create_ai_model(
         .await
     {
         Ok(result) => {
-            logger.database_operation("INSERT", "ai_models", true, Some(&format!("Created model: {}", name)));
+            logger.database_operation(
+                "INSERT",
+                "ai_models",
+                true,
+                Some(&format!("Created model: {}", name)),
+            );
             result
         }
         Err(e) => {
@@ -686,7 +838,11 @@ pub async fn create_ai_model(
     };
 
     let model_id = result.last_insert_rowid();
-    logger.api_response("create_ai_model", true, Some(&format!("Created model with ID: {}", model_id)));
+    logger.api_response(
+        "create_ai_model",
+        true,
+        Some(&format!("Created model with ID: {}", model_id)),
+    );
     Ok(model_id)
 }
 
@@ -747,7 +903,10 @@ pub async fn update_ai_model(
     }
 
     query_parts.push("updated_at = datetime('now')");
-    let update_query = format!("UPDATE ai_models SET {} WHERE id = ?", query_parts.join(", "));
+    let update_query = format!(
+        "UPDATE ai_models SET {} WHERE id = ?",
+        query_parts.join(", ")
+    );
 
     let mut query = sqlx::query(&update_query);
 
@@ -790,24 +949,30 @@ pub async fn update_ai_model(
         return Err(AppError::NotFound(error_msg.to_string()));
     }
 
-    logger.database_operation("UPDATE", "ai_models", true, Some(&format!("Updated model: {}", model_id)));
+    logger.database_operation(
+        "UPDATE",
+        "ai_models",
+        true,
+        Some(&format!("Updated model: {}", model_id)),
+    );
     logger.api_response("update_ai_model", true, Some("Model updated successfully"));
     Ok(())
 }
 
 /// 删除AI模型
 #[tauri::command]
-pub async fn delete_ai_model(
-    app: AppHandle,
-    model_id: Id,
-) -> AppResult<()> {
+pub async fn delete_ai_model(app: AppHandle, model_id: Id) -> AppResult<()> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
     logger.api_request("delete_ai_model", Some(&format!("model_id: {}", model_id)));
 
     let delete_query = "DELETE FROM ai_models WHERE id = ?";
-    let result = match sqlx::query(delete_query).bind(model_id).execute(pool.inner()).await {
+    let result = match sqlx::query(delete_query)
+        .bind(model_id)
+        .execute(pool.inner())
+        .await
+    {
         Ok(result) => result,
         Err(e) => {
             let error_msg = format!("Failed to delete model: {}", e);
@@ -823,7 +988,12 @@ pub async fn delete_ai_model(
         return Err(AppError::NotFound(error_msg.to_string()));
     }
 
-    logger.database_operation("DELETE", "ai_models", true, Some(&format!("Deleted model: {}", model_id)));
+    logger.database_operation(
+        "DELETE",
+        "ai_models",
+        true,
+        Some(&format!("Deleted model: {}", model_id)),
+    );
     logger.api_response("delete_ai_model", true, Some("Model deleted successfully"));
     Ok(())
 }
@@ -841,9 +1011,14 @@ pub async fn analyze_phonics_with_model(
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-
-
-    logger.api_request("analyze_phonics_with_model", Some(&format!("text_length: {}, model_id: {:?}", text.len(), model_id)));
+    logger.api_request(
+        "analyze_phonics_with_model",
+        Some(&format!(
+            "text_length: {}, model_id: {:?}",
+            text.len(),
+            model_id
+        )),
+    );
 
     // 如果指定了模型ID，从数据库获取模型配置
     let (ai_service, model_config) = if let Some(model_id_val) = &model_id {
@@ -862,7 +1037,11 @@ pub async fn analyze_phonics_with_model(
             WHERE m.id = ? AND m.is_active = 1 AND p.is_active = 1
         "#;
 
-        let row = match sqlx::query(query).bind(model_id_val).fetch_optional(pool.inner()).await {
+        let row = match sqlx::query(query)
+            .bind(model_id_val)
+            .fetch_optional(pool.inner())
+            .await
+        {
             Ok(Some(row)) => row,
             Ok(None) => {
                 let error_msg = format!("Model not found or inactive: {}", model_id_val);
@@ -876,30 +1055,30 @@ pub async fn analyze_phonics_with_model(
             }
         };
 
-            let model_config = AIModelConfig {
-                id: row.get("id"),
-                name: row.get("model_id"),
-                model_id: row.get("model_id"),
-                display_name: row.get("display_name"),
-                description: row.get("description"),
-                max_tokens: row.get("max_tokens"),
-                temperature: row.get("temperature"),
-                is_active: row.get("is_active"),
-                is_default: row.get("is_default"),
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-                provider: AIProvider {
-                    id: row.get("provider_id"),
-                    name: row.get("provider_name"),
-                    display_name: row.get("provider_display_name"),
-                    base_url: row.get("base_url"),
-                    api_key: row.get("api_key"),
-                    description: row.get("provider_description"),
-                    is_active: row.get("provider_is_active"),
-                    created_at: row.get("provider_created_at"),
-                    updated_at: row.get("provider_updated_at"),
-                },
-            };
+        let model_config = AIModelConfig {
+            id: row.get("id"),
+            name: row.get("model_id"),
+            model_id: row.get("model_id"),
+            display_name: row.get("display_name"),
+            description: row.get("description"),
+            max_tokens: row.get("max_tokens"),
+            temperature: row.get("temperature"),
+            is_active: row.get("is_active"),
+            is_default: row.get("is_default"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+            provider: AIProvider {
+                id: row.get("provider_id"),
+                name: row.get("provider_name"),
+                display_name: row.get("provider_display_name"),
+                base_url: row.get("base_url"),
+                api_key: row.get("api_key"),
+                description: row.get("provider_description"),
+                is_active: row.get("provider_is_active"),
+                created_at: row.get("provider_created_at"),
+                updated_at: row.get("provider_updated_at"),
+            },
+        };
 
         let service = match AIService::from_model_config(&model_config) {
             Ok(service) => service,
@@ -975,19 +1154,28 @@ pub async fn analyze_phonics_with_model(
     };
 
     // 记录模型配置参数
-    logger.info("AI_MODEL_HANDLERS", &format!(
-        "Model config - ID: {}, model_id: {}, max_tokens: {:?}, temperature: {:?}",
-        model_config.id, model_config.model_id, model_config.max_tokens, model_config.temperature
-    ));
+    logger.info(
+        "AI_MODEL_HANDLERS",
+        &format!(
+            "Model config - ID: {}, model_id: {}, max_tokens: {:?}, temperature: {:?}",
+            model_config.id,
+            model_config.model_id,
+            model_config.max_tokens,
+            model_config.temperature
+        ),
+    );
 
     // 执行自然拼读分析，使用模型配置中的参数
     let max_tokens_u32 = model_config.max_tokens.map(|t| t as u32);
     let temperature_f32 = model_config.temperature.map(|t| t as f32);
 
-    logger.info("AI_MODEL_HANDLERS", &format!(
-        "Converted parameters - max_tokens: {:?}, temperature: {:?}",
-        max_tokens_u32, temperature_f32
-    ));
+    logger.info(
+        "AI_MODEL_HANDLERS",
+        &format!(
+            "Converted parameters - max_tokens: {:?}, temperature: {:?}",
+            max_tokens_u32, temperature_f32
+        ),
+    );
 
     // 处理提取模式，默认为focus
     let extraction_mode = extraction_mode.unwrap_or_else(|| "focus".to_string());
@@ -1002,16 +1190,26 @@ pub async fn analyze_phonics_with_model(
         ),
     );
 
-    match ai_service.analyze_phonics(
-        &text,
-        Some(&model_config.model_id), // 使用模型配置中的实际模型名称
-        max_tokens_u32,
-        temperature_f32,
-        &extraction_mode,
-        &logger
-    ).await {
+    match ai_service
+        .analyze_phonics(
+            &text,
+            Some(&model_config.model_id), // 使用模型配置中的实际模型名称
+            max_tokens_u32,
+            temperature_f32,
+            &extraction_mode,
+            &logger,
+        )
+        .await
+    {
         Ok(result) => {
-            logger.api_response("analyze_phonics_with_model", true, Some(&format!("Successfully analyzed {} words", result.words.len())));
+            logger.api_response(
+                "analyze_phonics_with_model",
+                true,
+                Some(&format!(
+                    "Successfully analyzed {} words",
+                    result.words.len()
+                )),
+            );
             Ok(result)
         }
         Err(e) => {
@@ -1030,15 +1228,21 @@ pub async fn test_ai_model(
     test_text: Option<String>,
 ) -> AppResult<TestAIModelResult> {
     use crate::ai_service::AIService;
-    
+
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
-    
-    logger.api_request("test_ai_model", Some(&format!("model_id: {}, test_text: {:?}", model_id, test_text)));
-    
+
+    logger.api_request(
+        "test_ai_model",
+        Some(&format!(
+            "model_id: {}, test_text: {:?}",
+            model_id, test_text
+        )),
+    );
+
     // 使用默认测试文本
     let text_to_test = test_text.unwrap_or_else(|| "Hello".to_string());
-    
+
     // 查询模型配置
     let query = r#"
         SELECT m.id, m.model_id, m.display_name, m.description, m.max_tokens, m.temperature, m.is_active, m.is_default,
@@ -1050,8 +1254,12 @@ pub async fn test_ai_model(
         JOIN ai_providers p ON m.provider_id = p.id
         WHERE m.id = ? AND m.is_active = 1 AND p.is_active = 1
     "#;
-    
-    let row = match sqlx::query(query).bind(model_id).fetch_optional(pool.inner()).await {
+
+    let row = match sqlx::query(query)
+        .bind(model_id)
+        .fetch_optional(pool.inner())
+        .await
+    {
         Ok(Some(row)) => row,
         Ok(None) => {
             let error_msg = format!("Model not found or inactive: {}", model_id);
@@ -1064,7 +1272,7 @@ pub async fn test_ai_model(
             return Err(AppError::InternalError(error_msg));
         }
     };
-    
+
     let model_config = AIModelConfig {
         id: row.get("id"),
         name: row.get("model_id"),
@@ -1089,12 +1297,15 @@ pub async fn test_ai_model(
             updated_at: row.get("provider_updated_at"),
         },
     };
-    
-    logger.info("TEST_AI_MODEL", &format!(
-        "Testing model - ID: {}, model_id: {}, test_text: {}",
-        model_config.id, model_config.model_id, text_to_test
-    ));
-    
+
+    logger.info(
+        "TEST_AI_MODEL",
+        &format!(
+            "Testing model - ID: {}, model_id: {}, test_text: {}",
+            model_config.id, model_config.model_id, text_to_test
+        ),
+    );
+
     // 创建AI服务
     let ai_service = match AIService::from_model_config(&model_config) {
         Ok(service) => service,
@@ -1104,32 +1315,36 @@ pub async fn test_ai_model(
             return Err(AppError::InternalError(error_msg));
         }
     };
-    
+
     // 发送简单的对话请求
     let max_tokens_u32 = model_config.max_tokens.map(|t| t as u32);
     let temperature_f32 = model_config.temperature.map(|t| t as f32);
-    
-    logger.info("TEST_AI_MODEL", &format!(
-        "Sending test request with parameters - max_tokens: {:?}, temperature: {:?}",
-        max_tokens_u32, temperature_f32
-    ));
-    
+
+    logger.info(
+        "TEST_AI_MODEL",
+        &format!(
+            "Sending test request with parameters - max_tokens: {:?}, temperature: {:?}",
+            max_tokens_u32, temperature_f32
+        ),
+    );
+
     // 构建简单的提示词
     let prompt = format!("Please respond to: {}", text_to_test);
-    
-    match ai_service.chat_completion(
-        &prompt,
-        max_tokens_u32,
-        temperature_f32,
-        &logger
-    ).await {
+
+    match ai_service
+        .chat_completion(&prompt, max_tokens_u32, temperature_f32, &logger)
+        .await
+    {
         Ok(response) => {
-            logger.info("TEST_AI_MODEL", &format!(
-                "Test successful - Response length: {} chars",
-                response.len()
-            ));
+            logger.info(
+                "TEST_AI_MODEL",
+                &format!(
+                    "Test successful - Response length: {} chars",
+                    response.len()
+                ),
+            );
             logger.api_response("test_ai_model", true, Some("Model test successful"));
-            
+
             Ok(TestAIModelResult {
                 success: true,
                 message: response,
@@ -1140,5 +1355,5 @@ pub async fn test_ai_model(
             logger.api_response("test_ai_model", false, Some(&error_msg));
             Err(AppError::InternalError(error_msg))
         }
-}
+    }
 }

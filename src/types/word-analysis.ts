@@ -4,11 +4,13 @@
  */
 
 /**
- * 提取的单词（带频率）
+ * 提取的单词（带频率、词性和中文翻译）
  */
 export interface ExtractedWord {
   word: string;
   frequency: number;
+  partOfSpeech?: string; // 词性缩写（如 "n.", "v.", "adj." 等）
+  meaning?: string; // 中文翻译
 }
 
 /**

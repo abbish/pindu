@@ -1,8 +1,23 @@
-use sqlx::{SqlitePool, Row};
-use crate::types::{wordbook::*, common::Id};
-use crate::error::{AppResult, AppError};
+//! 单词本数据访问层
+//!
+//! 提供 Repository 模式的数据访问封装
+//!
+//! # 注意
+//! 此模块当前独立实现,未来将集成到 Service 层
+
+
+
+use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::types::{common::Id, wordbook::*};
+use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
+
+/// 单词本查询过滤器
+#[derive(Debug, Clone, Default)]
+pub struct WordBookFilters {
+    pub status: Option<String>,
+}
 
 /// 单词本仓储
 ///
@@ -16,6 +31,16 @@ impl WordBookRepository {
     /// 创建新的仓储实例
     pub fn new(pool: Arc<SqlitePool>, logger: Arc<Logger>) -> Self {
         Self { pool, logger }
+    }
+
+    /// 获取 pool 引用（用于跨 Repository 操作）
+    pub fn get_pool(&self) -> Arc<SqlitePool> {
+        self.pool.clone()
+    }
+
+    /// 获取 logger 引用（用于跨 Repository 操作）
+    pub fn get_logger(&self) -> Arc<Logger> {
+        self.logger.clone()
     }
 
     /// 查询单个单词本（包含主题标签）
@@ -34,7 +59,8 @@ impl WordBookRepository {
             .fetch_optional(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("SELECT", "word_books", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("SELECT", "word_books", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -44,7 +70,7 @@ impl WordBookRepository {
                     "SELECT",
                     "word_books",
                     true,
-                    Some(&format!("Found word book {}", id))
+                    Some(&format!("Found word book {}", id)),
                 );
 
                 // 获取主题标签
@@ -58,21 +84,20 @@ impl WordBookRepository {
 
     /// 查询所有单词本（支持过滤）
     pub async fn find_all(&self, filters: WordBookFilters) -> AppResult<Vec<WordBook>> {
-        let mut sql = String::from(r#"
+        let mut sql = String::from(
+            r#"
             SELECT
                 wb.id, wb.title, wb.description, wb.icon, wb.icon_color,
                 wb.total_words, wb.linked_plans, wb.created_at, wb.updated_at,
                 wb.last_used, wb.status
             FROM word_books wb
             WHERE wb.deleted_at IS NULL
-        "#);
-
-        let mut bind_count = 0;
+        "#,
+        );
 
         // 添加过滤条件
-        if let Some(status) = &filters.status {
-            sql.push_str(&format!(" AND wb.status = {}", bind_count));
-            bind_count += 1;
+        if filters.status.is_some() {
+            sql.push_str(" AND wb.status = ?");
         }
 
         sql.push_str(" ORDER BY wb.updated_at DESC");
@@ -84,23 +109,22 @@ impl WordBookRepository {
             query = query.bind(status);
         }
 
-        let rows = query
-            .fetch_all(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation("SELECT", "word_books", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
+        let rows = query.fetch_all(self.pool.as_ref()).await.map_err(|e| {
+            self.logger
+                .database_operation("SELECT", "word_books", false, Some(&e.to_string()));
+            AppError::DatabaseError(e.to_string())
+        })?;
 
         self.logger.database_operation(
             "SELECT",
             "word_books",
             true,
-            Some(&format!("Found {} word books", rows.len()))
+            Some(&format!("Found {} word books", rows.len())),
         );
 
         // 批量获取主题标签
-        let all_tags = self.get_all_theme_tags().await?;
+        let all_tags: std::collections::HashMap<Id, Vec<crate::types::wordbook::ThemeTag>> =
+            self.get_all_theme_tags().await?;
 
         Ok(rows
             .into_iter()
@@ -127,7 +151,8 @@ impl WordBookRepository {
             .execute(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("INSERT", "word_books", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("INSERT", "word_books", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -135,7 +160,8 @@ impl WordBookRepository {
             .fetch_one(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("SELECT", "word_books", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("SELECT", "word_books", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -145,7 +171,7 @@ impl WordBookRepository {
             "INSERT",
             "word_books",
             true,
-            Some(&format!("Created word book {}", id))
+            Some(&format!("Created word book {}", id)),
         );
 
         // 插入主题标签关联
@@ -155,7 +181,7 @@ impl WordBookRepository {
                     self.logger.error(
                         "WORDBOOK_REPOSITORY",
                         &format!("Failed to add theme tag {} to word book {}", tag_id, id),
-                        Some(&e.to_string())
+                        Some(&e.to_string()),
                     );
                 }
             }
@@ -166,26 +192,58 @@ impl WordBookRepository {
 
     /// 更新单词本
     pub async fn update(&self, id: Id, request: UpdateWordBookRequest) -> AppResult<()> {
-        let query = r#"
-            UPDATE word_books
-            SET title = ?,
-                description = ?,
-                icon = ?,
-                icon_color = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND deleted_at IS NULL
-        "#;
+        // 构建动态更新查询
+        let mut set_clauses = Vec::new();
+        let mut update_values: Vec<String> = Vec::new();
 
-        let rows_affected = sqlx::query(query)
-            .bind(&request.title)
-            .bind(&request.description)
-            .bind(&request.icon)
-            .bind(&request.icon_color)
-            .bind(id)
+        if let Some(title) = request.title.as_ref() {
+            set_clauses.push("title = ?");
+            update_values.push(String::from(title));
+        }
+
+        if let Some(description) = request.description.as_ref() {
+            set_clauses.push("description = ?");
+            update_values.push(String::from(description));
+        }
+
+        if let Some(icon) = request.icon.as_ref() {
+            set_clauses.push("icon = ?");
+            update_values.push(String::from(icon));
+        }
+
+        if let Some(icon_color) = request.icon_color.as_ref() {
+            set_clauses.push("icon_color = ?");
+            update_values.push(String::from(icon_color));
+        }
+
+        if let Some(status) = request.status.as_ref() {
+            set_clauses.push("status = ?");
+            update_values.push(String::from(status));
+        }
+
+        if set_clauses.is_empty() {
+            return Err(AppError::ValidationError("至少需要提供一个要更新的字段".to_string()));
+        }
+
+        set_clauses.push("updated_at = CURRENT_TIMESTAMP");
+
+        let query = format!(
+            "UPDATE word_books SET {} WHERE id = ? AND deleted_at IS NULL",
+            set_clauses.join(", ")
+        );
+
+        let mut query_builder = sqlx::query(&query);
+        for value in &update_values {
+            query_builder = query_builder.bind(value);
+        }
+        query_builder = query_builder.bind(id);
+
+        let rows_affected = query_builder
             .execute(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("UPDATE", "word_books", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("UPDATE", "word_books", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?
             .rows_affected();
@@ -198,7 +256,7 @@ impl WordBookRepository {
             "UPDATE",
             "word_books",
             true,
-            Some(&format!("Updated word book {}", id))
+            Some(&format!("Updated word book {}", id)),
         );
 
         // 更新主题标签
@@ -229,7 +287,8 @@ impl WordBookRepository {
             .execute(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("UPDATE", "word_books", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("UPDATE", "word_books", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?
             .rows_affected();
@@ -242,7 +301,7 @@ impl WordBookRepository {
             "UPDATE",
             "word_books",
             true,
-            Some(&format!("Deleted word book {}", id))
+            Some(&format!("Deleted word book {}", id)),
         );
 
         Ok(())
@@ -251,10 +310,11 @@ impl WordBookRepository {
     /// 获取单词本统计信息
     pub async fn get_statistics(&self, id: Id) -> AppResult<WordBookStatistics> {
         // 获取单词总数
+        // 注意: words 表没有 deleted_at 字段，不需要过滤
         let word_count_query = r#"
             SELECT COUNT(*) as count
             FROM words
-            WHERE word_book_id = ? AND deleted_at IS NULL
+            WHERE word_book_id = ?
         "#;
 
         let row = sqlx::query(word_count_query)
@@ -262,18 +322,24 @@ impl WordBookRepository {
             .fetch_one(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
         let total_words: i64 = row.get("count");
 
         // 获取词性分布
+        // 注意: words 表没有 deleted_at 字段
+        // 使用 pos_english 字段进行统计，因为 part_of_speech 字段可能为空
         let pos_query = r#"
-            SELECT part_of_speech, COUNT(*) as count
+            SELECT 
+                COALESCE(part_of_speech, pos_english, pos_abbreviation) as pos,
+                COUNT(*) as count
             FROM words
-            WHERE word_book_id = ? AND deleted_at IS NULL AND part_of_speech IS NOT NULL
-            GROUP BY part_of_speech
+            WHERE word_book_id = ? 
+              AND (part_of_speech IS NOT NULL OR pos_english IS NOT NULL OR pos_abbreviation IS NOT NULL)
+            GROUP BY COALESCE(part_of_speech, pos_english, pos_abbreviation)
         "#;
 
         let rows = sqlx::query(pos_query)
@@ -281,25 +347,125 @@ impl WordBookRepository {
             .fetch_all(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("SELECT", "words", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        let part_of_speech_counts: Vec<(String, i64)> = rows
-            .iter()
-            .map(|row| (row.get("part_of_speech"), row.get("count")))
-            .collect();
+        // 转换为 WordTypeDistribution
+        let mut word_types = WordTypeDistribution {
+            nouns: 0,
+            verbs: 0,
+            adjectives: 0,
+            others: 0,
+        };
+
+        for row in rows {
+            let pos: Option<String> = row.get("pos");
+            let count: i64 = row.get("count");
+
+            if let Some(pos_str) = pos {
+                let pos_lower = pos_str.to_lowercase();
+                // 匹配多种词性格式：n/n./noun/nouns, v/v./verb/verbs, adj/adj./adjective/adjectives
+                if pos_lower.starts_with("n") || pos_lower == "noun" || pos_lower == "nouns" || pos_lower == "名词" {
+                    word_types.nouns += count as i32;
+                } else if pos_lower.starts_with("v") || pos_lower == "verb" || pos_lower == "verbs" || pos_lower == "动词" {
+                    word_types.verbs += count as i32;
+                } else if pos_lower.starts_with("adj") || pos_lower == "adjective" || pos_lower == "adjectives" || pos_lower == "形容词" {
+                    word_types.adjectives += count as i32;
+                } else {
+                    word_types.others += count as i32;
+                }
+            } else {
+                word_types.others += count as i32;
+            }
+        }
 
         Ok(WordBookStatistics {
-            total_words,
-            part_of_speech_counts,
+            total_books: 1, // 当前查询单个单词本
+            total_words: total_words as i32,
+            word_types,
         })
+    }
+
+    /// 更新所有单词本的统计信息
+    pub async fn update_all_counts(&self) -> AppResult<()> {
+        let update_query = r#"
+            UPDATE word_books
+            SET total_words = (
+                SELECT COUNT(*)
+                FROM words
+                WHERE words.word_book_id = word_books.id
+            ),
+            linked_plans = (
+                SELECT COUNT(DISTINCT sp.id)
+                FROM study_plans sp
+                JOIN study_plan_words spw ON sp.id = spw.plan_id
+                JOIN words w ON spw.word_id = w.id
+                WHERE w.word_book_id = word_books.id
+                AND sp.deleted_at IS NULL
+                AND sp.status = 'normal'
+            )
+        "#;
+
+        sqlx::query(update_query)
+            .execute(self.pool.as_ref())
+            .await
+            .map_err(|e| {
+                self.logger
+                    .database_operation("UPDATE", "word_books", false, Some(&e.to_string()));
+                AppError::DatabaseError(e.to_string())
+            })?;
+
+        self.logger.database_operation(
+            "UPDATE",
+            "word_books",
+            true,
+            Some("Updated all word book counts"),
+        );
+
+        Ok(())
+    }
+
+    /// 更新单词本的统计信息（单词数量、最后使用时间等）
+    pub async fn update_statistics(&self, id: Id) -> AppResult<()> {
+        let update_query = r#"
+            UPDATE word_books
+            SET total_words = (SELECT COUNT(*) FROM words WHERE word_book_id = ?),
+                last_used = datetime('now'),
+                updated_at = datetime('now')
+            WHERE id = ?
+        "#;
+
+        sqlx::query(update_query)
+            .bind(id)
+            .bind(id)
+            .execute(self.pool.as_ref())
+            .await
+            .map_err(|e| {
+                self.logger
+                    .database_operation("UPDATE", "word_books", false, Some(&e.to_string()));
+                AppError::DatabaseError(e.to_string())
+            })?;
+
+        self.logger.database_operation(
+            "UPDATE",
+            "word_books",
+            true,
+            Some(&format!("Updated statistics for word book {}", id)),
+        );
+
+        Ok(())
     }
 
     // ===== 辅助方法 =====
 
     /// 将数据库行转换为实体
-    fn row_to_entity(&self, row: sqlx::sqlite::SqliteRow, tags: Vec<ThemeTag>) -> AppResult<WordBook> {
+    fn row_to_entity(
+        &self,
+        row: sqlx::sqlite::SqliteRow,
+        tags: Vec<ThemeTag>,
+    ) -> AppResult<WordBook> {
         Ok(WordBook {
             id: row.get("id"),
             title: row.get("title"),
@@ -332,7 +498,8 @@ impl WordBookRepository {
             .fetch_all(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("SELECT", "theme_tags", false, Some(&e.to_string()));
+                self.logger
+                    .database_operation("SELECT", "theme_tags", false, Some(&e.to_string()));
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -363,11 +530,17 @@ impl WordBookRepository {
             .fetch_all(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger.database_operation("SELECT", "word_book_theme_tags", false, Some(&e.to_string()));
+                self.logger.database_operation(
+                    "SELECT",
+                    "word_book_theme_tags",
+                    false,
+                    Some(&e.to_string()),
+                );
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        let mut result: std::collections::HashMap<Id, Vec<ThemeTag>> = std::collections::HashMap::new();
+        let mut result: std::collections::HashMap<Id, Vec<ThemeTag>> =
+            std::collections::HashMap::new();
 
         for row in rows {
             let word_book_id: Id = row.get("word_book_id");
@@ -402,7 +575,7 @@ impl WordBookRepository {
                     "INSERT",
                     "word_book_theme_tags",
                     false,
-                    Some(&e.to_string())
+                    Some(&e.to_string()),
                 );
                 AppError::DatabaseError(e.to_string())
             })?;
@@ -426,46 +599,13 @@ impl WordBookRepository {
                     "DELETE",
                     "word_book_theme_tags",
                     false,
-                    Some(&e.to_string())
+                    Some(&e.to_string()),
                 );
                 AppError::DatabaseError(e.to_string())
             })?;
 
         Ok(())
     }
-}
-
-/// 单词本查询过滤器
-#[derive(Debug, Clone, Default)]
-pub struct WordBookFilters {
-    pub status: Option<String>,
-}
-
-/// 创建单词本请求
-#[derive(Debug, Clone)]
-pub struct CreateWordBookRequest {
-    pub title: String,
-    pub description: Option<String>,
-    pub icon: String,
-    pub icon_color: String,
-    pub theme_tag_ids: Option<Vec<Id>>,
-}
-
-/// 更新单词本请求
-#[derive(Debug, Clone)]
-pub struct UpdateWordBookRequest {
-    pub title: String,
-    pub description: Option<String>,
-    pub icon: String,
-    pub icon_color: String,
-    pub theme_tag_ids: Option<Vec<Id>>,
-}
-
-/// 单词本统计信息
-#[derive(Debug, Clone)]
-pub struct WordBookStatistics {
-    pub total_words: i64,
-    pub part_of_speech_counts: Vec<(String, i64)>,
 }
 
 #[cfg(test)]
@@ -485,13 +625,9 @@ mod tests {
             .await
             .expect("Failed to run migrations");
 
-        let logger = Logger::new(&PathBuf::from("."))
-            .expect("Failed to create logger");
+        let logger = Logger::new(&PathBuf::from(".")).expect("Failed to create logger");
 
-        WordBookRepository::new(
-            Arc::new(pool),
-            Arc::new(logger)
-        )
+        WordBookRepository::new(Arc::new(pool), Arc::new(logger))
     }
 
     #[tokio::test]
