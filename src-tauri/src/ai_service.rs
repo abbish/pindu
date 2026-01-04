@@ -17,11 +17,11 @@ use std::time::Instant;
 /// 分析进度状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisProgress {
-    pub status: String,           // "analyzing", "completed", "error"
-    pub current_step: String,     // 当前步骤描述
-    pub chunks_received: u32,     // 已接收的chunk数量
-    pub total_chars: usize,       // 已接收的总字符数
-    pub elapsed_seconds: f64,     // 已用时间（秒）
+    pub status: String,                // "analyzing", "completed", "error"
+    pub current_step: String,          // 当前步骤描述
+    pub chunks_received: u32,          // 已接收的chunk数量
+    pub total_chars: usize,            // 已接收的总字符数
+    pub elapsed_seconds: f64,          // 已用时间（秒）
     pub error_message: Option<String>, // 错误信息
 }
 
@@ -132,7 +132,9 @@ pub fn get_global_progress_manager() -> &'static ProgressManager {
 
 /// AI 服务提供商配置（动态配置）
 #[derive(Debug, Clone)]
+
 pub struct AIProvider {
+    
     pub name: String,
     pub base_url: String,
     pub api_key: String,
@@ -140,49 +142,12 @@ pub struct AIProvider {
 }
 
 impl AIProvider {
-    pub fn get_api_key(&self) -> &str {
-        &self.api_key
-    }
-
-    pub fn get_base_url(&self) -> &str {
-        &self.base_url
-    }
-
     pub fn get_default_model(&self) -> &str {
         &self.default_model
     }
 }
 
 // 移除了传统词汇分析相关的结构体，只保留自然拼读分析
-
-/// 简单的聊天消息
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SimpleChatMessage {
-    pub role: String,
-    pub content: String,
-}
-
-/// 聊天完成请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChatCompletionRequest {
-    pub model: String,
-    pub messages: Vec<SimpleChatMessage>,
-    pub max_tokens: Option<u32>,
-    pub temperature: Option<f32>,
-}
-
-/// 聊天完成响应
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChatCompletionChoice {
-    pub message: SimpleChatMessage,
-    pub finish_reason: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChatCompletionResponse {
-    pub choices: Vec<ChatCompletionChoice>,
-    pub usage: Option<HashMap<String, u32>>,
-}
 
 /// CSV 记录结构（用于批量分析）
 #[derive(Debug, Deserialize)]
@@ -249,22 +214,13 @@ impl AIService {
         Ok(Self::new(provider))
     }
 
-    /// 获取分析进度
-    pub fn get_analysis_progress(&self) -> Option<AnalysisProgress> {
-        get_global_progress_manager().get_progress()
-    }
-
-    /// 清除分析进度
-    pub fn clear_analysis_progress(&self) {
-        get_global_progress_manager().clear_progress()
-    }
-
     // 移除了传统词汇分析方法，只保留自然拼读分析
 
     /// 提取单词列表（用于批量分析的第一步）
     pub async fn extract_words(
         &self,
         text: &str,
+        extraction_mode: &str,
         logger: &Logger,
     ) -> Result<crate::types::word_analysis::WordExtractionResult, Box<dyn std::error::Error>> {
         let start_time = std::time::Instant::now();
@@ -280,16 +236,53 @@ impl AIService {
         // 读取单词提取提示词
         let extraction_prompt = include_str!("prompts/word_extraction_agent.md");
 
+        // 根据提取模式生成额外的过滤规则
+        let filtering_instructions = if extraction_mode == "focus" {
+            r#"
+
+**⚠️ 重点模式过滤规则（必须严格遵守）**
+在"第二步：单词筛选"阶段，**必须完全排除**以下类型的简单词汇，这些词汇不适合作为学习重点，**绝对不能出现在输出结果中**：
+
+**必须排除的词汇类型：**
+- 冠词：a, an, the
+- 基础代词：I, you, he, she, it, we, they, me, him, her, us, them
+- 基础be动词：am, is, are, was, were, be, been, being
+- 基础助动词：do, does, did, have, has, had, will, would, can, could, should, shall, may, might, must
+- 基础介词：in, on, at, to, for, of, with, by, from, up, out, off, over, under
+- 基础连词：and, or, but, so, if, when, then, than, as
+- 基础副词：not, no, yes, very, too, also, only, just, now, here, there
+- 单字母词：a, I
+- 过于简单的数字词：one, two, three, four, five, six, seven, eight, nine, ten
+
+**严格禁止**：上述任何词汇都不得出现在最终的 CSV 输出中。如果文本中包含这些词汇，请直接跳过，不要统计频率，不要输出。"#
+        } else {
+            // all 模式下不添加过滤规则
+            ""
+        };
+
         // 构建完整的提示词
-        let system_message = extraction_prompt.replace("{original_text}", text);
+        let system_message = extraction_prompt
+            .replace("{original_text}", text)
+            .replace("{filtering_instructions}", filtering_instructions);
 
         logger.info(
             "AI_SERVICE",
             &format!(
-                "📄 Built extraction prompt: {} chars",
-                system_message.len()
+                "📄 Built extraction prompt: {} chars, mode: {}",
+                system_message.len(),
+                extraction_mode
             ),
         );
+
+        // 记录过滤规则是否已添加
+        if extraction_mode == "focus" {
+            logger.info(
+                "AI_SERVICE",
+                "🎯 Focus mode: Filtering instructions added to prompt",
+            );
+        } else {
+            logger.info("AI_SERVICE", "📋 All mode: No filtering instructions");
+        }
 
         // 构建请求（使用小 max_tokens，因为只需要单词列表）
         let request = CreateChatCompletionRequestArgs::default()
@@ -301,22 +294,23 @@ impl AIService {
                     name: None,
                 },
             )])
-            .max_tokens(2000u16)  // 限制输出长度
-            .temperature(0.1)    // 低温度保证稳定性
-            .stream(false)        // 非流式，快速获取结果
+            .max_tokens(2000u16) // 限制输出长度
+            .temperature(0.1) // 低温度保证稳定性
+            .stream(false) // 非流式，快速获取结果
             .build()?;
 
         logger.info("AI_SERVICE", "📤 Sending word extraction request...");
 
         // 发送请求
-        let response = self.client.chat().create(request).await
-            .map_err(|e| {
-                logger.info("AI_SERVICE", &format!("❌ Word extraction failed: {}", e));
-                format!("Word extraction failed: {}", e)
-            })?;
+        let response = self.client.chat().create(request).await.map_err(|e| {
+            logger.info("AI_SERVICE", &format!("❌ Word extraction failed: {}", e));
+            format!("Word extraction failed: {}", e)
+        })?;
 
         // 提取响应内容
-        let content = response.choices.first()
+        let content = response
+            .choices
+            .first()
             .and_then(|choice| choice.message.content.as_ref())
             .ok_or("No content in word extraction response")?;
 
@@ -360,7 +354,7 @@ impl AIService {
         logger: &Logger,
     ) -> Result<Vec<PhonicsWord>, Box<dyn std::error::Error>> {
         let start_time = std::time::Instant::now();
-        
+
         logger.info(
             "AI_SERVICE",
             &format!(
@@ -370,23 +364,20 @@ impl AIService {
                 words.len()
             ),
         );
-        
+
         // 读取批量自然拼读分析提示词（CSV格式）
         let phonics_prompt_template = include_str!("prompts/batch_phonics_agent.md");
-        
+
         // 构建批量分析提示词
         let words_list = words.join(", ");
-        
+
         let batch_prompt = phonics_prompt_template.replace("{word_list}", &words_list);
-        
+
         logger.info(
             "AI_SERVICE",
-            &format!(
-                "📄 Built batch prompt: {} chars",
-                batch_prompt.len()
-            ),
+            &format!("📄 Built batch prompt: {} chars", batch_prompt.len()),
         );
-        
+
         // 构建请求
         let request = CreateChatCompletionRequestArgs::default()
             .model(self.provider.get_default_model())
@@ -397,25 +388,26 @@ impl AIService {
                     name: None,
                 },
             )])
-            .max_tokens(8000u16)  // 每批 5 个单词
+            .max_tokens(8000u16) // 每批 5 个单词
             .temperature(0.1)
-            .stream(false)        // 使用非流式输出，直接获取完整 CSV
+            .stream(false) // 使用非流式输出，直接获取完整 CSV
             .build()?;
-        
+
         logger.info("AI_SERVICE", "📤 Sending batch analysis request...");
-        
+
         // 发送请求并获取完整响应
-        let response = self.client.chat().create(request).await
-            .map_err(|e| {
-                logger.info("AI_SERVICE", &format!("❌ Batch analysis failed: {}", e));
-                format!("Batch analysis failed: {}", e)
-            })?;
-        
+        let response = self.client.chat().create(request).await.map_err(|e| {
+            logger.info("AI_SERVICE", &format!("❌ Batch analysis failed: {}", e));
+            format!("Batch analysis failed: {}", e)
+        })?;
+
         // 提取响应内容
-        let content = response.choices.first()
+        let content = response
+            .choices
+            .first()
             .and_then(|choice| choice.message.content.as_ref())
             .ok_or("No content in batch analysis response")?;
-        
+
         logger.info(
             "AI_SERVICE",
             &format!(
@@ -424,10 +416,10 @@ impl AIService {
                 start_time.elapsed()
             ),
         );
-        
+
         // 解析 CSV 响应
         let result_words = self.parse_batch_csv_response(content, logger)?;
-        
+
         logger.info(
             "AI_SERVICE",
             &format!(
@@ -438,7 +430,7 @@ impl AIService {
                 start_time.elapsed()
             ),
         );
-        
+
         Ok(result_words)
     }
 
@@ -518,8 +510,6 @@ impl AIService {
             ),
         );
 
-
-
         // 步骤3: 准备模型参数
         progress_manager.update_step("准备AI模型参数...", start_time);
         let step3_start = std::time::Instant::now();
@@ -554,7 +544,8 @@ impl AIService {
         );
         logger.info(
             "AI_SERVICE",
-            &format!("   🔑 API key preview: {}...",
+            &format!(
+                "   🔑 API key preview: {}...",
                 if self.provider.api_key.len() > 10 {
                     &self.provider.api_key[..10]
                 } else {
@@ -603,23 +594,21 @@ impl AIService {
             ),
         );
 
-        let response = self.client.chat().create(request).await
-            .map_err(|e| {
-                logger.info("AI_SERVICE", &format!("❌ Request failed: {}", e));
-                format!("Request failed: {}", e)
-            })?;
+        let response = self.client.chat().create(request).await.map_err(|e| {
+            logger.info("AI_SERVICE", &format!("❌ Request failed: {}", e));
+            format!("Request failed: {}", e)
+        })?;
         let step5_duration = step5_start.elapsed();
         logger.info(
             "AI_SERVICE",
-            &format!(
-                "📡 Step 5 - Response received in {:?}",
-                step5_duration
-            ),
+            &format!("📡 Step 5 - Response received in {:?}", step5_duration),
         );
 
         // 步骤6: 提取响应内容
         let step6_start = std::time::Instant::now();
-        let content = response.choices.first()
+        let content = response
+            .choices
+            .first()
             .and_then(|choice| choice.message.content.as_ref())
             .ok_or("No content in word extraction response")?;
 
@@ -677,7 +666,10 @@ impl AIService {
                 );
 
                 // 标记分析失败
-                let error_msg = format!("Failed to parse phonics analysis: JSON parsing error: {}", e);
+                let error_msg = format!(
+                    "Failed to parse phonics analysis: JSON parsing error: {}",
+                    e
+                );
                 progress_manager.error_analysis(&error_msg);
 
                 Err(error_msg.into())
@@ -780,7 +772,8 @@ impl AIService {
         );
         logger.info(
             "AI_SERVICE",
-            &format!("   🔑 API key preview: {}...",
+            &format!(
+                "   🔑 API key preview: {}...",
                 if self.provider.api_key.len() > 10 {
                     &self.provider.api_key[..10]
                 } else {
@@ -901,7 +894,11 @@ impl AIService {
                             full_content.push_str(delta);
 
                             // 更新进度管理器
-                            progress_manager.update_chunk(chunk_count, full_content.len(), start_time);
+                            progress_manager.update_chunk(
+                                chunk_count,
+                                full_content.len(),
+                                start_time,
+                            );
 
                             // 每5秒记录一次进度
                             if last_log_time.elapsed().as_secs() >= 5 {
@@ -928,26 +925,23 @@ impl AIService {
                         "AI_SERVICE",
                         &format!("❌ Stream error after {:?}: {}", total_duration, e),
                     );
-                    logger.info(
-                        "AI_SERVICE",
-                        &format!("🔍 Network Error Details:"),
-                    );
+                    logger.info("AI_SERVICE", &format!("🔍 Network Error Details:"));
                     logger.info(
                         "AI_SERVICE",
                         &format!("   📡 Target URL: {}", self.provider.base_url),
                     );
                     logger.info(
                         "AI_SERVICE",
-                        &format!("   🔑 API Key Length: {} chars", self.provider.api_key.len()),
+                        &format!(
+                            "   🔑 API Key Length: {} chars",
+                            self.provider.api_key.len()
+                        ),
                     );
                     logger.info(
                         "AI_SERVICE",
                         &format!("   ⏱️  Request Duration: {:?}", total_duration),
                     );
-                    logger.info(
-                        "AI_SERVICE",
-                        &format!("   🎯 Model: {}", model_name),
-                    );
+                    logger.info("AI_SERVICE", &format!("   🎯 Model: {}", model_name));
 
                     // 检查错误类型
                     let error_str = e.to_string();
@@ -976,7 +970,10 @@ impl AIService {
                             "AI_SERVICE",
                             "💡 Rate limit exceeded. Wait before retrying.",
                         );
-                    } else if error_str.contains("500") || error_str.contains("502") || error_str.contains("503") {
+                    } else if error_str.contains("500")
+                        || error_str.contains("502")
+                        || error_str.contains("503")
+                    {
                         logger.info(
                             "AI_SERVICE",
                             "💡 Server error. The API service might be temporarily unavailable.",
@@ -1073,7 +1070,8 @@ impl AIService {
                     );
 
                     // 标记分析失败
-                    let error_msg = format!("Failed to parse study plan: JSON parsing error: {}", e);
+                    let error_msg =
+                        format!("Failed to parse study plan: JSON parsing error: {}", e);
                     progress_manager.error_analysis(&error_msg);
 
                     Err(error_msg.into())
@@ -1112,7 +1110,8 @@ impl AIService {
         let converted_json = self.convert_study_plan_field_names(ai_json)?;
 
         // 解析为最终的结构体
-        let result: crate::types::study::StudyPlanAIResult = serde_json::from_value(converted_json)?;
+        let result: crate::types::study::StudyPlanAIResult =
+            serde_json::from_value(converted_json)?;
 
         // 验证结果
         if result.daily_plans.is_empty() {
@@ -1145,7 +1144,9 @@ impl AIService {
 
             for line in lines {
                 let trimmed = line.trim_start();
-                if trimmed.starts_with(pattern) && !trimmed.starts_with(&format!("\"{}\"", &pattern[..pattern.len()-1])) {
+                if trimmed.starts_with(pattern)
+                    && !trimmed.starts_with(&format!("\"{}\"", &pattern[..pattern.len() - 1]))
+                {
                     // 替换无引号的属性名
                     let new_line = line.replace(pattern, replacement);
                     new_lines.push(new_line);
@@ -1173,10 +1174,16 @@ impl AIService {
         if let serde_json::Value::Object(ref mut obj) = json {
             // 转换顶级字段
             if let Some(plan_metadata) = obj.remove("plan_metadata") {
-                obj.insert("planMetadata".to_string(), self.convert_metadata_fields(plan_metadata)?);
+                obj.insert(
+                    "planMetadata".to_string(),
+                    self.convert_metadata_fields(plan_metadata)?,
+                );
             }
             if let Some(daily_plans) = obj.remove("daily_plans") {
-                obj.insert("dailyPlans".to_string(), self.convert_daily_plans_fields(daily_plans)?);
+                obj.insert(
+                    "dailyPlans".to_string(),
+                    self.convert_daily_plans_fields(daily_plans)?,
+                );
             }
         }
         Ok(json)
@@ -1243,7 +1250,10 @@ impl AIService {
                         .into_iter()
                         .map(|word| self.convert_word_fields(word))
                         .collect();
-                    obj.insert("words".to_string(), serde_json::Value::Array(converted_words?));
+                    obj.insert(
+                        "words".to_string(),
+                        serde_json::Value::Array(converted_words?),
+                    );
                 }
             }
         }
@@ -1285,11 +1295,12 @@ impl AIService {
         let json_str = self.extract_json_from_response(json_content);
 
         // 解析JSON
-        let json_response: JsonPhonicsResponse = serde_json::from_str(&json_str)
-            .map_err(|e| format!("JSON parsing error: {}", e))?;
+        let json_response: JsonPhonicsResponse =
+            serde_json::from_str(&json_str).map_err(|e| format!("JSON parsing error: {}", e))?;
 
         // 转换为内部格式
-        let words: Vec<PhonicsWord> = json_response.words
+        let words: Vec<PhonicsWord> = json_response
+            .words
             .into_iter()
             .filter(|w| !w.word.is_empty()) // 过滤空单词
             .map(|w| w.into())
@@ -1314,34 +1325,42 @@ impl AIService {
             "AI_SERVICE",
             &format!(
                 "🚀 Starting chat completion for prompt: {}",
-                if prompt.len() > 100 { &prompt[..100] } else { prompt }
+                if prompt.len() > 100 {
+                    &prompt[..100]
+                } else {
+                    prompt
+                }
             ),
         );
-        
+
         let model_name = self.provider.get_default_model();
         let final_max_tokens = max_tokens.unwrap_or(100);
         let final_temperature = temperature.unwrap_or(0.7);
-        
-        logger.info("AI_SERVICE", &format!(
-            "Chat completion parameters - model: {}, max_tokens: {}, temperature: {}",
-            model_name, final_max_tokens, final_temperature
-        ));
-        
+
+        logger.info(
+            "AI_SERVICE",
+            &format!(
+                "Chat completion parameters - model: {}, max_tokens: {}, temperature: {}",
+                model_name, final_max_tokens, final_temperature
+            ),
+        );
+
         // 构建请求
         let request = CreateChatCompletionRequestArgs::default()
             .model(model_name)
             .messages([
-                ChatCompletionRequestMessage::System(
-                    ChatCompletionRequestSystemMessage {
-                        content: "You are a helpful assistant. Please respond briefly and concisely.".to_string(),
-                        role: Role::System,
-                        name: None,
-                    },
-                ),
+                ChatCompletionRequestMessage::System(ChatCompletionRequestSystemMessage {
+                    content: "You are a helpful assistant. Please respond briefly and concisely."
+                        .to_string(),
+                    role: Role::System,
+                    name: None,
+                }),
                 ChatCompletionRequestMessage::User(
                     async_openai::types::ChatCompletionRequestUserMessage {
                         role: async_openai::types::Role::User,
-                        content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(prompt.to_string()),
+                        content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(
+                            prompt.to_string(),
+                        ),
                         name: None,
                     },
                 ),
@@ -1350,27 +1369,29 @@ impl AIService {
             .temperature(final_temperature)
             .stream(false) // 不使用流式输出，直接获取完整响应
             .build()?;
-        
+
         logger.info("AI_SERVICE", "📤 Sending chat completion request...");
-        
+
         // 发送请求
-        let response = self.client.chat().create(request).await
-            .map_err(|e| {
-                logger.info("AI_SERVICE", &format!("❌ Chat completion failed: {}", e));
-                format!("Chat completion failed: {}", e)
-            })?;
-        
+        let response = self.client.chat().create(request).await.map_err(|e| {
+            logger.info("AI_SERVICE", &format!("❌ Chat completion failed: {}", e));
+            format!("Chat completion failed: {}", e)
+        })?;
+
         // 提取响应内容
         if let Some(choice) = response.choices.first() {
             if let Some(content) = &choice.message.content {
-                logger.info("AI_SERVICE", &format!(
-                    "✅ Chat completion successful - Response length: {} chars",
-                    content.len()
-                ));
+                logger.info(
+                    "AI_SERVICE",
+                    &format!(
+                        "✅ Chat completion successful - Response length: {} chars",
+                        content.len()
+                    ),
+                );
                 return Ok(content.clone());
             }
         }
-        
+
         Err("No response content received".into())
     }
 
@@ -1382,45 +1403,74 @@ impl AIService {
     ) -> Result<Vec<crate::types::word_analysis::ExtractedWord>, Box<dyn std::error::Error>> {
         // 清理可能的 markdown 代码块格式
         let cleaned_content = self.clean_csv_markdown(content);
-        
+
         let mut words = Vec::new();
         let lines: Vec<&str> = cleaned_content.lines().collect();
-        
+
         // 跳过标题行（第一行）
         for line in lines.iter().skip(1) {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
             }
-            
-            // 解析 CSV 行：格式为 "word,frequency"
+
+            // 解析 CSV 行：格式为 "word,frequency,pos,translation" 或兼容旧格式
             let parts: Vec<&str> = trimmed.split(',').collect();
             if parts.len() >= 2 {
                 let word = parts[0].trim().to_string();
                 let frequency = parts[1].trim().parse::<i32>().unwrap_or(1);
                 
+                // 词性是可选的（兼容旧格式），如果存在则使用，否则为 None
+                let part_of_speech = if parts.len() >= 3 {
+                    let pos = parts[2].trim().to_string();
+                    if pos.is_empty() {
+                        None
+                    } else {
+                        Some(pos)
+                    }
+                } else {
+                    None
+                };
+                
+                // 中文翻译是可选的（兼容旧格式），如果存在则使用，否则为 None
+                let meaning = if parts.len() >= 4 {
+                    let trans = parts[3].trim().to_string();
+                    if trans.is_empty() {
+                        None
+                    } else {
+                        Some(trans)
+                    }
+                } else {
+                    None
+                };
+
                 if !word.is_empty() && word.len() >= 2 && word.len() <= 20 {
                     words.push(crate::types::word_analysis::ExtractedWord {
                         word,
                         frequency,
+                        part_of_speech,
+                        meaning,
                     });
                 }
             }
         }
-        
+
         if words.is_empty() {
-            logger.info("AI_SERVICE", &format!("❌ CSV parsing failed: no valid words found"));
+            logger.info(
+                "AI_SERVICE",
+                &format!("❌ CSV parsing failed: no valid words found"),
+            );
             logger.info("AI_SERVICE", &format!("📄 Response content: {}", content));
             return Err("No valid words found in CSV response".into());
         }
-        
+
         Ok(words)
     }
 
     /// 清理CSV响应中的markdown代码块格式
     fn clean_csv_markdown(&self, content: &str) -> String {
         let cleaned = content.trim();
-        
+
         // 移除 markdown 代码块标记
         if cleaned.starts_with("```csv") {
             cleaned[6..].trim_end_matches('`').to_string()
@@ -1428,7 +1478,7 @@ impl AIService {
             // 移除任何代码块标记
             let lines: Vec<&str> = cleaned.lines().collect();
             if lines.len() > 1 {
-                lines[1..lines.len()-1].join("\n")
+                lines[1..lines.len() - 1].join("\n")
             } else {
                 cleaned.to_string()
             }
@@ -1445,33 +1495,38 @@ impl AIService {
     ) -> Result<Vec<PhonicsWord>, Box<dyn std::error::Error>> {
         // 清理可能的 markdown 代码块格式
         let cleaned_content = self.clean_csv_markdown(content);
-        
+
         let mut words = Vec::new();
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(true)
             .from_reader(cleaned_content.as_bytes());
-        
+
         for result in rdr.deserialize::<CsvPhonicsRecord>() {
             match result {
                 Ok(record) => {
                     words.push(record.into_phonics_word());
                 }
                 Err(e) => {
-                    logger.info("AI_SERVICE", &format!("❌ CSV parsing error for row: {}", e));
+                    logger.info(
+                        "AI_SERVICE",
+                        &format!("❌ CSV parsing error for row: {}", e),
+                    );
                     // 继续处理其他行，不中断整个批次
                 }
             }
         }
-        
+
         if words.is_empty() {
-            logger.info("AI_SERVICE", &format!("❌ CSV parsing failed: no valid words found"));
+            logger.info(
+                "AI_SERVICE",
+                &format!("❌ CSV parsing failed: no valid words found"),
+            );
             logger.info("AI_SERVICE", &format!("📄 Response content: {}", content));
             return Err("No valid words found in CSV response".into());
         }
-        
+
         Ok(words)
     }
-
 
     /// 从响应中提取JSON部分
     fn extract_json_from_response(&self, content: &str) -> String {
@@ -1483,7 +1538,7 @@ impl AIService {
                 }
             }
         }
-        
+
         // 如果没找到完整的JSON，返回原内容
         content.to_string()
     }

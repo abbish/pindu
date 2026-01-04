@@ -12,14 +12,17 @@ interface WordAnalysisProgressModalProps {
   onClose: () => void;
   onComplete?: (result: BatchAnalysisResult) => void;
   onError: (error: Error) => void;
+  progress?: BatchAnalysisProgress;  // ✅ 新增：外部传入的进度信息
 }
 
 export const WordAnalysisProgressModal: React.FC<WordAnalysisProgressModalProps> = ({
   isOpen,
   onClose,
   onError,
+  progress: externalProgress,  // ✅ 接收外部进度
 }) => {
-  const [progress, setProgress] = useState<BatchAnalysisProgress>({
+  // 内部状态（用于兼容）
+  const [internalProgress, setInternalProgress] = useState<BatchAnalysisProgress>({
     status: 'idle',
     currentStep: '准备中',
     extractionProgress: null,
@@ -27,7 +30,17 @@ export const WordAnalysisProgressModal: React.FC<WordAnalysisProgressModalProps>
     wordStatuses: null,
   });
 
+  // ✅ 使用外部进度（如果提供），否则使用内部状态
+  const progress = externalProgress ?? internalProgress;
+
   const [error, setError] = useState<string | null>(null);
+
+  // ✅ 暴露更新进度的方法（供父组件调用）
+  React.useEffect(() => {
+    if (externalProgress) {
+      setInternalProgress(externalProgress);
+    }
+  }, [externalProgress]);
 
   // 处理错误
   const handleError = useCallback((err: Error) => {
@@ -227,6 +240,66 @@ export const WordAnalysisProgressModal: React.FC<WordAnalysisProgressModalProps>
             <div className={styles.errorSection}>
               <div className={styles.errorIcon}>⚠️</div>
               <div className={styles.errorText}>{error}</div>
+            </div>
+          )}
+
+          {/* 单词处理状态表格 */}
+          {progress.wordStatuses && progress.wordStatuses.length > 0 && (
+            <div className={styles.wordStatusSection}>
+              <h3 className={styles.detailTitle}>单词处理状态</h3>
+              <div className={styles.wordStatusTable}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th className={styles.tableHeader}>单词</th>
+                      <th className={styles.tableHeader}>状态</th>
+                      <th className={styles.tableHeader}>错误信息</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {progress.wordStatuses.map((wordStatus, index) => (
+                      <tr key={index} className={styles.tableRow}>
+                        <td className={styles.tableCell}>{wordStatus.word}</td>
+                        <td className={styles.tableCell}>
+                          <span
+                            className={`${styles.statusBadge} ${
+                              styles[wordStatus.status]
+                            }`}
+                          >
+                            {wordStatus.status === 'pending' && '⏳ 等待中'}
+                            {wordStatus.status === 'analyzing' && '🔍 分析中'}
+                            {wordStatus.status === 'completed' && '✅ 已完成'}
+                            {wordStatus.status === 'failed' && '❌ 失败'}
+                          </span>
+                        </td>
+                        <td className={styles.tableCell}>
+                          {wordStatus.error || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 统计信息 */}
+              <div className={styles.statsSummary}>
+                <div className={styles.statItem}>
+                  <span className={styles.statLabel}>总计:</span>
+                  <span className={styles.statValue}>{progress.wordStatuses.length}</span>
+                </div>
+                <div className={styles.statItem}>
+                  <span className={styles.statLabel}>已完成:</span>
+                  <span className={styles.statValue}>
+                    {progress.wordStatuses.filter(w => w.status === 'completed').length}
+                  </span>
+                </div>
+                <div className={styles.statItem}>
+                  <span className={styles.statLabel}>失败:</span>
+                  <span className={styles.statValue}>
+                    {progress.wordStatuses.filter(w => w.status === 'failed').length}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 

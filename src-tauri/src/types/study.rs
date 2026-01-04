@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::{Id, Timestamp};
+use serde::{Deserialize, Serialize};
 
 /// 学习计划
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -7,7 +7,8 @@ pub struct StudyPlan {
     pub id: Id,
     pub name: String,
     pub description: String,
-    pub status: String,                    // 管理状态：normal, draft, deleted (保留用于兼容)
+    pub status: String, // 管理状态：normal, draft, deleted (保留用于兼容)
+    pub unified_status: Option<UnifiedStudyPlanStatus>, // 统一状态
     pub total_words: i32,
     pub mastery_level: i32,
     // AI规划相关字段
@@ -16,11 +17,15 @@ pub struct StudyPlan {
     pub review_frequency: Option<i32>,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
-    pub actual_start_date: Option<String>,     // 实际开始时间
-    pub actual_end_date: Option<String>,       // 实际完成时间
+    pub actual_start_date: Option<String>,      // 实际开始时间
+    pub actual_end_date: Option<String>,        // 实际完成时间
     pub actual_terminated_date: Option<String>, // 实际终止时间
     pub ai_plan_data: Option<String>,
-    pub deleted_at: Option<String>,        // 软删除时间
+    pub deleted_at: Option<String>, // 软删除时间
+    // 统计字段
+    pub total_schedules: Option<i32>,
+    pub completed_schedules: Option<i32>,
+    pub overdue_schedules: Option<i32>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -31,10 +36,10 @@ pub struct StudyPlanWithProgress {
     pub id: Id,
     pub name: String,
     pub description: String,
-    pub status: String,                    // 管理状态：normal, draft, deleted (保留用于兼容)
+    pub status: String, // 管理状态：normal, draft, deleted (保留用于兼容)
     #[deprecated(note = "Use unified_status instead")]
-    pub lifecycle_status: String,          // 生命周期状态：pending, active, completed (已废弃，保留用于兼容)
-    pub unified_status: String,            // 统一状态：Draft, Pending, Active, Paused, Completed, Terminated, Deleted
+    pub lifecycle_status: String, // 生命周期状态：pending, active, completed (已废弃，保留用于兼容)
+    pub unified_status: String, // 统一状态：Draft, Pending, Active, Paused, Completed, Terminated, Deleted
     pub total_words: i32,
     pub mastery_level: i32,
     // AI规划相关字段
@@ -43,42 +48,43 @@ pub struct StudyPlanWithProgress {
     pub review_frequency: Option<i32>,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
-    pub actual_start_date: Option<String>,     // 实际开始时间
-    pub actual_end_date: Option<String>,       // 实际完成时间
+    pub actual_start_date: Option<String>,      // 实际开始时间
+    pub actual_end_date: Option<String>,        // 实际完成时间
     pub actual_terminated_date: Option<String>, // 实际终止时间
     pub ai_plan_data: Option<String>,
-    pub deleted_at: Option<String>,        // 软删除时间
+    pub deleted_at: Option<String>, // 软删除时间
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     pub progress_percentage: f64,
 }
 
-/// 学习计划管理状态
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum StudyPlanStatus {
-    Normal,   // 正常状态（可以开始学习）
-    Draft,    // 草稿状态（可以编辑修改）
-    Deleted,  // 已删除状态（软删除）
+/// 日程状态
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum ScheduleStatus {
+    NotStarted,  // 未开始
+    InProgress,  // 进行中
+    Completed,   // 已完成
+    Overdue,     // 已逾期
+}
+
+/// 单词类型
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum WordType {
+    New,      // 新单词
+    Review,   // 复习单词
 }
 
 /// 学习计划生命周期状态
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum StudyPlanLifecycleStatus {
+    Draft,      // 草稿状态
     Pending,    // 待开始（创建后的初始状态）
     Active,     // 进行中（用户手动开始后）
+    Paused,     // 已暂停
     Completed,  // 已完成（学习完成）
     Terminated, // 已终止（用户手动终止）
-}
-
-/// 学习强度等级
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum IntensityLevel {
-    Easy,
-    Normal,
-    Intensive,
+    Deleted,    // 已删除
 }
 
 /// 创建学习计划请求
@@ -90,37 +96,6 @@ pub struct CreateStudyPlanRequest {
     pub mastery_level: Option<i32>,
 }
 
-/// 更新学习计划请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpdateStudyPlanRequest {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub status: Option<StudyPlanStatus>,
-    pub lifecycle_status: Option<StudyPlanLifecycleStatus>,
-    pub mastery_level: Option<i32>,
-}
-
-/// 学习计划查询参数
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StudyPlanQuery {
-    pub status: Option<StudyPlanStatus>,
-    pub lifecycle_status: Option<StudyPlanLifecycleStatus>,
-    pub keyword: Option<String>,
-    pub include_deleted: Option<bool>,  // 是否包含已删除的计划
-}
-
-/// 学习会话
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StudySession {
-    pub id: Id,
-    pub plan_id: Id,
-    pub started_at: Timestamp,
-    pub finished_at: Option<Timestamp>,
-    pub words_studied: i32,
-    pub correct_answers: i32,
-    pub total_time_seconds: i32,
-}
-
 /// 学习统计
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StudyStatistics {
@@ -129,38 +104,6 @@ pub struct StudyStatistics {
     pub streak_days: i32,
     pub completion_rate: f64,
     pub weekly_progress: Vec<i32>,
-}
-
-/// 学习进度
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StudyProgress {
-    pub word_id: Id,
-    pub plan_id: Id,
-    pub learned: bool,
-    pub correct_count: i32,
-    pub total_attempts: i32,
-    pub mastery_score: f64,
-    pub last_studied: Option<Timestamp>,
-    pub next_review: Option<Timestamp>,
-}
-
-/// 提交答案请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SubmitAnswerRequest {
-    pub session_id: Id,
-    pub word_id: Id,
-    pub user_answer: String,
-    pub is_correct: bool,
-    pub time_spent: i32,
-}
-
-/// 结束学习会话请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EndSessionRequest {
-    pub session_id: Id,
-    pub words_studied: i32,
-    pub correct_answers: i32,
-    pub total_time: i32,
 }
 
 // ==================== 单词练习相关类型 ====================
@@ -176,17 +119,6 @@ pub enum WordPracticeStep {
     Step3 = 3, // 仅中文+音节+拼读+发音
 }
 
-impl WordPracticeStep {
-    /// 从整数创建枚举值
-    pub fn from_i32(value: i32) -> Self {
-        match value {
-            1 => WordPracticeStep::Step1,
-            2 => WordPracticeStep::Step2,
-            3 => WordPracticeStep::Step3,
-            _ => WordPracticeStep::Step1, // 默认值
-        }
-    }
-}
 
 /// 练习单词信息
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -208,21 +140,21 @@ pub struct WordPracticeState {
     #[serde(rename = "wordId")]
     pub word_id: i64,
     #[serde(rename = "planWordId")]
-    pub plan_word_id: i64,        // study_plan_schedule_words 表的 ID
+    pub plan_word_id: i64, // study_plan_schedule_words 表的 ID
     #[serde(rename = "wordInfo")]
     pub word_info: PracticeWordInfo, // 完整的单词信息
     #[serde(rename = "currentStep")]
     pub current_step: WordPracticeStep,
     #[serde(rename = "stepResults")]
-    pub step_results: Vec<bool>,  // 三个步骤的结果 [step1, step2, step3]
+    pub step_results: Vec<bool>, // 三个步骤的结果 [step1, step2, step3]
     #[serde(rename = "stepAttempts")]
-    pub step_attempts: Vec<i32>,  // 每个步骤的尝试次数
+    pub step_attempts: Vec<i32>, // 每个步骤的尝试次数
     #[serde(rename = "stepTimeSpent")]
     pub step_time_spent: Vec<i64>, // 每个步骤的用时（毫秒）
-    pub completed: bool,          // 三个步骤是否全部完成
-    pub passed: bool,             // 三步全对才算通过
+    pub completed: bool, // 三个步骤是否全部完成
+    pub passed: bool,    // 三步全对才算通过
     #[serde(rename = "startTime")]
-    pub start_time: String,       // 开始时间
+    pub start_time: String, // 开始时间
     #[serde(rename = "endTime")]
     pub end_time: Option<String>, // 结束时间
 }
@@ -237,19 +169,19 @@ pub struct PracticeSession {
     #[serde(rename = "planTitle")]
     pub plan_title: Option<String>, // 学习计划名称
     #[serde(rename = "scheduleId")]
-    pub schedule_id: i64,         // 关联的日程ID
+    pub schedule_id: i64, // 关联的日程ID
     #[serde(rename = "scheduleDate")]
-    pub schedule_date: String,    // 日程日期
+    pub schedule_date: String, // 日程日期
     #[serde(rename = "startTime")]
     pub start_time: String,
     #[serde(rename = "endTime")]
     pub end_time: Option<String>,
     #[serde(rename = "totalTime")]
-    pub total_time: i64,          // 总时间（包含暂停，毫秒）
+    pub total_time: i64, // 总时间（包含暂停，毫秒）
     #[serde(rename = "activeTime")]
-    pub active_time: i64,         // 实际练习时间（毫秒）
+    pub active_time: i64, // 实际练习时间（毫秒）
     #[serde(rename = "pauseCount")]
-    pub pause_count: i32,         // 暂停次数
+    pub pause_count: i32, // 暂停次数
     #[serde(rename = "wordStates")]
     pub word_states: Vec<WordPracticeState>,
     pub completed: bool,
@@ -257,16 +189,6 @@ pub struct PracticeSession {
     pub created_at: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
-}
-
-/// 暂停记录
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PracticePauseRecord {
-    pub id: i64,
-    pub session_id: String,
-    pub pause_start: String,
-    pub pause_end: Option<String>,
-    pub created_at: String,
 }
 
 /// 练习结果
@@ -283,19 +205,19 @@ pub struct PracticeResult {
     #[serde(rename = "totalWords")]
     pub total_words: i32,
     #[serde(rename = "passedWords")]
-    pub passed_words: i32,        // 三步全对的单词数
+    pub passed_words: i32, // 三步全对的单词数
     #[serde(rename = "totalSteps")]
-    pub total_steps: i32,         // 总步骤数（单词数 * 3）
+    pub total_steps: i32, // 总步骤数（单词数 * 3）
     #[serde(rename = "correctSteps")]
-    pub correct_steps: i32,       // 正确步骤数
+    pub correct_steps: i32, // 正确步骤数
     #[serde(rename = "stepAccuracy")]
-    pub step_accuracy: f64,       // 步骤正确率
+    pub step_accuracy: f64, // 步骤正确率
     #[serde(rename = "wordAccuracy")]
-    pub word_accuracy: f64,       // 单词通过率
+    pub word_accuracy: f64, // 单词通过率
     #[serde(rename = "totalTime")]
-    pub total_time: i64,          // 总时间（毫秒）
+    pub total_time: i64, // 总时间（毫秒）
     #[serde(rename = "activeTime")]
-    pub active_time: i64,         // 实际练习时间（毫秒）
+    pub active_time: i64, // 实际练习时间（毫秒）
     #[serde(rename = "pauseCount")]
     pub pause_count: i32,
     #[serde(rename = "averageTimePerWord")]
@@ -312,53 +234,15 @@ pub struct PracticeResult {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PracticeStatistics {
     #[serde(rename = "totalSessions")]
-    pub total_sessions: i32,      // 总练习会话数
+    pub total_sessions: i32, // 总练习会话数
     #[serde(rename = "completedSessions")]
-    pub completed_sessions: i32,  // 已完成会话数
+    pub completed_sessions: i32, // 已完成会话数
     #[serde(rename = "averageAccuracy")]
-    pub average_accuracy: f64,    // 平均准确率
+    pub average_accuracy: f64, // 平均准确率
     #[serde(rename = "totalPracticeTime")]
     pub total_practice_time: i64, // 总练习时间（毫秒）
     #[serde(rename = "wordsLearned")]
-    pub words_learned: i32,       // 已学会的单词数
-}
-
-/// 开始练习会话请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StartPracticeSessionRequest {
-    pub plan_id: i64,
-    pub schedule_id: i64,
-}
-
-/// 提交步骤结果请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SubmitStepResultRequest {
-    pub session_id: String,
-    pub word_id: i64,
-    pub plan_word_id: i64,
-    pub step: WordPracticeStep,
-    pub user_input: String,
-    pub is_correct: bool,
-    pub time_spent: i64,          // 毫秒
-    pub attempts: i32,
-}
-
-/// 暂停练习会话请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PausePracticeSessionRequest {
-    pub session_id: String,
-}
-
-/// 恢复练习会话请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ResumePracticeSessionRequest {
-    pub session_id: String,
-}
-
-/// 完成练习会话请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CompletePracticeSessionRequest {
-    pub session_id: String,
+    pub words_learned: i32, // 已学会的单词数
 }
 
 // ==================== AI规划相关类型 ====================
@@ -468,24 +352,19 @@ pub struct CreateStudyPlanWithScheduleRequest {
 pub struct StudyPlanSchedule {
     pub id: Id,
     pub plan_id: Id,
-    pub day_number: i32,
+    pub day: i32,  // 注意: 数据库字段名是 'day_number'
     pub schedule_date: String,
+    pub new_words_count: i32,
+    pub review_words_count: i32,
+    pub total_words_count: i32,
+    pub completed_words_count: i32,
+    // 注意: 以下字段在数据库中不存在，需要计算或从其他地方获取
+    pub progress_percentage: Option<i64>,
+    pub study_time_minutes: Option<i64>,
+    pub status: Option<ScheduleStatus>,
+    pub completed: bool,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
-}
-
-/// 学习计划日程单词
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StudyPlanScheduleWord {
-    pub id: Id,
-    pub schedule_id: Id,
-    pub word_id: Id,
-    pub wordbook_id: Id,
-    pub is_review: bool,
-    pub review_count: Option<i32>,
-    pub priority: String,
-    pub difficulty_level: i32,
-    pub created_at: Timestamp,
 }
 
 /// 学习计划单词（扁平化结构）
@@ -541,35 +420,24 @@ pub struct CalendarDayData {
 }
 
 /// 日历中的学习计划信息
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CalendarStudyPlan {
-    pub id: Id,
-    pub name: String,
-    pub color: Option<String>,
-    pub icon: Option<String>,
-    pub target_words: i32,
-    pub completed_words: i32,
-    pub status: String, // StudyPlanLifecycleStatus
+    pub plan_id: i64,
+    pub plan_name: String,
+    pub schedule_id: i64,
+    pub unified_status: StudyPlanLifecycleStatus,
 }
 
 /// 日历中的学习记录信息
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CalendarStudySession {
-    pub id: Id,
-    pub plan_id: Id,
+    pub session_id: String,
+    pub plan_id: i64,
     pub plan_name: String,
-    pub words_studied: i32,
-    pub study_time_minutes: i32,
+    pub words_studied: i64,
+    pub study_time_minutes: i64,
     pub accuracy_rate: f64,
     pub completed_at: String,
-}
-
-/// 日历月度数据请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CalendarMonthRequest {
-    pub year: i32,
-    pub month: i32, // 1-12
-    pub include_other_months: Option<bool>, // 是否包含其他月份的日期
 }
 
 /// 日历月度数据响应
@@ -599,13 +467,13 @@ pub struct CalendarMonthlyStats {
 pub struct StudyPlanStatistics {
     // 时间相关
     pub average_daily_study_minutes: i64,
-    pub time_progress_percentage: f64,    // 时间进度 (已过天数/总天数)
-    pub actual_progress_percentage: f64,  // 实际完成进度 (已完成单词/总单词)
+    pub time_progress_percentage: f64, // 时间进度 (已过天数/总天数)
+    pub actual_progress_percentage: f64, // 实际完成进度 (已完成单词/总单词)
 
     // 学习效果
-    pub average_accuracy_rate: f64,       // 平均练习正确率
-    pub overdue_ratio: f64,              // 逾期比率 (逾期天数/总天数)
-    pub streak_days: i32,                // 该计划的连续练习天数
+    pub average_accuracy_rate: f64, // 平均练习正确率
+    pub overdue_ratio: f64,         // 逾期比率 (逾期天数/总天数)
+    pub streak_days: i32,           // 该计划的连续练习天数
 
     // 详细数据
     pub total_days: i64,
@@ -631,22 +499,6 @@ pub struct StudyPlanStatusHistory {
     pub to_lifecycle_status: String,
     pub changed_at: Timestamp,
     pub reason: Option<String>,
-}
-
-/// 状态转换请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StatusTransitionRequest {
-    pub plan_id: Id,
-    pub reason: Option<String>,
-}
-
-/// 状态转换响应
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StatusTransitionResponse {
-    pub success: bool,
-    pub new_status: String,
-    pub new_lifecycle_status: String,
-    pub message: String,
 }
 
 // ==================== 统一状态管理 ====================
@@ -677,103 +529,7 @@ pub enum UnifiedStudyPlanStatus {
     Deleted,
 }
 
-impl UnifiedStudyPlanStatus {
-    /// 检查状态转换是否合法
-    pub fn can_transition_to(&self, target: &UnifiedStudyPlanStatus) -> bool {
-        use UnifiedStudyPlanStatus::*;
-        match (self, target) {
-            // 从草稿状态可以转换到
-            (Draft, Pending) | (Draft, Deleted) => true,
 
-            // 从待开始状态可以转换到
-            (Pending, Active) | (Pending, Draft) | (Pending, Deleted) => true,
-
-            // 从进行中状态可以转换到
-            (Active, Paused) | (Active, Completed) | (Active, Terminated) | (Active, Draft) => true,
-
-            // 从暂停状态可以转换到
-            (Paused, Active) | (Paused, Terminated) | (Paused, Draft) => true,
-
-            // 从完成/终止状态可以转换到
-            (Completed, Draft) | (Terminated, Draft) => true,
-
-            // 任何状态都可以删除
-            (_, Deleted) => true,
-
-            // 其他转换都不允许
-            _ => false,
-        }
-    }
-
-    /// 获取状态的显示信息
-    pub fn display_info(&self) -> (&'static str, &'static str) {
-        match self {
-            UnifiedStudyPlanStatus::Draft => ("草稿", "gray"),
-            UnifiedStudyPlanStatus::Pending => ("待开始", "blue"),
-            UnifiedStudyPlanStatus::Active => ("进行中", "green"),
-            UnifiedStudyPlanStatus::Paused => ("已暂停", "orange"),
-            UnifiedStudyPlanStatus::Completed => ("已完成", "green"),
-            UnifiedStudyPlanStatus::Terminated => ("已终止", "red"),
-            UnifiedStudyPlanStatus::Deleted => ("已删除", "gray"),
-        }
-    }
-
-    /// 从字符串转换
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "Draft" => Some(UnifiedStudyPlanStatus::Draft),
-            "Pending" => Some(UnifiedStudyPlanStatus::Pending),
-            "Active" => Some(UnifiedStudyPlanStatus::Active),
-            "Paused" => Some(UnifiedStudyPlanStatus::Paused),
-            "Completed" => Some(UnifiedStudyPlanStatus::Completed),
-            "Terminated" => Some(UnifiedStudyPlanStatus::Terminated),
-            "Deleted" => Some(UnifiedStudyPlanStatus::Deleted),
-            _ => None,
-        }
-    }
-
-    /// 转换为字符串
-    pub fn to_string(&self) -> &'static str {
-        match self {
-            UnifiedStudyPlanStatus::Draft => "Draft",
-            UnifiedStudyPlanStatus::Pending => "Pending",
-            UnifiedStudyPlanStatus::Active => "Active",
-            UnifiedStudyPlanStatus::Paused => "Paused",
-            UnifiedStudyPlanStatus::Completed => "Completed",
-            UnifiedStudyPlanStatus::Terminated => "Terminated",
-            UnifiedStudyPlanStatus::Deleted => "Deleted",
-        }
-    }
-}
-
-/// 从旧的双状态系统转换到新的统一状态
-pub fn convert_legacy_status(status: &str, lifecycle_status: &str) -> UnifiedStudyPlanStatus {
-    match (status, lifecycle_status) {
-        ("deleted", _) => UnifiedStudyPlanStatus::Deleted,
-        ("draft", _) => UnifiedStudyPlanStatus::Draft,
-        ("normal", "pending") => UnifiedStudyPlanStatus::Pending,
-        ("normal", "active") => UnifiedStudyPlanStatus::Active,
-        ("normal", "completed") => UnifiedStudyPlanStatus::Completed,
-        ("normal", "terminated") => UnifiedStudyPlanStatus::Terminated,
-        _ => UnifiedStudyPlanStatus::Draft, // 默认为草稿状态
-    }
-}
-
-/// 统一状态转换请求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UnifiedStatusTransitionRequest {
-    pub plan_id: Id,
-    pub target_status: UnifiedStudyPlanStatus,
-    pub reason: Option<String>,
-}
-
-/// 统一状态转换响应
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UnifiedStatusTransitionResponse {
-    pub success: bool,
-    pub new_status: UnifiedStudyPlanStatus,
-    pub message: String,
-}
 
 /// 今日学习日程
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -787,7 +543,7 @@ pub struct TodayStudySchedule {
     pub total_words_count: i32,
     pub completed_words_count: i32,
     pub progress_percentage: i32,
-    pub status: String,  // completed, in-progress, not-started
+    pub status: String, // completed, in-progress, not-started
     pub can_start_practice: bool,
 }
 

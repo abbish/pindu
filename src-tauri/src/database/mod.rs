@@ -1,8 +1,6 @@
-use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
-use std::str::FromStr;
 use crate::error::AppResult;
-
-
+use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
+use std::str::FromStr;
 
 /// 数据库连接管理器
 pub struct DatabaseManager {
@@ -18,7 +16,7 @@ impl DatabaseManager {
             .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
 
         let pool = SqlitePool::connect_with(options).await?;
-        
+
         Ok(Self { pool })
     }
 
@@ -32,5 +30,4 @@ impl DatabaseManager {
         sqlx::migrate!("./migrations").run(&self.pool).await?;
         Ok(())
     }
-
 }
