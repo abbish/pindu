@@ -1,0 +1,17 @@
+[
+  {
+    "id": "kids-story",
+    "mode": "focus",
+    "text": "Tom has a little red kite. Every Sunday he runs to the park with his sister Lily. The wind is strong, so the kite flies high above the trees. Lily laughs and claps her hands. \"Look, Tom! Your kite is dancing with the clouds!\" When the sun goes down, they walk home together, tired but happy."
+  },
+  {
+    "id": "school-notice",
+    "mode": "all",
+    "text": "Dear parents, our school will hold a science fair on May 12th. Students in Grade 3 and Grade 4 can show their projects in the main hall from 9:00 to 11:30. Please help your child prepare a poster and a simple model. Projects about plants, animals, weather and recycling are welcome. Parents are invited to visit the fair and vote for their favourite project. Thank you for your support!"
+  },
+  {
+    "id": "nature-article",
+    "mode": "focus",
+    "text": "Elephants are the largest land animals on Earth. An adult elephant can weigh more than six thousand kilograms and drink about two hundred litres of water every day. Elephants live in family groups led by the oldest female, called the matriarch. She remembers where to find water during the dry season, and the younger elephants follow her carefully. Elephants communicate with low rumbling sounds that travel for several kilometres through the ground. Sadly, many elephants are in danger because people hunt them for their ivory tusks and destroy the forests where they live. Scientists, park rangers and local communities are working together to protect these gentle giants, so that future generations can still see elephants walking across the savanna."
+  }
+]

@@ -1,0 +1,166 @@
+[
+  {
+    "word": "all",
+    "meaning": "全部",
+    "pos": "限定词",
+    "ipa": "/ɔːl/",
+    "syllables": "all",
+    "rule": "Sight Word | 高频词",
+    "type": "词族（-all）+ 高频词",
+    "examples": [
+      [
+        "All the kids are happy.",
+        "所有的孩子都很开心。"
+      ],
+      [
+        "We ate all the cake.",
+        "我们把蛋糕全吃了。"
+      ],
+      [
+        "Are all your friends here today?",
+        "你所有的朋友今天都在吗？"
+      ]
+    ]
+  },
+  {
+    "word": "said",
+    "meaning": "说（say 的过去式）",
+    "pos": "动词",
+    "ipa": "/sed/",
+    "syllables": "said",
+    "rule": "Irregular | 不规则拼读",
+    "type": "心形词（ai 读 /e/）",
+    "examples": [
+      [
+        "Mom said yes.",
+        "妈妈说可以。"
+      ],
+      [
+        "He said hello to me.",
+        "他向我问好。"
+      ]
+    ]
+  },
+  {
+    "word": "cake",
+    "meaning": "蛋糕",
+    "pos": "名词",
+    "ipa": "/keɪk/",
+    "syllables": "cake",
+    "rule": "VCE Pattern | 魔法e规则",
+    "type": "魔法 e（对比 cap/cape）",
+    "examples": [
+      [
+        "I like cake.",
+        "我喜欢蛋糕。"
+      ],
+      [
+        "We eat cake on my birthday.",
+        "我们在我生日那天吃蛋糕。"
+      ],
+      [
+        "Mom is making a big cake.",
+        "妈妈正在做一个大蛋糕。"
+      ]
+    ]
+  },
+  {
+    "word": "night",
+    "meaning": "夜晚",
+    "pos": "名词",
+    "ipa": "/naɪt/",
+    "syllables": "night",
+    "rule": "Vowel Teams | 元音组合",
+    "type": "igh 词族 + 同音词 knight",
+    "examples": [
+      [
+        "Good night, Mom!",
+        "妈妈，晚安！"
+      ],
+      [
+        "We see stars at night.",
+        "夜晚我们能看到星星。"
+      ]
+    ]
+  },
+  {
+    "word": "teacher",
+    "meaning": "老师",
+    "pos": "名词",
+    "ipa": "/ˈtiːtʃə/",
+    "syllables": "tea-cher",
+    "rule": "Suffix Rules | 后缀规则",
+    "type": "词素 teach + -er",
+    "examples": [
+      [
+        "My teacher is kind.",
+        "我的老师很和蔼。"
+      ],
+      [
+        "The teacher reads a story.",
+        "老师读了一个故事。"
+      ]
+    ]
+  },
+  {
+    "word": "unhappy",
+    "meaning": "不开心的",
+    "pos": "形容词",
+    "ipa": "/ʌnˈhæpi/",
+    "syllables": "un-hap-py",
+    "rule": "Syllable Division | 音节划分",
+    "type": "前缀 un- + happy",
+    "examples": [
+      [
+        "The cat looks unhappy.",
+        "这只猫看起来不开心。"
+      ],
+      [
+        "Don't be unhappy.",
+        "别不开心。"
+      ]
+    ]
+  },
+  {
+    "word": "elephant",
+    "meaning": "大象",
+    "pos": "名词",
+    "ipa": "/ˈelɪfənt/",
+    "syllables": "el-e-phant",
+    "rule": "Consonant Digraphs | 辅音字母组合",
+    "type": "多音节 + ph 读 /f/",
+    "examples": [
+      [
+        "The elephant is very big.",
+        "大象非常大。"
+      ],
+      [
+        "I saw an elephant at the zoo.",
+        "我在动物园看到了一头大象。"
+      ]
+    ]
+  },
+  {
+    "word": "because",
+    "meaning": "因为",
+    "pos": "连词",
+    "ipa": "/bɪˈkɒz/",
+    "syllables": "be-cause",
+    "rule": "Irregular | 不规则拼读",
+    "type": "不规则高频长词",
+    "examples": [
+      [
+        "I am happy because it is sunny.",
+        "因为天气晴朗，我很开心。"
+      ],
+      [
+        "I stay home because I am sick.",
+        "我待在家里，因为我生病了。"
+      ],
+      [
+        "Why are you happy? Because it is my birthday!",
+        "你为什么开心？因为今天是我的生日！"
+      ]
+    ]
+  }
+]

@@ -1,0 +1,17 @@
+[
+  { "word": "cat", "syllables": ["cat"], "rules": ["CVC Pattern | 短元音规则"] },
+  { "word": "cake", "syllables": ["cake"], "rules": ["VCE Pattern | 魔法e规则"] },
+  { "word": "rain", "syllables": ["rain"], "rules": ["Vowel Teams | 元音组合"] },
+  { "word": "car", "syllables": ["car"], "rules": ["R-Controlled Vowel | r控制元音"] },
+  { "word": "ship", "syllables": ["ship"], "rules": ["Consonant Digraphs | 辅音字母组合"] },
+  { "word": "frog", "syllables": ["frog"], "rules": ["Consonant Blends | 辅音连读", "CVC Pattern | 短元音规则"] },
+  { "word": "boy", "syllables": ["boy"], "rules": ["Diphthongs | 双元音"] },
+  { "word": "table", "syllables": ["ta-ble"], "rules": ["Consonant-le | 辅音+le结尾"] },
+  { "word": "city", "syllables": ["cit-y", "ci-ty"], "rules": ["Soft/Hard C,G | 软硬音规则"] },
+  { "word": "know", "syllables": ["know"], "rules": ["Silent Letters | 不发音字母"] },
+  { "word": "the", "syllables": ["the"], "rules": ["Sight Word | 高频词"] },
+  { "word": "tiger", "syllables": ["ti-ger"], "rules": ["Open Syllable | 开音节规则"] },
+  { "word": "rabbit", "syllables": ["rab-bit"], "rules": ["Syllable Division | 音节划分", "CVC Pattern | 短元音规则"] },
+  { "word": "baking", "syllables": ["ba-king", "bak-ing"], "rules": ["Suffix Rules | 后缀规则", "VCE Pattern | 魔法e规则"] },
+  { "word": "night", "syllables": ["night"], "rules": ["Vowel Teams | 元音组合", "Silent Letters | 不发音字母"] }
+]
