@@ -1,0 +1,8 @@
+{
+  "local-now": 0,
+  "migration-default-legacy": 0,
+  "rfc3339-variable": 0,
+  "sql-now-legacy": 0,
+  "sql-today": 0,
+  "utc-now": 0
+}

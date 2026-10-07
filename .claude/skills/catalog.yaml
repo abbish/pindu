@@ -1,0 +1,79 @@
+version: 1
+purpose: RedLark 仓库级开发 Skill 注册表（Claude Code）。触发语义以各 SKILL.md frontmatter 为准；本文件只提供注册、分组和校验依据。
+
+usage:
+  root_instruction: CLAUDE.md
+  work_items: .claude/work/<work-id>/
+  shared_standards:
+    - .claude/skills/harness-context-memory/references/work-item-contract.md
+    - .claude/skills/deliver-contract-and-data/references/tauri-ipc-contract.md
+    - .claude/skills/deliver-contract-and-data/references/time-and-timezone.md
+    - .claude/skills/deliver-backend-rust/references/sqlx-migration-standards.md
+    - .claude/skills/sdd-verify/references/verification-methods.md
+
+groups:
+  workflow:
+    description: 选择、规划、分析、执行、验证或构建发布一个开发批次
+  domain-capability:
+    description: 在单一技术面（Rust 后端 / React 前端 / IPC contract / AI 提示词）完成已明确的实现批次
+  evidence-memory:
+    description: 维护跨会话 work record 和长期回归保护
+  engineering-governance:
+    description: 维护 CLAUDE.md、Skill 目录与可执行 gate
+
+skills:
+  - id: sdd-work
+    group: workflow
+    path: .claude/skills/sdd-work/SKILL.md
+    summary: 统一承接 feature、bugfix、refactor、improvement；收敛目标/范围/验收后选择最小连贯下一步
+  - id: sdd-plan
+    group: workflow
+    path: .claude/skills/sdd-plan/SKILL.md
+    summary: 基于 live owner 与当前事实形成可独立验证的实施批次；plan.md 是唯一计划 owner
+  - id: sdd-analyze
+    group: workflow
+    path: .claude/skills/sdd-analyze/SKILL.md
+    summary: 沿 前端调用 → IPC → handler → service → repository → SQLite / AI 的链路定位首个分歧点，区分因果与设计 finding
+  - id: sdd-implement
+    group: workflow
+    path: .claude/skills/sdd-implement/SKILL.md
+    summary: 执行已准备批次并调度最小 deliver-* 能力；按实际 diff 汇报并交给 sdd-verify
+  - id: sdd-verify
+    group: workflow
+    path: .claude/skills/sdd-verify/SKILL.md
+    summary: 对账 plan 与 diff，按 确定性 / AI 语义 / 桌面 UI 三层选最窄证据；迁移与 IPC contract 变更必查
+  - id: sdd-release-build
+    group: workflow
+    path: .claude/skills/sdd-release-build/SKILL.md
+    summary: 仅显式调用（/sdd-release-build）：版本号三处同步、迁移终态核对、平台构建与安装包产物检查
+
+  - id: deliver-backend-rust
+    group: domain-capability
+    path: .claude/skills/deliver-backend-rust/SKILL.md
+    summary: 完成 src-tauri 的 handler / service / repository / types / migration 批次
+  - id: deliver-frontend-react
+    group: domain-capability
+    path: .claude/skills/deliver-frontend-react/SKILL.md
+    summary: 完成 src 的 page / component / service / hook 批次；UI 统一用 shadcn/ui + Tailwind v4（含接入与迁移）
+  - id: deliver-contract-and-data
+    group: domain-capability
+    path: .claude/skills/deliver-contract-and-data/SKILL.md
+    summary: 收口 Tauri 命令名、参数命名转换、serde 形状、Rust types ↔ TS types 与 ApiResult 的一致性
+  - id: deliver-ai-prompt
+    group: domain-capability
+    path: .claude/skills/deliver-ai-prompt/SKILL.md
+    summary: 完成 agent 任务（prompts/agent/*.md、agent/src/tools、Rust 结果校正）与 agent/eval 前后对比的 AI 能力批次
+
+  - id: harness-context-memory
+    group: evidence-memory
+    path: .claude/skills/harness-context-memory/SKILL.md
+    summary: 维护 .claude/work/<work-id>/ 的最小可恢复 work record
+  - id: harness-regression-curation
+    group: evidence-memory
+    path: .claude/skills/harness-regression-curation/SKILL.md
+    summary: 把真实失败沉淀为 cargo 单测 / sqlx 集成测试 / node --test 纯函数测试 / 手工清单中最贴近根因的保护
+
+  - id: harness-governance
+    group: engineering-governance
+    path: .claude/skills/harness-governance/SKILL.md
+    summary: 维护 CLAUDE.md、本目录 Skill、catalog、hook 与校验脚本；审查 Skill 触发与资源质量

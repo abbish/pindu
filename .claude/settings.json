@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm run type-check)",
+      "Bash(npm run lint:*)",
+      "Bash(npm test:*)",
+      "Bash(npx vitest:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(rg:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(bash scripts/validate-skills.sh)",
+      "Bash(bash scripts/verify.sh:*)",
+      "Bash(python3 scripts/check-sql.py:*)",
+      "Bash(python3 scripts/check-ipc-contract.py:*)",
+      "Bash(python3 scripts/schema-snapshot.py:*)",
+      "Bash(node scripts/lint-ratchet.mjs:*)",
+      "Bash(npm run verify:*)"
+    ],
+    "deny": [
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/*.p12)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-migrations.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-bash.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
