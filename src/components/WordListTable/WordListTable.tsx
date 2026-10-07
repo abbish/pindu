@@ -1,5 +1,23 @@
-import React, { useState } from 'react';
-import styles from './WordListTable.module.css';
+import React, { useEffect, useState } from 'react';
+import { FileText, MessageSquareText, MoreHorizontal, Pencil, Plus, SearchX, Trash2, Volume2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { cn } from '@/lib/utils';
+import { partOfSpeechLabel } from '@/utils/partOfSpeech';
 
 export interface WordDetail {
   /** 单词ID */
@@ -14,6 +32,12 @@ export interface WordDetail {
   ipa?: string;
   /** 音节 */
   syllables?: string;
+  /** 英文例句 */
+  exampleSentence?: string;
+  /** 例句中文翻译 */
+  exampleTranslation?: string;
+  /** 例句总条数（只展示第一条） */
+  exampleCount?: number;
 }
 
 export interface WordListTableProps {
@@ -21,15 +45,20 @@ export interface WordListTableProps {
   words: WordDetail[];
   /** 播放发音回调 */
   onPlayPronunciation?: (word: WordDetail) => void;
-
+  /** 朗读例句回调 */
+  onPlayExample?: (word: WordDetail) => void;
   /** 编辑单词回调 */
   onEditWord?: (word: WordDetail) => void;
   /** 删除单词回调 */
   onDeleteWord?: (word: WordDetail) => void;
   /** 批量删除回调 */
   onBatchDelete?: (words: WordDetail[]) => void;
-  /** 补充单词回调 */
+  /** 用选中的单词写短文 */
+  onBatchPassage?: (words: WordDetail[]) => void;
+  /** 添加单词回调 */
   onAddWords?: () => void;
+  /** 自定义“添加单词”操作（如带多个入口的下拉菜单），优先于 onAddWords */
+  addAction?: React.ReactNode;
   /** 加载状态 */
   loading?: boolean;
   /** 分页信息 */
@@ -39,401 +68,294 @@ export interface WordListTableProps {
     total: number;
     onChange: (page: number) => void;
   };
-  /** 只读模式 */
+  /** 只读模式：不显示勾选与操作列 */
   readonly?: boolean;
 }
 
-const PART_OF_SPEECH_CONFIG = {
-  'n.': { label: '名词', color: 'blue' },
-  'v.': { label: '动词', color: 'green' },
-  'adj.': { label: '形容词', color: 'purple' },
-  'adv.': { label: '副词', color: 'orange' },
-  'prep.': { label: '介词', color: 'pink' },
-  'conj.': { label: '连词', color: 'yellow' },
-  'int.': { label: '感叹词', color: 'primary' },
-  'pron.': { label: '代词', color: 'blue' }
+/** 词性 → 配色（语义 token；中文名见 utils/partOfSpeech） */
+const POS_CLASS: Record<string, string> = {
+  'n.': 'bg-chart-1/15 text-foreground',
+  'v.': 'bg-chart-2/15 text-foreground',
+  'adj.': 'bg-chart-3/20 text-foreground',
+  'adv.': 'bg-chart-4/15 text-foreground',
+  'prep.': 'bg-chart-5/15 text-foreground',
 };
 
-// 生成页码数组的辅助函数
-const generatePageNumbers = (current: number, total: number): (number | string)[] => {
-  const pages: (number | string)[] = [];
-
-  if (total <= 7) {
-    // 如果总页数小于等于7，显示所有页码
-    for (let i = 1; i <= total; i++) {
-      pages.push(i);
-    }
-  } else {
-    // 总是显示第一页
-    pages.push(1);
-
-    if (current <= 4) {
-      // 当前页在前面
-      for (let i = 2; i <= 5; i++) {
-        pages.push(i);
-      }
-      pages.push('...');
-      pages.push(total);
-    } else if (current >= total - 3) {
-      // 当前页在后面
-      pages.push('...');
-      for (let i = total - 4; i <= total; i++) {
-        pages.push(i);
-      }
-    } else {
-      // 当前页在中间
-      pages.push('...');
-      for (let i = current - 1; i <= current + 1; i++) {
-        pages.push(i);
-      }
-      pages.push('...');
-      pages.push(total);
-    }
-  }
-
-  return pages;
-};
+/** 页码：总页数 ≤ 7 全部显示，否则首尾 + 当前附近 + 省略号 */
+function pageNumbers(current: number, total: number): (number | 'gap')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  if (current <= 4) return [1, 2, 3, 4, 5, 'gap', total];
+  if (current >= total - 3) return [1, 'gap', total - 4, total - 3, total - 2, total - 1, total];
+  return [1, 'gap', current - 1, current, current + 1, 'gap', total];
+}
 
 /**
- * 单词列表表格组件
+ * 单词列表（shadcn 数据表）：勾选 + 批量删除、行操作（发音 / 例句 / 编辑 / 删除，右键同一组）、分页。
+ * 单词本详情与计划详情（只读）共用。
  */
 export const WordListTable: React.FC<WordListTableProps> = ({
   words,
   onPlayPronunciation,
+  onPlayExample,
+  onEditWord,
   onDeleteWord,
   onBatchDelete,
+  onBatchPassage,
   onAddWords,
+  addAction,
   loading = false,
   pagination,
-  readonly = false
+  readonly = false,
 }) => {
-  const [selectedWords, setSelectedWords] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // 勾选只针对当前页：换页、刷新、筛选后清空，避免计数包含看不见的其它页
+  useEffect(() => setSelected(new Set()), [words]);
+  const total = pagination ? pagination.total : words.length;
+  const allSelected = words.length > 0 && selected.size === words.length;
 
-
-
-  const handlePlayPronunciation = (word: WordDetail) => {
-    onPlayPronunciation?.(word);
-  };
-
-
-
-  const handleDeleteWord = (word: WordDetail) => {
-    onDeleteWord?.(word);
-  };
-
-  // 多选相关函数
-  const handleSelectWord = (wordId: number) => {
-    const newSelected = new Set(selectedWords);
-    if (newSelected.has(wordId)) {
-      newSelected.delete(wordId);
-    } else {
-      newSelected.add(wordId);
-    }
-    setSelectedWords(newSelected);
-  };
-
-  const handleSelectAll = () => {
-    if (selectedWords.size === words.length) {
-      setSelectedWords(new Set());
-    } else {
-      setSelectedWords(new Set(words.map(word => word.id)));
+  const toggle = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(words.map((w) => w.id)));
+  const batchDelete = () => {
+    const picked = words.filter((w) => selected.has(w.id));
+    if (picked.length > 0) {
+      onBatchDelete?.(picked);
+      setSelected(new Set());
     }
   };
 
-  const handleBatchDelete = () => {
-    const wordsToDelete = words.filter(word => selectedWords.has(word.id));
-    if (wordsToDelete.length > 0) {
-      onBatchDelete?.(wordsToDelete);
-      setSelectedWords(new Set());
-    }
-  };
-
-  const handleClearSelection = () => {
-    setSelectedWords(new Set());
-  };
-
-  if (loading) {
+  const rowActions = (word: WordDetail, kind: 'dropdown' | 'context') => {
+    const Item = kind === 'dropdown' ? DropdownMenuItem : ContextMenuItem;
+    const Sep = kind === 'dropdown' ? DropdownMenuSeparator : ContextMenuSeparator;
     return (
-      <div className={styles.container}>
-        <div className={styles.header}>
-          <h3 className={styles.title}>单词列表</h3>
-          <div className={styles.searchWrapper}>
-            <div className={`${styles.skeleton} ${styles.searchSkeleton}`} />
-          </div>
-        </div>
-        <div className={styles.tableContainer}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>单词</th>
-                <th>中文释义</th>
-                <th>音标</th>
-                <th>音节</th>
-                <th>词性</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: 6 }).map((_, index) => (
-                <tr key={index}>
-                  <td>
-                    <div className={`${styles.skeleton} ${styles.wordSkeleton}`} />
-                  </td>
-                  <td>
-                    <div className={`${styles.skeleton} ${styles.meaningSkeleton}`} />
-                  </td>
-                  <td>
-                    <div className={`${styles.skeleton} ${styles.phoneticSkeleton}`} />
-                  </td>
-                  <td>
-                    <div className={`${styles.skeleton} ${styles.syllablesSkeleton}`} />
-                  </td>
-                  <td>
-                    <div className={`${styles.skeleton} ${styles.posSkeleton}`} />
-                  </td>
-                  <td>
-                    <div className={styles.actionSkeletons}>
-                      <div className={`${styles.skeleton} ${styles.actionSkeleton}`} />
-                      <div className={`${styles.skeleton} ${styles.actionSkeleton}`} />
-                      <div className={`${styles.skeleton} ${styles.actionSkeleton}`} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <>
+        <Item onSelect={() => onPlayPronunciation?.(word)}>
+          <Volume2 />
+          播放发音
+        </Item>
+        {onPlayExample && word.exampleSentence && (
+          <Item onSelect={() => onPlayExample(word)}>
+            <MessageSquareText />
+            朗读例句
+          </Item>
+        )}
+        {onEditWord && (
+          <Item onSelect={() => onEditWord(word)}>
+            <Pencil />
+            编辑单词…
+          </Item>
+        )}
+        {onDeleteWord && (
+          <>
+            <Sep />
+            <Item variant="destructive" onSelect={() => onDeleteWord(word)}>
+              <Trash2 />
+              删除
+            </Item>
+          </>
+        )}
+      </>
     );
-  }
+  };
+
+  const pageCount = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.pageSize)) : 1;
+  const firstIndex = pagination ? (pagination.current - 1) * pagination.pageSize + 1 : 1;
+  const lastIndex = pagination ? Math.min(pagination.current * pagination.pageSize, pagination.total) : words.length;
 
   return (
-    <div className={styles.container}>
-      {/* Filter Bar */}
-      <div className={styles.filterBar}>
-        <div className={styles.filterLeft}>
-          <h3 className={styles.title}>单词列表</h3>
-          <span className={styles.count}>
-            {pagination ? `共 ${pagination.total} 个单词` : `共 ${words.length} 个单词`}
-          </span>
-        </div>
-
-        <div className={styles.filterRight}>
-
-          {/* 批量操作按钮 */}
-          {!readonly && selectedWords.size > 0 && (
-            <button
-              type="button"
-              className={styles.batchDeleteBtn}
-              onClick={handleBatchDelete}
-              title={`删除选中的 ${selectedWords.size} 个单词`}
-            >
-              <i className="fas fa-trash" />
-              删除选中 ({selectedWords.size})
-            </button>
-          )}
-
-          {/* 补充单词按钮 */}
-          {onAddWords && (
-            <button
-              type="button"
-              className={styles.addWordsBtn}
-              onClick={onAddWords}
-              title="补充单词"
-            >
-              <i className="fas fa-plus" />
-              补充单词
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* 批量操作提示条 */}
-      {!readonly && selectedWords.size > 0 && (
-        <div className={styles.selectionBar}>
-          <div className={styles.selectionInfo}>
-            <i className="fas fa-check-circle" />
-            已选择 {selectedWords.size} 个单词
-          </div>
-          <div className={styles.selectionActions}>
-            <button
-              type="button"
-              className={styles.selectAllBtn}
-              onClick={handleSelectAll}
-            >
-              {selectedWords.size === words.length ? '取消全选' : '全选'}
-            </button>
-            <button
-              type="button"
-              className={styles.clearSelectionBtn}
-              onClick={handleClearSelection}
-            >
+    <div className="flex flex-col gap-3">
+      {/* 工具栏：标题 + 选择条 / 添加单词 */}
+      <div className="flex min-h-9 flex-wrap items-center gap-2">
+        {!readonly && selected.size > 0 ? (
+          <div className="flex flex-1 items-center gap-1 rounded-lg border bg-muted px-3 py-1">
+            <span className="text-sm font-medium">已选择 {selected.size} 个单词</span>
+            <Button variant="ghost" size="sm" onClick={toggleAll}>
+              {allSelected ? '取消全选' : '全选'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
               清除选择
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className={styles.tableContainer}>
-        {words.length === 0 ? (
-          <div className={styles.emptyState}>
-            <div className={styles.emptyIcon}>
-              <i className="fas fa-search" />
-            </div>
-            <h4 className={styles.emptyTitle}>
-              暂无单词
-            </h4>
-            <p className={styles.emptyDescription}>
-              开始添加单词到这个单词本吧
-            </p>
+            </Button>
+            <div className="flex-1" />
+            {onBatchPassage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onBatchPassage(words.filter((w) => selected.has(w.id)));
+                  setSelected(new Set());
+                }}
+              >
+                <FileText />
+                用选中的词写短文
+              </Button>
+            )}
+            {onBatchDelete && (
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={batchDelete}>
+                <Trash2 />
+                删除选中（{selected.size}）
+              </Button>
+            )}
           </div>
         ) : (
-          <>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  {!readonly && (
-                    <th>
-                      <input
-                        type="checkbox"
-                        checked={selectedWords.size > 0 && selectedWords.size === words.length}
-                        onChange={handleSelectAll}
-                        className={styles.selectCheckbox}
-                        aria-label="全选单词"
-                      />
-                    </th>
-                  )}
-                  <th>单词</th>
-                  <th>中文释义</th>
-                  <th>音标</th>
-                  <th>音节</th>
-                  <th>词性</th>
-                  {!readonly && <th>操作</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {words.map((word) => {
-                const posConfig = PART_OF_SPEECH_CONFIG[word.partOfSpeech] || { label: '其他', color: 'gray' };
+          <div className="flex flex-1 items-baseline gap-2">
+            <h3 className="text-base font-semibold">单词列表</h3>
+            <span className="text-sm text-muted-foreground tabular-nums">共 {total} 个单词</span>
+          </div>
+        )}
+        {addAction ??
+          (onAddWords && (
+            <Button onClick={onAddWords}>
+              <Plus />
+              添加单词
+            </Button>
+          ))}
+      </div>
 
-                return (
-                  <tr key={word.id} className={selectedWords.has(word.id) ? styles.selectedRow : ''}>
-                    {!readonly && (
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selectedWords.has(word.id)}
-                          onChange={() => handleSelectWord(word.id)}
-                          className={styles.selectCheckbox}
-                          aria-label={`选择单词 ${word.word}`}
-                        />
-                      </td>
-                    )}
-                    <td>
-                      <div className={styles.wordCell}>
-                        <h4 className={styles.wordText}>{word.word}</h4>
-                      </div>
-                    </td>
-                    <td>
-                      <span className={styles.meaning}>{word.meaning}</span>
-                    </td>
-                    <td>
-                      <span className={styles.phonetic}>
-                        {word.ipa || '-'}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={styles.syllables}>
-                        {word.syllables || '-'}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        className={`${styles.partOfSpeech} ${styles[posConfig.color]}`}
-                        title={posConfig.label}
-                      >
-                        {word.partOfSpeech}
-                      </span>
-                    </td>
-                    {!readonly && (
-                      <td>
-                        <div className={styles.actions}>
-                          <button
-                            type="button"
-                            className={styles.actionBtn}
-                            onClick={() => handlePlayPronunciation(word)}
-                            title="播放发音"
-                          >
-                            <i className="fas fa-volume-up" />
-                          </button>
-
-                          <button
-                            type="button"
-                            className={`${styles.actionBtn} ${styles.deleteBtn}`}
-                            onClick={() => handleDeleteWord(word)}
-                            title="删除"
-                          >
-                            <i className="fas fa-trash" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {/* 分页组件 */}
-          {pagination && pagination.total > pagination.pageSize && (
-            <div className={styles.pagination}>
-              <div className={styles.paginationInfo}>
-                显示第 {((pagination.current - 1) * pagination.pageSize) + 1} - {Math.min(pagination.current * pagination.pageSize, pagination.total)} 条，共 {pagination.total} 条
-              </div>
-              <div className={styles.paginationControls}>
-                <button
-                  type="button"
-                  className={`${styles.paginationBtn} ${pagination.current === 1 ? styles.disabled : ''}`}
-                  onClick={() => pagination.current > 1 && pagination.onChange(pagination.current - 1)}
-                  disabled={pagination.current === 1}
-                >
-                  <i className="fas fa-chevron-left" />
-                  上一页
-                </button>
-
-                <div className={styles.pageNumbers}>
-                  {generatePageNumbers(pagination.current, Math.ceil(pagination.total / pagination.pageSize)).map((page, index) => (
-                    page === '...' ? (
-                      <span key={index} className={styles.ellipsis}>...</span>
+      {!loading && words.length === 0 ? (
+        <EmptyState icon={<SearchX />} title="暂无单词" description="开始添加单词到这个单词本吧" />
+      ) : (
+        <Card className="gap-0 overflow-hidden py-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {!readonly && (
+                  <TableHead className="w-10">
+                    <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="全选单词" disabled={loading} />
+                  </TableHead>
+                )}
+                <TableHead className="w-40">单词</TableHead>
+                <TableHead>中文释义</TableHead>
+                <TableHead className="w-36">音标</TableHead>
+                <TableHead className="w-32">音节</TableHead>
+                <TableHead className="w-20">词性</TableHead>
+                {!readonly && <TableHead className="w-28 text-right">操作</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading
+                ? Array.from({ length: 6 }, (_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: readonly ? 5 : 7 }, (_, j) => (
+                        <TableCell key={j}>
+                          <Skeleton className="h-4 w-full max-w-32" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                : words.map((word) => {
+                    const pos = { label: partOfSpeechLabel(word.partOfSpeech), className: POS_CLASS[word.partOfSpeech] ?? 'bg-secondary text-secondary-foreground' };
+                    const row = (
+                      <TableRow key={word.id} data-state={selected.has(word.id) ? 'selected' : undefined}>
+                        {!readonly && (
+                          <TableCell>
+                            <Checkbox checked={selected.has(word.id)} onCheckedChange={() => toggle(word.id)} aria-label={`选择单词 ${word.word}`} />
+                          </TableCell>
+                        )}
+                        <TableCell className="font-semibold select-text">{word.word}</TableCell>
+                        <TableCell className="whitespace-normal select-text">
+                          <div>{word.meaning}</div>
+                          {word.exampleSentence && (
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {word.exampleSentence}
+                              {word.exampleTranslation && <span className="ml-1">{word.exampleTranslation}</span>}
+                              {(word.exampleCount ?? 0) > 1 && <span className="ml-1 opacity-80">· 共 {word.exampleCount} 条例句</span>}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground select-text">{word.ipa || '—'}</TableCell>
+                        <TableCell className="font-mono text-xs select-text">{word.syllables || '—'}</TableCell>
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant="outline" className={cn('border-transparent', pos.className)}>{word.partOfSpeech}</Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>{pos.label}</TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        {!readonly && (
+                          <TableCell className="text-right">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" className="size-8" aria-label="播放发音" onClick={() => onPlayPronunciation?.(word)}>
+                                  <Volume2 />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>播放发音</TooltipContent>
+                            </Tooltip>
+                            {onPlayExample && word.exampleSentence && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="size-8" aria-label="朗读例句" onClick={() => onPlayExample(word)}>
+                                    <MessageSquareText />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>朗读例句</TooltipContent>
+                              </Tooltip>
+                            )}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="size-8" aria-label="更多操作">
+                                  <MoreHorizontal />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">{rowActions(word, 'dropdown')}</DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                    return readonly ? (
+                      row
                     ) : (
-                      <button
-                        key={index}
-                        type="button"
-                        className={`${styles.pageBtn} ${page === pagination.current ? styles.active : ''}`}
-                        onClick={() => pagination.onChange(page as number)}
-                      >
-                        {page}
-                      </button>
-                    )
-                  ))}
-                </div>
+                      <ContextMenu key={word.id}>
+                        <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+                        <ContextMenuContent>{rowActions(word, 'context')}</ContextMenuContent>
+                      </ContextMenu>
+                    );
+                  })}
+            </TableBody>
+          </Table>
 
-                <button
-                  type="button"
-                  className={`${styles.paginationBtn} ${pagination.current >= Math.ceil(pagination.total / pagination.pageSize) ? styles.disabled : ''}`}
-                  onClick={() => pagination.current < Math.ceil(pagination.total / pagination.pageSize) && pagination.onChange(pagination.current + 1)}
-                  disabled={pagination.current >= Math.ceil(pagination.total / pagination.pageSize)}
-                >
-                  下一页
-                  <i className="fas fa-chevron-right" />
-                </button>
-              </div>
+          {pagination && pagination.total > 0 && (
+            <div className="flex items-center justify-between border-t px-4 py-2.5 text-sm">
+              <span className="text-muted-foreground tabular-nums">
+                显示第 {firstIndex}–{lastIndex} 条，共 {pagination.total} 条
+              </span>
+              {pageCount > 1 && (
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" disabled={pagination.current <= 1} onClick={() => pagination.onChange(pagination.current - 1)}>
+                    上一页
+                  </Button>
+                  {pageNumbers(pagination.current, pageCount).map((p, i) =>
+                    p === 'gap' ? (
+                      <span key={`gap-${i}`} className="px-1 text-muted-foreground">…</span>
+                    ) : (
+                      <Button
+                        key={p}
+                        variant={p === pagination.current ? 'outline' : 'ghost'}
+                        size="icon"
+                        className={cn('size-8 tabular-nums', p === pagination.current && 'border-primary')}
+                        aria-current={p === pagination.current ? 'page' : undefined}
+                        onClick={() => pagination.onChange(p)}
+                      >
+                        {p}
+                      </Button>
+                    )
+                  )}
+                  <Button variant="outline" size="sm" disabled={pagination.current >= pageCount} onClick={() => pagination.onChange(pagination.current + 1)}>
+                    下一页
+                  </Button>
+                </div>
+              )}
             </div>
           )}
-        </>
-        )}
-      </div>
+        </Card>
+      )}
     </div>
   );
 };
-
-export default WordListTable;

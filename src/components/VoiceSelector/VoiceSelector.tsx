@@ -1,5 +1,7 @@
 import React from 'react';
-import styles from './VoiceSelector.module.css';
+import { Globe, Loader2, Play } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export interface TTSVoice {
   id: number;
@@ -63,87 +65,60 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   };
 
   return (
-    <div className={styles.section}>
-      <div className={styles.header}>
-        <h3 className={styles.title}>{title}</h3>
-        <p className={styles.description}>{description}</p>
+    <div className="space-y-2">
+      <div>
+        <div className="text-sm font-medium">{title}</div>
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
-
-      <div className={styles.voicesList}>
+      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={title}>
         {voices.map((voice) => {
           const isSelected = selectedVoiceId === voice.voiceId;
           const isTesting = testingVoiceId === voice.voiceId;
-
           return (
             <div
               key={voice.voiceId}
-              className={`${styles.voiceItem} ${isSelected ? styles.selected : ''} ${disabled ? styles.disabled : ''}`}
+              role="radio"
+              aria-checked={isSelected}
+              tabIndex={disabled ? -1 : 0}
               onClick={() => handleVoiceSelect(voice.voiceId)}
+              onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && handleVoiceSelect(voice.voiceId)}
+              className={cn(
+                'flex items-start gap-3 rounded-lg border p-3 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                isSelected && 'border-primary bg-accent/40',
+                disabled && 'pointer-events-none opacity-60'
+              )}
             >
-              <div className={styles.voiceLabel}>
-                {/* 选择指示器 */}
-                <div className={`${styles.radioButton} ${isSelected ? styles.checked : ''}`}>
-                  {isSelected && <div className={styles.radioInner} />}
+              <span className={cn('mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border', isSelected && 'border-primary')}>
+                {isSelected && <span className="size-2 rounded-full bg-primary" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium">{voice.displayName}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 shrink-0"
+                    onClick={(e) => handleVoiceTest(e, voice.voiceId)}
+                    disabled={disabled || isTesting}
+                    title="试听语音"
+                  >
+                    {isTesting ? <Loader2 className="animate-spin" /> : <Play />}
+                    {isTesting ? '试听中' : '试听'}
+                  </Button>
                 </div>
-
-                {/* 语音信息 */}
-                <div className={styles.voiceContent}>
-                  <div className={styles.voiceHeader}>
-                    <h4 className={styles.voiceTitle}>{voice.displayName}</h4>
-                    <div className={styles.voiceActions}>
-                      <button
-                        type="button"
-                        className={`${styles.testButton} ${isTesting ? styles.testing : ''}`}
-                        onClick={(e) => handleVoiceTest(e, voice.voiceId)}
-                        disabled={disabled || isTesting}
-                        title="试听语音"
-                      >
-                        {isTesting ? (
-                          <>
-                            <i className="fas fa-spinner fa-spin" />
-                            试听中
-                          </>
-                        ) : (
-                          <>
-                            <i className="fas fa-play" />
-                            试听
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className={styles.voiceDetails}>
-                    <div className={styles.voiceInfo}>
-                      <span className={styles.voiceLanguage}>
-                        <i className="fas fa-globe" />
-                        {voice.language === 'en' ? '英语' : voice.language}
-                      </span>
-                      {voice.gender && (
-                        <span className={styles.voiceGender}>
-                          <i className={voice.gender === 'female' ? 'fas fa-venus' : 'fas fa-mars'} />
-                          {voice.gender === 'female' ? '女声' : '男声'}
-                        </span>
-                      )}
-                    </div>
-                    {voice.description && (
-                      <p className={styles.voiceDescription}>{voice.description}</p>
-                    )}
-                  </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <Globe className="size-3" />
+                    {voice.language === 'en' ? '英语' : voice.language}
+                  </span>
+                  {voice.gender && <span>{voice.gender === 'female' ? '女声' : '男声'}</span>}
                 </div>
+                {voice.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{voice.description}</p>}
               </div>
             </div>
           );
         })}
       </div>
-
-      {voices.length === 0 && (
-        <div className={styles.emptyState}>
-          <i className="fas fa-microphone-slash" />
-          <h4>暂无可用语音</h4>
-          <p>请检查TTS服务配置或联系管理员</p>
-        </div>
-      )}
     </div>
   );
 };

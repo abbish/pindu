@@ -1,3 +1,5 @@
+import type { PhonicsWord } from './ai-model';
+
 /**
  * 批量单词分析类型定义
  * 对应后端 src-tauri/src/types/word_analysis.rs
@@ -58,7 +60,7 @@ export interface AnalysisProgress {
  */
 export interface WordAnalysisStatus {
   word: string;
-  status: string; // "pending", "analyzing", "completed", "failed"
+  status: 'pending' | 'analyzing' | 'completed' | 'failed';
   error: string | null;
   result: PhonicsWord | null;
 }
@@ -75,17 +77,6 @@ export interface BatchAnalysisProgress {
 }
 
 /**
- * 批量分析配置
- */
-export interface BatchAnalysisConfig {
-  batchSize: number;
-  maxConcurrentBatches: number;
-  retryFailedWords: boolean;
-  maxRetries: number;
-  timeoutPerBatch: number;
-}
-
-/**
  * 批量分析结果
  */
 export interface BatchAnalysisResult {
@@ -96,44 +87,3 @@ export interface BatchAnalysisResult {
   elapsedSeconds: number;
 }
 
-/**
- * 音标单词
- */
-export interface PhonicsWord {
-  word: string;
-  phonetic: string;
-  partOfSpeech: string;
-  definitions: string[];
-  examples: string[];
-  difficulty: 'easy' | 'medium' | 'hard';
-  frequency: number;
-  relatedWords: string[];
-  synonyms: string[];
-  antonyms: string[];
-  collocations: string[];
-  idioms: string[];
-}
-
-/**
- * 批量分析请求参数
- */
-export interface BatchAnalysisRequest {
-  text: string;
-  modelId?: number;
-  extractionMode?: string;
-  config?: BatchAnalysisConfig;
-}
-
-/**
- * 进度更新回调
- */
-export type ProgressCallback = (progress: BatchAnalysisProgress) => void;
-
-/**
- * 批量分析选项
- */
-export interface BatchAnalysisOptions {
-  onProgress?: ProgressCallback;
-  onError?: (error: Error) => void;
-  onComplete?: (result: BatchAnalysisResult) => void;
-}

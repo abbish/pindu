@@ -1,218 +1,164 @@
-import React, { useState, useEffect } from 'react';
-import type { CalendarDayData } from '../../types';
-import { studyService } from '../../services';
-import styles from './StudyCalendar.module.css';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+import { useToast } from '@/components/Toast/ToastContainer';
+import { formatDate, formatMonth, toLocalDateKey } from '@/utils/datetime';
+import { studyService } from '@/services/studyService';
+import type { CalendarDayData } from '@/types';
 
 export interface StudyCalendarProps {
   /** 学习计划ID */
   planId: number;
-  /** 日期点击回调 */
-  onDateClick: (date: string) => void;
-  /** Loading state */
-  loading?: boolean;
 }
 
-/**
- * Study calendar component showing study progress
- */
-export const StudyCalendar: React.FC<StudyCalendarProps> = ({
-  planId,
-  onDateClick,
-  loading = false
-}) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [calendarData, setCalendarData] = useState<CalendarDayData[]>([]);
+const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
+
+const STATUS: Record<CalendarDayData['status'], { cell: string; dot: string; label: string }> = {
+  completed: { cell: 'bg-success-soft/60', dot: 'bg-success', label: '已完成' },
+  'in-progress': { cell: 'bg-warning-soft/60', dot: 'bg-overdue', label: '进行中' },
+  overdue: { cell: 'bg-destructive/8', dot: 'bg-destructive', label: '逾期' },
+  'not-started': { cell: '', dot: 'bg-muted-foreground/40', label: '未开始' },
+};
+
+/** 当月网格（周一起），按日期键查数据，不依赖后端返回的排列顺序 */
+function monthGrid(month: Date): Date[] {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const start = new Date(first.getFullYear(), first.getMonth(), 1 - ((first.getDay() + 6) % 7));
+  const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  const days = Math.ceil(((last.getDate() + ((first.getDay() + 6) % 7)) / 7)) * 7;
+  return Array.from({ length: days }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+}
+
+/** 计划日历（shadcn）：每格新学 / 复习数与完成进度，悬停看详情；周一起 */
+export const StudyCalendar: React.FC<StudyCalendarProps> = ({ planId }) => {
+  const toast = useToast();
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [data, setData] = useState<CalendarDayData[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
 
-  // 获取日历数据
   useEffect(() => {
-    const fetchCalendarData = async () => {
-      if (!planId) return;
-
-      try {
-        setDataLoading(true);
-        const year = currentMonth.getFullYear();
-        const month = currentMonth.getMonth() + 1;
-
-        const result = await studyService.getStudyPlanCalendarData(planId, year, month);
-
-        if (result.success) {
-          setCalendarData(result.data);
-        } else {
-          console.error('Failed to fetch calendar data:', result.error);
-          setCalendarData([]);
-        }
-      } catch (error) {
-        console.error('Error fetching calendar data:', error);
-        setCalendarData([]);
-      } finally {
-        setDataLoading(false);
+    if (!planId) return;
+    let stale = false;
+    setDataLoading(true);
+    studyService.getStudyPlanCalendarData(planId, month.getFullYear(), month.getMonth() + 1).then((result) => {
+      if (stale) return;
+      if (result.success) setData(result.data);
+      else {
+        toast.showError('无法加载计划日历', result.error);
+        setData([]);
       }
+      setDataLoading(false);
+    });
+    return () => {
+      stale = true;
     };
+  }, [planId, month, toast]);
 
-    fetchCalendarData();
-  }, [planId, currentMonth]);
-
-
-
-  // 切换月份
-  const handlePrevMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
-  };
-
-  const handleNextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
-  };
-
-  // 获取月份名称
-  const getMonthName = (date: Date) => {
-    return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' });
-  };
-
-  // 渲染日历头部
-  const renderHeader = () => (
-    <div className={styles.calendarHeader}>
-      <button
-        className={styles.navButton}
-        onClick={handlePrevMonth}
-        type="button"
-        aria-label="上个月"
-      >
-        <i className="fas fa-chevron-left" />
-      </button>
-      <h3 className={styles.monthTitle}>{getMonthName(currentMonth)}</h3>
-      <button
-        className={styles.navButton}
-        onClick={handleNextMonth}
-        type="button"
-        aria-label="下个月"
-      >
-        <i className="fas fa-chevron-right" />
-      </button>
-    </div>
-  );
-
-  // 渲染星期标题
-  const renderWeekdays = () => {
-    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-    return (
-      <div className={styles.weekdaysRow}>
-        {weekdays.map(day => (
-          <div key={day} className={styles.weekdayCell}>
-            {day}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // 渲染日期单元格
-  const renderDayCell = (dayData: CalendarDayData) => {
-    const date = new Date(dayData.date);
-    const dayNumber = date.getDate();
-    const isCurrentMonth = date.getMonth() === currentMonth.getMonth();
-
-    // 修复字段访问 - 后端返回下划线命名的字段
-    const dayAny = dayData as any;
-    const isInPlan = dayAny.is_in_plan || dayData.isInPlan;
-    const isToday = dayAny.is_today || dayData.isToday;
-    const newWordsCount = dayAny.new_words_count || dayData.newWordsCount || 0;
-    const reviewWordsCount = dayAny.review_words_count || dayData.reviewWordsCount || 0;
-    const progressPercentage = dayAny.progress_percentage || dayData.progressPercentage || 0;
-
-    const cellClasses = [
-      styles.dayCell,
-      isToday ? styles.today : '',
-      !isCurrentMonth ? styles.otherMonth : '',
-      isInPlan ? styles.inPlan : '',
-      isInPlan ? styles[dayData.status] : ''
-    ].filter(Boolean).join(' ');
-
-    return (
-      <div
-        key={dayData.date}
-        className={cellClasses}
-        onClick={() => isInPlan && onDateClick(dayData.date)}
-      >
-        <div className={styles.dayNumber}>{dayNumber}</div>
-
-        {isInPlan && (
-          <>
-            <div className={styles.wordCounts}>
-              {newWordsCount > 0 && (
-                <span className={styles.newWords}>新{newWordsCount}</span>
-              )}
-              {reviewWordsCount > 0 && (
-                <span className={styles.reviewWords}>复{reviewWordsCount}</span>
-              )}
-            </div>
-
-            <div className={styles.progressBar}>
-              <div
-                className={styles.progressFill}
-                style={{ '--progress-width': `${progressPercentage}%` } as React.CSSProperties}
-              />
-            </div>
-          </>
-        )}
-      </div>
-    );
-  };
-
-  // 渲染日历网格
-  const renderCalendarGrid = () => {
-    const weeks = [];
-    for (let i = 0; i < calendarData.length; i += 7) {
-      const week = calendarData.slice(i, i + 7);
-      weeks.push(
-        <div key={i} className={styles.weekRow}>
-          {week.map(dayData => renderDayCell(dayData))}
-        </div>
-      );
-    }
-    return weeks;
-  };
-
-  if (loading || dataLoading) {
-    return (
-      <div className={styles.studyCalendar}>
-        <div className={styles.loading}>
-          <i className={`fas fa-spinner ${styles.loadingSpinner}`} />
-          <span>加载中...</span>
-        </div>
-      </div>
-    );
-  }
+  const byDate = useMemo(() => new Map(data.map((d) => [d.date, d])), [data]);
+  const grid = useMemo(() => monthGrid(month), [month]);
+  const now = new Date();
+  const isThisMonth = month.getFullYear() === now.getFullYear() && month.getMonth() === now.getMonth();
 
   return (
-    <div className={styles.studyCalendar}>
-      {renderHeader()}
-      {renderWeekdays()}
-      <div className={styles.calendarGrid}>
-        {renderCalendarGrid()}
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-1">
+        <Button variant="outline" size="icon" aria-label="上个月" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}>
+          <ChevronLeft />
+        </Button>
+        <Button variant="outline" size="icon" aria-label="下个月" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}>
+          <ChevronRight />
+        </Button>
+        <h3 className="ml-2 text-base font-semibold tabular-nums">{formatMonth(month)}</h3>
+        {!isThisMonth && (
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setMonth(new Date(now.getFullYear(), now.getMonth(), 1))}>
+            回到本月
+          </Button>
+        )}
       </div>
 
-      {/* 图例 */}
-      <div className={styles.legend}>
-        <div className={styles.legendItem}>
-          <div className={`${styles.legendColor} ${styles.notStarted}`} />
-          <span>未开始</span>
-        </div>
-        <div className={styles.legendItem}>
-          <div className={`${styles.legendColor} ${styles.inProgress}`} />
-          <span>进行中</span>
-        </div>
-        <div className={styles.legendItem}>
-          <div className={`${styles.legendColor} ${styles.completed}`} />
-          <span>已完成</span>
-        </div>
-        <div className={styles.legendItem}>
-          <div className={`${styles.legendColor} ${styles.overdue}`} />
-          <span>逾期</span>
-        </div>
+      <div className="grid grid-cols-7 gap-1.5">
+        {WEEKDAYS.map((w) => (
+          <div key={w} className="pb-1 text-center text-xs font-medium text-muted-foreground">周{w}</div>
+        ))}
+        {dataLoading && data.length === 0
+          ? grid.map((d) => <Skeleton key={toLocalDateKey(d)} className="h-20 rounded-lg" />)
+          : grid.map((d) => {
+              const key = toLocalDateKey(d);
+              const day = byDate.get(key);
+              const inMonth = d.getMonth() === month.getMonth();
+              const inPlan = !!day?.is_in_plan && inMonth;
+              const isToday = key === toLocalDateKey(now);
+              const status = day ? STATUS[day.status] : STATUS['not-started'];
+              const cell = (
+                <div
+                  className={cn(
+                    'flex h-20 flex-col gap-1 rounded-lg border p-1.5',
+                    !inMonth && 'border-transparent text-muted-foreground/50',
+                    inPlan && status.cell,
+                    isToday && 'border-primary ring-1 ring-primary'
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={cn(
+                        'flex size-5 items-center justify-center rounded-full text-xs tabular-nums',
+                        isToday && 'bg-primary font-semibold text-primary-foreground'
+                      )}
+                    >
+                      {d.getDate()}
+                    </span>
+                    {inPlan && day?.status !== 'not-started' && <span className={cn('size-1.5 rounded-full', status.dot)} />}
+                  </div>
+                  {inPlan && day && (
+                    <>
+                      <div className="flex flex-wrap gap-0.5 text-[10px] leading-tight">
+                        {day.new_words_count > 0 && <span className="rounded bg-accent px-1 text-accent-foreground">新{day.new_words_count}</span>}
+                        {day.review_words_count > 0 && <span className="rounded bg-secondary px-1 text-secondary-foreground">复{day.review_words_count}</span>}
+                        {day.passage_tasks > 0 && <span className="rounded border px-1 text-foreground">文{day.passage_tasks}</span>}
+                      </div>
+                      <div className="mt-auto h-1 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-brand" style={{ width: `${day.progress_percentage || 0}%` }} />
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+              return inPlan && day ? (
+                <Tooltip key={key}>
+                  <TooltipTrigger asChild>{cell}</TooltipTrigger>
+                  <TooltipContent>
+                    <div className="font-medium">{formatDate(key)} · {status.label}</div>
+                    {day.total_words_count > 0 && (
+                      <div>新学 {day.new_words_count} · 复习 {day.review_words_count} · 已练 {day.completed_words_count}/{day.total_words_count}</div>
+                    )}
+                    {day.passage_tasks > 0 && <div>短文 {day.passage_tasks} 篇 · 已完成 {day.passage_completed}</div>}
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <React.Fragment key={key}>{cell}</React.Fragment>
+              );
+            })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 border-t pt-3 text-xs text-muted-foreground">
+        {(['completed', 'in-progress', 'overdue', 'not-started'] as const).map((s) => (
+          <span key={s} className="inline-flex items-center gap-1.5">
+            <span className={cn('size-2 rounded-full', STATUS[s].dot)} />
+            {STATUS[s].label}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1.5">
+          <span className="rounded bg-accent px-1 text-accent-foreground">新</span>新学
+          <span className="rounded bg-secondary px-1 text-secondary-foreground">复</span>复习
+          <span className="rounded border px-1 text-foreground">文</span>短文
+        </span>
       </div>
     </div>
   );
 };
-
-export default StudyCalendar;

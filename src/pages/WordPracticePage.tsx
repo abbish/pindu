@@ -1,18 +1,46 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { BookOpen, Clock, Flag, Loader2, Pause, PauseCircle, Play, RotateCw, TriangleAlert, X } from 'lucide-react';
 import {
-  Header,
-  Modal,
-  PracticeWordCard,
-  type PracticeWordData,
-  useToast
-} from '../components';
-import {
-  WordPracticeStep,
-  type PracticeSession
-} from '../types/study';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { PracticeWordCard, type PracticeStage, type PracticeWordData } from '../components/WordCard';
+import { useToast } from '../components/Toast/ToastContainer';
+import { type PracticeSession } from '../types/study';
 import { practiceService } from '../services/practiceService';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
-import styles from './WordPracticePage.module.css';
+import type { NavigateFn, PassagePracticeReturn } from '../navigation';
+import { parsePhonicsSegments } from '../utils/phonics';
+import { abortError, runRepeatedPlayback } from '../utils/repeatPlayback';
+import { buildQueue, completedTaskCount, groupCountOf, queueWordFromState, scheduleRetry, type PracticeTask } from '../utils/practiceQueue';
+import { activeTime as clockActive, pauseClock, resumeClock, startClock, totalTime as clockTotal, type PracticeClock } from '../utils/practiceClock';
+import { checkSpelling, type LetterMark } from '../utils/spellingCheck';
+import type { HintLevel } from '../utils/practiceReveal';
+import { type ExampleDisplayMode, type ExampleGenerateMode } from '../components/ExamplePanel';
+import { wordBookService } from '../services/wordbookService';
+import type { WordExample } from '../types';
+import { WordSidePanel, type WordSideTab } from '../components/WordSidePanel';
+import { PracticeFeedback, type PracticeFeedbackData } from '../components/PracticeFeedback';
+
+/** 一次答对后的停留时间（按 Enter 可立即继续）；纠正改对后不自动继续 */
+const FEEDBACK_MS = { correct: 700 };
+
+/**
+ * 进入「看·说」后这段时间内不响应「盖住」：答对后 0.7 秒自动换题，
+ * 用户为跳过等待按的 Enter / 点的「下一题」（同一位置的按钮）会落到新出现的「盖住」上，把看·说直接跳过。
+ */
+const LOOK_GUARD_MS = 800;
+
+/** 自动朗读节奏：进入后 0.6 秒读单词一遍，读完停顿 1 秒再读例句一遍（没有例句只读单词） */
+const AUTO_PLAY = { initialDelayMs: 600, gapMs: 1000 };
 
 export interface WordPracticePageProps {
   /** 学习计划ID */
@@ -21,17 +49,49 @@ export interface WordPracticePageProps {
   scheduleId?: number;
   /** 会话ID - 用于恢复未完成的练习 */
   sessionId?: string;
+  /** 退出练习回到哪里（默认计划详情） */
+  returnTo?: PassagePracticeReturn;
   /** Navigation handler */
-  onNavigate?: (page: string, params?: any) => void;
+  onNavigate?: NavigateFn;
 }
 
+/** 各任务的标题与说明 */
+function taskCopy(task: PracticeTask, stage: PracticeStage, isReview: boolean): { title: string; description: string } {
+  if (stage === 'correction') {
+    return { title: '查一查：改正拼写', description: '对照标出的字母和拼读块，照着正确拼写再打一遍' };
+  }
+  const retry = task.kind === 'retry' ? '再试一次 · ' : '';
+  if (isReview) {
+    return {
+      title: `${retry}复习：听写`,
+      description: '隔了几天再考：只听发音、看中文，不看答案拼出来。答对下次复习会推后，答错明天再练',
+    };
+  }
+  if (task.kind === 'review') {
+    return { title: '当轮小测：听写', description: '这一轮学过的单词再听写一遍，看看是不是真的记住了' };
+  }
+  if (task.step === 1) {
+    return stage === 'look'
+      ? { title: `${retry}第一步：看 · 说`, description: '看清每个拼读块，跟着发音读一读；记住后点「盖住，开始写」' }
+      : { title: `${retry}第一步：盖 · 写`, description: '单词盖住了，凭记忆拼出来（有字母格和拼读块提示）' };
+  }
+  if (task.step === 2) {
+    return { title: `${retry}第二步：再盖再写`, description: '隔了几个单词再写一次：只剩发音、音标和字母格' };
+  }
+  return { title: `${retry}第三步：听写`, description: '只听发音、看中文，独立拼出整个单词' };
+}
+
+/** 任务对应的提示等级：第一步 1 级、第二步 2 级、第三步与小测 3 级 */
+const hintLevelOf = (task: PracticeTask): HintLevel => (task.kind === 'review' ? 3 : task.step);
+
 /**
- * 单词练习页面 - 三步骤渐进式练习
+ * 单词练习页面：按「看-说-盖-写-查」组织，组内按步骤交错，答错纠正后稍后重考，最后当轮小测。
  */
 export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   planId,
   scheduleId,
   sessionId,
+  returnTo,
   onNavigate
 }) => {
   const toast = useToast();
@@ -39,300 +99,326 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
 
   // 练习状态
   const [session, setSession] = useState<PracticeSession | null>(null);
-  const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [currentStep, setCurrentStep] = useState<WordPracticeStep>(WordPracticeStep.STEP_1);
+  /** 任务队列与当前位置 */
+  const [queue, setQueue] = useState<PracticeTask[]>([]);
+  const [position, setPosition] = useState(0);
+  /** 当前环节 */
+  const [stage, setStage] = useState<PracticeStage>('look');
+  /** 纠正时的逐字母标记 */
+  const [marks, setMarks] = useState<LetterMark[] | undefined>(undefined);
+  /** 每个（单词, 步骤）已重考的次数 */
+  const retriesRef = useRef<Record<string, number>>({});
   const [userInput, setUserInput] = useState('');
-  const [showResult, setShowResult] = useState(false);
-  const [isCorrect, setIsCorrect] = useState(false);
+  /** 作答反馈浮层 */
+  const [feedback, setFeedback] = useState<PracticeFeedbackData | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 自动播放相关状态
-  const [autoPlayCount, setAutoPlayCount] = useState(0);
+  // 自动朗读：当前这一轮朗读的中止控制器；答题后自动进入下一题的定时器
+  const autoPlayAbortRef = useRef<AbortController | null>(null);
+  const nextStepTimerRef = useRef<number | null>(null);
+  const { playWord, playSentence, prefetch } = audioPlayer;
+  /** 正在朗读单词（看·说时据此高亮拼读块） */
+  const [speakingWord, setSpeakingWord] = useState(false);
 
-  // 调试日志：监听自动播放计数变化
-  useEffect(() => {
-    if (autoPlayCount > 0) {
-      console.log(`自动播放计数: ${autoPlayCount}/3`);
-    }
-  }, [autoPlayCount]);
-  const autoPlayTimerRef = useRef<number | null>(null);
-
-  // 步骤计时状态
-  const [stepStartTime, setStepStartTime] = useState<number>(0);
-  const [currentAttempts, setCurrentAttempts] = useState(1);
+  // 计时：按时间戳计算（不依赖定时器按时触发），恢复会话时从已落库的时长继续累计
+  const clockRef = useRef<PracticeClock | null>(null);
+  const [, setTick] = useState(0);
+  const nowActive = () => (clockRef.current ? clockActive(clockRef.current, Date.now()) : 0);
+  const nowTotal = () => (clockRef.current ? clockTotal(clockRef.current, Date.now()) : 0);
+  /** 当前题开始时的有效时长：单步用时 = 有效时长差（不含暂停） */
+  const stepActiveStartRef = useRef(0);
+  const markStepStart = () => {
+    stepActiveStartRef.current = nowActive();
+  };
+  /** 还在途的作答提交：完成练习前要等它们写入 */
+  const pendingSubmitsRef = useRef(new Set<Promise<unknown>>());
+  /** 暂停 / 恢复请求进行中（防连点） */
+  const [pauseBusy, setPauseBusy] = useState(false);
 
   // 防止重复初始化
   const initializeRef = useRef(false);
+  /** 恢复会话时已经完成的题数（进度接着上次显示） */
+  const baseDoneRef = useRef(0);
 
-  // 计时器状态
-  const [startTime, setStartTime] = useState<number>(0);
-  const [totalTime, setTotalTime] = useState(0);
-  const [activeTime, setActiveTime] = useState(0);
-  const [, setPauseStartTime] = useState<number>(0);
 
   // 退出确认对话框状态
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  // 从session中获取单词数据
-  console.log('Session数据检查:', session);
-  console.log('Session.wordStates:', session?.wordStates);
-  console.log('Session.word_states:', (session as any)?.word_states);
+  const words = session?.wordStates || [];
+  const task: PracticeTask | undefined = queue[position];
+  const currentWordState = task ? words[task.wordIndex] : undefined;
 
-  const words = session?.wordStates || (session as any)?.word_states || [];
-  console.log('Words数组:', words, '长度:', words.length);
-
-  const currentWordState = words[currentWordIndex];
-  console.log('CurrentWordState:', currentWordState);
-  console.log('CurrentWordState.wordInfo:', currentWordState?.wordInfo);
-  console.log('CurrentWordState.word_info:', (currentWordState as any)?.word_info);
-
-  // 从session中获取当前单词数据
-  const currentWord: PracticeWordData | null = currentWordState ? (() => {
-    // 支持两种字段命名：camelCase 和 snake_case
-    const wordInfo = currentWordState.wordInfo || (currentWordState as any).word_info;
+  // 当前单词（后端 PracticeWordInfo 以 camelCase 输出）
+  const currentWord: PracticeWordData | null = useMemo(() => {
+    const wordInfo = currentWordState?.wordInfo;
     if (!wordInfo) return null;
-
     return {
-      id: wordInfo.wordId || wordInfo.word_id,
+      id: wordInfo.wordId,
       word: wordInfo.word,
       meaning: wordInfo.meaning,
       description: wordInfo.description,
       ipa: wordInfo.ipa,
       syllables: wordInfo.syllables,
-      phonicsSegments: (wordInfo.phonicsSegments || wordInfo.phonics_segments) ?
-        (wordInfo.phonicsSegments || wordInfo.phonics_segments).split(',').map((s: string) => s.trim()) :
-        undefined
+      phonicsSegments: parsePhonicsSegments(wordInfo.phonicsSegments),
+      examples: wordInfo.examples ?? []
     };
-  })() : null;
+  }, [currentWordState]);
 
-  const totalWords = words.length;
-  const isLastWord = currentWordIndex === totalWords - 1;
-  const isLastStep = currentStep === WordPracticeStep.STEP_3;
+  const hintLevel: HintLevel = task ? hintLevelOf(task) : 1;
+  const copy = task ? taskCopy(task, stage, !!currentWordState?.isReview) : { title: '', description: '' };
 
-  // 步骤配置
-  const stepConfigs = {
-    [WordPracticeStep.STEP_1]: {
-      title: "第一步：看单词拼写",
-      description: "观察单词的完整信息（包含音节），然后输入拼写"
-    },
-    [WordPracticeStep.STEP_2]: {
-      title: "第二步：根据提示拼写",
-      description: "根据音标、中文、音节和拼读提示输入单词"
-    },
-    [WordPracticeStep.STEP_3]: {
-      title: "第三步：听音拼写",
-      description: "根据发音、中文、音节和拼读提示输入单词"
-    }
-  };
+  /** 新任务的起始环节：第一步的首次学习从「看·说」开始，其余直接「盖·写」 */
+  const startStageOf = (t: PracticeTask | undefined): PracticeStage =>
+    t && t.step === 1 && t.kind === 'learn' ? 'look' : 'write';
 
-  // 获取当前步骤配置，添加安全检查
-  const getCurrentStepConfig = () => {
-    return stepConfigs[currentStep] || {
-      title: "练习步骤",
-      description: "请按照提示完成练习"
-    };
-  };
-
-  // 清理自动播放定时器
+  // 停止当前这一轮自动朗读（正在播放的音频也会停止）
   const clearAutoPlay = useCallback(() => {
-    if (autoPlayTimerRef.current) {
-      clearTimeout(autoPlayTimerRef.current);
-      autoPlayTimerRef.current = null;
-    }
-    setAutoPlayCount(0);
+    autoPlayAbortRef.current?.abort();
+    autoPlayAbortRef.current = null;
   }, []);
 
-  // 自动播放功能：进入步骤后1秒开始，播放3次，每次在上一次播放完成后1秒播放
-  const startAutoPlay = useCallback(() => {
-    console.log('startAutoPlay 被调用', {
-      hasWord: !!currentWord?.word,
-      isPaused,
-      showResult,
-      isCorrect
-    });
+  const clearNextStepTimer = useCallback(() => {
+    if (nextStepTimerRef.current) {
+      clearTimeout(nextStepTimerRef.current);
+      nextStepTimerRef.current = null;
+    }
+  }, []);
 
-    // 如果没有单词或者暂停了，直接返回
-    if (!currentWord?.word || isPaused) {
-      console.log('startAutoPlay 提前返回 - 没有单词或已暂停');
+  // 每秒刷新一次显示的计时（数值本身按时间戳计算）
+  const clockReady = session !== null;
+  useEffect(() => {
+    if (isPaused || !clockReady) return;
+    const timer = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, [isPaused, clockReady]);
+
+  /** 把当前时长存到后端（恢复练习时从这里继续），失败静默 */
+  const saveProgress = useCallback(() => {
+    const clock = clockRef.current;
+    if (!session || !clock) return Promise.resolve();
+    const now = Date.now();
+    return practiceService.savePracticeProgress(session.sessionId, clockTotal(clock, now), clockActive(clock, now));
+  }, [session]);
+
+  // 离开页面时保存进度
+  const saveProgressRef = useRef(saveProgress);
+  saveProgressRef.current = saveProgress;
+  const completedRef = useRef(false);
+  /** 离开页面时是否处于暂停（离开后不应继续算作暂停） */
+  const leaveRef = useRef({ paused: false, sessionId: '' });
+  leaveRef.current = { paused: isPaused, sessionId: session?.sessionId ?? '' };
+  useEffect(() => () => {
+    if (completedRef.current) return;
+    saveProgressRef.current();
+    const { paused, sessionId: leavingId } = leaveRef.current;
+    if (paused && leavingId) practiceService.resumePracticeSession({ sessionId: leavingId });
+  }, []);
+
+  // 右栏例句：正在朗读的序号（自动朗读第一句时也会高亮）
+  const [playingExample, setPlayingExample] = useState<number | null>(null);
+  /** 右栏页签（换词时保持） */
+  const [sideTab, setSideTab] = useState<WordSideTab>('examples');
+  /** AI 补充 / 重新生成后的例句（按单词覆盖会话里的例句） */
+  const [exampleOverrides, setExampleOverrides] = useState<Record<number, WordExample[]>>({});
+  /** 正在生成例句的单词与方式 */
+  const [examplesJob, setExamplesJob] = useState<{ wordId: number; mode: ExampleGenerateMode } | null>(null);
+  const examples = (currentWord && exampleOverrides[currentWord.id]) ?? currentWord?.examples ?? [];
+  const writing = stage === 'write';
+
+  // 进入不能看讲解的环节（盖·写）时，右栏切回默认的「例句」页签
+  useEffect(() => {
+    if (writing) setSideTab(tab => (tab === 'explanation' ? 'examples' : tab));
+  }, [writing, task?.id]);
+  const exampleMode: ExampleDisplayMode = !writing ? 'full' : hintLevel === 3 ? 'translation' : 'masked';
+
+  // 自动朗读：进入新任务时读单词 + 第一条例句；第一步「盖住」后只再读一遍单词。
+  // 只由“任务 / 环节 / 暂停”驱动：播放函数经 ref 读取，页面重渲染（计时器、toast 等）不会重启本轮。
+  const autoPlayWord = currentWord?.word;
+  const nextTask = queue[position + 1];
+  const nextWordText = nextTask ? words[nextTask.wordIndex]?.wordInfo?.word : undefined;
+  const exampleText = examples[0]?.sentence.trim();
+  const exampleTextRef = useRef(exampleText);
+  exampleTextRef.current = exampleText;
+  const audioFnsRef = useRef({ playWord, playSentence, prefetch });
+  audioFnsRef.current = { playWord, playSentence, prefetch };
+  /** 只在进入「看」或「写」时朗读；答对 / 纠正不触发 */
+  const autoPlayKey = task && (stage === 'look' || stage === 'write') ? `${task.id}:${stage}` : null;
+  const coveredAfterLook = useRef(false);
+
+  /** 进入当前这次「看·说」的时刻（防误触，见 LOOK_GUARD_MS） */
+  const lookStartedAtRef = useRef(0);
+  const lookKey = task && stage === 'look' ? task.id : null;
+  useEffect(() => {
+    if (lookKey) lookStartedAtRef.current = performance.now();
+  }, [lookKey]);
+
+  useEffect(() => {
+    if (isPaused || !autoPlayKey || !autoPlayWord) {
+      clearAutoPlay();
       return;
     }
 
-    // 如果显示结果且答案正确，不需要朗读
-    if (showResult && isCorrect) {
-      console.log('startAutoPlay 提前返回 - 答案正确');
+    const { playWord: speakWord, playSentence: speakSentence, prefetch: preload } = audioFnsRef.current;
+    // 第一步看完盖住：只读单词（刚听过例句）
+    const withExample = !coveredAfterLook.current;
+    coveredAfterLook.current = false;
+    const sentence = withExample ? exampleTextRef.current : undefined;
+    preload(autoPlayWord);
+    if (sentence) preload(sentence, 'sentence');
+
+    const controller = new AbortController();
+    autoPlayAbortRef.current?.abort();
+    autoPlayAbortRef.current = controller;
+
+    const items: Array<(signal: AbortSignal) => Promise<boolean>> = [
+      async signal => {
+        setSpeakingWord(true);
+        try {
+          return await speakWord(autoPlayWord, undefined, { signal });
+        } finally {
+          setSpeakingWord(false);
+        }
+      },
+    ];
+    if (sentence) {
+      items.push(async signal => {
+        setPlayingExample(0);
+        try {
+          return await speakSentence(sentence, undefined, { signal });
+        } finally {
+          setPlayingExample(current => (current === 0 ? null : current));
+        }
+      });
+    }
+
+    runRepeatedPlayback({
+      times: items.length,
+      ...AUTO_PLAY,
+      signal: controller.signal,
+      play: async (signal, index) => {
+        const completed = await items[index](signal);
+        // 被手动播放等打断：结束本轮，不再继续自动朗读
+        if (!completed) throw abortError();
+      },
+    })
+      .then(() => {
+        // 本轮读完后预取下一题的单词
+        if (!controller.signal.aborted && nextWordText) preload(nextWordText);
+      })
+      .catch(() => {
+        // 生成/播放失败已由 useAudioPlayer 提示
+      });
+
+    return () => controller.abort();
+  }, [autoPlayKey, isPaused, autoPlayWord, nextWordText, clearAutoPlay]);
+
+  // 看·说：发音时按进度点亮拼读块（按字母数分配时长）
+  const segments = currentWord?.phonicsSegments;
+  const activeChunk = useMemo(() => {
+    const { isPlaying, currentTime, duration } = audioPlayer.state;
+    if (stage !== 'look' || !speakingWord || !isPlaying || !segments?.length || !duration) return null;
+    const total = segments.reduce((n, seg) => n + seg.length, 0);
+    const reached = (currentTime / duration) * total;
+    let acc = 0;
+    for (let i = 0; i < segments.length; i++) {
+      acc += segments[i].length;
+      if (reached < acc) return i;
+    }
+    return segments.length - 1;
+  }, [audioPlayer.state, stage, speakingWord, segments]);
+
+  // 暂停时取消“自动进入下一题”；卸载时清理
+  useEffect(() => {
+    if (isPaused) clearNextStepTimer();
+  }, [isPaused, clearNextStepTimer]);
+
+  useEffect(() => {
+    return () => {
+      clearAutoPlay();
+      clearNextStepTimer();
+    };
+  }, [clearAutoPlay, clearNextStepTimer]);
+
+  // 初始化练习：创建 / 恢复会话后按每个词的进度生成任务队列。
+  // 有计划和日程时一律走 start（后端会复用该日程未完成的会话，并校验计划状态）；
+  // 只带 sessionId 时才直接读会话。
+  const initialize = useCallback(async () => {
+    if (!sessionId && (!planId || !scheduleId)) {
+      setError('没有指定要练习的计划日程，请从学习计划进入练习');
+      setLoading(false);
       return;
     }
 
-    // 清除之前的定时器
-    clearAutoPlay();
+    try {
+      setLoading(true);
+      setError(null);
+      const result = planId && scheduleId
+        ? await practiceService.startPracticeSession({ planId, scheduleId })
+        : await practiceService.getPracticeSessionDetail(sessionId!);
 
-    setAutoPlayCount(0);
-    console.log('开始自动播放序列');
-
-    // 1秒后开始第一次播放
-    autoPlayTimerRef.current = setTimeout(() => {
-      console.log('1秒延迟后检查状态', { isPaused, showResult, isCorrect });
-      // 只有暂停或者答案正确时才停止
-      if (isPaused || (showResult && isCorrect)) return;
-
-      const playSequence = async (count: number) => {
-        console.log('playSequence 被调用', { count, isPaused, showResult, isCorrect });
-
-        // 检查是否应该停止播放：播放3次完成、暂停、或者答案正确
-        if (count >= 3 || isPaused || (showResult && isCorrect)) {
-          console.log('播放序列结束', { count, isPaused, showResult, isCorrect });
-          setAutoPlayCount(0);
-          return;
-        }
-
-        // 播放当前单词（允许在显示错误结果时播放）
-        if (currentWord?.word && !isPaused && !(showResult && isCorrect)) {
-          console.log(`播放第 ${count + 1} 次:`, currentWord.word);
-          setAutoPlayCount(count + 1);
-
-          try {
-            // 等待音频播放完成
-            await audioPlayer.playWord(currentWord.word);
-            console.log(`第 ${count + 1} 次播放完成`);
-
-            // 如果还没播放完3次，1秒后播放下一次（允许在显示错误结果时继续）
-            if (count + 1 < 3 && !isPaused && !(showResult && isCorrect)) {
-              console.log('1秒后播放下一次');
-              autoPlayTimerRef.current = setTimeout(() => {
-                playSequence(count + 1);
-              }, 1000);
-            } else {
-              // 播放完3次后清理状态
-              console.log('播放完成，清理状态');
-              setAutoPlayCount(0);
-            }
-          } catch (error) {
-            console.error('播放失败:', error);
-            setAutoPlayCount(0);
-          }
-        }
-      };
-
-      // 立即开始第一次播放
-      playSequence(0);
-    }, 1000);
-  }, [currentWord?.word, audioPlayer]);
-
-  // 计时器效果
-  useEffect(() => {
-    if (!isPaused && startTime > 0) {
-      const timer = setInterval(() => {
-        const now = Date.now();
-        setTotalTime(now - startTime);
-        setActiveTime(prev => prev + 1000);
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [isPaused, startTime]);
-
-  // 自动播放效果：当步骤或单词变化时触发
-  useEffect(() => {
-    // 只在新步骤或新单词时自动开始播放，不在显示结果时开始
-    if (!isPaused && currentWord?.word && !showResult) {
-      console.log('触发自动播放:', { currentStep, currentWordIndex, showResult });
-      startAutoPlay();
-    } else if (isPaused) {
-      // 暂停时清理播放
-      clearAutoPlay();
-    } else if (showResult) {
-      // 显示结果时清理播放，避免重复播放
-      clearAutoPlay();
-    }
-
-    // 清理函数
-    return () => {
-      clearAutoPlay();
-    };
-  }, [currentStep, currentWordIndex, isPaused, currentWord?.word, showResult]);
-
-  // 组件卸载时清理定时器
-  useEffect(() => {
-    return () => {
-      clearAutoPlay();
-    };
-  }, [clearAutoPlay]);
-
-  // 初始化练习
-  useEffect(() => {
-    // 防止重复初始化
-    if (initializeRef.current) return;
-    initializeRef.current = true;
-
-    const initializePractice = async () => {
-      console.log('=== WordPracticePage 初始化开始 ===');
-      console.log('参数检查:', { planId, scheduleId, sessionId });
-
-      // 检查参数：如果有sessionId则用于恢复会话，否则需要planId和scheduleId创建新会话
-      if (!sessionId && (!planId || !scheduleId)) {
-        console.error('参数验证失败:', { planId, scheduleId, sessionId });
-        setError('缺少必要的参数');
-        setLoading(false);
+      if (!result.success) {
+        // 页面级错误：只在主区显示（带返回），不再重复弹提示
+        setError(result.error);
+        return;
+      }
+      const data = result.data;
+      if (data.completed) {
+        setError('这次练习已经完成了，可以在学习计划里查看结果或开始新的练习。');
         return;
       }
 
-      console.log('参数验证通过，开始初始化练习');
+      const queueWords = data.wordStates.map(queueWordFromState);
+      const tasks = buildQueue(queueWords);
+      const done = completedTaskCount(queueWords);
+      const resumed = done > 0 || (data.activeTime || 0) > 0;
+      // 恢复：已重考的次数接着算
+      retriesRef.current = {};
+      data.wordStates.forEach((w, i) =>
+        (w.retryCounts ?? []).forEach((n, step) => {
+          if (n > 0) retriesRef.current[`${i}-${step + 1}`] = n;
+        })
+      );
+      clockRef.current = startClock(Date.now(), data.totalTime || 0, data.activeTime || 0);
+      baseDoneRef.current = done;
+      setSession(data);
+      setQueue(tasks);
+      setPosition(0);
+      setStage(startStageOf(tasks[0]));
+      markStepStart();
 
-      try {
-        setLoading(true);
-
-        let result;
-
-        if (sessionId) {
-          // 恢复现有会话
-          console.log('恢复现有会话，sessionId:', sessionId);
-          result = await practiceService.getPracticeSessionDetail(sessionId);
-          console.log('恢复会话结果:', result);
-          if (result.success) {
-            console.log('恢复会话成功，会话数据:', result.data);
-            toast.showSuccess('恢复练习', '已恢复之前的练习进度');
-          } else {
-            console.error('恢复会话失败:', result.error);
-          }
+      if (resumed) {
+        // 上次可能是暂停状态离开的：结束遗留的暂停，免得离开期间都算成暂停
+        practiceService.resumePracticeSession({ sessionId: data.sessionId });
+        if (sessionId && sessionId !== data.sessionId) {
+          toast.showInfo('接着这个日程没练完的那次继续', '你打开的那次练习已经结束了');
         } else {
-          // 创建新的练习会话
-          console.log('创建新会话，参数:', { planId, scheduleId });
-          result = await practiceService.startPracticeSession({
-            planId: planId!,
-            scheduleId: scheduleId!
-          });
-          console.log('创建会话结果:', result);
-          if (result.success) {
-            console.log('创建会话成功，会话数据:', result.data);
-            toast.showSuccess('开始练习', '练习会话已创建');
-          } else {
-            console.error('创建会话失败:', result.error);
-          }
+          toast.showInfo('接着上次的进度继续', `已完成 ${done} / ${done + tasks.length} 题`);
         }
-
-        if (result.success) {
-          console.log('设置会话数据:', result.data);
-          setSession(result.data);
-          setStartTime(Date.now());
-          setStepStartTime(Date.now()); // 记录第一个步骤的开始时间
-          console.log('练习初始化成功');
-        } else {
-          console.error('练习初始化失败:', result.error);
-          setError(result.error || (sessionId ? '恢复练习会话失败' : '创建练习会话失败'));
-          toast.showError(sessionId ? '恢复失败' : '创建失败', result.error || (sessionId ? '恢复练习会话失败' : '创建练习会话失败'));
-        }
-      } catch (error) {
-        console.error('初始化练习失败:', error);
-        setError('初始化练习时发生错误');
-        toast.showError('初始化失败', '初始化练习时发生错误');
-      } finally {
-        setLoading(false);
+      } else if (sessionId && sessionId !== data.sessionId) {
+        toast.showInfo('开始了一次新的练习', '你打开的那次练习已经结束了');
       }
-    };
 
-    initializePractice();
-  }, [planId, scheduleId, sessionId]);
+      // 上次最后一题已经答完、但没来得及提交“完成”：直接完成
+      if (tasks.length === 0) {
+        toast.showInfo('上次已经全部答完', '正在生成练习结果');
+        completeSession(data);
+      }
+    } catch (error) {
+      console.error('初始化练习失败:', error);
+      setError('练习没能打开，请返回后再试');
+    } finally {
+      setLoading(false);
+    }
+    // completeSession 只用到 ref 与稳定的 setter
+  }, [planId, scheduleId, sessionId, toast]);
+
+  useEffect(() => {
+    if (initializeRef.current) return;
+    initializeRef.current = true;
+    initialize();
+  }, [initialize]);
 
   // 格式化时间显示
   const formatTime = (milliseconds: number) => {
@@ -342,199 +428,251 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
-  // 处理输入变化
-  const handleInputChange = (value: string) => {
-    setUserInput(value);
+  // 防止重复完成的标志（ref 防同一轮内重复调用，state 用于界面）
+  const [isCompleting, setIsCompleting] = useState(false);
+  const completingRef = useRef(false);
+
+  // 处理练习完成
+  const handleCompletePractice = () => {
+    if (session) completeSession(session);
   };
 
-  // 处理答案提交
-  const handleSubmitAnswer = async (userAnswer: string) => {
-    if (!currentWord || !currentWordState || !session) return;
-
-    // 立即停止自动播放
-    clearAutoPlay();
-
-    const correct = userAnswer.toLowerCase() === currentWord.word.toLowerCase();
-    setIsCorrect(correct);
-    setShowResult(true);
-
-    // 计算步骤用时
-    const now = Date.now();
-    const timeSpent = stepStartTime > 0 ? now - stepStartTime : 0;
-
+  /** 完成会话（也用于恢复时发现已经全部答完的会话） */
+  async function completeSession(target: PracticeSession) {
+    if (completingRef.current) return;
+    completingRef.current = true;
+    setIsCompleting(true);
     try {
-      // 调试信息
-      console.log('提交步骤结果 - 调试信息:', {
-        currentStep,
-        currentStepType: typeof currentStep,
-        currentStepValue: currentStep,
-        WordPracticeStep: WordPracticeStep,
-        STEP_1: WordPracticeStep.STEP_1,
-        STEP_2: WordPracticeStep.STEP_2,
-        STEP_3: WordPracticeStep.STEP_3
+      // 先等在途的作答记录写完，否则最后一题可能晚于“完成”落库而丢失
+      await Promise.allSettled([...pendingSubmitsRef.current]);
+      const result = await practiceService.completePracticeSession({
+        sessionId: target.sessionId,
+        totalTime: nowTotal(),
+        activeTime: nowActive()
       });
 
-      // 调用API提交步骤结果
-      const result = await practiceService.submitStepResult({
-        sessionId: (session as any).session_id || session.sessionId,
-        wordId: (currentWordState as any).word_id || currentWordState.wordId,
-        planWordId: (currentWordState as any).plan_word_id || currentWordState.planWordId,
-        step: currentStep,
-        userInput: userAnswer,
-        isCorrect: correct,
-        timeSpent: timeSpent,
-        attempts: currentAttempts
-      });
-
-      if (!result.success) {
-        console.error('提交步骤结果失败:', result.error);
-        toast.showError('提交失败', result.error || '提交步骤结果失败');
+      if (result.success) {
+        completedRef.current = true;
+        // 直接进入结果页，结果页本身就是完成反馈，不再弹提示
+        onNavigate?.('practice-result', result.data);
+      } else {
+        toast.showError('无法保存练习结果', `${result.error}。作答已保存，可以再点一次「完成」`);
+        completingRef.current = false;
+        setIsCompleting(false);
       }
     } catch (error) {
-      console.error('提交步骤结果失败:', error);
-      toast.showError('提交失败', '提交步骤结果时发生错误');
+      console.error('完成练习失败:', error);
+      toast.showError('无法保存练习结果', '作答已保存，可以再点一次「完成」');
+      completingRef.current = false;
+      setIsCompleting(false);
     }
+  }
 
-    // 根据答案正确性设置不同的延迟时间
-    const delayTime = correct ? 1500 : 2000; // 正确1.5秒，错误2秒
-    console.log(`答案${correct ? '正确' : '错误'}，${delayTime/1000}秒后自动进入下一步`);
-
-    // 设置自动进入下一步的定时器
-    autoPlayTimerRef.current = setTimeout(() => {
-      handleNextStep();
-    }, delayTime);
+  /** 进入下一题（队列结束则完成练习） */
+  const advance = () => {
+    clearAutoPlay();
+    clearNextStepTimer();
+    setFeedback(null);
+    setMarks(undefined);
+    setUserInput('');
+    const next = position + 1;
+    if (next >= queue.length) {
+      handleCompletePractice();
+      return;
+    }
+    setPosition(next);
+    setStage(startStageOf(queue[next]));
+    markStepStart();
   };
 
-  // 处理下一步
-  const handleNextStep = () => {
-    console.log('=== handleNextStep 被调用 ===');
-    console.log('当前状态:', {
-      currentWordIndex,
-      totalWords,
-      currentStep,
-      isLastWord,
-      isLastStep
-    });
+  /** 看·说结束：盖住单词开始写（再读一遍单词） */
+  const handleCover = () => {
+    if (performance.now() - lookStartedAtRef.current < LOOK_GUARD_MS) return;
+    clearAutoPlay();
+    coveredAfterLook.current = true;
+    setStage('write');
+    markStepStart();
+  };
 
-    // 清理当前的自动播放
+  // 作答（盖·写）与改正（查）
+  const handleSubmitAnswer = (userAnswer: string) => {
+    if (!task || !currentWord || !currentWordState || !session) return;
     clearAutoPlay();
 
-    if (isLastStep) {
-      // 当前单词的三个步骤完成，进入下一个单词
-      if (isLastWord) {
-        // 所有单词完成，结束练习
-        console.log('所有单词完成，调用 handleCompletePractice');
-        handleCompletePractice();
+    // 查：照着正确拼写重打，对了才继续
+    if (stage === 'correction') {
+      if (checkSpelling(userAnswer, currentWord.word).correct) {
+        // 改对后不自动跳走：留时间看讲解、问 AI 老师，按 Enter 或「下一题」继续
+        setStage('feedback');
+        setMarks(undefined);
+        setFeedback({ id: Date.now(), type: 'fixed', answer: currentWord.word });
+        clearNextStepTimer();
       } else {
-        // 进入下一个单词
-        console.log('进入下一个单词');
-        setCurrentWordIndex(prev => prev + 1);
-        setCurrentStep(WordPracticeStep.STEP_1);
         setUserInput('');
-        setShowResult(false);
-        // 重置步骤计时和尝试次数
-        setStepStartTime(Date.now());
-        setCurrentAttempts(1);
-
-        // 自动播放将由useEffect自动处理
+        setFeedback(prev => (prev ? { ...prev, id: Date.now() } : prev));
       }
-    } else {
-      // 进入下一步，确保不超出范围
-      if (currentStep === WordPracticeStep.STEP_1) {
-        console.log('进入步骤2');
-        setShowResult(false);
-        setCurrentStep(WordPracticeStep.STEP_2);
-        setUserInput('');
-        setStepStartTime(Date.now());
-        setCurrentAttempts(1);
-      } else if (currentStep === WordPracticeStep.STEP_2) {
-        console.log('进入步骤3');
-        setShowResult(false);
-        setCurrentStep(WordPracticeStep.STEP_3);
-        setUserInput('');
-        setStepStartTime(Date.now());
-        setCurrentAttempts(1);
-      } else {
-        console.error('当前已是最后一步，无法进入下一步:', currentStep);
-      }
+      return;
     }
+    if (stage !== 'write') return;
+
+    const check = checkSpelling(userAnswer, currentWord.word, currentWord.phonicsSegments ?? []);
+    const retryKey = `${task.wordIndex}-${task.step}`;
+    const retriesSoFar = retriesRef.current[retryKey] ?? 0;
+    const timeSpent = Math.max(0, nowActive() - stepActiveStartRef.current);
+
+    // 记录在后台提交（成绩只取每步第一次作答；重考与小测追加记录）；完成练习前会等它写完
+    const submission = practiceService
+      .submitStepResult({
+        sessionId: session.sessionId,
+        wordId: currentWordState.wordId,
+        planWordId: currentWordState.planWordId,
+        step: task.step,
+        userInput: userAnswer,
+        isCorrect: check.correct,
+        timeSpent,
+        attempts: task.kind === 'retry' ? retriesSoFar + 1 : 1,
+        kind: task.kind
+      })
+      .then(result => {
+        // 连续几题都失败时只保留一条提示
+        if (!result.success) toast.showToast({ type: 'error', id: 'practice-step-save', title: '无法保存这一题的作答', message: result.error });
+      })
+      .finally(() => {
+        pendingSubmitsRef.current.delete(submission);
+      });
+    pendingSubmitsRef.current.add(submission);
+    saveProgress();
+
+    if (check.correct) {
+      setStage('feedback');
+      setFeedback({ id: Date.now(), type: 'correct', answer: currentWord.word });
+      clearNextStepTimer();
+      nextStepTimerRef.current = setTimeout(() => {
+        nextStepTimerRef.current = null;
+        advance();
+      }, FEEDBACK_MS.correct);
+      return;
+    }
+
+    // 查：标出错字母，照着重打；稍后重考
+    const updated = scheduleRetry(queue, position, retriesSoFar);
+    const willRetry = updated !== queue;
+    if (willRetry) {
+      retriesRef.current[retryKey] = retriesSoFar + 1;
+      setQueue(updated);
+    }
+    setMarks(check.marks);
+    setStage('correction');
+    setUserInput('');
+    setFeedback({
+      id: Date.now(),
+      type: 'incorrect',
+      answer: currentWord.word,
+      wrongChunks: check.wrongChunks,
+      willRetry
+    });
+  };
+
+  // 答对后按 Enter：跳过剩余等待
+  const handleContinue = () => {
+    if (stage !== 'feedback' || isPaused) return;
+    advance();
   };
 
   // 处理暂停/恢复
   const handlePauseResume = async () => {
-    if (!session) return;
+    if (!session || pauseBusy) return;
 
+    setPauseBusy(true);
     try {
       if (isPaused) {
-        // 恢复练习
-        const result = await practiceService.resumePracticeSession({
-          sessionId: (session as any).session_id || session.sessionId
-        });
-
+        const result = await practiceService.resumePracticeSession({ sessionId: session.sessionId });
         if (result.success) {
+          if (clockRef.current) clockRef.current = resumeClock(clockRef.current, Date.now());
           setIsPaused(false);
-          toast.showSuccess('已恢复', '练习已恢复');
+          // 暂停发生在一次答对的短暂停留期间：恢复后直接进入下一题（改对后的停留不自动跳走）
+          if (stage === 'feedback' && feedback?.type === 'correct') advance();
         } else {
-          toast.showError('恢复失败', result.error || '恢复练习失败');
+          toast.showError('无法继续练习', result.error);
         }
       } else {
-        // 暂停练习
-        const result = await practiceService.pausePracticeSession({
-          sessionId: (session as any).session_id || session.sessionId
-        });
-
+        const result = await practiceService.pausePracticeSession({ sessionId: session.sessionId });
         if (result.success) {
+          if (clockRef.current) clockRef.current = pauseClock(clockRef.current, Date.now());
           setIsPaused(true);
-          setPauseStartTime(Date.now());
-          toast.showSuccess('已暂停', '练习已暂停');
+          saveProgress();
         } else {
-          toast.showError('暂停失败', result.error || '暂停练习失败');
+          toast.showError('无法暂停', result.error);
         }
       }
     } catch (error) {
       console.error('暂停/恢复练习失败:', error);
-      toast.showError('操作失败', '暂停/恢复练习时发生错误');
+      toast.showError(isPaused ? '无法继续练习' : '无法暂停', '请再试一次');
+    } finally {
+      setPauseBusy(false);
     }
   };
 
-  // 处理发音播放
+  // 手动点喇叭：结束本轮自动朗读，只读一遍单词
   const handlePlayPronunciation = useCallback(() => {
-    if (currentWord?.word) {
-      audioPlayer.playWord(currentWord.word);
+    if (!currentWord?.word) return;
+    clearAutoPlay();
+    setSpeakingWord(true);
+    playWord(currentWord.word)
+      .catch(() => {
+        // 失败已由 useAudioPlayer 提示
+      })
+      .finally(() => setSpeakingWord(false));
+  }, [currentWord?.word, playWord, clearAutoPlay]);
+
+  // 点击右栏例句：结束本轮自动朗读，朗读该句
+  const handlePlayExample = useCallback((index: number) => {
+    const sentence = examples[index]?.sentence;
+    if (!sentence) return;
+    clearAutoPlay();
+    setPlayingExample(index);
+    playSentence(sentence)
+      .catch(() => {
+        // 失败已由 useAudioPlayer 提示
+      })
+      .finally(() => setPlayingExample(current => (current === index ? null : current)));
+  }, [examples, playSentence, clearAutoPlay]);
+
+  // AI 补充 / 重新生成当前单词的例句
+  const handleGenerateExamples = useCallback(async (mode: ExampleGenerateMode) => {
+    if (!currentWord || examplesJob) return;
+    const wordId = currentWord.id;
+    setExamplesJob({ wordId, mode });
+    const result = await wordBookService.generateWordExamples(wordId, mode);
+    setExamplesJob(null);
+    if (result.success) {
+      const before = (exampleOverrides[wordId] ?? currentWord.examples ?? []).length;
+      setExampleOverrides(prev => ({ ...prev, [wordId]: result.data }));
+      toast.showSuccess(
+        mode === 'append' ? `已新增 ${Math.max(0, result.data.length - before)} 条例句` : `已重新生成 ${result.data.length} 条例句`
+      );
+    } else {
+      toast.showError('无法生成例句', result.error);
     }
-  }, [currentWord?.word, audioPlayer]);
+  }, [currentWord, examplesJob, exampleOverrides, toast]);
 
+  // 换题时清除例句高亮
+  useEffect(() => {
+    setPlayingExample(null);
+  }, [task?.id]);
 
-
-  // 防止重复完成的标志
-  const [isCompleting, setIsCompleting] = useState(false);
-
-  // 处理练习完成
-  const handleCompletePractice = async () => {
-    if (!session || isCompleting) return;
-
-    setIsCompleting(true);
-    try {
-      // 调用API完成练习会话
-      const result = await practiceService.completePracticeSession({
-        sessionId: (session as any).session_id || session.sessionId,
-        totalTime,
-        activeTime
-      });
-
-      if (result.success) {
-        toast.showSuccess('练习完成', '恭喜完成练习！');
-        onNavigate?.('practice-result', result.data);
-      } else {
-        toast.showError('完成失败', result.error || '完成练习会话失败');
-        setIsCompleting(false); // 失败时重置标志，允许重试
-      }
-    } catch (error) {
-      console.error('完成练习失败:', error);
-      toast.showError('完成失败', '完成练习时发生错误');
-      setIsCompleting(false); // 错误时重置标志，允许重试
-    }
-  };
+  // 进度：已完成题数 / 总题数（含恢复前已做的；重考会让总数增加）；当前所在组或小测
+  const groupCount = groupCountOf(words.length);
+  const doneCount = baseDoneRef.current + position;
+  const totalCount = baseDoneRef.current + queue.length;
+  const progressLabel = !task
+    ? ''
+    : task.kind === 'review'
+      ? '当轮小测'
+      : currentWordState?.isReview
+        ? `第 ${task.group + 1} / ${groupCount} 组 · 复习`
+        : `第 ${task.group + 1} / ${groupCount} 组 · 第${['一', '二', '三'][task.step - 1]}步`;
+  const progressPercent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
   // 处理退出练习
   const handleExit = () => {
@@ -542,9 +680,18 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   };
 
   // 确认退出练习
-  const handleConfirmExit = () => {
+  const handleConfirmExit = async () => {
     setShowExitConfirm(false);
-    onNavigate?.('plan-detail', { planId });
+    await saveProgress();
+    leave();
+  };
+
+  /** 回到进入练习前的页面（首页 / 日历 / 计划详情） */
+  const leave = () => {
+    if (returnTo === 'home') onNavigate?.('home');
+    else if (returnTo === 'calendar') onNavigate?.('calendar');
+    else if (planId) onNavigate?.('plan-detail', { planId });
+    else onNavigate?.('plans');
   };
 
   // 取消退出练习
@@ -552,187 +699,156 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     setShowExitConfirm(false);
   };
 
+  /** 专注模式的整窗框架：顶栏（退出 / 进度 / 计时 / 暂停）+ 内容区 */
+  const frame = (content: React.ReactNode, withStatus = false) => (
+    <div className="flex h-svh flex-col overflow-hidden bg-background">
+      <header className="flex h-14 shrink-0 items-center gap-4 border-b px-4 select-none">
+        <Button variant="ghost" size="icon" aria-label="退出练习" title="退出练习" onClick={withStatus ? handleExit : leave}>
+          <X />
+        </Button>
+        {withStatus ? (
+          <>
+            <span className="text-sm font-medium">{progressLabel}</span>
+            <div className="mx-auto flex max-w-lg flex-1 items-center gap-3" title="已完成的练习 / 全部练习（答错重考会增加题数）">
+              <Progress value={progressPercent} className="h-2 flex-1 [&>[data-slot=progress-indicator]]:bg-brand" />
+              <span className="text-sm tabular-nums">{doneCount} / {totalCount}</span>
+            </div>
+            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground tabular-nums" title="有效练习时长（不含暂停）">
+              <Clock className="size-4" />
+              {formatTime(nowActive())}
+            </span>
+            <Button variant="outline" onClick={handlePauseResume} disabled={pauseBusy}>
+              {isPaused ? <Play /> : <Pause />}
+              {isPaused ? '继续' : '暂停'}
+            </Button>
+          </>
+        ) : (
+          <span className="text-sm font-medium">单词练习</span>
+        )}
+      </header>
+      <main className="min-h-0 flex-1 overflow-y-auto">{content}</main>
+    </div>
+  );
 
+  const centered = (icon: React.ReactNode, title: string, text: React.ReactNode, action?: React.ReactNode) =>
+    frame(
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground [&_svg]:size-6">{icon}</div>
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <div className="max-w-md text-sm text-muted-foreground">{text}</div>
+        {action}
+      </div>
+    );
 
   // 加载状态
   if (loading) {
-    return (
-      <div className={styles.page}>
-        <Header />
-        <main className={styles.main}>
-          <div className={styles.loadingState}>
-            <i className="fas fa-spinner fa-spin" />
-            <p>正在初始化练习...</p>
-          </div>
-        </main>
-      </div>
-    );
+    return centered(<Loader2 className="animate-spin" />, '正在初始化练习…', '马上就好');
   }
 
   // 错误状态
   if (error) {
-    return (
-      <div className={styles.page}>
-        <Header />
-        <main className={styles.main}>
-          <div className={styles.errorState}>
-            <i className="fas fa-exclamation-triangle" />
-            <h3>练习初始化失败</h3>
-            <p>{error}</p>
-            <button
-              type="button"
-              className={styles.retryBtn}
-              onClick={() => window.location.reload()}
-            >
-              重试
-            </button>
-          </div>
-        </main>
-      </div>
+    return centered(
+      <TriangleAlert />,
+      '练习初始化失败',
+      error,
+      <Button onClick={() => initialize()}>
+        <RotateCw />
+        重试
+      </Button>
     );
   }
 
-
+  // 恢复时发现已经全部答完：正在完成
+  if (session && words.length > 0 && queue.length === 0) {
+    return centered(
+      <Flag />,
+      '这次练习已经全部做完',
+      isCompleting ? '正在生成练习结果…' : '还没有提交完成，点下面的按钮查看结果。',
+      !isCompleting && <Button onClick={handleCompletePractice}>查看练习结果</Button>
+    );
+  }
 
   // 没有单词数据
   if (!session || words.length === 0 || !currentWord) {
-    return (
-      <div className={styles.page}>
-        <Header />
-        <main className={styles.main}>
-          <div className={styles.emptyState}>
-            <i className="fas fa-book-open" />
-            <h3>没有找到练习内容</h3>
-            <p>该日程没有安排单词练习</p>
-            <button
-              type="button"
-              className={styles.backBtn}
-              onClick={() => onNavigate?.('home')}
-            >
-              返回首页
-            </button>
-          </div>
-        </main>
-      </div>
+    return centered(
+      <BookOpen />,
+      '没有找到练习内容',
+      '该日程没有安排单词练习',
+      <Button variant="outline" onClick={() => onNavigate?.('home')}>
+        返回首页
+      </Button>
     );
   }
 
   return (
-    <div className={styles.page}>
-      {/* Header */}
-      <Header />
-
-      <main className={styles.main}>
-        {/* 练习状态栏 */}
-        <div className={styles.statusBar}>
-          <div className={styles.progressInfo}>
-            <span className={styles.wordProgress}>
-              单词 {currentWordIndex + 1}/{totalWords}
-            </span>
+    <>
+      {frame(
+        isPaused ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <PauseCircle className="size-12 text-muted-foreground" />
+            <h2 className="text-lg font-semibold">练习已暂停</h2>
+            <p className="text-sm text-muted-foreground">暂停期间不计入练习时长，进度已保存</p>
+            <Button onClick={handlePauseResume}>
+              <Play />
+              继续练习
+            </Button>
           </div>
-          
-          <div className={styles.timeInfo}>
-            <span className={styles.timer}>
-              <i className="fas fa-clock" />
-              {formatTime(totalTime)}
-            </span>
-          </div>
-
-          <div className={styles.controls}>
-            <button
-              type="button"
-              className={styles.controlBtn}
-              onClick={handlePauseResume}
-              title={isPaused ? "继续练习" : "暂停练习"}
-            >
-              <i className={`fas fa-${isPaused ? 'play' : 'pause'}`} />
-            </button>
-            <button
-              type="button"
-              className={styles.controlBtn}
-              onClick={handleExit}
-              title="退出练习"
-            >
-              <i className="fas fa-times" />
-            </button>
-          </div>
-        </div>
-
-        {/* 练习卡片 */}
-        <div className={styles.practiceArea}>
-          {isPaused ? (
-            <div className={styles.pauseOverlay}>
-              <div className={styles.pauseContent}>
-                <i className="fas fa-pause-circle" />
-                <h3>练习已暂停</h3>
-                <p>点击继续按钮恢复练习</p>
-                <button
-                  type="button"
-                  className={styles.resumeBtn}
-                  onClick={handlePauseResume}
-                >
-                  <i className="fas fa-play" />
-                  继续练习
-                </button>
-              </div>
+        ) : (
+          <div className="mx-auto grid w-full max-w-[1400px] grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start gap-5 px-6 py-6">
+            <div className="relative flex flex-col gap-3">
+              <PracticeFeedback feedback={feedback} />
+              <PracticeWordCard
+                word={currentWord!}
+                stage={stage}
+                hintLevel={hintLevel}
+                stepTitle={copy.title}
+                stepDescription={copy.description}
+                userInput={userInput}
+                onInputChange={setUserInput}
+                onSubmitAnswer={handleSubmitAnswer}
+                onCover={handleCover}
+                onPlayPronunciation={handlePlayPronunciation}
+                onContinue={handleContinue}
+                marks={marks}
+                activeChunk={activeChunk}
+              />
             </div>
-          ) : (
-            <PracticeWordCard
-              word={currentWord!}
-              currentStep={currentStep}
-              stepTitle={getCurrentStepConfig().title}
-              stepDescription={getCurrentStepConfig().description}
-              userInput={userInput}
-              onInputChange={handleInputChange}
-              onSubmitAnswer={handleSubmitAnswer}
-              onPlayPronunciation={handlePlayPronunciation}
-              showResult={showResult}
-              isCorrect={isCorrect}
-              disabled={false}
-              autoFocus={true}
+            <WordSidePanel
+              tab={sideTab}
+              onTabChange={setSideTab}
+              wordId={currentWord!.id}
+              word={currentWord!.word}
+              examples={examples}
+              exampleMode={exampleMode}
+              playingIndex={playingExample}
+              loadingIndex={audioPlayer.state.isLoading ? playingExample : null}
+              onSelectExample={handlePlayExample}
+              generatingExamples={examplesJob?.wordId === currentWord!.id ? examplesJob.mode : null}
+              onGenerateExamples={handleGenerateExamples}
+              explanationLocked={writing}
+              explanationSuggested={stage === 'correction' || feedback?.type === 'fixed'}
+              explanationAutoGenerate={
+                stage === 'look' || stage === 'correction' || (stage === 'feedback' && feedback?.type === 'fixed')
+              }
             />
-          )}
-        </div>
-      </main>
-
-      {/* 退出确认对话框 */}
-      {showExitConfirm && (
-        <Modal
-          isOpen={showExitConfirm}
-          onClose={handleCancelExit}
-          title="退出练习"
-          size="small"
-        >
-          <div className={styles.exitConfirmContent}>
-            <div className={styles.exitConfirmMessage}>
-              <i className={`fas fa-exclamation-triangle ${styles.exitConfirmIcon}`} />
-              <h3 className={styles.exitConfirmTitle}>确定要退出练习吗？</h3>
-              <p className={styles.exitConfirmDescription}>
-                退出后您的练习进度将会保存，可以稍后继续练习。
-              </p>
-            </div>
-
-            <div className={styles.exitConfirmActions}>
-              <button
-                type="button"
-                onClick={handleCancelExit}
-                className={`${styles.exitConfirmBtn} ${styles.exitConfirmBtnCancel}`}
-              >
-                继续练习
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmExit}
-                className={`${styles.exitConfirmBtn} ${styles.exitConfirmBtnConfirm}`}
-              >
-                确认退出
-              </button>
-            </div>
           </div>
-        </Modal>
+        ),
+        true
       )}
-    </div>
+
+      {/* 退出确认 */}
+      <AlertDialog open={showExitConfirm} onOpenChange={(open) => !open && handleCancelExit()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确定要退出练习吗？</AlertDialogTitle>
+            <AlertDialogDescription>退出后您的练习进度将会保存，可以稍后继续练习。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>继续练习</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmExit}>确认退出</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
-
-export default WordPracticePage;

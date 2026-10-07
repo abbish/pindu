@@ -1,82 +1,112 @@
 import { useState, useCallback } from 'react';
 import { ErrorBoundary, ToastProvider } from './components';
-import DevTools from './components/DevTools';
-import HomePage from './pages/HomePage';
-import StudyPlansPage from './pages/StudyPlansPage';
-import CreatePlanPageV2 from './pages/CreatePlanPageV2';
-import PlanDetailPage from './pages/PlanDetailPage';
-import WordBookPage from './pages/WordBookPage';
-import CreateWordBookPageV2 from './pages/CreateWordBookPageV2';
-import WordBookDetailPage from './pages/WordBookDetailPage';
-import StartStudyPlanPage from './pages/StartStudyPlanPage';
-import FinishStudyPlanPage from './pages/FinishStudyPlanPage';
-import WordPracticePage from './pages/WordPracticePage';
-import PracticeResultPage from './pages/PracticeResultPage';
-import CalendarPage from './pages/CalendarPage';
+import { AppShell } from './components/AppShell/AppShell';
+import { DevTools } from './components/DevTools';
+import { HomePage } from './pages/HomePage';
+import { StudyPlansPage } from './pages/StudyPlansPage';
+import { CreatePlanPage } from './pages/CreatePlanPage';
+import { PlanDetailPage } from './pages/PlanDetailPage';
+import { WordBookPage } from './pages/WordBookPage';
+import { WordBookDetailPage } from './pages/WordBookDetailPage';
+import { WordPracticePage } from './pages/WordPracticePage';
+import { PracticeResultPage } from './pages/PracticeResultPage';
+import { CalendarPage } from './pages/CalendarPage';
 import { SettingsPage } from './pages/SettingsPage';
-// Real database implementation is now in place
+import { PassagePracticePage } from './pages/PassagePracticePage';
+import { PassageLibraryPage } from './pages/PassageLibraryPage';
+import { CreatePassagePage } from './pages/CreatePassagePage';
+import { ImportPassagePage } from './pages/ImportPassagePage';
+import { PassageDetailPage } from './pages/PassageDetailPage';
+import { FOCUS_PAGES, type NavigateFn, type PageKey, type Route, type RouteParams } from './navigation';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('home');
-  const [pageParams, setPageParams] = useState<any>(null);
+  const [route, setRoute] = useState<Route>({ page: 'home' });
 
-  const handleNavigation = useCallback((page: string, params?: any) => {
-    console.log('=== App 导航被调用 ===');
-    console.log('目标页面:', page);
-    console.log('导航参数:', params);
-
-    setCurrentPage(page);
-    setPageParams(params);
-
-    console.log('导航状态已更新');
-  }, []);
+  const navigate = useCallback((page: PageKey, params?: RouteParams[PageKey]) => {
+    // page 与 params 的配对由 NavigateFn 在调用处保证
+    setRoute({ page, params } as Route);
+  }, []) as NavigateFn;
 
   const renderPage = () => {
-    switch (currentPage) {
-      case 'plans':
-        return <StudyPlansPage onNavigate={handleNavigation} />;
-      case 'create-plan':
-        return <CreatePlanPageV2 onNavigate={handleNavigation} />;
-      case 'plan-detail':
-        return <PlanDetailPage planId={pageParams?.planId || 1} onNavigate={handleNavigation} />;
-      case 'wordbooks':
-        return <WordBookPage onNavigate={handleNavigation} />;
-      case 'create-wordbook':
-        return <CreateWordBookPageV2 onNavigate={handleNavigation} />;
-      case 'wordbook-detail':
-        return <WordBookDetailPage id={pageParams?.id} onNavigate={handleNavigation} />;
-      case 'start-study-plan':
-        return <StartStudyPlanPage planId={pageParams?.planId} onNavigate={handleNavigation} />;
-      case 'word-practice':
-        console.log('=== 渲染 WordPracticePage ===');
-        console.log('传递的props:', {
-          planId: pageParams?.planId,
-          scheduleId: pageParams?.scheduleId,
-          sessionId: pageParams?.sessionId
-        });
-        return <WordPracticePage planId={pageParams?.planId} scheduleId={pageParams?.scheduleId} sessionId={pageParams?.sessionId} onNavigate={handleNavigation} />;
-      case 'practice-result':
-        return <PracticeResultPage result={pageParams} onNavigate={handleNavigation} />;
-      case 'finish-study-plan':
-        return <FinishStudyPlanPage results={pageParams} onNavigate={handleNavigation} />;
-      case 'study':
-        return <StartStudyPlanPage planId={pageParams?.planId} onNavigate={handleNavigation} />;
-      case 'study-completion':
-        return <FinishStudyPlanPage results={pageParams} onNavigate={handleNavigation} />;
-      case 'calendar':
-        return <CalendarPage onNavigate={handleNavigation} />;
-      case 'settings':
-        return <SettingsPage onNavigate={handleNavigation} />;
+    switch (route.page) {
       case 'home':
-      default:
-        return <HomePage onNavigate={handleNavigation} />;
+        return <HomePage onNavigate={navigate} />;
+      case 'plans':
+        return <StudyPlansPage onNavigate={navigate} />;
+      case 'create-plan':
+        return <CreatePlanPage onNavigate={navigate} />;
+      case 'plan-detail':
+        // 缺少 planId 时回到计划列表（此前会静默打开 id=1 的计划）
+        return route.params
+          ? <PlanDetailPage planId={route.params.planId} initialTab={route.params.tab} onNavigate={navigate} />
+          : <StudyPlansPage onNavigate={navigate} />;
+      case 'wordbooks':
+        return <WordBookPage onNavigate={navigate} />;
+      case 'wordbook-detail':
+        return <WordBookDetailPage id={route.params?.id} onNavigate={navigate} />;
+      case 'word-practice':
+        return (
+          <WordPracticePage
+            planId={route.params?.planId}
+            scheduleId={route.params?.scheduleId}
+            sessionId={route.params?.sessionId}
+            returnTo={route.params?.returnTo}
+            onNavigate={navigate}
+          />
+        );
+      case 'practice-result':
+        return <PracticeResultPage result={route.params} onNavigate={navigate} />;
+      case 'passages':
+        return <PassageLibraryPage onNavigate={navigate} />;
+      case 'create-passage':
+        return <CreatePassagePage initial={route.params} onNavigate={navigate} />;
+      case 'import-passage':
+        return <ImportPassagePage onNavigate={navigate} />;
+      case 'passage-detail':
+        return <PassageDetailPage key={route.params?.passageId} passageId={route.params?.passageId} fromPlan={route.params?.fromPlan} returnTo={route.params?.returnTo} onNavigate={navigate} />;
+      case 'passage-practice':
+        return (
+          // key：切换题组 / 模式时重新挂载
+          <PassagePracticePage
+            key={`${route.params?.setId}-${route.params?.mode}-${route.params?.planId ?? ''}`}
+            setId={route.params?.setId}
+            mode={route.params?.mode}
+            planId={route.params?.planId}
+            returnTo={route.params?.returnTo}
+            onNavigate={navigate}
+          />
+        );
+      case 'calendar':
+        return <CalendarPage onNavigate={navigate} />;
+      case 'settings':
+        return <SettingsPage onNavigate={navigate} />;
+      default: {
+        const unreachable: never = route;
+        return unreachable;
+      }
     }
   };
+
+  // 从计划打开的短文：面包屑「计划 › 计划名 › 短文」，侧边栏高亮「计划」
+  const fromPlan = route.page === 'passage-detail' ? route.params?.fromPlan : undefined;
+  const shellParent = fromPlan
+    ? {
+        section: 'plans' as const,
+        trail: [{ label: fromPlan.planName, onClick: () => navigate('plan-detail', { planId: fromPlan.planId, tab: 'passages' }) }],
+      }
+    : undefined;
 
   return (
     <ErrorBoundary>
       <ToastProvider>
-        {renderPage()}
+        {/* 专注模式页面（单词练习）自绘整窗框架，其余页面由 AppShell 提供侧边栏与顶栏 */}
+        {FOCUS_PAGES.has(route.page) ? (
+          renderPage()
+        ) : (
+          <AppShell page={route.page} onNavigate={navigate} parent={shellParent}>
+            {renderPage()}
+          </AppShell>
+        )}
         <DevTools />
       </ToastProvider>
     </ErrorBoundary>

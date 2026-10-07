@@ -1,410 +1,192 @@
-import React, { useState, useMemo } from 'react';
-import styles from './StudyPlansPage.module.css';
-import { 
-  Header, 
-  Breadcrumb,
-  FilterSelect, 
-  StatsOverview, 
-  StudyPlanSection, 
-  Button 
-} from '../components';
-import { StudyService } from '../services/studyService';
-import type { FilterOption, StatsCard } from '../components';
-import { useAsyncData } from '../hooks/useAsyncData';
-import { showErrorMessage } from '../utils/errorHandler';
+import React, { useMemo, useState } from 'react';
+import { CircleCheckBig, FilePen, FolderOpen, ListChecks, Play, Plus } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { usePlanPractice } from '@/hooks/usePlanPractice';
+import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { MetricCard } from '@/components/MetricCard/MetricCard';
+import { PageHeader } from '@/components/PageHeader/PageHeader';
+import { PlanSummaryCard } from '@/components/PlanSummaryCard/PlanSummaryCard';
+import { studyService } from '@/services/studyService';
+import { calendarService } from '@/services/calendarService';
+import { passageService } from '@/services/passageService';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import type { NavigateFn } from '@/navigation';
+import type { StudyPlanWithProgress, UnifiedStudyPlanStatus } from '@/types';
+import { PLAN_STATUS } from '@/types/study';
+import { PageError } from '@/components/PageError';
 
 export interface StudyPlansPageProps {
   /** Navigation handler */
-  onNavigate?: (page: string, params?: any) => void;
+  onNavigate?: NavigateFn;
 }
 
+type StatusFilter = 'all' | UnifiedStudyPlanStatus;
+
+/** 分组顺序（“全部”视图）。删除是物理删除，列表里不会出现已删除的计划 */
+const GROUPS: { status: UnifiedStudyPlanStatus; label: string }[] = (
+  ['Active', 'Pending', 'Paused', 'Draft', 'Completed', 'Terminated'] as const
+).map((status) => ({ status, label: PLAN_STATUS[status].label }));
+
+const FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  ...GROUPS.map((g) => ({ value: g.status, label: g.label })),
+];
+
 /**
- * Study Plans page component displaying all study plans organized by status
+ * 学习计划列表（shadcn，外壳由 AppShell 提供）：统计 + 状态筛选 + 按状态分组的计划。
+ * 功能清单见 .claude/work/ui-shadcn-migration/feature-inventory.md §2。
  */
 export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) => {
-  const studyService = new StudyService();
   const { data: studyPlans, loading, error, refresh } = useAsyncData(async () => {
     const result = await studyService.getAllStudyPlans();
     if (result.success) {
       return result.data;
     } else {
-      throw new Error(result.error || '获取学习计划失败');
+      throw new Error(result.error);
     }
   });
-  const [statusFilter, setStatusFilter] = useState('all');
+  // 计划卡日程栏的“今天”（单词日程 + 到期短文）；拿不到时卡片退回显示图例
+  const { data: today } = useAsyncData(async () => {
+    const [schedules, passages] = await Promise.all([calendarService.getTodayStudySchedules(), passageService.getTodayPassageTasks()]);
+    return { schedules: schedules.success ? schedules.data : [], passages: passages.success ? passages.data : [] };
+  });
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  // 统一状态过滤选项
-  const statusFilterOptions: FilterOption[] = [
-    { value: 'all', label: '全部状态' },
-    { value: 'Draft', label: '草稿' },
-    { value: 'Pending', label: '待开始' },
-    { value: 'Active', label: '进行中' },
-    { value: 'Completed', label: '已完成' },
-    { value: 'Terminated', label: '已终止' },
-    { value: 'Deleted', label: '已删除' }
-  ];
-
-  // Filter plans by unified status
-  const filteredPlans = useMemo(() => {
-    if (!studyPlans || !Array.isArray(studyPlans)) return [];
-
-    return studyPlans.filter(plan => {
-      // 使用统一状态过滤
-      if (statusFilter !== 'all' && plan.unified_status !== statusFilter) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [studyPlans, statusFilter]);
-
-  // Group plans by unified status
-  const groupedPlans = useMemo(() => {
-    if (!studyPlans || !Array.isArray(studyPlans)) {
-      return { draft: [], pending: [], active: [], paused: [], completed: [], terminated: [] };
+  const byStatus = useMemo(() => {
+    const map = new Map<UnifiedStudyPlanStatus, StudyPlanWithProgress[]>();
+    for (const plan of studyPlans ?? []) {
+      const status = plan.unified_status as UnifiedStudyPlanStatus;
+      map.set(status, [...(map.get(status) ?? []), plan]);
     }
-
-    // 按统一状态分组（排除已删除的）
-    const visiblePlans = studyPlans.filter(plan => plan.unified_status !== 'Deleted');
-
-    const groups = {
-      draft: visiblePlans.filter(plan => plan.unified_status === 'Draft'),
-      pending: visiblePlans.filter(plan => plan.unified_status === 'Pending'),
-      active: visiblePlans.filter(plan => plan.unified_status === 'Active'),
-      paused: visiblePlans.filter(plan => plan.unified_status === 'Paused' as any),
-      completed: visiblePlans.filter(plan => plan.unified_status === 'Completed'),
-      terminated: visiblePlans.filter(plan => plan.unified_status === 'Terminated')
-    };
-
-    return groups;
+    return map;
   }, [studyPlans]);
+  const countOf = (filter: StatusFilter) =>
+    filter === 'all'
+      ? (studyPlans ?? []).filter((p) => p.unified_status !== 'Deleted').length
+      : byStatus.get(filter)?.length ?? 0;
 
-  // Helper functions for filtered section display
-  const getFilteredSectionTitle = () => {
-    if (statusFilter !== 'all') {
-      return statusFilterOptions.find(opt => opt.value === statusFilter)?.label || '学习计划';
-    }
-    return '学习计划';
-  };
-
-  const getFilteredSectionColor = () => {
-    if (statusFilter === 'Active') return 'green';
-    if (statusFilter === 'Pending') return 'blue';
-    if (statusFilter === 'Paused') return 'orange';
-    if (statusFilter === 'Completed') return 'gray';
-    if (statusFilter === 'Terminated') return 'red';
-    if (statusFilter === 'Draft') return 'gray';
-    if (statusFilter === 'draft') return 'orange';
-    if (statusFilter === 'deleted') return 'red';
-    return 'blue';
-  };
-
-  // Generate statistics
-  const statsData: StatsCard[] = useMemo(() => {
-    const totalPlans = studyPlans?.filter(plan => plan.status !== 'deleted').length || 0;
-    const activePlans = groupedPlans.active.length;
-    const completedPlans = groupedPlans.completed.length;
-    // const terminatedPlans = groupedPlans.terminated.length;
-    const draftPlans = groupedPlans.draft.length;
-    // const totalStudyTime = 45; // Mock data
-
-    return [
-      {
-        id: 'total',
-        title: '总计划数',
-        value: totalPlans,
-        icon: 'tasks',
-        color: 'primary',
-        change: '+12%',
-        changeType: 'positive'
-      },
-      {
-        id: 'active',
-        title: '进行中',
-        value: activePlans,
-        icon: 'play',
-        color: 'green',
-        change: '+5',
-        changeType: 'positive'
-      },
-      {
-        id: 'completed',
-        title: '已完成',
-        value: completedPlans,
-        icon: 'check-circle',
-        color: 'orange',
-        change: '68%',
-        changeType: 'neutral'
-      },
-      {
-        id: 'draft',
-        title: '草稿',
-        value: draftPlans,
-        icon: 'edit',
-        color: 'blue',
-        change: `${draftPlans}`,
-        changeType: 'neutral'
-      }
-    ];
-  }, [studyPlans, groupedPlans]);
+  const totalPlans = studyPlans?.filter((plan) => plan.status !== 'deleted').length || 0;
+  const completedPlans = byStatus.get('Completed')?.length ?? 0;
+  const stats = [
+    { label: '总计划数', value: totalPlans, unit: '个', icon: ListChecks },
+    { label: '进行中', value: byStatus.get('Active')?.length ?? 0, unit: '个', icon: Play },
+    {
+      label: '已完成',
+      value: completedPlans,
+      unit: '个',
+      icon: CircleCheckBig,
+      // 完成率 = 已完成 / 总计划数
+      hint: `完成率 ${totalPlans > 0 ? Math.round((completedPlans / totalPlans) * 100) : 0}%`,
+    },
+    { label: '草稿', value: byStatus.get('Draft')?.length ?? 0, unit: '个', icon: FilePen },
+  ];
 
   const handlePlanClick = (planId: number) => {
     onNavigate?.('plan-detail', { planId });
   };
 
-  const handleStudyStart = async (planId: number) => {
-    // 找到对应的学习计划
-    const plan = studyPlans?.find(p => p.id === planId);
-    if (!plan) {
-      console.error('找不到指定的学习计划');
-      return;
+  const handleStudyStart = usePlanPractice(studyPlans, onNavigate);
+
+  const renderPlans = (plans: StudyPlanWithProgress[]) => (
+    <div className="flex flex-col gap-3">
+      {plans.map((plan) => (
+        <PlanSummaryCard
+          key={plan.id}
+          plan={plan}
+          onOpen={handlePlanClick}
+          onAction={handleStudyStart}
+          todaySchedule={today?.schedules.find((t) => t.plan_id === plan.id)}
+          todayPassages={today?.passages.filter((t) => t.planId === plan.id)}
+        />
+      ))}
+    </div>
+  );
+
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="flex flex-col gap-3">
+          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        </div>
+      );
     }
 
-    // 根据学习计划的状态决定跳转行为
-    if (plan.status === 'draft') {
-      // 草稿状态，跳转到编辑页面
-      onNavigate?.('plan-detail', { planId });
-      return;
+    if (statusFilter !== 'all') {
+      const plans = byStatus.get(statusFilter) ?? [];
+      const label = FILTERS.find((f) => f.value === statusFilter)?.label ?? '';
+      return plans.length > 0 ? (
+        renderPlans(plans)
+      ) : (
+        <EmptyState icon={<FolderOpen />} title={`暂无${label}的学习计划`} description="切换到其他状态看看" />
+      );
     }
 
-    // 获取统一状态
-    const unifiedStatus = plan.unified_status ||
-      (plan.status === 'deleted' ? 'Deleted' :
-       plan.status === 'draft' as any ? 'Draft' :
-       plan.lifecycle_status === 'pending' ? 'Pending' :
-       plan.lifecycle_status === 'active' ? 'Active' :
-       plan.lifecycle_status === 'completed' ? 'Completed' :
-       plan.lifecycle_status === 'terminated' ? 'Terminated' : 'Draft');
-
-    if (unifiedStatus === 'Pending') {
-      // 待开始状态，需要先启动学习计划，然后跳转到练习页面
-      try {
-        // 调用启动学习计划的API
-        const studyService = new StudyService();
-        const result = await studyService.startStudyPlan(planId);
-
-        if (result.success) {
-          // 启动成功后，获取第一个日程ID并跳转到练习页面
-          const schedulesResult = await studyService.getStudyPlanSchedules(planId);
-          if (schedulesResult.success && schedulesResult.data.length > 0) {
-            const firstSchedule = schedulesResult.data[0];
-            onNavigate?.('word-practice', { planId, scheduleId: firstSchedule.id });
-          } else {
-            console.error('找不到可练习的日程');
-          }
-        } else {
-          console.error('启动学习计划失败:', result.error);
-        }
-      } catch (error) {
-        console.error('启动学习计划失败:', error);
-      }
-    } else if (plan.lifecycle_status === 'active') {
-      // 进行中状态，直接跳转到练习页面
-      try {
-        const studyService = new StudyService();
-        const schedulesResult = await studyService.getStudyPlanSchedules(planId);
-        if (schedulesResult.success && schedulesResult.data.length > 0) {
-          // 找到今天的日程，如果没有则使用第一个未完成的日程
-          const today = new Date().toISOString().split('T')[0];
-          let targetSchedule = schedulesResult.data.find(schedule =>
-            schedule.schedule_date === today && !schedule.completed
-          );
-
-          if (!targetSchedule) {
-            targetSchedule = schedulesResult.data.find(schedule => !schedule.completed);
-          }
-
-          if (!targetSchedule) {
-            targetSchedule = schedulesResult.data[0];
-          }
-
-          onNavigate?.('word-practice', { planId, scheduleId: targetSchedule.id });
-        } else {
-          console.error('找不到可练习的日程');
-        }
-      } catch (error) {
-        console.error('获取日程失败:', error);
-      }
-    } else {
-      // 其他状态，跳转到计划详情页面
-      onNavigate?.('plan-detail', { planId });
+    const groups = GROUPS.map((g) => ({ ...g, plans: byStatus.get(g.status) ?? [] })).filter((g) => g.plans.length > 0);
+    if (groups.length === 0) {
+      return (
+        <EmptyState
+          icon={<ListChecks />}
+          title="还没有学习计划"
+          description="创建你的第一个学习计划开始学习吧"
+          action="创建计划"
+          actionIcon={<Plus />}
+          onAction={() => onNavigate?.('create-plan')}
+        />
+      );
     }
-  };
-
-  const handleMenuAction = (planId: number, action: string) => {
-    console.log('Menu action:', action, 'for plan:', planId);
-    // TODO: Handle menu actions (edit, delete, etc.)
-  };
-
-  const handleCreatePlan = () => {
-    onNavigate?.('create-plan');
-  };
-
-  const handleNavChange = (nav: string) => {
-    onNavigate?.(nav);
-  };
-
-  if (loading) {
     return (
-      <div className={styles.page}>
-        <Header activeNav="plans" onNavChange={handleNavChange} />
-        <main className={styles.main}>
-          <div className={styles.loading}>
-            <div className={styles.loadingSpinner}>
-              <i className="fas fa-spinner fa-spin"></i>
-            </div>
-            <p>正在加载学习计划...</p>
-          </div>
-        </main>
+      <div className="flex flex-col gap-6">
+        {groups.map((g) => (
+          <section key={g.status} className="flex flex-col gap-3">
+            <h2 className="flex items-center gap-2 text-base font-semibold">
+              {g.label}
+              <Badge variant="secondary" className="tabular-nums">{g.plans.length}</Badge>
+            </h2>
+            {renderPlans(g.plans)}
+          </section>
+        ))}
       </div>
     );
-  }
+  };
 
   return (
-    <div className={styles.page}>
-      <Header activeNav="plans" onNavChange={handleNavChange} />
-      
-      <main className={styles.main}>
-        {/* Breadcrumb */}
-        <Breadcrumb
-          items={[
-            { label: '首页', key: 'home', icon: 'home' }
-          ]}
-          current="学习计划"
-          onNavigate={handleNavChange}
-        />
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
+      <PageHeader
+        title="计划"
+        description="管理和跟踪你的学习进度"
+        actions={
+          <Button onClick={() => onNavigate?.('create-plan')}>
+            <Plus />
+            创建计划
+          </Button>
+        }
+      />
 
-        {/* Error Banner */}
-        {error && (
-          <section className={styles.errorSection}>
-            <div className={styles.errorBanner}>
-              <div className={styles.errorIcon}>
-                <i className="fas fa-exclamation-triangle" />
-              </div>
-              <div className={styles.errorContent}>
-                <h4>数据加载失败</h4>
-                <p>{showErrorMessage(error)}</p>
-                <button onClick={refresh} className={styles.retryBtn}>
-                  <i className="fas fa-redo" />
-                  重试
-                </button>
-              </div>
-            </div>
-          </section>
-        )}
+      {error && (
+        <PageError title="无法加载学习计划" message={error.message} onRetry={refresh} />
+      )}
 
-        {/* Page Header */}
-        <section className={styles.pageHeader}>
-          <div className={styles.headerContent}>
-            <div className={styles.headerInfo}>
-              <h2 className={styles.pageTitle}>学习计划</h2>
-              <p className={styles.pageSubtitle}>管理和跟踪你的学习进度</p>
-            </div>
-            <div className={styles.headerActions}>
-              <FilterSelect
-                options={statusFilterOptions}
-                value={statusFilter}
-                onChange={setStatusFilter}
-              />
-              <Button onClick={handleCreatePlan}>
-                <i className="fas fa-plus" style={{ marginRight: '8px' }} />
-                创建计划
-              </Button>
-            </div>
-          </div>
-        </section>
+      <section aria-label="计划统计" className="grid grid-cols-4 gap-3">
+        {stats.map((s) => (
+          <MetricCard key={s.label} {...s} loading={loading} />
+        ))}
+      </section>
 
-        {/* Statistics Overview */}
-        <section className={styles.statsSection}>
-          <StatsOverview stats={statsData} loading={loading} />
-        </section>
+      <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+        <TabsList>
+          {FILTERS.map((f) => (
+            <TabsTrigger key={f.value} value={f.value} className="gap-1.5 px-3">
+              {f.label}
+              {!loading && <span className="text-xs text-muted-foreground tabular-nums">{countOf(f.value)}</span>}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-        {/* Study Plans Grid */}
-        <section className={styles.plansSection}>
-          {statusFilter === 'all' ? (
-            <>
-              <StudyPlanSection
-                title="草稿"
-                statusColor="gray"
-                count={groupedPlans.draft.length}
-                plans={groupedPlans.draft}
-                onPlanClick={handlePlanClick}
-                onStudyStart={handleStudyStart}
-                onMenuAction={handleMenuAction}
-                loading={false}
-              />
-
-              <StudyPlanSection
-                title="待开始"
-                statusColor="blue"
-                count={groupedPlans.pending.length}
-                plans={groupedPlans.pending}
-                onPlanClick={handlePlanClick}
-                onStudyStart={handleStudyStart}
-                onMenuAction={handleMenuAction}
-                loading={false}
-              />
-
-              <StudyPlanSection
-                title="进行中"
-                statusColor="green"
-                count={groupedPlans.active.length}
-                plans={groupedPlans.active}
-                onPlanClick={handlePlanClick}
-                onStudyStart={handleStudyStart}
-                onMenuAction={handleMenuAction}
-                loading={false}
-              />
-
-              <StudyPlanSection
-                title="已暂停"
-                statusColor="orange"
-                count={groupedPlans.paused.length}
-                plans={groupedPlans.paused}
-                onPlanClick={handlePlanClick}
-                onStudyStart={handleStudyStart}
-                onMenuAction={handleMenuAction}
-                loading={false}
-              />
-
-              <StudyPlanSection
-                title="已完成"
-                statusColor="gray"
-                count={groupedPlans.completed.length}
-                plans={groupedPlans.completed}
-                onPlanClick={handlePlanClick}
-                onStudyStart={handleStudyStart}
-                onMenuAction={handleMenuAction}
-                loading={false}
-              />
-
-              <StudyPlanSection
-                title="已终止"
-                statusColor="red"
-                count={groupedPlans.terminated.length}
-                plans={groupedPlans.terminated}
-                onPlanClick={handlePlanClick}
-                onStudyStart={handleStudyStart}
-                onMenuAction={handleMenuAction}
-                loading={false}
-              />
-            </>
-          ) : (
-            <StudyPlanSection
-              title={getFilteredSectionTitle()}
-              statusColor={getFilteredSectionColor()}
-              count={filteredPlans.length}
-              plans={filteredPlans}
-              onPlanClick={handlePlanClick}
-              onStudyStart={handleStudyStart}
-              onMenuAction={handleMenuAction}
-              loading={loading}
-            />
-          )}
-        </section>
-      </main>
+      {renderContent()}
     </div>
   );
 };
-
-export default StudyPlansPage;

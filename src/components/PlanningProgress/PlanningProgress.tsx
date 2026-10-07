@@ -1,191 +1,94 @@
-import React, { useState, useEffect } from 'react';
-import styles from './PlanningProgress.module.css';
-import { WordBookService } from '../../services/wordbookService';
-import type { AnalysisProgress } from '../../types';
+import React, { useEffect, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Info, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { wordBookService } from '@/services/wordbookService';
+import type { PlanningProgressState } from '@/types';
 
 export interface PlanningProgressProps {
-  /** 是否显示进度 */
+  /** 是否在规划中（显示并开始轮询） */
   isVisible: boolean;
-  /** 取消回调 */
+  /** 取消规划 */
   onCancel: () => void;
 }
 
 /**
- * 学习计划规划进度组件
+ * AI 规划学习计划的进度（内联卡片，不再遮住整个窗口）：
+ * 轮询 get_analysis_progress（1s 起，有输出后 0.8s，失败退避到 5s）；当前步骤、已接收块数、字符数、用时；可取消。
  */
-export const PlanningProgress: React.FC<PlanningProgressProps> = ({
-  isVisible,
-  onCancel
-}) => {
-  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
-  const [pollIntervalRef, setPollIntervalRef] = useState<number | null>(null);
-
-  const wordBookService = new WordBookService();
+export const PlanningProgress: React.FC<PlanningProgressProps> = ({ isVisible, onCancel }) => {
+  const [progress, setProgress] = useState<PlanningProgressState | null>(null);
 
   useEffect(() => {
-    if (isVisible) {
-      startProgressPolling();
-    } else {
-      clearPolling();
+    if (!isVisible) {
+      setProgress(null);
+      return;
     }
-
+    let stopped = false;
+    let timer: number | undefined;
+    let interval = 1000;
+    let misses = 0;
+    const poll = async () => {
+      const result = await wordBookService.getAnalysisProgress();
+      if (stopped) return;
+      if (result.success && result.data) {
+        setProgress(result.data);
+        misses = 0;
+        if (['completed', 'error', 'cancelled'].includes(result.data.status)) return;
+        interval = result.data.chunks_received > 0 ? 800 : 1200;
+      } else {
+        misses++;
+        if (misses >= 3) return;
+        interval = Math.min(interval * 1.5, 5000);
+      }
+      timer = window.setTimeout(poll, interval);
+    };
+    poll();
     return () => {
-      clearPolling();
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
     };
   }, [isVisible]);
 
-  const startProgressPolling = () => {
-    // 清理之前的轮询
-    clearPolling();
+  if (!isVisible) return null;
 
-    let pollInterval = 1000; // 初始轮询间隔1秒
-    let consecutiveErrors = 0;
-
-    const poll = async () => {
-      try {
-        const result = await wordBookService.getAnalysisProgress();
-        if (result.success && result.data) {
-          setProgress(result.data);
-          consecutiveErrors = 0; // 重置错误计数
-
-          // 如果分析完成、出错或取消，停止轮询
-          if (['completed', 'error', 'cancelled'].includes(result.data.status)) {
-            clearPolling();
-            return;
-          }
-
-          // 动态调整轮询间隔：分析进行中时可以稍微频繁一些
-          pollInterval = result.data.chunks_received > 0 ? 800 : 1200;
-        } else {
-          consecutiveErrors++;
-          // 如果连续错误，增加轮询间隔
-          pollInterval = Math.min(pollInterval * 1.5, 5000);
-        }
-      } catch (err) {
-        console.error('Progress polling error:', err);
-        consecutiveErrors++;
-
-        // 连续错误超过3次，停止轮询
-        if (consecutiveErrors >= 3) {
-          clearPolling();
-          return;
-        }
-
-        // 增加轮询间隔
-        pollInterval = Math.min(pollInterval * 2, 5000);
-      }
-
-      // 设置下次轮询
-      const timeoutId = setTimeout(poll, pollInterval);
-      setPollIntervalRef(timeoutId);
-    };
-
-    // 开始轮询
-    poll();
-  };
-
-  const clearPolling = () => {
-    if (pollIntervalRef) {
-      clearTimeout(pollIntervalRef); // 改为clearTimeout，因为现在使用setTimeout
-      setPollIntervalRef(null);
-    }
-  };
-
-  const handleCancel = () => {
-    clearPolling();
-    onCancel();
-  };
-
-  if (!isVisible) {
-    return null;
-  }
+  const status = progress?.status;
+  const done = status === 'completed';
+  const failed = status === 'error';
+  // 规划输出长度不可预知：按收到的块数做一个渐近的进度感，完成时 100%
+  const pct = done ? 100 : progress?.chunks_received ? Math.min(90, 15 + progress.chunks_received * 2) : 8;
 
   return (
-    <div className={styles.overlay}>
-      <div className={styles.modal}>
-        <div className={styles.header}>
-          <h3>AI正在规划学习计划</h3>
-          <p>请耐心等待，AI正在为您制定个性化的学习计划...</p>
-        </div>
-
-        <div className={styles.content}>
-          {progress && (
-            <>
-              <div className={styles.statusSection}>
-                <div className={styles.statusIcon}>
-                  {progress.status === 'analyzing' && (
-                    <i className={`fas fa-cog ${styles.spinning}`} />
-                  )}
-                  {progress.status === 'completed' && (
-                    <i className="fas fa-check-circle" style={{ color: 'var(--color-success)' }} />
-                  )}
-                  {progress.status === 'error' && (
-                    <i className="fas fa-exclamation-triangle" style={{ color: 'var(--color-error)' }} />
-                  )}
-                </div>
-                <div className={styles.statusText}>
-                  <div className={styles.currentStep}>{progress.current_step}</div>
-                  <div className={styles.statusLabel}>
-                    {progress.status === 'analyzing' && '规划中...'}
-                    {progress.status === 'completed' && '规划完成'}
-                    {progress.status === 'error' && '规划失败'}
-                  </div>
-                </div>
-              </div>
-
-              <div className={styles.progressStats}>
-                <div className={styles.progressStat}>
-                  <span className={styles.statLabel}>已接收:</span>
-                  <span className={styles.statValue}>{progress.chunks_received} 块</span>
-                </div>
-                <div className={styles.progressStat}>
-                  <span className={styles.statLabel}>字符数:</span>
-                  <span className={styles.statValue}>{progress.total_chars.toLocaleString()}</span>
-                </div>
-                <div className={styles.progressStat}>
-                  <span className={styles.statLabel}>用时:</span>
-                  <span className={styles.statValue}>{progress.elapsed_seconds.toFixed(1)}s</span>
-                </div>
-              </div>
-
-              {progress.elapsed_seconds > 60 && (
-                <div className={styles.progressTip}>
-                  <i className="fas fa-info-circle" />
-                  <span>复杂的学习计划规划需要较长时间，请耐心等待。通常需要1-3分钟。</span>
-                </div>
-              )}
-
-              {progress.error_message && (
-                <div className={styles.errorMessage}>
-                  <i className="fas fa-exclamation-triangle" />
-                  <span>{progress.error_message}</span>
-                </div>
-              )}
-            </>
-          )}
-
-          <div className={styles.progressBar}>
-            <div
-              className={`${styles.progressFill} ${
-                progress?.status === 'completed' ? styles.progressComplete :
-                progress?.chunks_received && progress.chunks_received > 0 ? styles.progressActive : styles.progressStarted
-              }`}
-            />
+    <div className="space-y-2.5 rounded-lg border p-3" role="status">
+      <div className="flex items-center gap-2.5">
+        {done ? (
+          <CheckCircle2 className="size-4 shrink-0 text-success" />
+        ) : failed ? (
+          <AlertTriangle className="size-4 shrink-0 text-destructive" />
+        ) : (
+          <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium">{done ? '排序完成' : failed ? '排序失败' : 'AI 正在排学习顺序'}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            {progress?.current_step ?? '准备中…'}
+            {progress && ` · 已用 ${Math.round(progress.elapsed_seconds)} 秒`}
           </div>
         </div>
-
-        <div className={styles.actions}>
-          <button
-            className={styles.cancelButton}
-            onClick={handleCancel}
-            disabled={progress?.status === 'completed'}
-          >
-            {progress?.status === 'completed' ? '关闭' : '取消规划'}
-          </button>
-        </div>
+        {!done && (
+          <Button variant="ghost" size="sm" className="h-7" onClick={onCancel}>
+            取消
+          </Button>
+        )}
       </div>
+      <Progress value={pct} className="h-1 [&>[data-slot=progress-indicator]]:bg-brand" />
+      {progress && progress.elapsed_seconds > 60 && !done && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Info className="size-3.5" />
+          单词较多时需要 1–3 分钟，请耐心等待。
+        </p>
+      )}
+      {progress?.error_message && <p className="text-xs text-destructive">{progress.error_message}</p>}
     </div>
   );
 };
-
-export default PlanningProgress;

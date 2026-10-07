@@ -1,14 +1,16 @@
 import { BaseService } from './baseService';
 import {
+  AnalyzedWord,
+  StudyPlanWithProgress,
   WordBook,
   CreateWordBookRequest,
   UpdateWordBookRequest,
-  WordBookQuery,
   Word,
+  WordExample,
   CreateWordRequest,
   UpdateWordRequest,
   WordQuery,
-  AnalysisProgress,
+  PlanningProgressState,
   PaginationQuery,
   PaginatedResponse,
   WordBookStatistics,
@@ -17,7 +19,6 @@ import {
   ThemeTag,
   Id,
   ApiResult,
-  LoadingState,
 } from '../types';
 
 /**
@@ -28,102 +29,44 @@ export class WordBookService extends BaseService {
   /**
    * 获取所有单词本
    */
-  async getAllWordBooks(includeDeleted: boolean = false, status?: string, setLoading?: (state: LoadingState) => void): Promise<ApiResult<WordBook[]>> {
+  async getAllWordBooks(includeDeleted: boolean = false, status?: string): Promise<ApiResult<WordBook[]>> {
     return this.executeWithLoading(async () => {
-      const params: any = { include_deleted: includeDeleted };
-      if (status) {
-        params.status = status;
-      }
-      return this.client.invoke<WordBook[]>('get_word_books', params);
-    }, setLoading);
-  }
-
-  /**
-   * 根据查询条件获取单词本
-   */
-  async getWordBooks(
-    query: WordBookQuery,
-    pagination?: PaginationQuery,
-    setLoading?: (state: LoadingState) => void
-  ): Promise<ApiResult<PaginatedResponse<WordBook>>> {
-    return this.executeWithLoading(async () => {
-      // 获取所有单词本
-      const allWordBooksResult = await this.client.invoke<WordBook[]>('get_word_books');
-
-      if (!allWordBooksResult.success) {
-        throw new Error(allWordBooksResult.error || '获取单词本失败');
-      }
-
-      // 前端过滤
-      let filteredBooks = allWordBooksResult.data;
-
-      if (query.keyword) {
-        filteredBooks = filteredBooks.filter(book =>
-          book.title.toLowerCase().includes(query.keyword!.toLowerCase()) ||
-          book.description.toLowerCase().includes(query.keyword!.toLowerCase())
-        );
-      }
-
-      if (query.icon_color) {
-        filteredBooks = filteredBooks.filter(book => book.icon_color === query.icon_color);
-      }
-
-      // 前端分页
-      const page = pagination?.page || 1;
-      const pageSize = pagination?.page_size || 20;
-      const total = filteredBooks.length;
-      const totalPages = Math.ceil(total / pageSize);
-      const startIndex = (page - 1) * pageSize;
-      const endIndex = startIndex + pageSize;
-      const data = filteredBooks.slice(startIndex, endIndex);
-
-      return {
-        success: true,
-        data: {
-          data,
-          total,
-          page,
-          page_size: pageSize,
-          total_pages: totalPages,
-        }
-      };
-    }, setLoading);
+      // Tauri 只转换顶层参数名：必须传 camelCase（原来的 include_deleted 会被静默忽略）
+      return this.client.invoke<WordBook[]>('get_word_books', { includeDeleted, status });
+    });
   }
 
   /**
    * 根据 ID 获取单词本详情
    */
-  async getWordBookById(id: Id, setLoading?: (state: LoadingState) => void): Promise<ApiResult<WordBook>> {
+  async getWordBookById(id: Id): Promise<ApiResult<WordBook>> {
     return this.executeWithLoading(async () => {
       this.validateRequired({ id }, ['id']);
 
       return this.client.invoke<WordBook>('get_word_book_detail', { bookId: id });
-    }, setLoading);
+    });
   }
 
   /**
    * 获取单词本关联的学习计划
    */
-  async getWordBookLinkedPlans(id: Id, setLoading?: (state: LoadingState) => void): Promise<ApiResult<any[]>> {
+  async getWordBookLinkedPlans(id: Id): Promise<ApiResult<StudyPlanWithProgress[]>> {
     return this.executeWithLoading(async () => {
       this.validateRequired({ id }, ['id']);
 
-      return this.client.invoke<any[]>('get_word_book_linked_plans', { bookId: id });
-    }, setLoading);
+      return this.client.invoke<StudyPlanWithProgress[]>('get_word_book_linked_plans', { bookId: id });
+    });
   }
 
   /**
    * 创建单词本
    */
-  async createWordBook(
-    request: CreateWordBookRequest,
-    setLoading?: (state: LoadingState) => void
-  ): Promise<ApiResult<Id>> {
+  async createWordBook(request: CreateWordBookRequest): Promise<ApiResult<Id>> {
     return this.executeWithLoading(async () => {
       this.validateRequired(request, ['title']);
 
       return this.client.invoke<Id>('create_word_book', { request });
-    }, setLoading);
+    });
   }
 
   /**
@@ -131,25 +74,29 @@ export class WordBookService extends BaseService {
    */
   async updateWordBook(
     id: Id,
-    request: UpdateWordBookRequest,
-    setLoading?: (state: LoadingState) => void
+    request: UpdateWordBookRequest
   ): Promise<ApiResult<void>> {
     return this.executeWithLoading(async () => {
       this.validateRequired({ id }, ['id']);
 
       return this.client.invoke<void>('update_word_book', { bookId: id, request });
-    }, setLoading);
+    });
   }
 
   /**
    * 删除单词本
    */
-  async deleteWordBook(id: Id, setLoading?: (state: LoadingState) => void): Promise<ApiResult<void>> {
+  /** 恢复已删除的单词本（回到正式状态） */
+  async restoreWordBook(id: Id): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => this.client.invoke<void>('restore_word_book', { bookId: id }));
+  }
+
+  async deleteWordBook(id: Id): Promise<ApiResult<void>> {
     return this.executeWithLoading(async () => {
       this.validateRequired({ id }, ['id']);
 
       return this.client.invoke<void>('delete_word_book', { bookId: id });
-    }, setLoading);
+    });
   }
 
   /**
@@ -158,25 +105,32 @@ export class WordBookService extends BaseService {
   async getWordsByBookId(
     bookId: Id,
     query?: WordQuery,
-    pagination?: PaginationQuery,
-    setLoading?: (state: LoadingState) => void
+    pagination?: PaginationQuery
   ): Promise<ApiResult<PaginatedResponse<Word>>> {
     return this.executeWithLoading(async () => {
       this.validateRequired({ bookId }, ['bookId']);
 
-      const page = pagination?.page;
-      const page_size = pagination?.page_size;
-      const search_term = query?.keyword;
-      const part_of_speech = query?.part_of_speech;
-
+      // 参数键必须是 camelCase：Tauri 只把 camelCase 映射到 Rust 的 snake_case 参数
       return this.client.invoke<PaginatedResponse<Word>>('get_words_by_book', {
-        bookId: bookId,
-        page,
-        page_size,
-        search_term,
-        part_of_speech
+        bookId,
+        page: pagination?.page,
+        pageSize: pagination?.page_size,
+        searchTerm: query?.keyword,
+        partOfSpeech: query?.part_of_speech,
       });
-    }, setLoading);
+    });
+  }
+
+  /**
+   * AI 补充（append）或重新生成（replace）单词例句，返回该单词最新的全部例句
+   */
+  async generateWordExamples(
+    wordId: Id,
+    mode: 'append' | 'replace'
+  ): Promise<ApiResult<WordExample[]>> {
+    return this.executeWithLoading(
+      () => this.client.invoke<WordExample[]>('generate_word_examples', { wordId, mode })
+    );
   }
 
   /**
@@ -184,8 +138,7 @@ export class WordBookService extends BaseService {
    */
   async addWordToBook(
     bookId: Id,
-    wordData: CreateWordRequest,
-    setLoading?: (state: LoadingState) => void
+    wordData: CreateWordRequest
   ): Promise<ApiResult<Id>> {
     return this.executeWithLoading(async () => {
       this.validateRequired({ bookId }, ['bookId']);
@@ -195,7 +148,7 @@ export class WordBookService extends BaseService {
         bookId: bookId,
         wordData: wordData
       });
-    }, setLoading);
+    });
   }
 
   /**
@@ -203,8 +156,7 @@ export class WordBookService extends BaseService {
    */
   async updateWord(
     wordId: Id,
-    wordData: UpdateWordRequest,
-    setLoading?: (state: LoadingState) => void
+    wordData: UpdateWordRequest
   ): Promise<ApiResult<void>> {
     return this.executeWithLoading(async () => {
       this.validateRequired({ wordId }, ['wordId']);
@@ -213,82 +165,58 @@ export class WordBookService extends BaseService {
         wordId: wordId,
         wordData: wordData
       });
-    }, setLoading);
+    });
   }
 
   /**
    * 删除单词
    */
-  async deleteWord(wordId: Id, setLoading?: (state: LoadingState) => void): Promise<ApiResult<void>> {
-    return this.executeWithLoading(async () => {
-      this.validateRequired({ wordId }, ['wordId']);
+  /** 这些单词里哪些已经在单词本中（忽略大小写），返回小写形式 */
+  async findExistingWords(bookId: Id, words: string[]): Promise<ApiResult<string[]>> {
+    return this.executeWithLoading(() => this.client.invoke<string[]>('find_existing_words', { bookId, words }));
+  }
 
-      return this.client.invoke<void>('delete_word', { wordId: wordId });
-    }, setLoading);
+  /** 批量删除同一单词本内的单词（后端单事务：要么全删，要么都不删），返回实际删除数 */
+  async deleteWords(bookId: Id, wordIds: Id[]): Promise<ApiResult<number>> {
+    return this.executeWithLoading(
+      () => this.client.invoke<number>('delete_words', { bookId, wordIds })
+    );
   }
 
   /**
    * 获取单词本统计信息
    */
-  async getWordBookStatistics(setLoading?: (state: LoadingState) => void): Promise<ApiResult<WordBookStatistics>> {
+  async getWordBookStatistics(): Promise<ApiResult<WordBookStatistics>> {
     return this.executeWithLoading(async () => {
       return this.client.invoke<WordBookStatistics>('get_global_word_book_statistics');
-    }, setLoading);
-  }
-
-  /**
-   * 更新所有单词本的单词数量
-   */
-  async updateAllWordBookCounts(setLoading?: (state: LoadingState) => void): Promise<ApiResult<void>> {
-    return this.executeWithLoading(async () => {
-      return this.client.invoke<void>('update_all_word_book_counts');
-    }, setLoading);
+    });
   }
 
   /**
    * 获取所有主题标签
    */
-  async getThemeTags(setLoading?: (state: LoadingState) => void): Promise<ApiResult<ThemeTag[]>> {
+  /** 新建主题标签（名称 1–10 个字；同名已存在时返回已有的） */
+  async createThemeTag(name: string, icon?: string): Promise<ApiResult<ThemeTag>> {
+    return this.executeWithLoading(() => this.client.invoke<ThemeTag>('create_theme_tag', { name, icon }));
+  }
+
+  async getThemeTags(): Promise<ApiResult<ThemeTag[]>> {
     return this.executeWithLoading(async () => {
       return this.client.invoke<ThemeTag[]>('get_theme_tags');
-    }, setLoading);
+    });
   }
 
   /**
    * 获取单词本词性统计
    */
-  async getWordBookTypeStatistics(
-    bookId: Id,
-    setLoading?: (state: LoadingState) => void
-  ): Promise<ApiResult<WordTypeDistribution>> {
+  async getWordBookTypeStatistics(bookId: Id): Promise<ApiResult<WordTypeDistribution>> {
     return this.executeWithLoading(async () => {
       this.validateRequired({ bookId }, ['bookId']);
 
       return this.client.invoke<WordTypeDistribution>('get_word_book_statistics', {
         bookId: bookId
       });
-    }, setLoading);
-  }
-
-  /**
-   * 分析文本并提取词汇
-   */
-  async analyzeTextForVocabulary(
-    text: string,
-    setLoading?: (state: LoadingState) => void
-  ): Promise<ApiResult<any>> {
-    return this.executeWithLoading(async () => {
-      // 验证输入
-      if (!text || text.trim().length === 0) {
-        throw new Error('文本内容不能为空');
-      }
-
-      if (text.length > 10000) {
-        throw new Error('文本内容过长，请限制在10000字符以内');
-      }
-
-      return this.client.invoke<any>('analyze_text_for_vocabulary', { text });
-    }, setLoading);
+    });
   }
 
   /**
@@ -300,13 +228,11 @@ export class WordBookService extends BaseService {
       description: string;
       icon?: string;
       icon_color?: string;
-      words: any[];
+      words: AnalyzedWord[];
       status?: string;
       book_id?: Id; // 如果提供，则向现有单词本添加单词
       theme_tag_ids?: number[]; // 主题标签ID列表
-    },
-    setLoading?: (state: LoadingState) => void
-  ): Promise<ApiResult<WordSaveResult>> {
+    }): Promise<ApiResult<WordSaveResult>> {
     return this.executeWithLoading(async () => {
       // 验证输入
       this.validateRequired(request, ['title', 'words']);
@@ -321,15 +247,15 @@ export class WordBookService extends BaseService {
         updated_count: number;
         skipped_count: number;
       }>('create_word_book_from_analysis', { request });
-    }, setLoading);
+    });
   }
 
   /**
    * 获取分析进度
    */
-  async getAnalysisProgress(): Promise<ApiResult<AnalysisProgress | null>> {
+  async getAnalysisProgress(): Promise<ApiResult<PlanningProgressState | null>> {
     return this.executeWithLoading(async () => {
-      return this.client.invoke<AnalysisProgress | null>('get_analysis_progress');
+      return this.client.invoke<PlanningProgressState | null>('get_analysis_progress');
     });
   }
 
@@ -351,3 +277,6 @@ export class WordBookService extends BaseService {
     });
   }
 }
+
+/** 模块级单例：组件中直接使用，不要 `new WordBookService()` */
+export const wordBookService = new WordBookService();

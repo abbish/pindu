@@ -1,5 +1,12 @@
-import React from 'react';
-import styles from './WordGrid.module.css';
+import React, { useMemo } from 'react';
+import { CheckCheck, SearchX, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { cn } from '@/lib/utils';
+import { partOfSpeechLabel } from '@/utils/partOfSpeech';
+import type { WordExample } from '@/types';
 
 export interface ExtractedWord {
   /** 单词ID */
@@ -14,6 +21,8 @@ export interface ExtractedWord {
   frequency: number;
   /** 是否已选择 */
   selected: boolean;
+  /** 已在单词本中（勾选保存会用新分析覆盖原有内容） */
+  existing?: boolean;
   /** 自然拼读信息（可选） */
   phonics?: {
     ipa: string;
@@ -24,6 +33,8 @@ export interface ExtractedWord {
     pos_english: string;
     pos_chinese: string;
     frequency: number;
+    /** 例句（第一句最简单） */
+    examples?: WordExample[];
   };
 }
 
@@ -36,229 +47,107 @@ export interface WordGridProps {
   onSelectAll: (selected: boolean) => void;
   /** 按词性选择回调 */
   onSelectByPartOfSpeech?: (partOfSpeech: string, selected: boolean) => void;
-  /** 加载状态 */
-  loading?: boolean;
+  /** 显示出现次数（AI 生成的单词没有次数，传 false） */
+  showFrequency?: boolean;
 }
 
-const PART_OF_SPEECH_CONFIG = {
-  'n.': { label: '名词', color: 'blue' },
-  'v.': { label: '动词', color: 'green' },
-  'adj.': { label: '形容词', color: 'purple' },
-  'adv.': { label: '副词', color: 'orange' },
-  'prep.': { label: '介词', color: 'pink' },
-  'conj.': { label: '连词', color: 'yellow' },
-  'int.': { label: '感叹词', color: 'primary' },
-  'pron.': { label: '代词', color: 'blue' },
-  'art.': { label: '冠词', color: 'green' },
-  'det.': { label: '限定词', color: 'purple' }
-};
-
 /**
- * 单词选择网格组件
+ * 单词选择网格（shadcn）：工具栏（已选计数 + 全选 + 按词性快速选择）+ 统一高度的可勾选单词卡。
+ * 卡片在有拼读分析时显示音节、音标与首条例句。添加单词弹窗的“选择单词”与“检查结果”共用。
  */
-export const WordGrid: React.FC<WordGridProps> = ({
-  words,
-  onWordToggle,
-  onSelectAll,
-  onSelectByPartOfSpeech,
-  loading = false
-}) => {
-  const selectedCount = words.filter(word => word.selected).length;
-  const totalCount = words.length;
-  const allSelected = totalCount > 0 && selectedCount === totalCount;
+export const WordGrid: React.FC<WordGridProps> = ({ words, onWordToggle, onSelectAll, onSelectByPartOfSpeech, showFrequency = true }) => {
+  const selectedCount = words.filter((w) => w.selected).length;
+  const allSelected = words.length > 0 && selectedCount === words.length;
 
-  const handleSelectAllClick = () => {
-    onSelectAll(!allSelected);
-  };
-
-  // 获取词性统计
-  const partOfSpeechStats = React.useMemo(() => {
+  const posStats = useMemo(() => {
     const stats: Record<string, { total: number; selected: number }> = {};
-    words.forEach(word => {
-      const pos = word.partOfSpeech;
-      if (!stats[pos]) {
-        stats[pos] = { total: 0, selected: 0 };
-      }
-      stats[pos].total++;
-      if (word.selected) {
-        stats[pos].selected++;
-      }
-    });
+    for (const w of words) {
+      const s = (stats[w.partOfSpeech] ??= { total: 0, selected: 0 });
+      s.total += 1;
+      if (w.selected) s.selected += 1;
+    }
     return stats;
   }, [words]);
 
-  // 按词性选择处理函数
-  const handleSelectByPos = (partOfSpeech: string) => {
-    const stat = partOfSpeechStats[partOfSpeech];
-    if (!stat || !onSelectByPartOfSpeech) return;
-
-    // 如果该词性的单词全部已选中，则取消选择；否则全选
-    const shouldSelect = stat.selected < stat.total;
-    onSelectByPartOfSpeech(partOfSpeech, shouldSelect);
-  };
-
-  if (loading) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.header}>
-          <h3 className={styles.title}>分析中...</h3>
-          <div className={styles.loadingIndicator}>
-            <i className="fas fa-spinner fa-spin" />
-            <span>正在提取单词...</span>
-          </div>
-        </div>
-        <div className={styles.skeletonGrid}>
-          {Array.from({ length: 8 }).map((_, index) => (
-            <div key={index} className={styles.skeletonCard}>
-              <div className={styles.skeletonCheckbox} />
-              <div className={styles.skeletonContent}>
-                <div className={styles.skeletonWord} />
-                <div className={styles.skeletonMeaning} />
-                <div className={styles.skeletonMeta}>
-                  <div className={styles.skeletonTag} />
-                  <div className={styles.skeletonFreq} />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   if (words.length === 0) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.emptyState}>
-          <div className={styles.emptyIcon}>
-            <i className="fas fa-search" />
-          </div>
-          <h3 className={styles.emptyTitle}>暂无提取的单词</h3>
-          <p className={styles.emptyDescription}>
-            请在上方输入文本内容或上传文件，然后点击"分析文本"来提取单词
-          </p>
-        </div>
-      </div>
-    );
+    return <EmptyState icon={<SearchX />} title="没有单词" description="换个描述或文本再试试" />;
   }
 
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <h3 className={styles.title}>提取的单词</h3>
-        <div className={styles.headerActions}>
-          <span className={styles.selectedCount}>
-            已选择 <span className={styles.count}>{selectedCount}</span> 个单词
-          </span>
-          <button
-            className={styles.selectAllBtn}
-            onClick={handleSelectAllClick}
-            type="button"
-          >
-            <i className={`fas fa-${allSelected ? 'times' : 'check-double'}`} />
-            <span>{allSelected ? '取消全选' : '全选'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 快速选择器 */}
-      {onSelectByPartOfSpeech && Object.keys(partOfSpeechStats).length > 0 && (
-        <div className={styles.quickSelector}>
-          <div className={styles.selectorHeader}>
-            <span className={styles.selectorTitle}>按词性快速选择：</span>
-          </div>
-          <div className={styles.selectorButtons}>
-            {Object.entries(partOfSpeechStats).map(([pos, stat]) => {
-              const posConfig = PART_OF_SPEECH_CONFIG[pos as keyof typeof PART_OF_SPEECH_CONFIG];
-              const isFullySelected = stat.selected === stat.total;
-              const isPartiallySelected = stat.selected > 0 && stat.selected < stat.total;
-
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-sm">
+          已选 <span className="font-semibold tabular-nums">{selectedCount}</span>
+          <span className="text-muted-foreground"> / {words.length}</span>
+        </span>
+        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onSelectAll(!allSelected)}>
+          {allSelected ? <X /> : <CheckCheck />}
+          {allSelected ? '全不选' : '全选'}
+        </Button>
+        {onSelectByPartOfSpeech && Object.keys(posStats).length > 1 && (
+          <div className="ml-auto flex flex-wrap items-center gap-1">
+            {Object.entries(posStats).map(([pos, stat]) => {
+              const full = stat.selected === stat.total;
               return (
                 <button
                   key={pos}
                   type="button"
-                  className={`${styles.posButton} ${styles[posConfig?.color || 'primary']} ${
-                    isFullySelected ? styles.fullySelected :
-                    isPartiallySelected ? styles.partiallySelected : ''
-                  }`}
-                  onClick={() => handleSelectByPos(pos)}
-                  title={`${posConfig?.label || pos}: ${stat.selected}/${stat.total} 已选择`}
+                  aria-pressed={full}
+                  title={`${partOfSpeechLabel(pos)}：已选 ${stat.selected}/${stat.total}，点击${full ? '全部取消' : '全部选中'}`}
+                  onClick={() => onSelectByPartOfSpeech(pos, !full)}
+                  className={cn(
+                    'inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                    full ? 'border-primary/50 bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted'
+                  )}
                 >
-                  <span className={styles.posLabel}>{posConfig?.label || pos}</span>
-                  <span className={styles.posCount}>
-                    {stat.selected}/{stat.total}
-                  </span>
-                  <i className={`fas fa-${
-                    isFullySelected ? 'check-circle' :
-                    isPartiallySelected ? 'minus-circle' : 'circle'
-                  }`} />
+                  {partOfSpeechLabel(pos)}
+                  <span className="tabular-nums">{stat.selected}/{stat.total}</span>
                 </button>
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className={styles.wordsGrid}>
+      <div className="grid grid-cols-3 gap-2">
         {words.map((word) => {
-          const posConfig = PART_OF_SPEECH_CONFIG[word.partOfSpeech];
-          
+          const example = word.phonics?.examples?.[0];
           return (
             <label
               key={word.id}
-              className={`${styles.wordCard} ${word.selected ? styles.selected : ''}`}
+              className={cn(
+                'flex cursor-default gap-2.5 rounded-lg border bg-card p-3 transition-colors hover:bg-muted/40',
+                word.selected ? 'border-primary/40 bg-accent/30' : 'text-muted-foreground [&_.font-semibold]:text-muted-foreground'
+              )}
             >
-              <input
-                type="checkbox"
-                checked={word.selected}
-                onChange={() => onWordToggle(word.id)}
-                className={styles.checkbox}
-              />
-              <div className={styles.wordContent}>
-                <div className={styles.wordText}>{word.word}</div>
-                <div className={styles.wordMeaning}>{word.meaning}</div>
-
-                {/* 显示自然拼读信息 */}
+              <Checkbox checked={word.selected} onCheckedChange={() => onWordToggle(word.id)} className="mt-0.5" aria-label={`选择 ${word.word}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate font-semibold">{word.word}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground" title={partOfSpeechLabel(word.partOfSpeech)}>
+                    {word.partOfSpeech}
+                  </span>
+                  {word.existing && (
+                    <Badge variant="outline" className="ml-auto h-5 shrink-0 border-transparent bg-warning-soft px-1.5 text-[11px] text-warning" title="已在单词本中，勾选后会用新的分析覆盖原有内容">
+                      已存在
+                    </Badge>
+                  )}
+                </div>
+                <div className="mt-0.5 truncate text-sm text-muted-foreground">{word.meaning || '—'}</div>
                 {word.phonics && (
-                  <div className={styles.phonicsInfo}>
-                    <div className={styles.phonicsRow}>
-                      <span className={styles.phonicsLabel}>音节:</span>
-                      <span className={styles.phonicsValue}>{word.phonics.syllables}</span>
+                  <div className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+                    <div className="truncate">
+                      {word.phonics.syllables && <span className="font-mono text-foreground">{word.phonics.syllables}</span>}
+                      {word.phonics.ipa && <span className="ml-2">{word.phonics.ipa}</span>}
                     </div>
-                    <div className={styles.phonicsRow}>
-                      <span className={styles.phonicsLabel}>音标:</span>
-                      <span className={styles.phonicsValue}>{word.phonics.ipa}</span>
-                    </div>
-                    <div className={styles.phonicsRow}>
-                      <span className={styles.phonicsLabel}>拼读规则:</span>
-                      <span className={styles.phonicsValue}>{word.phonics.phonics_rule}</span>
-                    </div>
-                    {word.phonics.analysis_explanation && (
-                      <div className={styles.phonicsExplanation}>
-                        <span className={styles.phonicsLabel}>分析:</span>
-                        <span className={styles.explanationText}>{word.phonics.analysis_explanation}</span>
+                    {example && (
+                      <div className="line-clamp-1" title={`${example.sentence} ${example.translation}`}>
+                        {example.sentence}
                       </div>
                     )}
                   </div>
                 )}
-
-                <div className={styles.wordMeta}>
-                  <span
-                    className={`${styles.partOfSpeech} ${styles[posConfig?.color || 'primary']}`}
-                    title={posConfig?.label || word.partOfSpeech}
-                  >
-                    {word.partOfSpeech}
-                  </span>
-                  {word.phonics ? (
-                    <span className={styles.frequency}>
-                      频率: {word.phonics.frequency}
-                    </span>
-                  ) : (
-                    <span className={styles.frequency}>
-                      出现 {word.frequency} 次
-                    </span>
-                  )}
-                </div>
+                {showFrequency && !word.phonics && word.frequency > 1 && <div className="mt-1 text-xs text-muted-foreground">出现 {word.frequency} 次</div>}
               </div>
             </label>
           );
@@ -267,5 +156,3 @@ export const WordGrid: React.FC<WordGridProps> = ({
     </div>
   );
 };
-
-export default WordGrid;

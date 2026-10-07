@@ -1,1 +1,0 @@
-export { StudyStatistics, type StudyStatisticsProps, type StudyStatisticsData } from './StudyStatistics';

@@ -1,141 +1,89 @@
 import React from 'react';
-import styles from './WordBookSelector.module.css';
+import { BookOpen, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import { WordBookIcon } from '@/components/WordBookIcon/WordBookIcon';
+import { cn } from '@/lib/utils';
 
 export interface WordBookOption {
   id: number;
   name: string;
   description: string;
   wordCount: number;
-  category?: string;
+  /** 图标（word_books.icon） */
+  icon?: string;
+  /** 图标颜色（word_books.icon_color） */
+  color?: string;
 }
 
 export interface WordBookSelectorProps {
-  /** Available word books */
+  /** 可选单词本 */
   books: WordBookOption[];
-  /** Selected book IDs */
+  /** 已选单词本 ID */
   selectedBooks: number[];
-  /** Selection change handler */
+  /** 选择变化 */
   onSelectionChange: (selectedIds: number[]) => void;
-  /** Loading state */
+  /** 加载中 */
   loading?: boolean;
+  /** 没有单词本时的“去新建”入口 */
+  onCreateBook?: () => void;
 }
 
-/**
- * Word book selection component
- */
-export const WordBookSelector: React.FC<WordBookSelectorProps> = ({
-  books,
-  selectedBooks,
-  onSelectionChange,
-  loading = false
-}) => {
-  const handleBookToggle = (bookId: number) => {
-    const isSelected = selectedBooks.includes(bookId);
-    let newSelection: number[];
-    
-    if (isSelected) {
-      newSelection = selectedBooks.filter(id => id !== bookId);
-    } else {
-      newSelection = [...selectedBooks, bookId];
-    }
-    
-    onSelectionChange(newSelection);
-  };
-
-  const getTotalWords = () => {
-    return books
-      .filter(book => selectedBooks.includes(book.id))
-      .reduce((total, book) => total + book.wordCount, 0);
-  };
-
-  const getSelectedCount = () => selectedBooks.length;
+/** 选择计划使用的单词本（可多选）：带图标的列表行，勾选后高亮 */
+export const WordBookSelector: React.FC<WordBookSelectorProps> = ({ books, selectedBooks, onSelectionChange, loading = false, onCreateBook }) => {
+  const toggle = (id: number) =>
+    onSelectionChange(selectedBooks.includes(id) ? selectedBooks.filter((b) => b !== id) : [...selectedBooks, id]);
 
   if (loading) {
     return (
-      <div className={styles.section}>
-        <div className={styles.loading}>
-          <i className={`fas fa-spinner ${styles.loadingSpinner}`} />
-          <span>加载单词本...</span>
-        </div>
+      <div className="grid grid-cols-2 gap-2">
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-16 rounded-lg" />
+        ))}
       </div>
     );
   }
 
   if (books.length === 0) {
     return (
-      <div className={styles.section}>
-        <div className={styles.emptyState}>
-          <div className={styles.emptyIcon}>
-            <i className="fas fa-book-open" />
-          </div>
-          <p className={styles.emptyText}>暂无可用的单词本</p>
-        </div>
+      <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center">
+        <BookOpen className="size-5 text-muted-foreground" />
+        <div className="text-sm font-medium">还没有可用的单词本</div>
+        <p className="text-sm text-muted-foreground">计划要从有单词的单词本里选词，先建一个单词本并添加单词</p>
+        {onCreateBook && (
+          <Button size="sm" variant="outline" className="mt-1" onClick={onCreateBook}>
+            <Plus />
+            去新建单词本
+          </Button>
+        )}
       </div>
     );
   }
 
   return (
-    <div className={styles.section}>
-      <div className={styles.header}>
-        <h4 className={styles.title}>选择单词本</h4>
-        <p className={styles.description}>
-          从下列单词本中选择要加入学习计划的内容
-        </p>
-      </div>
-
-      <div className={styles.booksList}>
-        {books.map((book) => {
-          const isSelected = selectedBooks.includes(book.id);
-          
-          return (
-            <div
-              key={book.id}
-              className={`${styles.bookItem} ${isSelected ? styles.selected : ''}`}
-              onClick={() => handleBookToggle(book.id)}
-            >
-              <label className={styles.bookLabel}>
-                <input
-                  type="checkbox"
-                  className={styles.checkbox}
-                  checked={isSelected}
-                  onChange={() => handleBookToggle(book.id)}
-                  onClick={(e) => e.stopPropagation()}
-                />
-                
-                <div className={styles.bookContent}>
-                  <div className={styles.bookHeader}>
-                    <h5 className={styles.bookTitle}>{book.name}</h5>
-                    <span className={styles.wordCount}>
-                      {book.wordCount}个单词
-                    </span>
-                  </div>
-                  <p className={styles.bookDescription}>
-                    {book.description}
-                  </p>
-                </div>
-              </label>
+    <div className="grid grid-cols-2 gap-2">
+      {books.map((book) => {
+        const selected = selectedBooks.includes(book.id);
+        return (
+          <label
+            key={book.id}
+            className={cn(
+              'flex cursor-default items-center gap-3 rounded-lg border p-2.5 transition-colors hover:bg-muted/40',
+              selected && 'border-primary/50 bg-accent/30'
+            )}
+          >
+            <WordBookIcon icon={book.icon} color={book.color} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">{book.name}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {book.wordCount} 个单词{book.description ? ` · ${book.description}` : ''}
+              </div>
             </div>
-          );
-        })}
-      </div>
-
-      {selectedBooks.length > 0 && (
-        <div className={styles.summary}>
-          <h5 className={styles.summaryTitle}>选择统计</h5>
-          <div className={styles.summaryStats}>
-            <div className={styles.statItem}>
-              <span className={styles.statValue}>{getSelectedCount()}</span>
-              <div className={styles.statLabel}>已选单词本</div>
-            </div>
-            <div className={styles.statItem}>
-              <span className={styles.statValue}>{getTotalWords()}</span>
-              <div className={styles.statLabel}>总单词数</div>
-            </div>
-          </div>
-        </div>
-      )}
+            <Checkbox checked={selected} onCheckedChange={() => toggle(book.id)} aria-label={`选择 ${book.name}`} />
+          </label>
+        );
+      })}
     </div>
   );
 };
-
-export default WordBookSelector;

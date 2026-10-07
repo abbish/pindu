@@ -1,1 +1,0 @@
-export { WordDetail, type WordDetailProps, type ExampleSentence } from './WordDetail';

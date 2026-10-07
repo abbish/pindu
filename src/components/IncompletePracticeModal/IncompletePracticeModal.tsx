@@ -1,248 +1,197 @@
-import React from 'react';
-import { Modal } from '../Modal';
-import { type PracticeSession } from '../../types/study';
-import styles from './IncompletePracticeModal.module.css';
+import React, { useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
+import { type PracticeSession } from '@/types/study';
+import {
+  formatActiveTime,
+  lastActiveLabel,
+  practiceProgress,
+  scheduleLabel,
+  scheduleTiming,
+  sortByLastActive,
+} from '@/utils/incompletePractice';
 
 export interface IncompletePracticeModalProps {
   /** 是否显示模态框 */
   isOpen: boolean;
   /** 未完成的练习会话列表 */
   sessions: PracticeSession[];
-  /** 继续练习回调 */
+  /** 继续练习 */
   onContinue: (session: PracticeSession) => void;
-  /** 取消练习回调 */
-  onCancel: (session: PracticeSession) => void;
-  /** 关闭模态框回调 */
+  /** 放弃练习（已经过用户确认；会删除这次练习的作答记录） */
+  onDiscard: (session: PracticeSession) => void;
+  /** 关闭（稍后再说） */
   onClose: () => void;
-  /** 跳过提醒回调 */
-  onSkip: () => void;
 }
 
+const planName = (s: PracticeSession) => s.planTitle || `学习计划 #${s.planId}`;
+
+/** 一次练习的摘要：日程、进度、词数、已练时长与上次练习时间 */
+const SessionSummary: React.FC<{ session: PracticeSession }> = ({ session }) => {
+  const progress = practiceProgress(session);
+  const overdue = scheduleTiming(session.scheduleDate) === 'overdue';
+  const percent = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+  return (
+    <div className="flex flex-col gap-1.5 text-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <span className={cn('text-muted-foreground', overdue && 'font-medium text-warning')}>
+          日程：{scheduleLabel(session.scheduleDate)}
+        </span>
+        <span className="tabular-nums text-muted-foreground">
+          {progress.done > 0 ? `已完成 ${progress.done} / ${progress.total} 题` : `还没作答 · 共 ${progress.total} 题`}
+        </span>
+      </div>
+      {progress.done > 0 && <Progress value={percent} className="h-1.5" aria-label={`已完成 ${percent}%`} />}
+      <span className="text-xs text-muted-foreground">
+        {progress.words} 个词 · 已练 {formatActiveTime(session.activeTime)} ·{' '}
+        {lastActiveLabel(session.updatedAt || session.startTime)}练过
+      </span>
+    </div>
+  );
+};
+
+/** 放弃确认的说明 */
+const discardMessage = (session: PracticeSession) => {
+  const { done } = practiceProgress(session);
+  return done > 0
+    ? `放弃后，这次已做的 ${done} 题作答记录会删除，这个日程需要重新开始。`
+    : '这次还没有作答，放弃后下次从头开始。';
+};
+
 /**
- * 未完成练习提醒模态框
+ * 未完成练习提醒：应用启动后首次进入首页时提示一次。
+ * - 只有一次未完成练习：直接展示摘要；主操作「继续练习」默认聚焦（按 Enter 即继续），「放弃」放在左侧次要位置；
+ * - 有多次：逐条列出（最近练过的在前），每条各自「继续 / 放弃」。
+ * 放弃要再确认一次，确认区默认聚焦「不放弃」。
  */
 export const IncompletePracticeModal: React.FC<IncompletePracticeModalProps> = ({
   isOpen,
   sessions,
   onContinue,
-  onCancel,
+  onDiscard,
   onClose,
-  onSkip
 }) => {
-  // 格式化时间显示
-  const formatTime = (timeString: string) => {
-    const date = new Date(timeString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const continueRef = useRef<HTMLButtonElement>(null);
+  const sorted = sortByLastActive(sessions);
+  const single = sorted.length === 1 ? sorted[0] : null;
+  const confirming = sorted.find(s => s.sessionId === confirmingId) ?? null;
 
-    if (diffDays > 0) {
-      return `${diffDays}天前`;
-    } else if (diffHours > 0) {
-      return `${diffHours}小时前`;
-    } else {
-      return '刚刚';
-    }
+  const discard = (session: PracticeSession) => {
+    setConfirmingId(null);
+    onDiscard(session);
   };
-
-  // 格式化练习时长
-  const formatDuration = (milliseconds: number | null | undefined) => {
-    if (!milliseconds || isNaN(milliseconds)) {
-      return '0分0秒';
-    }
-    const minutes = Math.floor(milliseconds / (1000 * 60));
-    const seconds = Math.floor((milliseconds % (1000 * 60)) / 1000);
-    return `${minutes}分${seconds}秒`;
-  };
-
-  // 格式化日程日期
-  const formatScheduleDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    // 比较日期（忽略时间）
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
-    const tomorrowOnly = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
-
-    if (dateOnly.getTime() === todayOnly.getTime()) {
-      return '今天';
-    } else if (dateOnly.getTime() === yesterdayOnly.getTime()) {
-      return '昨天';
-    } else if (dateOnly.getTime() === tomorrowOnly.getTime()) {
-      return '明天';
-    } else {
-      return date.toLocaleDateString('zh-CN', {
-        month: 'short',
-        day: 'numeric',
-        weekday: 'short'
-      });
-    }
-  };
-
-  // 获取日程状态文本
-  const getScheduleStatusText = (dateString: string) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-    if (dateOnly.getTime() < todayOnly.getTime()) {
-      return '已延期';
-    } else if (dateOnly.getTime() === todayOnly.getTime()) {
-      return '今日计划';
-    } else {
-      return '未来计划';
-    }
-  };
-
-  // 获取日程状态样式类
-  const getScheduleStatusClass = (dateString: string) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-    if (dateOnly.getTime() < todayOnly.getTime()) {
-      return styles.overdue; // 延期 - 红色
-    } else if (dateOnly.getTime() === todayOnly.getTime()) {
-      return styles.today; // 今天 - 绿色
-    } else {
-      return styles.future; // 未来 - 蓝色
-    }
-  };
-
-  if (!isOpen || !sessions || sessions.length === 0) {
-    return null;
-  }
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="发现未完成的练习"
-      size="large"
+    <Dialog
+      open={isOpen && sessions.length > 0}
+      onOpenChange={open => {
+        if (!open) {
+          setConfirmingId(null);
+          onClose();
+        }
+      }}
     >
-      <div className={styles.content}>
-        <div className={styles.header}>
-          <div className={styles.icon}>
-            <i className="fas fa-clock" />
+      <DialogContent
+        className="sm:max-w-md"
+        // 默认聚焦主操作，避免焦点（和 Enter）落在「放弃」上
+        onOpenAutoFocus={e => {
+          if (continueRef.current) {
+            e.preventDefault();
+            continueRef.current.focus();
+          }
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>继续上次的练习？</DialogTitle>
+          <DialogDescription>
+            {single
+              ? `「${planName(single)}」有一次练习还没做完，进度已保存。`
+              : `有 ${sorted.length} 次练习还没做完，进度都已保存。`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {single ? (
+          <div className="rounded-lg bg-muted/50 p-3">
+            <SessionSummary session={single} />
           </div>
-          <div className={styles.message}>
-            <h3 className={styles.title}>您有 {(sessions || []).length} 个未完成的练习</h3>
-            <p className={styles.description}>
-              继续之前的练习可以保持学习连贯性，提高学习效果。
-            </p>
-          </div>
-        </div>
-
-        <div className={styles.sessionList}>
-          {(sessions || []).map((session) => {
-            // 后端通过serde自动转换为camelCase，直接使用即可
-            const sessionId = session.sessionId;
-            const planId = session.planId;
-            const scheduleDate = session.scheduleDate;
-            const startTime = session.startTime;
-            const activeTime = session.activeTime;
-            const pauseCount = session.pauseCount;
-            const wordStates = session.wordStates;
-            const planTitle = session.planTitle || `学习计划 #${planId}`;
-
-            return (
-              <div key={sessionId} className={styles.sessionCard}>
-                <div className={styles.sessionInfo}>
-                  <div className={styles.sessionHeader}>
-                    <h4 className={styles.sessionTitle}>
-                      {planTitle}
-                    </h4>
-                    <span className={styles.sessionTime}>
-                      {formatTime(startTime)}
-                    </span>
-                  </div>
-                
-                <div className={styles.sessionDetails}>
-                  {/* 日程状态和日期 */}
-                  <div className={styles.detailItem}>
-                    <i className={`fas fa-calendar-day ${getScheduleStatusClass(scheduleDate)}`} />
-                    <span>{getScheduleStatusText(scheduleDate)}: {formatScheduleDate(scheduleDate)}</span>
-                  </div>
-
-                  <div className={styles.detailItem}>
-                    <i className="fas fa-clock" />
-                    <span>已练习: {formatDuration(activeTime)}</span>
-                  </div>
-
-                  {pauseCount > 0 && (
-                    <div className={styles.detailItem}>
-                      <i className="fas fa-pause" />
-                      <span>暂停 {pauseCount} 次</span>
-                    </div>
-                  )}
-
-                  <div className={styles.detailItem}>
-                    <i className="fas fa-book" />
-                    <span>单词进度: {wordStates?.length || 0} 个单词</span>
-                  </div>
+        ) : (
+          <ul className="flex max-h-[50vh] flex-col divide-y overflow-y-auto rounded-lg border">
+            {sorted.map((session, index) => (
+              <li key={session.sessionId} className="flex items-center gap-3 p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{planName(session)}</div>
+                  <SessionSummary session={session} />
                 </div>
-              </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Button size="sm" ref={index === 0 ? continueRef : undefined} onClick={() => onContinue(session)}>
+                    继续
+                  </Button>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto px-0 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => setConfirmingId(session.sessionId)}
+                  >
+                    放弃
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
 
-              <div className={styles.sessionActions}>
-                <button
-                  type="button"
-                  className={styles.continueBtn}
-                  onClick={() => onContinue(session)}
-                >
-                  <i className="fas fa-play" />
-                  继续练习
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.cancelBtn}
-                  onClick={() => onCancel(session)}
-                  title="取消这个练习"
-                >
-                  <i className="fas fa-times" />
-                </button>
-              </div>
+        {confirming ? (
+          <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3" role="alert">
+            <p className="text-sm">
+              {!single && <span className="font-medium">「{planName(confirming)}」：</span>}
+              {discardMessage(confirming)}确定放弃吗？
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" autoFocus onClick={() => setConfirmingId(null)}>
+                不放弃
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => discard(confirming)}>
+                确定放弃
+              </Button>
             </div>
-            );
-          })}
-        </div>
-
-        <div className={styles.footer}>
-          <div className={styles.footerActions}>
-            <button
-              type="button"
-              className={styles.skipBtn}
-              onClick={onSkip}
-            >
-              跳过提醒
-            </button>
-
-            <button
-              type="button"
-              className={styles.closeBtn}
-              onClick={onClose}
-            >
-              稍后处理
-            </button>
           </div>
-          
-          <div className={styles.footerNote}>
-            <i className="fas fa-info-circle" />
-            <span>未完成的练习会保存您的进度，可以随时继续。</span>
-          </div>
-        </div>
-      </div>
-    </Modal>
+        ) : (
+          <DialogFooter className="items-center gap-2 sm:justify-between">
+            {single ? (
+              <Button
+                variant="link"
+                size="sm"
+                className="px-0 text-muted-foreground hover:text-destructive"
+                onClick={() => setConfirmingId(single.sessionId)}
+              >
+                放弃这次练习
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">之后也可以在「日历」页继续。</span>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>
+                稍后再说
+              </Button>
+              {single && (
+                <Button ref={continueRef} onClick={() => onContinue(single)}>
+                  继续练习
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 };
-
-export default IncompletePracticeModal;

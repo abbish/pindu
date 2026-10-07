@@ -24,6 +24,8 @@ export interface WordBook {
   deleted_at?: Timestamp;
   status: string;
   theme_tags?: ThemeTag[];
+  /** 词性分布（`get_word_books` 一次带出；其他返回单词本的接口可能没有） */
+  word_types?: WordTypeDistribution | null;
 }
 
 /// 创建单词本请求
@@ -45,10 +47,42 @@ export interface UpdateWordBookRequest {
   theme_tag_ids?: Id[];
 }
 
-/// 单词本查询参数
-export interface WordBookQuery {
-  keyword?: string;
-  icon_color?: string;
+/// 单词例句
+export interface WordExample {
+  /** 英文例句 */
+  sentence: string;
+  /** 中文翻译 */
+  translation: string;
+}
+
+/// AI 老师对话中的一条消息
+export interface ChatTurn {
+  /** student / teacher */
+  role: 'student' | 'teacher';
+  content: string;
+}
+
+/// 向 AI 老师提问
+export interface WordTutorRequest {
+  wordId: Id;
+  /** 之前的对话（按时间顺序） */
+  history: ChatTurn[];
+  /** 本次问题 */
+  question: string;
+  /** 流式增量事件用于区分请求 */
+  requestId: string;
+  modelId?: Id;
+}
+
+/// 单词讲解（agent 生成的 Markdown，按单词缓存）
+export interface WordExplanation {
+  word_id: Id;
+  /** Markdown 正文 */
+  content: string;
+  /** 生成所用模型 */
+  model_name?: string | null;
+  /** 最近生成时间 */
+  updated_at: string;
 }
 
 /// 单词
@@ -71,6 +105,8 @@ export interface Word {
   pos_chinese?: string;
   phonics_rule?: string;
   analysis_explanation?: string;
+  /** 例句（按顺序，第一句最简单） */
+  examples?: WordExample[];
   created_at: Timestamp;
   updated_at: Timestamp;
 }
@@ -91,6 +127,8 @@ export interface CreateWordRequest {
   pos_chinese?: string;
   phonics_rule?: string;
   analysis_explanation?: string;
+  /** 例句 */
+  examples?: WordExample[];
 }
 
 /// 更新单词请求
@@ -109,6 +147,8 @@ export interface UpdateWordRequest {
   pos_chinese?: string;
   phonics_rule?: string;
   analysis_explanation?: string;
+  /** 例句（传入则整体替换） */
+  examples?: WordExample[];
 }
 
 /// 单词查询参数
@@ -117,17 +157,6 @@ export interface WordQuery {
   difficulty_level?: number;
   category_id?: Id;
   part_of_speech?: string;
-}
-
-/// 单词分类
-export interface Category {
-  id: Id;
-  name: string;
-  description?: string;
-  color: string;
-  icon: string;
-  word_count: number;
-  created_at: Timestamp;
 }
 
 /// 单词本统计
@@ -145,20 +174,12 @@ export interface WordTypeDistribution {
   others: number;
 }
 
-/// 批量导入单词请求
-export interface ImportWordsRequest {
-  book_id: Id;
-  words: CreateWordRequest[];
-  overwrite_existing: boolean;
-}
-
 /// AI分析的单词信息
 export interface AnalyzedWord {
   word: string;
   meaning: string;
   phonetic?: string;
   part_of_speech?: string;
-  example_sentence?: string;
   // 新增自然拼读分析字段
   ipa?: string;
   syllables?: string;
@@ -167,26 +188,8 @@ export interface AnalyzedWord {
   pos_chinese?: string;
   phonics_rule?: string;
   analysis_explanation?: string;
-}
-
-/// 文本分析结果
-export interface TextAnalysisResult {
-  words: AnalyzedWord[];
-  total_count: number;
-  difficulty_distribution: Record<number, number>;
-  suggested_title: string;
-  suggested_description: string;
-}
-
-/// 从分析结果创建单词本的请求
-export interface CreateWordBookFromAnalysisRequest {
-  title: string;
-  description: string;
-  icon?: string;
-  icon_color?: string;
-  words: AnalyzedWord[];
-  status?: string;
-  book_id?: Id; // 如果提供，则向现有单词本添加单词；否则创建新单词本
+  /** 例句（分析结果，至少 5 条） */
+  examples?: WordExample[];
 }
 
 /// 单词保存结果统计
@@ -200,27 +203,12 @@ export interface WordSaveResult {
 /// 单词提取模式
 export type WordExtractionMode = 'all' | 'focus';
 
-/// 分析进度状态
-export interface AnalysisProgress {
+/// 学习计划规划进度（对应 Rust `planning_progress::PlanningProgressState`）
+export interface PlanningProgressState {
   status: string;           // "analyzing", "completed", "error"
   current_step: string;     // 当前步骤描述
   chunks_received: number;  // 已接收的chunk数量
   total_chars: number;      // 已接收的总字符数
   elapsed_seconds: number;  // 已用时间（秒）
   error_message?: string;   // 错误信息
-}
-
-/// 单词本统计
-export interface WordBookStatistics {
-  total_books: number;
-  total_words: number;
-  word_types: WordTypeDistribution;
-}
-
-/// 单词类型分布
-export interface WordTypeDistribution {
-  nouns: number;
-  verbs: number;
-  adjectives: number;
-  others: number;
 }

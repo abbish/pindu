@@ -1,1 +1,0 @@
-export { StudyHeader, type StudyHeaderProps } from './StudyHeader';

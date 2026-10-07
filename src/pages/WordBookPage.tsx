@@ -1,354 +1,303 @@
-import React, { useState, useEffect } from 'react';
-import styles from './WordBookPage.module.css';
-import { 
-  Header, 
-  Breadcrumb,
-  Button,
-  WordBookStats,
-  WordBookFilter,
-  WordBookCard
-} from '../components';
-import type { 
-  FilterOptions,
-  WordBookStatistics
-} from '../components';
-import type { WordBook } from '../components/WordBookCard/WordBookCard';
-import { WordBookService } from '../services/wordbookService';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BookOpen, Library, Plus, Search, SearchX, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { WordBookFormDialog } from '@/components/WordBookFormDialog/WordBookFormDialog';
+import { MetricCard } from '@/components/MetricCard/MetricCard';
+import { PageHeader } from '@/components/PageHeader/PageHeader';
+import { WordBookSummaryCard } from '@/components/WordBookSummaryCard/WordBookSummaryCard';
+import { useToast } from '@/components/Toast/ToastContainer';
+import { wordBookService } from '@/services/wordbookService';
+import { instantMs } from '@/utils/datetime';
+import type { ThemeTag, WordBook as DbWordBook } from '@/types';
+import type { NavigateFn } from '@/navigation';
+import { PageError } from '@/components/PageError';
+import { messageOf } from '@/utils/errorHandler';
 
 export interface WordBookPageProps {
   /** Navigation handler */
-  onNavigate?: (page: string, params?: any) => void;
+  onNavigate?: NavigateFn;
+}
+
+interface BookItem extends DbWordBook {
+  wordTypes: { nouns: number; verbs: number; adjectives: number; others: number };
+}
+
+interface Filters {
+  /** 搜索关键词（前端按名称、描述过滤） */
+  searchTerm: string;
+  /** 主题标签 ID，'all' 为不限 */
+  theme: string;
+  /** 状态（后端过滤），'all' 为不限 */
+  status: string;
+  /** 排序 */
+  sortBy: string;
+}
+
+const DEFAULT_FILTERS: Filters = { searchTerm: '', theme: 'all', status: 'all', sortBy: 'default' };
+
+const STATUS_OPTIONS = [
+  { value: 'all', label: '所有状态' },
+  { value: 'normal', label: '正常' },
+  { value: 'deleted', label: '已删除' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'default', label: '默认排序' },
+  { value: 'created_time', label: '按创建时间' },
+  { value: 'word_count', label: '按单词数量' },
+];
+
+interface PageData {
+  stats: { totalBooks: number; totalWords: number; nouns: number; verbs: number; adjectives: number };
+  books: BookItem[];
 }
 
 /**
- * 单词本页面组件
+ * 单词本列表（shadcn，外壳由 AppShell 提供）：统计 + 搜索 / 主题 / 状态 / 排序 + 单词本卡片。
+ * 功能清单见 .claude/work/ui-shadcn-migration/feature-inventory.md §5。
  */
-export const WordBookPage: React.FC<WordBookPageProps> = ({ 
-  onNavigate 
-}) => {
-  const [stats, setStats] = useState<WordBookStatistics | null>(null);
-  const [books, setBooks] = useState<WordBook[]>([]);
-  const [filteredBooks, setFilteredBooks] = useState<WordBook[]>([]);
-  const [filters, setFilters] = useState<FilterOptions>({
-    searchTerm: '',
-    theme: '',
-    status: '',
-    sortBy: ''
-  });
-
+export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
+  const toast = useToast();
+  const [creatingBook, setCreatingBook] = useState(false);
+  const [data, setData] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [themes, setThemes] = useState<ThemeTag[]>([]);
+  const [themesLoading, setThemesLoading] = useState(true);
 
-  useEffect(() => {
-    loadWordBookData();
-  }, []);
-
-  useEffect(() => {
-    loadWordBookData();
-  }, [filters.status]);
-
-  useEffect(() => {
-    filterAndSortBooks();
-  }, [books, filters]);
-
-  const loadWordBookData = async () => {
+  const loadWordBookData = useCallback(async (status: string) => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
 
-      const wordBookService = new WordBookService();
-
-      // 先更新所有单词本的单词数量
-      await wordBookService.updateAllWordBookCounts();
-
-      // 根据状态过滤器决定是否包含已删除的单词本
-      const includeDeleted = filters.status === 'deleted' || filters.status === '';
-
-      // 确定传递给后端的状态参数
-      let statusParam: string | undefined = undefined;
-      if (filters.status && filters.status !== '') {
-        statusParam = filters.status;
-      }
-
-      // 使用真实API获取数据
+      // “所有状态”不含已删除的单词本，已删除的只在“已删除”筛选里看
+      const includeDeleted = status === 'deleted';
       const [statsResult, booksResult] = await Promise.all([
         wordBookService.getWordBookStatistics(),
-        wordBookService.getAllWordBooks(includeDeleted, statusParam)
+        wordBookService.getAllWordBooks(includeDeleted, status === 'all' ? undefined : status),
       ]);
+      if (!statsResult.success) throw new Error(statsResult.error);
+      if (!booksResult.success) throw new Error(booksResult.error);
 
-      if (!statsResult.success) {
-        throw new Error(statsResult.error || '获取统计数据失败');
-      }
-      if (!booksResult.success) {
-        throw new Error(booksResult.error || '获取单词本列表失败');
-      }
+      // 词性分布由单词本列表一次带出（不再逐本请求统计）
+      const books = booksResult.data.map(book => ({
+        ...book,
+        wordTypes: book.word_types ?? { nouns: 0, verbs: 0, adjectives: 0, others: 0 },
+      }));
 
-      const statsData = statsResult.data;
-      const booksData = booksResult.data;
-
-      // Convert database types to component types and fetch word type statistics for each book
-      const convertedBooks: WordBook[] = await Promise.all(
-        booksData.map(async (dbBook: any) => {
-          // 获取每个单词本的词性统计
-          let wordTypes = {
-            nouns: 0,
-            verbs: 0,
-            adjectives: 0,
-            others: 0
-          };
-
-          try {
-            const statsResult = await wordBookService.getWordBookTypeStatistics(dbBook.id);
-            if (statsResult.success && statsResult.data) {
-              wordTypes = {
-                nouns: statsResult.data.nouns,
-                verbs: statsResult.data.verbs,
-                adjectives: statsResult.data.adjectives,
-                others: statsResult.data.others
-              };
-            }
-          } catch (error) {
-            console.warn(`获取单词本 ${dbBook.id} 的统计信息失败:`, error);
-            // 保持默认的0值
-          }
-
-          return {
-            id: dbBook.id,
-            title: dbBook.title,
-            description: dbBook.description,
-            icon: dbBook.icon,
-            iconColor: dbBook.icon_color as any,
-            totalWords: dbBook.total_words,
-            linkedPlans: dbBook.linked_plans,
-            wordTypes,
-            createdAt: dbBook.created_at,
-            lastUsed: dbBook.last_used,
-            deletedAt: dbBook.deleted_at,
-            status: dbBook.status as 'normal' | 'draft' | 'deleted'
-          };
-        })
-      );
-
-      // Convert stats as well
-      const convertedStats: WordBookStatistics = {
-        totalBooks: statsData.total_books,
-        totalWords: statsData.total_words,
-        nouns: statsData.word_types.nouns,
-        verbs: statsData.word_types.verbs,
-        adjectives: statsData.word_types.adjectives
-      };
-
-      setStats(convertedStats);
-      setBooks(convertedBooks);
+      const s = statsResult.data;
+      setData({
+        stats: {
+          totalBooks: s.total_books,
+          totalWords: s.total_words,
+          nouns: s.word_types.nouns,
+          verbs: s.word_types.verbs,
+          adjectives: s.word_types.adjectives,
+        },
+        books,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载单词本数据失败');
+      setError(messageOf(err) ?? '请重试');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const filterAndSortBooks = () => {
-    let filtered = [...books];
-
-    // Apply search filter
-    if (filters.searchTerm) {
-      const searchLower = filters.searchTerm.toLowerCase();
-      filtered = filtered.filter(book => 
-        book.title.toLowerCase().includes(searchLower) ||
-        book.description.toLowerCase().includes(searchLower)
-      );
+  const handleRestore = async (id: number) => {
+    const result = await wordBookService.restoreWordBook(id);
+    if (!result.success) {
+      toast.showError('无法恢复单词本', result.error);
+      return;
     }
-
-    // Apply theme filter
-    if (filters.theme) {
-      const themeId = parseInt(filters.theme);
-      filtered = filtered.filter(book => {
-        const bookWithTags = book as any;
-        return bookWithTags.theme_tags && bookWithTags.theme_tags.some((tag: any) => tag.id === themeId);
-      });
-    }
-
-    // Apply status filter (simplified - would need status field in VocabularyBook)
-    if (filters.status) {
-      // This would need proper implementation based on your status logic
-      console.log('Status filter:', filters.status);
-    }
-
-    // Apply sorting
-    if (filters.sortBy) {
-      switch (filters.sortBy) {
-        case 'created_time':
-          filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          break;
-        case 'word_count':
-          filtered.sort((a, b) => b.totalWords - a.totalWords);
-          break;
-        case 'completion':
-          // Would need completion percentage in WordBook
-          console.log('Completion sort not implemented');
-          break;
-        default:
-          break;
-      }
-    }
-
-    setFilteredBooks(filtered);
+    const title = data?.books.find((b) => b.id === id)?.title;
+    toast.showSuccess(title ? `已恢复「${title}」` : '已恢复单词本');
+    loadWordBookData(filters.status);
   };
 
-  const handleNavChange = (nav: string) => {
-    onNavigate?.(nav);
-  };
+  // 状态筛选走后端，变化时重新加载
+  useEffect(() => {
+    loadWordBookData(filters.status);
+  }, [filters.status, loadWordBookData]);
 
-  const handleBreadcrumbClick = (page: string) => {
-    onNavigate?.(page);
-  };
-
-  const handleFilterChange = (newFilters: FilterOptions) => {
-    setFilters(newFilters);
-  };
-
-  const handleFilterReset = () => {
-    setFilters({
-      searchTerm: '',
-      theme: '',
-      status: '',
-      sortBy: ''
+  // 主题标签
+  useEffect(() => {
+    wordBookService.getThemeTags().then((result) => {
+      if (result.success) setThemes(result.data);
+      setThemesLoading(false);
     });
-  };
+  }, []);
 
-  const handleCreateWordBook = () => {
-    onNavigate?.('create-wordbook');
-  };
+  const filteredBooks = useMemo(() => {
+    let books = [...(data?.books ?? [])];
+    if (filters.searchTerm) {
+      const q = filters.searchTerm.toLowerCase();
+      books = books.filter((b) => b.title.toLowerCase().includes(q) || (b.description ?? '').toLowerCase().includes(q));
+    }
+    if (filters.theme !== 'all') {
+      const themeId = Number(filters.theme);
+      books = books.filter((b) => b.theme_tags?.some((t) => t.id === themeId) ?? false);
+    }
+    if (filters.sortBy === 'created_time') {
+      books.sort((a, b) => instantMs(b.created_at) - instantMs(a.created_at));
+    } else if (filters.sortBy === 'word_count') {
+      books.sort((a, b) => b.total_words - a.total_words);
+    }
+    return books;
+  }, [data, filters]);
 
-  const handleBookClick = (book: WordBook) => {
-    onNavigate?.('wordbook-detail', { id: book.id });
-  };
+  const activeFilterCount =
+    (filters.searchTerm ? 1 : 0) + (filters.theme !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0) + (filters.sortBy !== 'default' ? 1 : 0);
+  const isFiltering = Boolean(filters.searchTerm) || filters.theme !== 'all' || filters.status !== 'all';
+  const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => setFilters((f) => ({ ...f, [key]: value }));
 
+  const stats = data?.stats;
+  const metrics = [
+    { label: '单词本总数', value: stats?.totalBooks ?? 0, unit: '本', icon: Library },
+    { label: '单词总数', value: stats?.totalWords ?? 0, unit: '个', icon: BookOpen },
+    { label: '名词', value: stats?.nouns ?? 0, unit: '个' },
+    { label: '动词', value: stats?.verbs ?? 0, unit: '个' },
+    { label: '形容词', value: stats?.adjectives ?? 0, unit: '个' },
+  ];
 
+  const createAction = (
+    <Button onClick={() => setCreatingBook(true)}>
+      <Plus />
+      创建单词本
+    </Button>
+  );
 
-  if (loading) {
+  if (error && !data) {
     return (
-      <div className={styles.page}>
-        <Header activeNav="wordbooks" onNavChange={handleNavChange} />
-        <main className={styles.main}>
-          <div className={styles.loading}>
-            <i className={`fas fa-spinner ${styles.loadingSpinner}`} />
-            <span>加载中...</span>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  if (error || !stats) {
-    return (
-      <div className={styles.page}>
-        <Header activeNav="wordbooks" onNavChange={handleNavChange} />
-        <main className={styles.main}>
-          <div className={styles.error}>
-            <div className={styles.errorIcon}>
-              <i className="fas fa-exclamation-triangle" />
-            </div>
-            <p className={styles.errorText}>{error || '加载数据失败'}</p>
-            <div className={styles.errorActions}>
-              <Button onClick={loadWordBookData}>重试</Button>
-              <Button variant="secondary" onClick={() => onNavigate?.('home')}>
-                返回首页
-              </Button>
-            </div>
-          </div>
-        </main>
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
+        <PageHeader title="我的单词本" description="管理和学习你的单词收藏" actions={createAction} />
+        <PageError title="无法加载单词本" message={error} onRetry={() => loadWordBookData(filters.status)} />
       </div>
     );
   }
 
   return (
-    <div className={styles.page}>
-      <Header activeNav="wordbooks" onNavChange={handleNavChange} />
-      
-      <main className={styles.main}>
-        {/* Breadcrumb */}
-        <Breadcrumb
-          items={[
-            { label: '首页', key: 'home', icon: 'home' }
-          ]}
-          current="单词本"
-          onNavigate={handleBreadcrumbClick}
-        />
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
+      <PageHeader title="我的单词本" description="管理和学习你的单词收藏" actions={createAction} />
 
-        {/* Page Header */}
-        <section className={styles.pageHeader}>
-          <div className={styles.headerContent}>
-            <div className={styles.headerInfo}>
-              <h2 className={styles.pageTitle}>我的单词本</h2>
-              <p className={styles.pageDescription}>管理和学习你的单词收藏</p>
-            </div>
-            <div className={styles.headerActions}>
-              <Button
-                variant="primary"
-                onClick={handleCreateWordBook}
-              >
-                <i className="fas fa-plus" style={{ marginRight: '8px' }} />
-                创建单词本
-              </Button>
-            </div>
-          </div>
-        </section>
+      <section aria-label="单词本统计" className="grid grid-cols-5 gap-3">
+        {metrics.map((m) => (
+          <MetricCard key={m.label} {...m} loading={loading && !data} />
+        ))}
+      </section>
 
-        {/* Statistics Cards */}
-        <WordBookStats stats={stats} loading={false} />
-
-        {/* Filter and Search */}
-        <WordBookFilter
-          filters={filters}
-          onFilterChange={handleFilterChange}
-          onReset={handleFilterReset}
-          loading={false}
-        />
-
-
-
-        {/* Word Books Grid */}
-        <section className={styles.booksSection}>
-          {filteredBooks.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}>
-                <i className="fas fa-book" />
-              </div>
-              <h3 className={styles.emptyTitle}>
-                {filters.searchTerm || filters.theme || filters.status ? '没有找到匹配的单词本' : '还没有单词本'}
-              </h3>
-              <p className={styles.emptyDescription}>
-                {filters.searchTerm || filters.theme || filters.status 
-                  ? '尝试调整筛选条件或搜索关键词' 
-                  : '创建你的第一个单词本开始学习吧'
-                }
-              </p>
-              {!(filters.searchTerm || filters.theme || filters.status) && (
-                <Button
-                  variant="primary"
-                  onClick={handleCreateWordBook}
-                >
-                  <i className="fas fa-plus" style={{ marginRight: '8px' }} />
-                  创建单词本
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className={styles.booksGrid}>
-              {filteredBooks.map(book => (
-                <WordBookCard
-                  key={book.id}
-                  book={book}
-                  onClick={handleBookClick}
-                />
-              ))}
-            </div>
+      {/* 工具栏：搜索 + 主题 + 状态 + 排序 + 重置 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-72">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={filters.searchTerm}
+            onChange={(e) => setFilter('searchTerm', e.target.value)}
+            placeholder="搜索单词本..."
+            aria-label="搜索单词本"
+            className="px-8"
+          />
+          {filters.searchTerm && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-1/2 right-1 size-7 -translate-y-1/2"
+              aria-label="清除搜索"
+              onClick={() => setFilter('searchTerm', '')}
+            >
+              <X />
+            </Button>
           )}
-        </section>
-      </main>
+        </div>
+        <Select value={filters.theme} onValueChange={(v) => setFilter('theme', v)} disabled={themesLoading}>
+          <SelectTrigger className="w-36" aria-label="主题标签">
+            <SelectValue placeholder={themesLoading ? '加载主题…' : '所有主题'} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">所有主题</SelectItem>
+            {themes.map((t) => (
+              <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filters.status} onValueChange={(v) => setFilter('status', v)}>
+          <SelectTrigger className="w-32" aria-label="状态">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {STATUS_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filters.sortBy} onValueChange={(v) => setFilter('sortBy', v)}>
+          <SelectTrigger className="w-36" aria-label="排序">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {activeFilterCount > 0 && (
+          <Button variant="ghost" onClick={() => setFilters(DEFAULT_FILTERS)}>
+            重置
+            <Badge variant="secondary" className="tabular-nums">{activeFilterCount}</Badge>
+          </Button>
+        )}
+        {!loading && (
+          <span className="ml-auto text-sm text-muted-foreground tabular-nums">共 {filteredBooks.length} 本</span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-3 gap-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-48 rounded-xl" />)}
+        </div>
+      ) : filteredBooks.length === 0 ? (
+        isFiltering ? (
+          <EmptyState icon={<SearchX />} title="没有找到匹配的单词本" description="尝试调整筛选条件或搜索关键词" />
+        ) : (
+          <EmptyState
+            icon={<BookOpen />}
+            title="还没有单词本"
+            description="创建你的第一个单词本开始学习吧"
+            action="创建单词本"
+            actionIcon={<Plus />}
+            onAction={() => setCreatingBook(true)}
+          />
+        )
+      ) : (
+        <div className="grid grid-cols-3 gap-3">
+          {filteredBooks.map((book) => (
+            <WordBookSummaryCard
+              key={book.id}
+              title={book.title}
+              description={book.description}
+              totalWords={book.total_words || 0}
+              linkedPlans={book.linked_plans || 0}
+              wordTypes={book.wordTypes}
+              createdAt={book.created_at}
+              lastUsed={book.last_used}
+              icon={book.icon}
+              iconColor={book.icon_color}
+              status={book.deleted_at ? 'deleted' : book.status}
+              // 已删除的单词本没有详情页：只能恢复
+              onOpen={() => {
+                if (!book.deleted_at) onNavigate?.('wordbook-detail', { id: book.id });
+              }}
+              onRestore={book.deleted_at ? () => handleRestore(book.id) : undefined}
+            />
+          ))}
+        </div>
+      )}
+      <WordBookFormDialog isOpen={creatingBook} onClose={() => setCreatingBook(false)} onSaved={(id) => onNavigate?.('wordbook-detail', { id })} />
     </div>
   );
 };
-
-export default WordBookPage;

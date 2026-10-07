@@ -1,344 +1,542 @@
-import React, { useState, useEffect } from 'react';
-import styles from './CreatePlanPage.module.css';
-import { 
-  Header, 
-  Breadcrumb,
-  Button, 
-  FormInput,
-  WordBookSelector,
-  PlanPreview
-} from '../components';
-import type { PlanFormData, WordBookOption } from '../components';
-import { WordBookService } from '../services/wordbookService';
-import { StudyService } from '../services/studyService';
-import { useAsyncData } from '../hooks/useAsyncData';
-import { showErrorMessage } from '../utils/errorHandler';
+import React, { useEffect, useRef, useState } from 'react';
+import { CalendarDays, Clock, FileText, Loader2, RotateCw, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useToast } from '@/components/Toast/ToastContainer';
+import { PlanningProgress } from '@/components/PlanningProgress';
+import { WordBookSelector, type WordBookOption } from '@/components/WordBookSelector';
+import { PageHeader } from '@/components/PageHeader/PageHeader';
+import { wordBookService } from '@/services/wordbookService';
+import { studyService } from '@/services/studyService';
+import { passageService } from '@/services/passageService';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import { addLocalDays, localToday } from '@/utils/datetime';
+import { CONSOLIDATION_DAYS, DAILY_NEW_WORDS_OPTIONS, DEFAULT_DAILY_NEW_WORDS, estimatePlan } from '@/utils/planParams';
+import type { PracticeContent, StudyPlanAIResult } from '@/types';
+import type { PlanPassageCandidate } from '@/types/passage';
+import {
+  DEFAULT_PASSAGE_INTERVAL,
+  PASSAGE_INTERVAL_OPTIONS,
+  PlanPassagePicker,
+  intervalLabel,
+  toPassageInputs,
+  type PlanPassageDraft,
+} from '@/components/PlanPassagePicker';
+import type { NavigateFn } from '@/navigation';
+import { PageError } from '@/components/PageError';
+import { messageOf } from '@/utils/errorHandler';
+import { InlineError } from '@/components/InlineError';
 
 export interface CreatePlanPageProps {
   /** Navigation handler */
-  onNavigate?: (page: string) => void;
+  onNavigate?: NavigateFn;
 }
 
+/** 创建过程：idle 填写中 → planning AI 排序中 → failed AI 失败（可改用默认顺序）→ saving 保存中 */
+type Phase = 'idle' | 'planning' | 'failed' | 'saving';
+
+/** 预览里展示的天数 */
+const PREVIEW_DAYS = 3;
+const PREVIEW_WORDS_PER_DAY = 10;
+
+/** 没填名称时按所选单词本（只练短文时按短文）生成 */
+const autoName = (books: WordBookOption[], passages: PlanPassageDraft[]) => {
+  if (books.length > 0) return books.length === 1 ? `${books[0].name} 学习计划` : `${books[0].name} 等 ${books.length} 本学习计划`;
+  if (passages.length > 0) return passages.length === 1 ? `「${passages[0].title}」阅读计划` : `${passages[0].title} 等 ${passages.length} 篇阅读计划`;
+  return '';
+};
+
+const CONTENT_OPTIONS: { value: PracticeContent; label: string; hint: string }[] = [
+  { value: 'words', label: '单词', hint: '按每天的新词数学单词，系统自动安排复习' },
+  { value: 'both', label: '单词 + 短文', hint: '学单词的同时，隔几天读一篇短文、做阅读理解' },
+  { value: 'passages', label: '短文', hint: '只读短文、做阅读理解，不学单词' },
+];
+
 /**
- * Create Study Plan page component
+ * 创建学习计划（单页：左边填写、右边即时预览，DECISIONS D20 / authoring-flows-redesign B4）：
+ * 选单词本 → 每天新词数 → 是否用 AI 排学习顺序 → 名称与描述；右侧按确定性规则即时显示总词数、天数与前几天的新词。
+ * 创建后为“待开始”，第一次练习的那天算第 1 天。AI 排序可取消；失败时可以改用默认顺序直接创建。
  */
 export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) => {
-  const [formData, setFormData] = useState<PlanFormData>({
-    name: '',
-    description: '',
-    startDate: '',
-    endDate: '',
-    selectedBooks: []
-  });
-
-  const wordBookService = new WordBookService();
-  const studyService = new StudyService();
-  const { data: rawWordBooks, loading, error: loadError, refresh } = useAsyncData(async () => {
-    const result = await wordBookService.getAllWordBooks();
-    if (result.success) {
-      return result.data;
-    } else {
-      throw new Error(result.error || '获取单词本列表失败');
-    }
-  });
-  const [creating, setCreating] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const toast = useToast();
+  const [content, setContent] = useState<PracticeContent>('words');
+  const [passages, setPassages] = useState<PlanPassageDraft[]>([]);
+  const [passageInterval, setPassageInterval] = useState(DEFAULT_PASSAGE_INTERVAL);
+  const [candidates, setCandidates] = useState<PlanPassageCandidate[] | null>(null);
+  const [selectedBooks, setSelectedBooks] = useState<number[]>([]);
+  const [dailyNewWords, setDailyNewWords] = useState(DEFAULT_DAILY_NEW_WORDS);
+  const [useAi, setUseAi] = useState(true);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [, setCreatedPlanId] = useState<number | null>(null);
+  const [preview, setPreview] = useState<StudyPlanAIResult | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
+  const { data: rawBooks, loading: loadingBooks, error: loadError, refresh: reloadBooks } = useAsyncData(async () => {
+    const result = await wordBookService.getAllWordBooks();
+    // 空单词本不能用于计划
+    if (result.success) return result.data.filter((b) => b.status === 'normal' && b.total_words > 0);
+    throw new Error(result.error);
+  });
+  const wordBooks: WordBookOption[] = (rawBooks ?? []).map((b) => ({
+    id: b.id,
+    name: b.title,
+    description: b.description,
+    wordCount: b.total_words,
+    icon: b.icon,
+    color: b.icon_color,
+  }));
+  const withWords = content !== 'passages';
+  const withPassages = content !== 'words';
+  const chosenBooks = withWords ? wordBooks.filter((b) => selectedBooks.includes(b.id)) : [];
+  const suggestedName = autoName(chosenBooks, passages);
+  const planName = name.trim() || suggestedName;
+  const busy = phase === 'planning' || phase === 'saving';
+  const dailyHint = DAILY_NEW_WORDS_OPTIONS.find((o) => o.value === dailyNewWords)?.hint;
+
+  // 可加入的短文：按与所选单词本的相关度排序（只练短文时不看单词本）
+  const candidateBookIds = withWords ? selectedBooks : [];
+  const candidateKey = candidateBookIds.join(',');
   useEffect(() => {
-    setDefaultDates();
-  }, []);
-
-  // Convert database word books to component format
-  const wordBooks: WordBookOption[] = (rawWordBooks && Array.isArray(rawWordBooks)) ? rawWordBooks.map(book => ({
-    id: book.id,
-    name: book.title,
-    description: book.description,
-    wordCount: book.total_words,
-    category: book.icon_color // Using icon_color as category for now
-  })) : [];
-
-  const setDefaultDates = () => {
-    const today = new Date();
-    const nextMonth = new Date(today);
-    nextMonth.setMonth(today.getMonth() + 1);
-    
-    setFormData(prev => ({
-      ...prev,
-      startDate: today.toISOString().split('T')[0],
-      endDate: nextMonth.toISOString().split('T')[0]
-    }));
-  };
-
-  const handleInputChange = (field: keyof PlanFormData) => (value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const handleBooksChange = (selectedIds: number[]) => {
-    setFormData(prev => ({
-      ...prev,
-      selectedBooks: selectedIds
-    }));
-  };
-
-  const handleNavChange = (nav: string) => {
-    onNavigate?.(nav);
-  };
-
-  const handleBack = () => {
-    onNavigate?.('plans');
-  };
-
-  const handleBreadcrumbClick = (page: string) => {
-    onNavigate?.(page);
-  };
-
-  const canCreatePlan = () => {
-    return (
-      formData.name.trim() !== '' &&
-      formData.startDate !== '' &&
-      formData.endDate !== '' &&
-      formData.selectedBooks.length > 0 &&
-      new Date(formData.endDate) > new Date(formData.startDate)
-    );
-  };
-
-  const handleCreatePlan = async () => {
-    if (!canCreatePlan()) return;
-
-    try {
-      setCreating(true);
-      setError(null);
-
-      // Collect all words from selected books
-      const allWordIds: number[] = [];
-      for (const bookId of formData.selectedBooks) {
-        const result = await wordBookService.getWordsByBookId(bookId);
-        if (result.success && result.data) {
-          allWordIds.push(...result.data.data.map(word => word.id));
-        }
+    if (!withPassages) return;
+    let stale = false;
+    passageService.getPlanPassageCandidates({ bookIds: candidateKey ? candidateKey.split(',').map(Number) : [] }).then((result) => {
+      if (stale) return;
+      if (result.success) setCandidates(result.data);
+      else {
+        setCandidates([]);
+        toast.showError('无法加载短文库', result.error);
       }
-
-      if (allWordIds.length === 0) {
-        throw new Error('所选单词本中没有单词，请选择包含单词的单词本');
-      }
-
-      // Create the study plan using real API
-      const createRequest = {
-        name: formData.name.trim(),
-        description: formData.description?.trim() || '',
-        word_ids: allWordIds,
-        mastery_level: 1, // Default mastery level
-      };
-
-      console.log('Creating study plan:', createRequest);
-      const planResult = await studyService.createStudyPlan(createRequest);
-
-      if (planResult.success) {
-        console.log('Created plan with ID:', planResult.data);
-        setCreatedPlanId(planResult.data);
-        setSuccess(true);
-      } else {
-        throw new Error(planResult.error || '创建学习计划失败');
-      }
-    } catch (err) {
-      console.error('Failed to create study plan:', err);
-      setError(err instanceof Error ? err.message : '创建计划失败');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleSaveDraft = async () => {
-    try {
-      // TODO: Implement save draft functionality
-      console.log('Saving draft:', formData);
-      // Show success message
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '保存草稿失败');
-    }
-  };
-
-  const handleStartStudy = () => {
-    // Navigate to the newly created plan
-    onNavigate?.('plans');
-  };
-
-  const handleCreateAnother = () => {
-    setSuccess(false);
-    setCreatedPlanId(null);
-    setError(null);
-    setFormData({
-      name: '',
-      description: '',
-      startDate: '',
-      endDate: '',
-      selectedBooks: []
     });
-    setDefaultDates();
+    return () => {
+      stale = true;
+    };
+  }, [withPassages, candidateKey, toast]);
+
+  // 即时预览：单词本或每天新词数变化后 200ms 请求一次（去重后的真实词数与天数）
+  useEffect(() => {
+    if (!withWords || selectedBooks.length === 0) {
+      setPreview(null);
+      setPreviewError(null);
+      setPreviewLoading(false);
+      return;
+    }
+    let stale = false;
+    setPreviewLoading(true);
+    const timer = window.setTimeout(async () => {
+      const result = await studyService.previewStudyPlan(selectedBooks, dailyNewWords);
+      if (stale) return;
+      setPreviewLoading(false);
+      if (result.success) {
+        setPreview(result.data);
+        setPreviewError(null);
+      } else {
+        setPreview(null);
+        setPreviewError(result.error);
+      }
+    }, 200);
+    return () => {
+      stale = true;
+      window.clearTimeout(timer);
+    };
+  }, [withWords, selectedBooks, dailyNewWords]);
+
+  // 离开页面时若仍在 AI 排序：前端中止 + 通知后端取消（否则 AI 会在后台继续运行、消耗额度）
+  useEffect(
+    () => () => {
+      const controller = abortRef.current;
+      if (controller && !controller.signal.aborted) {
+        controller.abort();
+        // 已离开页面：取消失败也无处提示，后端会在任务结束时自行清理
+        wordBookService.cancelAnalysis().then(() => wordBookService.clearAnalysisProgress());
+      }
+    },
+    []
+  );
+
+  const stopPlanning = async () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    const cancelled = await wordBookService.cancelAnalysis();
+    if (!cancelled.success) toast.showWarning('AI 排序可能还在后台运行', cancelled.error);
+    await wordBookService.clearAnalysisProgress();
+    setPhase('idle');
   };
 
-  if (loadError && !loading) {
+  /** 排日程（AI 或默认顺序）→ 保存为“待开始”→ 进入计划详情 */
+  const passageFields = () =>
+    withPassages ? { passages: toPassageInputs(passages), passageIntervalDays: passageInterval } : {};
+
+  const finish = (planId: number) => {
+    toast.showSuccess(`已创建「${planName}」`, '第一次练习的那天就是第 1 天');
+    abortRef.current = null;
+    onNavigate?.('plan-detail', { planId });
+  };
+
+  /** 只练短文：没有单词日程，直接保存 */
+  const createPassagesOnly = async () => {
+    if (!planName || passages.length === 0) return;
+    setError(null);
+    setPhase('saving');
+    const startDate = localToday();
+    const saved = await studyService.createStudyPlanWithSchedule({
+      name: planName,
+      description: description.trim(),
+      startDate,
+      endDate: addLocalDays(startDate, (passages.length - 1) * passageInterval),
+      aiPlanData: '',
+      wordbookIds: [],
+      status: 'normal',
+      practiceContent: 'passages',
+      ...passageFields(),
+    });
+    if (!saved.success) {
+      setError(saved.error);
+      setPhase('idle');
+      return;
+    }
+    finish(saved.data);
+  };
+
+  const create = async (withAi: boolean) => {
+    if (!withWords) return createPassagesOnly();
+    if (!planName || selectedBooks.length === 0) return;
+    if (withPassages && passages.length === 0) return;
+    setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setPhase(withAi ? 'planning' : 'saving');
+    try {
+      if (withAi) await wordBookService.clearAnalysisProgress();
+      const startDate = localToday(); // 第一次练习时会再平移到那一天
+      const scheduled = await studyService.generateStudyPlanSchedule({
+        name: planName,
+        description: description.trim(),
+        dailyNewWords,
+        startDate,
+        wordbookIds: selectedBooks,
+        useAi: withAi,
+      });
+      if (controller.signal.aborted) return;
+      if (!scheduled.success) throw new Error(scheduled.error);
+      // 用户取消时后端返回空日程
+      if (scheduled.data.dailyPlans.length === 0) {
+        setPhase('idle');
+        return;
+      }
+      setPhase('saving');
+      const meta = scheduled.data.planMetadata;
+      const saved = await studyService.createStudyPlanWithSchedule({
+        name: planName,
+        description: description.trim(),
+        startDate,
+        endDate: meta.endDate,
+        aiPlanData: JSON.stringify(scheduled.data),
+        wordbookIds: selectedBooks,
+        status: 'normal',
+        practiceContent: content,
+        ...passageFields(),
+      });
+      if (!saved.success) throw new Error(saved.error);
+      finish(saved.data);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      abortRef.current = null;
+      setError(messageOf(err) ?? '请再试一次');
+      setPhase(withAi ? 'failed' : 'idle');
+    }
+  };
+
+  if (loadError && !loadingBooks) {
     return (
-      <div className={styles.page}>
-        <Header activeNav="plans" onNavChange={handleNavChange} />
-        <main className={styles.main}>
-          <div className={styles.error}>
-            <div className={styles.errorIcon}>
-              <i className="fas fa-exclamation-triangle" />
-            </div>
-            <p className={styles.errorText}>{showErrorMessage(loadError)}</p>
-            <div className={styles.errorActions}>
-              <Button onClick={refresh}>重试</Button>
-              <Button variant="secondary" onClick={handleBack}>返回</Button>
-            </div>
-          </div>
-        </main>
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-8 py-7">
+        <PageHeader title="新建学习计划" />
+        <PageError title="无法加载单词本" message={loadError.message} onRetry={reloadBooks} back={{ label: '返回学习计划', onClick: () => onNavigate?.('plans') }} />
       </div>
     );
   }
 
-  if (success) {
-    return (
-      <div className={styles.page}>
-        <Header activeNav="plans" onNavChange={handleNavChange} />
-        <main className={styles.main}>
-          <div className={styles.success}>
-            <div className={styles.successIcon}>
-              <i className="fas fa-check-circle" />
-            </div>
-            <p className={styles.successText}>学习计划创建成功！</p>
-            <div className={styles.successActions}>
-              <Button onClick={handleStartStudy}>开始学习</Button>
-              <Button variant="secondary" onClick={handleCreateAnother}>
-                再创建一个
-              </Button>
-            </div>
-          </div>
-        </main>
+  const meta = preview?.planMetadata;
+  const minutes = meta ? estimatePlan(meta.totalWords, dailyNewWords, '').minutesPerDay : 0;
+  const learningDays = preview?.dailyPlans.length ?? 0;
+  const passageDays = passages.length > 0 ? (passages.length - 1) * passageInterval + 1 : 0;
+  const wordsReady = !withWords || (selectedBooks.length > 0 && Boolean(meta));
+  const passagesReady = !withPassages || passages.length > 0;
+  const canCreate = !busy && Boolean(planName) && wordsReady && passagesReady;
+  const aiOrdering = withWords && useAi;
+
+  const section = (title: string, hint: string | null, children: React.ReactNode) => (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-[15px] font-semibold">{title}</h2>
+        {hint && <p className="mt-0.5 text-sm text-muted-foreground">{hint}</p>}
       </div>
-    );
-  }
+      {children}
+    </section>
+  );
+
+  const segmented = 'w-full rounded-lg bg-muted p-0.5';
+  const segment = 'h-8 flex-1 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm';
 
   return (
-    <div className={styles.page}>
-      <Header activeNav="plans" onNavChange={handleNavChange} />
-      
-      <main className={styles.main}>
-        {/* Breadcrumb */}
-        <Breadcrumb
-          items={[
-            { label: '首页', key: 'home', icon: 'home' },
-            { label: '学习计划', key: 'plans', icon: 'tasks' }
-          ]}
-          current="创建计划"
-          onNavigate={handleBreadcrumbClick}
-        />
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-8 py-7">
+      <PageHeader title="新建学习计划" description="选好要练的内容，右边会即时显示学习安排" />
 
-        {/* Page Header */}
-        <section className={styles.pageHeader}>
-          <div className={styles.headerContent}>
-            <div className={styles.headerInfo}>
-              <h2>创建学习计划</h2>
-              <p>制定个性化的单词学习计划，让学习更有条理</p>
-            </div>
-            <button className={styles.backButton} onClick={handleBack}>
-              <i className="fas fa-arrow-left" />
-              <span>返回</span>
-            </button>
-          </div>
-        </section>
+      <div className="grid grid-cols-[minmax(0,1fr)_380px] items-start gap-6">
+        {/* 左：填写 */}
+        <Card className="gap-8 p-6">
+          {section(
+            '练什么',
+            CONTENT_OPTIONS.find((o) => o.value === content)?.hint ?? null,
+            <ToggleGroup
+              type="single"
+              value={content}
+              onValueChange={(v) => v && setContent(v as PracticeContent)}
+              className={segmented}
+              aria-label="练习内容"
+              disabled={busy}
+            >
+              {CONTENT_OPTIONS.map((o) => (
+                <ToggleGroupItem key={o.value} value={o.value} className={segment}>
+                  {o.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          )}
 
-        {/* Form Layout */}
-        <div className={styles.formLayout}>
-          {/* Form Section */}
-          <div className={styles.formSection}>
-            <h3 className={styles.sectionTitle}>计划基本信息</h3>
-            
-            {/* Error Message */}
-            {error && (
-              <div className={styles.errorBanner}>
-                <div className={styles.errorIcon}>
-                  <i className="fas fa-exclamation-triangle" />
+          {withWords &&
+            section(
+              '单词本',
+              selectedBooks.length > 0 ? `已选 ${selectedBooks.length} 本，重复的单词只学一次` : '可以多选',
+              <WordBookSelector
+                books={wordBooks}
+                selectedBooks={selectedBooks}
+                onSelectionChange={setSelectedBooks}
+                loading={loadingBooks}
+                onCreateBook={() => onNavigate?.('wordbooks')}
+              />
+            )}
+
+          {withWords &&
+            section(
+              '每天学几个新词',
+              dailyHint ? `${dailyNewWords} 个：${dailyHint}` : null,
+              <ToggleGroup
+                type="single"
+                value={String(dailyNewWords)}
+                onValueChange={(v) => v && setDailyNewWords(Number(v))}
+                className={segmented}
+                aria-label="每天新词数"
+                disabled={busy}
+              >
+                {DAILY_NEW_WORDS_OPTIONS.map((o) => (
+                  <ToggleGroupItem key={o.value} value={String(o.value)} className={segment}>
+                    {o.value}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            )}
+
+          {withWords &&
+            section(
+              '学习顺序',
+              null,
+              <label className="flex items-start gap-3 rounded-lg border p-3">
+                <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">AI 智能排序</span>
+                  <span className="block text-xs text-muted-foreground">
+                    按难度从易到难、把相关的词排在一起，约需 10–60 秒；关闭则按单词本里的顺序，立即创建
+                  </span>
+                </span>
+                <Switch checked={useAi} onCheckedChange={setUseAi} disabled={busy} aria-label="AI 智能排序" />
+              </label>
+            )}
+
+          {withPassages &&
+            section(
+              '短文',
+              passages.length > 0
+                ? `${passages.length} 篇，按列表顺序${intervalLabel(passageInterval)}；有题组的读完做题，选「只朗读」的读完点「读完了」`
+                : withWords
+                  ? '从短文库里选，含所选单词多的排在前面'
+                  : '从短文库里选',
+              <div className="space-y-4">
+                <PlanPassagePicker
+                  items={passages}
+                  onChange={setPassages}
+                  candidates={candidates}
+                  notes={passages.map((_, i) => `第 ${i * passageInterval + 1} 天`)}
+                  overlapLabel={withWords ? '所选单词' : '单词'}
+                  onCreatePassage={() => onNavigate?.('create-passage', { bookIds: candidateBookIds })}
+                  disabled={busy}
+                />
+                <div className="space-y-2">
+                  <Label>多久一篇</Label>
+                  <ToggleGroup
+                    type="single"
+                    value={String(passageInterval)}
+                    onValueChange={(v) => v && setPassageInterval(Number(v))}
+                    className={segmented}
+                    aria-label="短文间隔"
+                    disabled={busy}
+                  >
+                    {PASSAGE_INTERVAL_OPTIONS.map((d) => (
+                      <ToggleGroupItem key={d} value={String(d)} className={segment}>
+                        {d === 1 ? '每天' : `${d} 天`}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
                 </div>
-                <p>{error}</p>
               </div>
             )}
-            
-            {/* Basic Info */}
-            <div className={styles.basicInfo}>
-              <FormInput
-                label="计划名称"
-                name="planName"
-                value={formData.name}
-                placeholder="请输入学习计划名称"
-                helperText="给你的学习计划起一个有趣的名字"
-                required
-                onChange={handleInputChange('name')}
-              />
-              
-              <FormInput
-                label="计划描述"
-                name="planDescription"
-                type="textarea"
-                value={formData.description}
-                placeholder="描述一下这个学习计划的目标和内容"
-                rows={3}
-                onChange={handleInputChange('description')}
-              />
-            </div>
 
-            {/* Schedule Settings */}
-            <div className={styles.scheduleSettings}>
-              <h4 className={styles.scheduleTitle}>学习安排</h4>
-              
-              <div className={styles.dateFields}>
-                <FormInput
-                  label="开始日期"
-                  name="startDate"
-                  type="date"
-                  value={formData.startDate}
-                  required
-                  onChange={handleInputChange('startDate')}
-                />
-                
-                <FormInput
-                  label="结束日期"
-                  name="endDate"
-                  type="date"
-                  value={formData.endDate}
-                  required
-                  onChange={handleInputChange('endDate')}
-                />
+          {section(
+            '名称与描述',
+            null,
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="plan-name">计划名称</Label>
+                <Input id="plan-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={suggestedName || '例如：三年级上册词汇'} maxLength={100} disabled={busy} />
+                {!name.trim() && suggestedName && <p className="text-xs text-muted-foreground">不填就用“{suggestedName}”</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="plan-desc">描述</Label>
+                <Textarea id="plan-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="可选：学习目标或备注" className="min-h-16 resize-none" disabled={busy} />
               </div>
             </div>
+          )}
+        </Card>
 
-            {/* Word Book Selection */}
-            <WordBookSelector
-              books={wordBooks}
-              selectedBooks={formData.selectedBooks}
-              onSelectionChange={handleBooksChange}
-              loading={loading}
-            />
+        {/* 右：即时预览 + 创建 */}
+        <Card className="sticky top-6 gap-5 p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[15px] font-semibold">学习安排</h2>
+            {withWords && previewLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
           </div>
 
-          {/* Preview Section */}
-          <PlanPreview
-            formData={formData}
-            wordBooks={wordBooks}
-            onCreatePlan={handleCreatePlan}
-            onSaveDraft={handleSaveDraft}
-            canCreate={canCreatePlan()}
-            loading={creating}
-          />
-        </div>
-      </main>
+          {withWords &&
+            (selectedBooks.length === 0 ? (
+              <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">选择单词本后，这里会显示要学多少天、每天学哪些词</p>
+            ) : previewError ? (
+              <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{previewError}</p>
+            ) : !meta ? (
+              <div className="space-y-3">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-28 w-full" />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-muted/50 p-3">
+                    <div className="text-2xl font-semibold tabular-nums">{meta.totalWords}</div>
+                    <div className="text-xs text-muted-foreground">个新词</div>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-3">
+                    <div className="text-2xl font-semibold tabular-nums">{meta.studyPeriodDays}</div>
+                    <div className="text-xs text-muted-foreground">
+                      天（学新词 {learningDays} + 巩固 {CONSOLIDATION_DAYS}）
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <CalendarDays className="size-4" />每天 {dailyNewWords} 个新词
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock className="size-4" />约 {minutes} 分钟 / 天
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">{useAi ? '前几天的新词（默认顺序，AI 会重新排）' : '前几天的新词'}</div>
+                  <ol className="space-y-2">
+                    {preview!.dailyPlans.slice(0, PREVIEW_DAYS).map((day) => (
+                      <li key={day.day} className="flex gap-3 text-sm">
+                        <span className="w-12 shrink-0 text-muted-foreground tabular-nums">第 {day.day} 天</span>
+                        <span className="min-w-0 flex-1 text-foreground">
+                          {day.words.slice(0, PREVIEW_WORDS_PER_DAY).map((w) => w.word).join('、')}
+                          {day.words.length > PREVIEW_WORDS_PER_DAY && <span className="text-muted-foreground"> 等 {day.words.length} 个</span>}
+                        </span>
+                      </li>
+                    ))}
+                    {learningDays > PREVIEW_DAYS && <li className="pl-15 text-xs text-muted-foreground">… 共 {learningDays} 天学新词</li>}
+                  </ol>
+                </div>
+              </>
+            ))}
+
+          {withPassages &&
+            (passages.length === 0 ? (
+              <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">添加短文后，这里会显示哪天读哪篇</p>
+            ) : (
+              <div className={withWords ? 'space-y-2 border-t pt-4' : 'space-y-2'}>
+                <div className="flex items-center gap-1.5 text-sm font-medium">
+                  <FileText className="size-4 text-muted-foreground" />
+                  {passages.length} 篇短文 · {intervalLabel(passageInterval)} · 共 {passageDays} 天
+                </div>
+                <ol className="space-y-1.5">
+                  {passages.slice(0, PREVIEW_DAYS).map((p, i) => (
+                    <li key={p.passageId} className="flex gap-3 text-sm">
+                      <span className="w-12 shrink-0 text-muted-foreground tabular-nums">第 {i * passageInterval + 1} 天</span>
+                      <span className="min-w-0 flex-1 truncate">{p.title}</span>
+                    </li>
+                  ))}
+                  {passages.length > PREVIEW_DAYS && <li className="pl-15 text-xs text-muted-foreground">… 共 {passages.length} 篇</li>}
+                </ol>
+              </div>
+            ))}
+
+          <p className="text-xs text-muted-foreground">
+            第一次练习的那天算第 1 天。
+            {withWords && '复习由系统按记忆情况自动安排（1、3、7、14、30 天），间隔 7 天后仍能写对才算掌握。'}
+          </p>
+
+          <div className="space-y-3 border-t pt-4">
+            {phase === 'planning' && <PlanningProgress isVisible onCancel={stopPlanning} />}
+            {error && (
+              <InlineError
+                title={phase === 'failed' ? 'AI 排序没有完成' : '无法创建计划'}
+                actions={
+                  phase === 'failed' && (
+                    <>
+                      <Button size="sm" variant="outline" className="bg-background" onClick={() => create(false)}>
+                        用默认顺序创建
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => create(true)}>
+                        <RotateCw />
+                        重试 AI 排序
+                      </Button>
+                    </>
+                  )
+                }
+              >
+                {error}
+              </InlineError>
+            )}
+            {phase !== 'planning' && (
+              <Button className="w-full" onClick={() => create(aiOrdering)} disabled={!canCreate}>
+                {phase === 'saving' ? <Loader2 className="animate-spin" /> : aiOrdering && <Sparkles />}
+                {phase === 'saving' ? '正在创建…' : aiOrdering ? '用 AI 排序并创建' : '创建计划'}
+              </Button>
+            )}
+            {phase !== 'planning' && (
+              <Button variant="ghost" className="w-full" onClick={() => onNavigate?.('plans')} disabled={phase === 'saving'}>
+                取消
+              </Button>
+            )}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 };
-
-export default CreatePlanPage;
