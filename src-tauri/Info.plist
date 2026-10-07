@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 与 Tauri 生成的 Info.plist 合并：开发语言为简体中文，系统控件（右键菜单、文件对话框等）显示中文 -->
+  <key>CFBundleDevelopmentRegion</key>
+  <string>zh_CN</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>zh_CN</string>
+    <string>en</string>
+  </array>
+</dict>
+</plist>

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "自然拼读 Pindu.app",
-  "version": "0.1.0",
+  "productName": "自然拼读",
+  "version": "../package.json",
   "identifier": "com.redlark.pindu-app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "自然拼读 Pindu.app",
+        "title": "自然拼读",
         "width": 1600,
         "height": 1000,
         "minWidth": 1200,
@@ -25,46 +25,49 @@
       }
     ],
     "security": {
-      "csp": null
-    }
-  },
-  "plugins": {
-    "process": {
-      "all": false,
-      "exit": true,
-      "restart": true
-    },
-    "sql": {
-      "preload": ["sqlite:redlark.db"]
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob:",
+        "media-src": "'self' data: blob:",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'none'"
+      },
+      "devCsp": null
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "RedLark",
+    "copyright": "© 2026 RedLark",
+    "category": "Education",
+    "shortDescription": "自然拼读：AI 拼读分析的英语单词学习",
+    "longDescription": "自然拼读（Pindu.app）是一款面向小学生的英语单词学习桌面应用：AI 自然拼读分析与例句、AI 生成学习日程，按「看-说-盖-写-查」练习单词，数据保存在本机。",
+    "externalBin": ["binaries/redlark-agent"],
     "icon": [
-      "icons/16x16.png",
-      "icons/24x24.png",
       "icons/32x32.png",
-      "icons/48x48.png",
-      "icons/64x64.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/256x256.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ],
     "macOS": {
-      "frameworks": [],
-      "minimumSystemVersion": "10.13",
-      "exceptionDomain": "",
-      "signingIdentity": null,
-      "providerShortName": null,
-      "entitlements": null
+      "minimumSystemVersion": "10.15"
     },
     "windows": {
-      "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": ""
+      "nsis": {
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false
+      },
+      "wix": {
+        "language": "zh-CN"
+      }
     }
   }
 }
