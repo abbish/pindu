@@ -6,20 +6,36 @@
 //! - 事务管理
 //! - 数据验证和转换
 
+pub mod agent_settings;
 pub mod ai_model;
-pub mod analysis;
 pub mod calendar;
+#[cfg(debug_assertions)]
 pub mod diagnostics;
+pub mod passage;
+pub mod passage_import;
+pub mod passage_import_files;
+pub mod passage_import_service;
+pub mod passage_rules;
+pub mod phonics_analysis;
+pub mod plan_pace;
+pub mod plan_passages;
 pub mod practice;
+pub mod prompt_profile;
+pub mod srs;
 pub mod statistics;
 pub mod study_plan;
+pub mod study_plan_generation;
+pub mod study_planning;
 pub mod theme_tag;
+pub mod tts;
 pub mod word;
+pub mod word_examples;
+pub mod word_explanation;
+pub mod word_extraction;
+pub mod word_tutor;
 pub mod wordbook;
 
 // 重新导出服务
-pub use ai_model::*;
 pub use calendar::*;
 pub use practice::*;
-pub use statistics::*;
 pub use word::*;

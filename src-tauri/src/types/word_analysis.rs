@@ -1,14 +1,32 @@
-use crate::ai_service::PhonicsWord;
+use crate::types::wordbook::WordExample;
 use serde::{Deserialize, Serialize};
+
+/// 单词的自然拼读分析结果（agent `submit_phonics` 校正后的结构；字段为 snake_case 输出）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PhonicsWord {
+    pub word: String,
+    pub frequency: i32,
+    pub chinese_translation: String,
+    pub pos_abbreviation: String,
+    pub pos_english: String,
+    pub pos_chinese: String,
+    pub ipa: String,
+    pub syllables: String,
+    pub phonics_rule: String,
+    pub analysis_explanation: String,
+    /// 例句（工具已校验：至少 5 条、每条包含该单词；第一句最简单）
+    #[serde(default)]
+    pub examples: Vec<WordExample>,
+}
 
 /// 提取的单词信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractedWord {
-    pub word: String,        // 单词原文
-    pub frequency: i32,       // 出现频率
+    pub word: String,                   // 单词原文
+    pub frequency: i32,                 // 出现频率
     pub part_of_speech: Option<String>, // 词性缩写（如 "n.", "v.", "adj." 等）
-    pub meaning: Option<String>, // 中文翻译
+    pub meaning: Option<String>,        // 中文翻译
 }
 
 /// 单词提取结果

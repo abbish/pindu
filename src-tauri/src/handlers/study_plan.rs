@@ -6,8 +6,7 @@ use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::services::study_plan::StudyPlanService;
 use crate::types::*;
-use chrono::Datelike;
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -22,7 +21,7 @@ pub async fn get_study_plans(app: AppHandle) -> AppResult<Vec<StudyPlanWithProgr
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_study_plans_with_progress(false).await {
@@ -55,7 +54,7 @@ pub async fn get_study_plan(app: AppHandle, plan_id: i64) -> AppResult<StudyPlan
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_study_plan(plan_id).await {
@@ -74,84 +73,11 @@ pub async fn get_study_plan(app: AppHandle, plan_id: i64) -> AppResult<StudyPlan
     }
 }
 
-/// 更新学习计划
-#[tauri::command]
-pub async fn update_study_plan(
-    app: AppHandle,
-    plan_id: i64,
-    updates: serde_json::Value,
-) -> AppResult<bool> {
-    let pool = app.state::<SqlitePool>();
-    let logger = app.state::<Logger>();
-
-    logger.api_request(
-        "update_study_plan",
-        Some(&format!("plan_id: {}, updates: {}", plan_id, updates)),
-    );
-
-    let service = StudyPlanService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
-    );
-
-    match service.partial_update(plan_id, &updates).await {
-        Ok(_) => {
-            logger.api_response("update_study_plan", true, Some("学习计划已更新"));
-            Ok(true)
-        }
-        Err(e) => {
-            logger.api_response("update_study_plan", false, Some(&e.to_string()));
-            Err(e)
-        }
-    }
-}
-
-/// 创建学习计划
-#[tauri::command]
-pub async fn create_study_plan(app: AppHandle, request: CreateStudyPlanRequest) -> AppResult<Id> {
-    let pool = app.state::<SqlitePool>();
-    let logger = app.state::<Logger>();
-
-    logger.api_request(
-        "create_study_plan",
-        Some(&format!(
-            "name: {}, words: {}",
-            request.name,
-            request.word_ids.len()
-        )),
-    );
-
-    let service = StudyPlanService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
-    );
-
-    match service.create_study_plan(
-        request.name,
-        request.description,
-        request.word_ids,
-        request.mastery_level,
-    ).await {
-        Ok(plan_id) => {
-            logger.api_response(
-                "create_study_plan",
-                true,
-                Some(&format!("Created study plan with ID: {}", plan_id)),
-            );
-            Ok(plan_id)
-        }
-        Err(e) => {
-            logger.api_response("create_study_plan", false, Some(&e.to_string()));
-            Err(e)
-        }
-    }
-}
-
 /// 获取学习统计
 #[tauri::command]
 pub async fn get_study_statistics(app: AppHandle) -> AppResult<StudyStatistics> {
     use crate::services::statistics::StatisticsService;
-    
+
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
@@ -159,7 +85,7 @@ pub async fn get_study_statistics(app: AppHandle) -> AppResult<StudyStatistics> 
 
     let service = StatisticsService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_study_statistics().await {
@@ -179,134 +105,168 @@ pub async fn get_study_statistics(app: AppHandle) -> AppResult<StudyStatistics> 
 }
 
 /// 获取系统日志
+/// 改每天新词数（就地生效）：只重排还没练过的新词日，已练过的日程与记忆等级不动
+#[tauri::command]
+pub async fn replan_study_plan_pace(
+    app: AppHandle,
+    plan_id: Id,
+    daily_new_words: i32,
+) -> AppResult<crate::services::plan_pace::PlanPaceResult> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "replan_study_plan_pace",
+        Some(&format!(
+            "plan_id: {}, daily_new_words: {}",
+            plan_id, daily_new_words
+        )),
+    );
+    let result = crate::services::plan_pace::PlanPaceService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    )
+    .replan_pace(plan_id, daily_new_words, crate::time::local_today())
+    .await;
+    logger.api_response(
+        "replan_study_plan_pace",
+        result.is_ok(),
+        Some(&match &result {
+            Ok(r) => format!(
+                "{} new words over {} days",
+                r.remaining_new_words, r.learning_days
+            ),
+            Err(e) => e.to_string(),
+        }),
+    );
+    result
+}
+
+/// 往计划里追加单词本：新词排在还没学的新词后面
+#[tauri::command]
+pub async fn add_word_books_to_plan(
+    app: AppHandle,
+    plan_id: Id,
+    wordbook_ids: Vec<Id>,
+) -> AppResult<crate::services::plan_pace::PlanPaceResult> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "add_word_books_to_plan",
+        Some(&format!(
+            "plan_id: {}, wordbooks: {:?}",
+            plan_id, wordbook_ids
+        )),
+    );
+    let result = crate::services::plan_pace::PlanPaceService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    )
+    .add_word_books(plan_id, &wordbook_ids, crate::time::local_today())
+    .await;
+    logger.api_response(
+        "add_word_books_to_plan",
+        result.is_ok(),
+        Some(&match &result {
+            Ok(r) => format!("added {} words", r.added_words),
+            Err(e) => e.to_string(),
+        }),
+    );
+    result
+}
+
+/// 创建计划前的即时预览（确定性，不用 AI）：按默认顺序从今天排出的日程
+#[tauri::command]
+pub async fn preview_study_plan(
+    app: AppHandle,
+    wordbook_ids: Vec<Id>,
+    daily_new_words: i32,
+) -> AppResult<StudyPlanAIResult> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "preview_study_plan",
+        Some(&format!(
+            "wordbooks: {:?}, daily_new_words: {}",
+            wordbook_ids, daily_new_words
+        )),
+    );
+    let result = crate::services::study_plan_generation::preview(
+        &Arc::new(pool.inner().clone()),
+        &Arc::new(logger.inner().clone()),
+        &wordbook_ids,
+        daily_new_words,
+    )
+    .await;
+    logger.api_response(
+        "preview_study_plan",
+        result.is_ok(),
+        Some(&match &result {
+            Ok(r) => format!(
+                "{} words, {} days",
+                r.plan_metadata.total_words,
+                r.daily_plans.len()
+            ),
+            Err(e) => e.to_string(),
+        }),
+    );
+    result
+}
+
 /// 生成学习计划AI规划
 #[tauri::command]
 pub async fn generate_study_plan_schedule(
     app: AppHandle,
     request: StudyPlanScheduleRequest,
 ) -> AppResult<StudyPlanAIResult> {
-    use crate::ai_service::AIService;
-    use crate::types::study::{StudyPlanAIParams, StudyWordInfo};
+    use crate::agent::AgentPaths;
+    use crate::services::study_plan_generation::StudyPlanGenerator;
 
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
-
     logger.api_request(
         "generate_study_plan_schedule",
         Some(&format!(
-            "name: {}, intensity: {}, period: {} days, wordbooks: {:?}",
-            request.name, request.intensity_level, request.study_period_days, request.wordbook_ids
+            "name: {}, daily_new_words: {}, wordbooks: {:?}, use_ai: {:?}",
+            request.name, request.daily_new_words, request.wordbook_ids, request.use_ai
         )),
     );
 
-    // 验证输入参数
-    if request.name.trim().is_empty() {
-        let error_msg = "Study plan name cannot be empty";
-        logger.api_response("generate_study_plan_schedule", false, Some(error_msg));
-        return Err(AppError::ValidationError(error_msg.to_string()));
-    }
-
-    if !["easy", "normal", "intensive"].contains(&request.intensity_level.as_str()) {
-        let error_msg = "Invalid intensity level";
-        logger.api_response("generate_study_plan_schedule", false, Some(error_msg));
-        return Err(AppError::ValidationError(error_msg.to_string()));
-    }
-
-    if ![1, 3, 7, 14, 28].contains(&request.study_period_days) {
-        let error_msg = "Invalid study period days, must be 1, 3, 7, 14, or 28";
-        logger.api_response("generate_study_plan_schedule", false, Some(error_msg));
-        return Err(AppError::ValidationError(error_msg.to_string()));
-    }
-
-    if request.wordbook_ids.is_empty() {
-        let error_msg = "At least one wordbook must be selected";
-        logger.api_response("generate_study_plan_schedule", false, Some(error_msg));
-        return Err(AppError::ValidationError(error_msg.to_string()));
-    }
-
-    // 获取选中单词本的所有单词
-    use crate::repositories::word_repository::WordRepository;
-    let word_repo = WordRepository::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
-    );
-
-    let word_rows = word_repo.find_words_by_wordbook_ids(&request.wordbook_ids).await?;
-
-    let all_words: Vec<StudyWordInfo> = word_rows
-        .into_iter()
-        .map(|(id, word, wordbook_id)| StudyWordInfo {
-            word,
-            word_id: id.to_string(),
-            wordbook_id: wordbook_id.to_string(),
-        })
-        .collect();
-
-    if all_words.is_empty() {
-        let error_msg = "No words found in selected wordbooks";
-        logger.api_response("generate_study_plan_schedule", false, Some(error_msg));
-        return Err(AppError::ValidationError(error_msg.to_string()));
-    }
-
-    logger.info(
-        "STUDY_PLAN_SCHEDULE",
-        &format!(
-            "Collected {} words from {} wordbooks",
-            all_words.len(),
-            request.wordbook_ids.len()
-        ),
-    );
-
-    // 准备AI规划参数
-    let ai_params = StudyPlanAIParams {
-        intensity_level: request.intensity_level.clone(),
-        total_words: all_words.len() as i32,
-        period_days: request.study_period_days,
-        review_frequency: request.review_frequency,
-        start_date: request.start_date.clone(),
-        word_list: all_words,
-    };
-
-    // 获取AI模型配置
-    use crate::services::ai_model::AIModelService;
-    let ai_model_service = AIModelService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
-    );
-    let model_config = ai_model_service.get_model_config(request.model_id).await?;
-
-    // 创建AI服务并调用学习计划规划
-    let ai_service = match AIService::from_model_config(&model_config) {
-        Ok(service) => service,
-        Err(e) => {
-            let error_msg = format!("Failed to create AI service: {}", e);
-            logger.api_response("generate_study_plan_schedule", false, Some(&error_msg));
-            return Err(AppError::InternalError(error_msg));
+    let result = async {
+        if request.use_ai == Some(false) {
+            // 不用 AI：默认顺序立即排好，不需要 sidecar
+            return crate::services::study_plan_generation::generate_without_ai(
+                &Arc::new(pool.inner().clone()),
+                &Arc::new(logger.inner().clone()),
+                &request,
+            )
+            .await;
         }
-    };
-
-    // 调用AI服务生成学习计划
-    match ai_service
-        .generate_study_plan_schedule(ai_params, &model_config, &logger)
+        let app_data_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| AppError::InternalError(format!("无法获取应用数据目录：{}", e)))?;
+        StudyPlanGenerator::new(
+            Arc::new(pool.inner().clone()),
+            Arc::new(logger.inner().clone()),
+            AgentPaths::resolve(&app_data_dir)?,
+        )
+        .generate(&request)
         .await
-    {
-        Ok(result) => {
-            logger.api_response(
-                "generate_study_plan_schedule",
-                true,
-                Some(&format!(
-                    "Generated schedule with {} daily plans",
-                    result.daily_plans.len()
-                )),
-            );
-            Ok(result)
-        }
-        Err(e) => {
-            let error_msg = format!("Failed to generate study plan schedule: {}", e);
-            logger.api_response("generate_study_plan_schedule", false, Some(&error_msg));
-            Err(AppError::InternalError(error_msg))
-        }
     }
+    .await;
+
+    match &result {
+        Ok(r) => logger.api_response(
+            "generate_study_plan_schedule",
+            true,
+            Some(&format!(
+                "Generated schedule with {} daily plans",
+                r.daily_plans.len()
+            )),
+        ),
+        Err(e) => logger.api_response("generate_study_plan_schedule", false, Some(&e.to_string())),
+    }
+    result
 }
 
 /// 创建带AI规划的学习计划
@@ -330,7 +290,7 @@ pub async fn create_study_plan_with_schedule(
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.create_study_plan_with_schedule(request).await {
@@ -343,7 +303,11 @@ pub async fn create_study_plan_with_schedule(
             Ok(plan_id)
         }
         Err(e) => {
-            logger.api_response("create_study_plan_with_schedule", false, Some(&e.to_string()));
+            logger.api_response(
+                "create_study_plan_with_schedule",
+                false,
+                Some(&e.to_string()),
+            );
             Err(e)
         }
     }
@@ -362,7 +326,7 @@ pub async fn get_study_plan_words(app: AppHandle, plan_id: i64) -> AppResult<Vec
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_plan_words(plan_id).await {
@@ -376,38 +340,6 @@ pub async fn get_study_plan_words(app: AppHandle, plan_id: i64) -> AppResult<Vec
         }
         Err(e) => {
             logger.api_response("get_study_plan_words", false, Some(&e.to_string()));
-            Err(e)
-        }
-    }
-}
-
-/// 从学习计划中移除单词（删除该单词的所有学习日程）
-#[tauri::command]
-pub async fn remove_word_from_plan(app: AppHandle, plan_id: i64, word_id: i64) -> AppResult<()> {
-    let pool = app.state::<SqlitePool>();
-    let logger = app.state::<Logger>();
-
-    logger.api_request(
-        "remove_word_from_plan",
-        Some(&format!("plan_id: {}, word_id: {}", plan_id, word_id)),
-    );
-
-    let service = StudyPlanService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
-    );
-
-    match service.remove_word_from_plan(plan_id, word_id).await {
-        Ok(()) => {
-            logger.api_response(
-                "remove_word_from_plan",
-                true,
-                Some(&format!("Removed word {} from plan {}", word_id, plan_id)),
-            );
-            Ok(())
-        }
-        Err(e) => {
-            logger.api_response("remove_word_from_plan", false, Some(&e.to_string()));
             Err(e)
         }
     }
@@ -434,17 +366,21 @@ pub async fn batch_remove_words_from_plan(
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
-    match service.batch_remove_words_from_plan(plan_id, &word_ids).await {
+    match service
+        .batch_remove_words_from_plan(plan_id, &word_ids)
+        .await
+    {
         Ok(_deleted_count) => {
             logger.api_response(
                 "batch_remove_words_from_plan",
                 true,
                 Some(&format!(
                     "Removed {} words from plan {}",
-                    word_ids.len(), plan_id
+                    word_ids.len(),
+                    plan_id
                 )),
             );
             Ok(())
@@ -474,7 +410,7 @@ pub async fn get_study_plan_statistics(
 
     let service = StatisticsService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_study_plan_statistics(plan_id).await {
@@ -505,7 +441,7 @@ pub async fn start_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.start_study_plan(plan_id).await {
@@ -533,7 +469,7 @@ pub async fn complete_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> 
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.complete_study_plan(plan_id).await {
@@ -561,7 +497,7 @@ pub async fn terminate_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()>
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.terminate_study_plan(plan_id).await {
@@ -586,7 +522,7 @@ pub async fn restart_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.restart_study_plan(plan_id).await {
@@ -605,35 +541,6 @@ pub async fn restart_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
     }
 }
 
-/// 编辑学习计划（转为草稿状态）
-#[tauri::command]
-pub async fn edit_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
-    let pool = app.state::<SqlitePool>();
-    let logger = app.state::<Logger>();
-
-    logger.api_request("edit_study_plan", Some(&format!("plan_id: {}", plan_id)));
-
-    let service = StudyPlanService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
-    );
-
-    match service.edit_study_plan(plan_id).await {
-        Ok(_) => {
-            logger.api_response(
-                "edit_study_plan",
-                true,
-                Some("学习计划已转为草稿状态，学习进度已重置"),
-            );
-            Ok(())
-        }
-        Err(e) => {
-            logger.api_response("edit_study_plan", false, Some(&e.to_string()));
-            Err(e)
-        }
-    }
-}
-
 /// 发布学习计划（从草稿转为正常）
 #[tauri::command]
 pub async fn publish_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
@@ -644,7 +551,7 @@ pub async fn publish_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.publish_study_plan(plan_id).await {
@@ -669,7 +576,7 @@ pub async fn delete_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.delete_study_plan(plan_id).await {
@@ -689,7 +596,7 @@ pub async fn delete_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
 pub async fn get_study_plan_schedules(
     app: AppHandle,
     plan_id: i64,
-) -> AppResult<Vec<serde_json::Value>> {
+) -> AppResult<Vec<crate::types::study::PlanScheduleSummary>> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
@@ -700,7 +607,7 @@ pub async fn get_study_plan_schedules(
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_plan_schedules(plan_id).await {
@@ -740,7 +647,7 @@ pub async fn get_study_plan_calendar_data(
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_plan_calendar_data(plan_id, year, month).await {
@@ -754,6 +661,159 @@ pub async fn get_study_plan_calendar_data(
         }
         Err(e) => {
             logger.api_response("get_study_plan_calendar_data", false, Some(&e.to_string()));
+            Err(e)
+        }
+    }
+}
+
+/// 获取学习计划关联的单词本ID列表
+#[tauri::command]
+pub async fn get_study_plan_word_books(app: AppHandle, plan_id: i64) -> AppResult<Vec<i64>> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request(
+        "get_study_plan_word_books",
+        Some(&format!("plan_id: {}", plan_id)),
+    );
+
+    let service = StudyPlanService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
+
+    match service.get_plan_word_book_ids(plan_id).await {
+        Ok(ids) => {
+            logger.api_response(
+                "get_study_plan_word_books",
+                true,
+                Some(&format!("Found {} word books", ids.len())),
+            );
+            Ok(ids)
+        }
+        Err(e) => {
+            logger.api_response("get_study_plan_word_books", false, Some(&e.to_string()));
+            Err(e)
+        }
+    }
+}
+
+/// 更新学习计划基本信息（名称和描述；任何未删除的计划都可以改，不影响日程与进度）
+#[tauri::command]
+pub async fn update_study_plan_basic_info(
+    app: AppHandle,
+    plan_id: i64,
+    name: String,
+    description: Option<String>,
+) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request(
+        "update_study_plan_basic_info",
+        Some(&format!("plan_id: {}", plan_id)),
+    );
+
+    let service = StudyPlanService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
+
+    match service
+        .update_basic_info(plan_id, &name, description.as_deref())
+        .await
+    {
+        Ok(()) => {
+            logger.api_response(
+                "update_study_plan_basic_info",
+                true,
+                Some("学习计划基本信息已更新"),
+            );
+            Ok(())
+        }
+        Err(e) => {
+            logger.api_response("update_study_plan_basic_info", false, Some(&e.to_string()));
+            Err(e)
+        }
+    }
+}
+
+/// 计划的记忆概况：各记忆等级的词数、今天待复习、已掌握（自适应复习，D20）
+#[tauri::command]
+pub async fn get_plan_memory_overview(
+    app: AppHandle,
+    plan_id: i64,
+) -> AppResult<PlanMemoryOverview> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "get_plan_memory_overview",
+        Some(&format!("plan_id: {}", plan_id)),
+    );
+    match crate::services::srs::plan_overview(pool.inner(), plan_id).await {
+        Ok(overview) => {
+            logger.api_response(
+                "get_plan_memory_overview",
+                true,
+                Some(&format!(
+                    "total={}, mastered={}, due_today={}",
+                    overview.total, overview.mastered, overview.due_today
+                )),
+            );
+            Ok(overview)
+        }
+        Err(e) => {
+            logger.api_response("get_plan_memory_overview", false, Some(&e.to_string()));
+            Err(e)
+        }
+    }
+}
+
+/// 暂停学习计划
+#[tauri::command]
+pub async fn pause_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("pause_study_plan", Some(&format!("plan_id: {}", plan_id)));
+
+    let service = StudyPlanService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
+
+    match service.pause_study_plan(plan_id).await {
+        Ok(_) => {
+            logger.api_response("pause_study_plan", true, Some("学习计划已暂停"));
+            Ok(())
+        }
+        Err(e) => {
+            logger.api_response("pause_study_plan", false, Some(&e.to_string()));
+            Err(e)
+        }
+    }
+}
+
+/// 继续学习计划（结束暂停）
+#[tauri::command]
+pub async fn resume_study_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+
+    logger.api_request("resume_study_plan", Some(&format!("plan_id: {}", plan_id)));
+
+    let service = StudyPlanService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
+
+    match service.resume_study_plan(plan_id).await {
+        Ok(_) => {
+            logger.api_response("resume_study_plan", true, Some("学习计划已继续"));
+            Ok(())
+        }
+        Err(e) => {
+            logger.api_response("resume_study_plan", false, Some(&e.to_string()));
             Err(e)
         }
     }

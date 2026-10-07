@@ -1,0 +1,11 @@
+单词：{{word}}
+中文释义：{{meaning}}
+词性：{{pos}}
+音标：{{ipa}}
+音节：{{syllables}}
+拼读规则：{{phonics_rule}}
+拼读讲解：{{phonics_explanation}}
+{{#examples}}
+已有例句：
+{{examples}}
+{{/examples}}

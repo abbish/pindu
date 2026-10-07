@@ -5,13 +5,70 @@
 //! # 注意
 //! 此模块当前独立实现,未来将集成到 Service 层
 
-
-
 use crate::{
-    error::AppError, error::AppResult, logger::Logger, types::common::Id, types::wordbook::Word,
+    error::AppError,
+    error::AppResult,
+    logger::Logger,
+    types::common::Id,
+    types::wordbook::{Word, WordExample},
 };
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, SqliteConnection, SqlitePool};
+use std::collections::HashMap;
 use std::sync::Arc;
+
+/// 用给定列表替换单词的全部例句（按列表顺序写 sort_order；在调用方事务内执行）
+pub async fn replace_examples_conn(
+    conn: &mut SqliteConnection,
+    word_id: Id,
+    examples: &[WordExample],
+) -> AppResult<()> {
+    sqlx::query("DELETE FROM word_examples WHERE word_id = ?")
+        .bind(word_id)
+        .execute(&mut *conn)
+        .await?;
+    for (order, example) in examples.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO word_examples (word_id, sentence, translation, sort_order, created_at) VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+        )
+        .bind(word_id)
+        .bind(&example.sentence)
+        .bind(&example.translation)
+        .bind(order as i64)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
+/// 批量读取例句：word_id → 按 sort_order 排好的例句（没有例句的单词不在结果中）
+pub async fn examples_by_word_ids(
+    pool: &SqlitePool,
+    word_ids: &[Id],
+) -> AppResult<HashMap<Id, Vec<WordExample>>> {
+    let mut result: HashMap<Id, Vec<WordExample>> = HashMap::new();
+    // SQLite 绑定参数数量有限，分块查询
+    for chunk in word_ids.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT word_id, sentence, translation FROM word_examples WHERE word_id IN ({}) ORDER BY word_id, sort_order, id",
+            placeholders
+        );
+        let mut query = sqlx::query(&sql);
+        for id in chunk {
+            query = query.bind(id);
+        }
+        for row in query.fetch_all(pool).await? {
+            result
+                .entry(row.get("word_id"))
+                .or_default()
+                .push(WordExample {
+                    sentence: row.get("sentence"),
+                    translation: row.get("translation"),
+                });
+        }
+    }
+    Ok(result)
+}
 
 /// 单词数据仓库
 pub struct WordRepository {
@@ -26,6 +83,16 @@ impl WordRepository {
     }
 
     /// 查找单词本中已存在的单词（用于去重）
+    /// 单词本里全部单词（小写，去重），用于“生成单词时避开已有词”
+    pub async fn word_texts_by_book(&self, book_id: Id) -> AppResult<Vec<String>> {
+        Ok(sqlx::query_scalar(
+            "SELECT DISTINCT LOWER(word) FROM words WHERE word_book_id = ? ORDER BY LOWER(word)",
+        )
+        .bind(book_id)
+        .fetch_all(self.pool.as_ref())
+        .await?)
+    }
+
     pub async fn find_existing_words_by_book(
         &self,
         book_id: Id,
@@ -66,71 +133,55 @@ impl WordRepository {
         Ok(result)
     }
 
-    /// 批量创建单词
-    pub async fn create_batch(&self, words: &[Word]) -> AppResult<Vec<Id>> {
-        if words.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let query = r#"
-            INSERT INTO words (
-                word, meaning, description, ipa, syllables, phonics_segments,
-                part_of_speech, pos_abbreviation, pos_english, pos_chinese,
-                phonics_rule, analysis_explanation, word_book_id,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-        "#;
-
-        let mut word_ids = Vec::new();
+    /// 批量创建单词（在调用方事务内执行），返回新 ID
+    pub async fn create_batch(
+        &self,
+        conn: &mut SqliteConnection,
+        words: &[Word],
+    ) -> AppResult<Vec<Id>> {
+        let mut word_ids = Vec::with_capacity(words.len());
         for word in words {
-            let result = sqlx::query(r#"
+            let result = sqlx::query(
+                r#"
                 INSERT INTO words (
                     word, meaning, description, ipa, syllables, phonics_segments,
                     part_of_speech, pos_abbreviation, pos_english, pos_chinese,
                     phonics_rule, analysis_explanation, word_book_id,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-            "#)
-                .bind(&word.word)
-                .bind(&word.meaning)
-                .bind(&word.description)
-                .bind(&word.ipa)
-                .bind(&word.syllables)
-                .bind(&word.phonics_segments)
-                .bind(&word.part_of_speech)
-                .bind(&word.pos_abbreviation)
-                .bind(&word.pos_english)
-                .bind(&word.pos_chinese)
-                .bind(&word.phonics_rule)
-                .bind(&word.analysis_explanation)
-                .bind(word.word_book_id)
-                .execute(self.pool.as_ref())
-                .await
-                .map_err(|e| {
-                    self.logger
-                        .database_operation("INSERT", "words", false, Some(&e.to_string()));
-                    AppError::DatabaseError(format!("Failed to insert word '{}': {}", word.word, e))
-                })?;
-
-            word_ids.push(result.last_insert_rowid());
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            "#,
+            )
+            .bind(&word.word)
+            .bind(&word.meaning)
+            .bind(&word.description)
+            .bind(&word.ipa)
+            .bind(&word.syllables)
+            .bind(&word.phonics_segments)
+            .bind(&word.part_of_speech)
+            .bind(&word.pos_abbreviation)
+            .bind(&word.pos_english)
+            .bind(&word.pos_chinese)
+            .bind(&word.phonics_rule)
+            .bind(&word.analysis_explanation)
+            .bind(word.word_book_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("保存单词「{}」失败：{}", word.word, e))
+            })?;
+            let word_id = result.last_insert_rowid();
+            replace_examples_conn(&mut *conn, word_id, &word.examples).await?;
+            word_ids.push(word_id);
         }
-
-        self.logger.database_operation(
-            "INSERT",
-            "words",
-            true,
-            Some(&format!("Created {} words in batch", words.len())),
-        );
-
         Ok(word_ids)
     }
 
-    /// 批量更新单词
-    pub async fn update_batch(&self, words: &[(Id, Word)]) -> AppResult<()> {
-        if words.is_empty() {
-            return Ok(());
-        }
-
+    /// 用分析结果覆盖已有单词的释义、音标、拼读等字段（在调用方事务内执行）
+    pub async fn update_batch(
+        &self,
+        conn: &mut SqliteConnection,
+        words: &[(Id, Word)],
+    ) -> AppResult<()> {
         let query = r#"
             UPDATE words SET
                 meaning = ?,
@@ -142,7 +193,7 @@ impl WordRepository {
                 pos_chinese = ?,
                 phonics_rule = ?,
                 analysis_explanation = ?,
-                updated_at = datetime('now')
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
             WHERE id = ?
         "#;
 
@@ -158,22 +209,16 @@ impl WordRepository {
                 .bind(&word.phonics_rule)
                 .bind(&word.analysis_explanation)
                 .bind(word_id)
-                .execute(self.pool.as_ref())
+                .execute(&mut *conn)
                 .await
                 .map_err(|e| {
-                    self.logger
-                        .database_operation("UPDATE", "words", false, Some(&e.to_string()));
-                    AppError::DatabaseError(format!("Failed to update word '{}': {}", word.word, e))
+                    AppError::DatabaseError(format!("更新单词「{}」失败：{}", word.word, e))
                 })?;
+            // 新结果有例句才替换，否则保留原例句
+            if !word.examples.is_empty() {
+                replace_examples_conn(&mut *conn, *word_id, &word.examples).await?;
+            }
         }
-
-        self.logger.database_operation(
-            "UPDATE",
-            "words",
-            true,
-            Some(&format!("Updated {} words in batch", words.len())),
-        );
-
         Ok(())
     }
 
@@ -181,7 +226,7 @@ impl WordRepository {
     pub async fn find_words_by_wordbook_ids(
         &self,
         wordbook_ids: &[Id],
-    ) -> AppResult<Vec<(Id, String, Id)>> {
+    ) -> AppResult<Vec<(Id, String, Id, Option<String>)>> {
         if wordbook_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -189,7 +234,7 @@ impl WordRepository {
         let placeholders: Vec<String> = (0..wordbook_ids.len()).map(|_| "?".to_string()).collect();
         let query = format!(
             r#"
-            SELECT id, word, word_book_id
+            SELECT id, word, word_book_id, meaning
             FROM words
             WHERE word_book_id IN ({})
                 AND word_book_id IN (
@@ -214,13 +259,14 @@ impl WordRepository {
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        let words: Vec<(Id, String, Id)> = rows
+        let words: Vec<(Id, String, Id, Option<String>)> = rows
             .into_iter()
             .map(|row| {
                 (
                     row.get("id"),
                     row.get("word"),
                     row.get("word_book_id"),
+                    row.get("meaning"),
                 )
             })
             .collect();
@@ -229,73 +275,24 @@ impl WordRepository {
             "SELECT",
             "words",
             true,
-            Some(&format!("Found {} words from {} wordbooks", words.len(), wordbook_ids.len())),
+            Some(&format!(
+                "Found {} words from {} wordbooks",
+                words.len(),
+                wordbook_ids.len()
+            )),
         );
 
         Ok(words)
-    }
-
-    /// 验证单词ID是否存在
-    pub async fn validate_word_ids(&self, word_ids: &[Id]) -> AppResult<usize> {
-        if word_ids.is_empty() {
-            return Ok(0);
-        }
-
-        // 构建 IN 查询
-        let placeholders: Vec<String> = (0..word_ids.len()).map(|_| "?".to_string()).collect();
-        let query = format!(
-            "SELECT COUNT(*) as count FROM words WHERE id IN ({})",
-            placeholders.join(",")
-        );
-
-        let mut query_builder = sqlx::query(&query);
-        for word_id in word_ids {
-            query_builder = query_builder.bind(word_id);
-        }
-
-        let row = query_builder
-            .fetch_one(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let count: i64 = row.get("count");
-        Ok(count as usize)
-    }
-
-    /// 获取单词的单词本ID
-    pub async fn get_word_book_id(&self, word_id: Id) -> AppResult<Option<Id>> {
-        let query = "SELECT word_book_id FROM words WHERE id = ?";
-
-        let row = sqlx::query(query)
-            .bind(word_id)
-            .fetch_optional(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        match row {
-            Some(row) => {
-                let book_id: Option<Id> = row.get("word_book_id");
-                Ok(book_id)
-            }
-            None => Ok(None),
-        }
     }
 
     /// 根据ID查询单词
     pub async fn find_by_id(&self, word_id: Id) -> AppResult<Option<Word>> {
         let query = r#"
             SELECT id, word, meaning, description, ipa, syllables, phonics_segments,
-                   part_of_speech, pos_abbreviation, pos_english, pos_chinese,
-                   phonics_rule, analysis_explanation, word_book_id,
-                   created_at, updated_at
+                   image_path, audio_path, part_of_speech, category_id,
+                   pos_abbreviation, pos_english, pos_chinese,
+                   phonics_rule, analysis_explanation,
+                   word_book_id, created_at, updated_at
             FROM words
             WHERE id = ?
         "#;
@@ -317,7 +314,12 @@ impl WordRepository {
                 true,
                 Some(&format!("Found word by ID: {}", word_id)),
             );
-            Ok(Some(self.row_to_word(row)?))
+            let mut word = self.row_to_word(row)?;
+            word.examples = examples_by_word_ids(self.pool.as_ref(), &[word_id])
+                .await?
+                .remove(&word_id)
+                .unwrap_or_default();
+            Ok(Some(word))
         } else {
             self.logger.database_operation(
                 "SELECT",
@@ -337,9 +339,10 @@ impl WordRepository {
                 part_of_speech, pos_abbreviation, pos_english, pos_chinese,
                 phonics_rule, analysis_explanation, word_book_id,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         "#;
 
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(query)
             .bind(&word.word)
             .bind(&word.meaning)
@@ -354,7 +357,7 @@ impl WordRepository {
             .bind(&word.phonics_rule)
             .bind(&word.analysis_explanation)
             .bind(word.word_book_id)
-            .execute(self.pool.as_ref())
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 self.logger
@@ -363,6 +366,8 @@ impl WordRepository {
             })?;
 
         let word_id = result.last_insert_rowid();
+        replace_examples_conn(&mut tx, word_id, &word.examples).await?;
+        tx.commit().await?;
         self.logger.database_operation(
             "INSERT",
             "words",
@@ -389,10 +394,11 @@ impl WordRepository {
                 pos_chinese = ?,
                 phonics_rule = ?,
                 analysis_explanation = ?,
-                updated_at = datetime('now')
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
             WHERE id = ?
         "#;
 
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(query)
             .bind(&word.word)
             .bind(&word.meaning)
@@ -407,7 +413,7 @@ impl WordRepository {
             .bind(&word.phonics_rule)
             .bind(&word.analysis_explanation)
             .bind(word.id)
-            .execute(self.pool.as_ref())
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 self.logger
@@ -424,6 +430,8 @@ impl WordRepository {
             );
             return Err(AppError::NotFound(format!("单词未找到: {}", word.id)));
         }
+        replace_examples_conn(&mut tx, word.id, &word.examples).await?;
+        tx.commit().await?;
 
         self.logger.database_operation(
             "UPDATE",
@@ -435,38 +443,14 @@ impl WordRepository {
         Ok(())
     }
 
-    /// 删除单词
-    pub async fn delete(&self, word_id: Id) -> AppResult<()> {
-        let query = "DELETE FROM words WHERE id = ?";
-
-        let result = sqlx::query(query)
+    /// 在调用方事务内删除单词（例句、讲解、计划单词与作答记录随外键一起删除）
+    pub async fn delete_conn(conn: &mut sqlx::SqliteConnection, word_id: Id) -> AppResult<bool> {
+        Ok(sqlx::query("DELETE FROM words WHERE id = ?")
             .bind(word_id)
-            .execute(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("DELETE", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        if result.rows_affected() == 0 {
-            self.logger.database_operation(
-                "DELETE",
-                "words",
-                false,
-                Some(&format!("Word not found: {}", word_id)),
-            );
-            return Err(AppError::NotFound(format!("单词未找到: {}", word_id)));
-        }
-
-        self.logger.database_operation(
-            "DELETE",
-            "words",
-            true,
-            Some(&format!("Deleted word ID {}", word_id)),
-        );
-
-        Ok(())
+            .execute(&mut *conn)
+            .await?
+            .rows_affected()
+            > 0)
     }
 
     /// 分页查询单词本中的单词
@@ -482,7 +466,7 @@ impl WordRepository {
 
         // 构建 WHERE 条件
         let mut where_conditions = vec!["word_book_id = ?".to_string()];
-        
+
         if let Some(term) = search_term {
             if !term.trim().is_empty() {
                 where_conditions.push("word LIKE ?".to_string());
@@ -539,10 +523,15 @@ impl WordRepository {
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        let words: Vec<Word> = rows
+        let mut words: Vec<Word> = rows
             .into_iter()
             .map(|row| self.row_to_word(row))
             .collect::<Result<Vec<_>, _>>()?;
+        let ids: Vec<Id> = words.iter().map(|w| w.id).collect();
+        let mut examples = examples_by_word_ids(self.pool.as_ref(), &ids).await?;
+        for word in &mut words {
+            word.examples = examples.remove(&word.id).unwrap_or_default();
+        }
 
         // 构建计数查询
         let count_query = format!("SELECT COUNT(*) as count FROM words WHERE {}", where_clause);
@@ -607,6 +596,7 @@ impl WordRepository {
             pos_chinese: row.get("pos_chinese"),
             phonics_rule: row.get("phonics_rule"),
             analysis_explanation: row.get("analysis_explanation"),
+            examples: Vec::new(),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         })

@@ -6,35 +6,40 @@ use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::services::statistics::StatisticsService;
 use crate::types::*;
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
+/// 每日学习量（首页学习热力图）：最近 `days` 天（含今天，本地日期），只返回有学习的日期
 #[tauri::command]
-pub async fn diagnose_today_schedules(app: AppHandle) -> AppResult<String> {
-    use crate::services::diagnostics::DiagnosticsService;
-    
+pub async fn get_daily_learning_activity(
+    app: AppHandle,
+    days: i64,
+) -> AppResult<Vec<DailyLearningActivity>> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request("diagnose_today_schedules", None);
-
-    let service = DiagnosticsService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+    logger.api_request(
+        "get_daily_learning_activity",
+        Some(&format!("days: {}", days)),
     );
 
-    match service.diagnose_today_schedules().await {
+    let service = StatisticsService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
+
+    match service.get_daily_learning_activity(days).await {
         Ok(result) => {
             logger.api_response(
-                "diagnose_today_schedules",
+                "get_daily_learning_activity",
                 true,
-                Some("Diagnosis completed successfully"),
+                Some(&format!("{} active days", result.len())),
             );
             Ok(result)
         }
         Err(e) => {
-            logger.api_response("diagnose_today_schedules", false, Some(&e.to_string()));
+            logger.api_response("get_daily_learning_activity", false, Some(&e.to_string()));
             Err(e)
         }
     }
@@ -50,7 +55,7 @@ pub async fn get_database_statistics(app: AppHandle) -> AppResult<DatabaseOvervi
 
     let service = StatisticsService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_database_statistics().await {
@@ -82,7 +87,7 @@ pub async fn reset_user_data(app: AppHandle) -> AppResult<ResetResult> {
 
     let service = StatisticsService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.reset_user_data().await {
@@ -112,7 +117,7 @@ pub async fn delete_database_and_restart(app: AppHandle) -> AppResult<()> {
     let app_data_dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| AppError::InternalError(format!("Failed to get app data directory: {}", e)))?;
+        .map_err(|e| AppError::InternalError(format!("无法定位应用数据目录：{}", e)))?;
 
     // 构建数据库文件路径
     let db_path = app_data_dir.join("vocabulary.db");
@@ -242,7 +247,7 @@ pub async fn reset_selected_tables(
     if table_names.is_empty() {
         return Ok(ResetResult {
             success: false,
-            message: "No tables selected for reset".to_string(),
+            message: "请先选择要清空的数据".to_string(),
             deleted_records: 0,
             affected_tables: vec![],
         });
@@ -250,7 +255,7 @@ pub async fn reset_selected_tables(
 
     let service = StatisticsService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.reset_selected_tables(&table_names).await {

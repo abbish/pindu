@@ -27,6 +27,9 @@ pub struct WordBook {
     pub deleted_at: Option<Timestamp>,
     pub status: String,
     pub theme_tags: Option<Vec<ThemeTag>>,
+    /// 词性分布（单词本列表一次查询带出，免得前端逐本请求统计）
+    #[serde(default)]
+    pub word_types: Option<WordTypeDistribution>,
 }
 
 /// 创建单词本请求
@@ -50,6 +53,51 @@ pub struct UpdateWordBookRequest {
     pub theme_tag_ids: Option<Vec<Id>>,
 }
 
+/// 单词例句
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
+pub struct WordExample {
+    /// 英文例句
+    pub sentence: String,
+    /// 中文翻译
+    pub translation: String,
+}
+
+/// AI 老师对话中的一条消息
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ChatTurn {
+    /// student / teacher
+    pub role: String,
+    pub content: String,
+}
+
+/// 向 AI 老师提问（命令参数）
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WordTutorRequest {
+    pub word_id: Id,
+    /// 之前的对话（按时间顺序）
+    #[serde(default)]
+    pub history: Vec<ChatTurn>,
+    /// 本次问题
+    pub question: String,
+    /// 流式增量事件用于区分请求
+    pub request_id: String,
+    #[serde(default)]
+    pub model_id: Option<Id>,
+}
+
+/// 单词讲解（agent 生成的 Markdown，按单词缓存）
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WordExplanation {
+    pub word_id: Id,
+    /// Markdown 正文
+    pub content: String,
+    /// 生成所用模型
+    pub model_name: Option<String>,
+    /// 最近生成时间
+    pub updated_at: String,
+}
+
 /// 单词
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Word {
@@ -71,6 +119,9 @@ pub struct Word {
     pub pos_chinese: Option<String>,
     pub phonics_rule: Option<String>,
     pub analysis_explanation: Option<String>,
+    /// 例句（按顺序，第一句最简单；拼读分析时生成，可朗读）
+    #[serde(default)]
+    pub examples: Vec<WordExample>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -92,10 +143,12 @@ pub struct CreateWordRequest {
     pub pos_chinese: Option<String>,
     pub phonics_rule: Option<String>,
     pub analysis_explanation: Option<String>,
+    /// 例句（None = 不修改）
+    pub examples: Option<Vec<WordExample>>,
 }
 
 /// 更新单词请求
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct UpdateWordRequest {
     pub word: Option<String>,
     pub meaning: Option<String>,
@@ -111,6 +164,8 @@ pub struct UpdateWordRequest {
     pub pos_chinese: Option<String>,
     pub phonics_rule: Option<String>,
     pub analysis_explanation: Option<String>,
+    /// 例句（None = 不修改；传入则整体替换）
+    pub examples: Option<Vec<WordExample>>,
 }
 
 /// 单词本统计
@@ -122,12 +177,35 @@ pub struct WordBookStatistics {
 }
 
 /// 单词类型分布
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
 pub struct WordTypeDistribution {
     pub nouns: i32,
     pub verbs: i32,
     pub adjectives: i32,
     pub others: i32,
+}
+
+impl WordTypeDistribution {
+    /// 按词性累加（所有词性统计共用这一套归类）。
+    /// 取第一个词性（如 "n./v." 记为名词），去掉末尾的点后精确匹配：
+    /// n / noun → 名词；v / vt / vi / verb → 动词；adj / a / adjective → 形容词；其余（adv、prep、num 等）及空值 → 其他。
+    pub fn add(&mut self, pos: Option<&str>, count: i32) {
+        let first = pos
+            .unwrap_or("")
+            .trim()
+            .to_lowercase()
+            .split(|c: char| c == '/' || c == ',' || c == ';' || c == '&' || c.is_whitespace())
+            .find(|t| !t.is_empty())
+            .unwrap_or("")
+            .trim_end_matches('.')
+            .to_string();
+        match first.as_str() {
+            "n" | "noun" | "nouns" | "名词" => self.nouns += count,
+            "v" | "vt" | "vi" | "verb" | "verbs" | "动词" => self.verbs += count,
+            "adj" | "a" | "adjective" | "adjectives" | "形容词" => self.adjectives += count,
+            _ => self.others += count,
+        }
+    }
 }
 
 /// AI分析的单词信息
@@ -136,7 +214,6 @@ pub struct AnalyzedWord {
     pub word: String,
     pub meaning: String,
     pub part_of_speech: Option<String>,
-    pub example_sentence: Option<String>,
     // 新增自然拼读分析字段
     pub ipa: Option<String>,
     pub syllables: Option<String>,
@@ -145,6 +222,8 @@ pub struct AnalyzedWord {
     pub pos_chinese: Option<String>,
     pub phonics_rule: Option<String>,
     pub analysis_explanation: Option<String>,
+    /// 例句（分析结果，至少 5 条）
+    pub examples: Option<Vec<WordExample>>,
     pub word_frequency: Option<i32>,
 }
 

@@ -13,16 +13,24 @@ use std::sync::Arc;
 /// 负责诊断的业务逻辑处理
 pub struct DiagnosticsService {
     repository: DiagnosticsRepository,
-    logger: Arc<Logger>,
 }
 
 impl DiagnosticsService {
     /// 创建新的服务实例
     pub fn new(pool: Arc<SqlitePool>, logger: Arc<Logger>) -> Self {
         Self {
-            repository: DiagnosticsRepository::new(pool, logger.clone()),
-            logger,
+            repository: DiagnosticsRepository::new(pool, logger),
         }
+    }
+
+    /// 诊断学习计划数据
+    pub async fn diagnose_study_plan_data(&self, plan_name: &str) -> AppResult<serde_json::Value> {
+        self.repository.diagnose_study_plan_data(plan_name).await
+    }
+
+    /// 诊断日历数据状态
+    pub async fn diagnose_calendar_data(&self) -> AppResult<serde_json::Value> {
+        self.repository.diagnose_calendar_data().await
     }
 
     /// 诊断今日学习计划

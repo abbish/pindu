@@ -2,12 +2,12 @@
 //!
 //! 包含所有与单词本相关的 Tauri 命令
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::logger::Logger;
 use crate::services::wordbook::WordBookService;
 use crate::types::wordbook::WordTypeDistribution;
 use crate::types::*;
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -30,7 +30,10 @@ pub async fn get_word_books(
     );
 
     // 使用 Service 层处理业务逻辑
-    let service = WordBookService::new(Arc::new(pool.inner().clone()), Arc::new(logger.inner().clone()));
+    let service = WordBookService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
     match service.get_word_books(include_deleted, status).await {
         Ok(word_books) => {
             logger.api_response(
@@ -65,7 +68,7 @@ pub async fn get_word_book_linked_plans(
 
     let service = StudyPlanService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_linked_plans_by_wordbook(book_id).await {
@@ -96,7 +99,10 @@ pub async fn get_word_book_detail(app: AppHandle, book_id: Id) -> AppResult<Word
     );
 
     // 使用 Service 层处理业务逻辑
-    let service = WordBookService::new(Arc::new(pool.inner().clone()), Arc::new(logger.inner().clone()));
+    let service = WordBookService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
 
     match service.get_word_book(book_id).await {
         Ok(word_book) => {
@@ -114,6 +120,33 @@ pub async fn get_word_book_detail(app: AppHandle, book_id: Id) -> AppResult<Word
     }
 }
 
+/// 新建主题标签（名称 1–10 个字，同名已存在时返回已有的）
+#[tauri::command]
+pub async fn create_theme_tag(
+    app: AppHandle,
+    name: String,
+    icon: Option<String>,
+) -> AppResult<ThemeTag> {
+    use crate::services::theme_tag::ThemeTagService;
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request("create_theme_tag", Some(&format!("name: {}", name)));
+    let service = ThemeTagService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
+    let result = service.create_theme_tag(&name, icon.as_deref()).await;
+    logger.api_response(
+        "create_theme_tag",
+        result.is_ok(),
+        Some(&match &result {
+            Ok(tag) => format!("theme tag {}", tag.id),
+            Err(e) => e.to_string(),
+        }),
+    );
+    result
+}
+
 /// 获取所有主题标签
 #[tauri::command]
 pub async fn get_theme_tags(app: AppHandle) -> AppResult<Vec<ThemeTag>> {
@@ -126,7 +159,7 @@ pub async fn get_theme_tags(app: AppHandle) -> AppResult<Vec<ThemeTag>> {
 
     let service = ThemeTagService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_theme_tags().await {
@@ -162,7 +195,7 @@ pub async fn get_word_book_statistics(
     // 使用 Service 层处理业务逻辑
     let service = WordBookService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_word_type_distribution(book_id).await {
@@ -172,7 +205,10 @@ pub async fn get_word_book_statistics(
                 true,
                 Some(&format!(
                     "Statistics: nouns={}, verbs={}, adjectives={}, others={}",
-                    distribution.nouns, distribution.verbs, distribution.adjectives, distribution.others
+                    distribution.nouns,
+                    distribution.verbs,
+                    distribution.adjectives,
+                    distribution.others
                 )),
             );
             Ok(distribution)
@@ -196,7 +232,7 @@ pub async fn get_global_word_book_statistics(app: AppHandle) -> AppResult<WordBo
 
     let service = StatisticsService::new(
         Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
+        Arc::new(logger.inner().clone()),
     );
 
     match service.get_global_word_book_statistics().await {
@@ -212,36 +248,11 @@ pub async fn get_global_word_book_statistics(app: AppHandle) -> AppResult<WordBo
             Ok(result)
         }
         Err(e) => {
-            logger.api_response("get_global_word_book_statistics", false, Some(&e.to_string()));
-            Err(e)
-        }
-    }
-}
-
-/// 更新所有单词本的单词数量
-#[tauri::command]
-pub async fn update_all_word_book_counts(app: AppHandle) -> AppResult<()> {
-    let pool = app.state::<SqlitePool>();
-    let logger = app.state::<Logger>();
-
-    logger.api_request("update_all_word_book_counts", None);
-
-    let service = WordBookService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone())
-    );
-
-    match service.update_all_counts().await {
-        Ok(_) => {
             logger.api_response(
-                "update_all_word_book_counts",
-                true,
-                Some("Updated all word book counts"),
+                "get_global_word_book_statistics",
+                false,
+                Some(&e.to_string()),
             );
-            Ok(())
-        }
-        Err(e) => {
-            logger.api_response("update_all_word_book_counts", false, Some(&e.to_string()));
             Err(e)
         }
     }
@@ -259,7 +270,10 @@ pub async fn create_word_book(app: AppHandle, request: CreateWordBookRequest) ->
     );
 
     // 使用 Service 层处理业务逻辑
-    let service = WordBookService::new(Arc::new(pool.inner().clone()), Arc::new(logger.inner().clone()));
+    let service = WordBookService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
 
     match service.create_word_book(request).await {
         Ok(book_id) => {
@@ -287,13 +301,13 @@ pub async fn update_word_book(
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.api_request(
-        "update_word_book",
-        Some(&format!("book_id: {}", book_id)),
-    );
+    logger.api_request("update_word_book", Some(&format!("book_id: {}", book_id)));
 
     // 使用 Service 层处理业务逻辑
-    let service = WordBookService::new(Arc::new(pool.inner().clone()), Arc::new(logger.inner().clone()));
+    let service = WordBookService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
 
     match service.update_word_book(book_id, request).await {
         Ok(_) => {
@@ -320,7 +334,10 @@ pub async fn delete_word_book(app: AppHandle, book_id: Id) -> AppResult<()> {
     logger.api_request("delete_word_book", Some(&format!("book_id: {}", book_id)));
 
     // 使用 Service 层处理业务逻辑
-    let service = WordBookService::new(Arc::new(pool.inner().clone()), Arc::new(logger.inner().clone()));
+    let service = WordBookService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
 
     match service.delete_word_book(book_id).await {
         Ok(_) => {
@@ -333,6 +350,28 @@ pub async fn delete_word_book(app: AppHandle, book_id: Id) -> AppResult<()> {
         }
         Err(e) => {
             logger.api_response("delete_word_book", false, Some(&e.to_string()));
+            Err(e)
+        }
+    }
+}
+
+/// 恢复已删除的单词本
+#[tauri::command]
+pub async fn restore_word_book(app: AppHandle, book_id: Id) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request("restore_word_book", Some(&format!("book_id: {}", book_id)));
+    let service = WordBookService::new(
+        Arc::new(pool.inner().clone()),
+        Arc::new(logger.inner().clone()),
+    );
+    match service.restore_word_book(book_id).await {
+        Ok(_) => {
+            logger.api_response("restore_word_book", true, None);
+            Ok(())
+        }
+        Err(e) => {
+            logger.api_response("restore_word_book", false, Some(&e.to_string()));
             Err(e)
         }
     }

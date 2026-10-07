@@ -6,6 +6,9 @@
 
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::repositories::practice_metrics::{
+    streak_days, study_dates, FIRST_LEARN_CTE, MASTERED_CTE, SRS_LEARNED_BOX, SRS_MASTERED_BOX,
+};
 use crate::types::*;
 use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
@@ -13,6 +16,25 @@ use std::sync::Arc;
 /// 统计仓储
 ///
 /// 负责统计数据的数据访问逻辑,封装所有数据库操作
+/// 不能经「清空选中的表」清掉的表：迁移记录、AI / 语音配置、应用设置
+const PROTECTED_TABLES: [&str; 6] = [
+    "_sqlx_migrations",
+    "ai_providers",
+    "ai_models",
+    "app_settings",
+    "volcengine_tts_config",
+    "elevenlabs_config",
+];
+
+/// 表的类别：config 配置类（设置页不建议清空）/ user_data 用户数据
+fn classify_table_type(table_name: &str) -> &'static str {
+    if PROTECTED_TABLES.contains(&table_name) || table_name == "theme_tags" {
+        "config"
+    } else {
+        "user_data"
+    }
+}
+
 pub struct StatisticsRepository {
     pool: Arc<SqlitePool>,
     logger: Arc<Logger>,
@@ -24,159 +46,73 @@ impl StatisticsRepository {
         Self { pool, logger }
     }
 
-    /// 获取学习统计
+    /// 获取学习统计（口径见 `practice_metrics`：首答正确率、三步首答全对才算学会、本地日期、连续天数）
     pub async fn get_study_statistics(&self) -> AppResult<StudyStatistics> {
-        // 1. 获取总学习单词数
-        let total_words_query = r#"
-            SELECT COALESCE(COUNT(DISTINCT wpr.word_id), 0) as total
-            FROM word_practice_records wpr
-            JOIN practice_sessions ps ON wpr.session_id = ps.id
-            WHERE ps.completed = TRUE AND wpr.is_correct = TRUE
-        "#;
+        let db_err = |e: sqlx::Error| {
+            self.logger
+                .database_operation("SELECT", "statistics", false, Some(&e.to_string()));
+            AppError::DatabaseError(e.to_string())
+        };
 
-        let total_words_row = sqlx::query(total_words_query)
+        // 1. 学过的单词数（按单词去重）与首答正确率
+        let summary_query = format!(
+            "WITH {}, {}
+             SELECT
+                 (SELECT COUNT(DISTINCT spw.word_id) FROM study_plan_words spw
+                  JOIN study_plans sp ON sp.id = spw.plan_id
+                  WHERE sp.deleted_at IS NULL AND spw.srs_box >= {learned_box}) AS words_learned,
+                 COALESCE((SELECT AVG(is_correct) * 100.0 FROM first_learn), 0.0) AS avg_accuracy",
+            FIRST_LEARN_CTE,
+            MASTERED_CTE,
+            learned_box = SRS_LEARNED_BOX
+        );
+        let row = sqlx::query(&summary_query)
             .fetch_one(self.pool.as_ref())
             .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "word_practice_records", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
+            .map_err(db_err)?;
+        let total_words_learned: i64 = row.get("words_learned");
+        let average_accuracy: f64 = row.get("avg_accuracy");
 
-        let total_words_learned: i32 = total_words_row.get("total");
+        // 2. 连续学习天数：完成过练习的本地日期
+        let study_dates = study_dates(self.pool.as_ref()).await.map_err(db_err)?;
+        let today = crate::time::local_today();
+        let streak_days = streak_days(&study_dates, today);
 
-        // 2. 获取平均准确率
-        let accuracy_query = r#"
-            SELECT
-                COALESCE(
-                    CASE
-                        WHEN COUNT(*) > 0 THEN
-                            (COUNT(CASE WHEN is_correct = TRUE THEN 1 END) * 100.0 / COUNT(*))
-                        ELSE 0.0
-                    END,
-                    0.0
-                ) as avg_accuracy
-            FROM word_practice_records wpr
-            JOIN practice_sessions ps ON wpr.session_id = ps.id
-            WHERE ps.completed = TRUE
-        "#;
+        // 3. 计划完成率：已完成 / 有效计划（不含草稿与已删除）
+        let completion_rate: f64 = sqlx::query_scalar(
+            "SELECT COALESCE(
+                 SUM(CASE WHEN unified_status = 'Completed' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0),
+                 0.0)
+             FROM study_plans
+             WHERE deleted_at IS NULL AND unified_status NOT IN ('Draft', 'Deleted')",
+        )
+        .fetch_one(self.pool.as_ref())
+        .await
+        .map_err(db_err)?;
 
-        let accuracy_row = sqlx::query(accuracy_query)
-            .fetch_one(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "word_practice_records", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let average_accuracy: f64 = accuracy_row.get("avg_accuracy");
-
-        // 3. 计算连续学习天数
-        let streak_query = r#"
-            SELECT DISTINCT DATE(ps.end_time) as study_date
-            FROM practice_sessions ps
-            WHERE ps.completed = TRUE
-            AND DATE(ps.end_time) >= DATE('now', '-30 days')
-            ORDER BY study_date DESC
-        "#;
-
-        let mut streak_days = 0;
-        match sqlx::query(streak_query)
-            .fetch_all(self.pool.as_ref())
-            .await
-        {
-            Ok(rows) => {
-                let today = chrono::Local::now().date_naive();
-                let mut current_date = today;
-
-                let mut study_dates: Vec<chrono::NaiveDate> = Vec::new();
-                for row in rows {
-                    let date_str: String = row.get("study_date");
-                    if let Ok(date) = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
-                        study_dates.push(date);
-                    }
-                }
-                study_dates.sort_by(|a, b| b.cmp(a));
-
-                for study_date in study_dates {
-                    if study_date == current_date {
-                        streak_days += 1;
-                        current_date = current_date - chrono::Duration::days(1);
-                    } else if study_date == current_date - chrono::Duration::days(1) {
-                        current_date = study_date;
-                        streak_days += 1;
-                        current_date = current_date - chrono::Duration::days(1);
-                    } else {
-                        break;
-                    }
-                }
-            }
-            Err(_) => {
-                streak_days = 0;
-            }
-        }
-
-        // 4. 获取完成率
-        let completion_query = r#"
-            SELECT
-                CASE
-                    WHEN COUNT(*) > 0 THEN (COUNT(CASE WHEN status = 'completed' THEN 1 END) * 100.0 / COUNT(*))
-                    ELSE 0.0
-                END as completion_rate
-            FROM study_plans
-        "#;
-
-        let completion_row = sqlx::query(completion_query)
-            .fetch_one(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "study_plans", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let completion_rate: f64 = completion_row.get("completion_rate");
-
-        // 5. 计算最近7天的学习进度
-        let weekly_progress_query = r#"
-            SELECT
-                DATE(ps.end_time) as study_date,
-                COUNT(DISTINCT wpr.word_id) as words_learned
-            FROM practice_sessions ps
-            JOIN word_practice_records wpr ON ps.id = wpr.session_id
-            WHERE ps.completed = TRUE
-            AND DATE(ps.end_time) >= DATE('now', '-7 days')
-            AND DATE(ps.end_time) <= DATE('now')
-            GROUP BY DATE(ps.end_time)
-            ORDER BY study_date ASC
-        "#;
-
+        // 4. 最近 7 天（本地日期）每天学会的单词数
+        let weekly_query = format!(
+            "WITH {}, {}
+             SELECT DATE(end_time, 'localtime') AS study_date, COUNT(DISTINCT word_id) AS words
+             FROM mastered
+             WHERE DATE(end_time, 'localtime') >= ?
+             GROUP BY study_date",
+            FIRST_LEARN_CTE, MASTERED_CTE
+        );
         let mut weekly_progress = vec![0; 7];
-
-        match sqlx::query(weekly_progress_query)
+        for row in sqlx::query(&weekly_query)
+            .bind(crate::time::format_date(today - chrono::Duration::days(6)))
             .fetch_all(self.pool.as_ref())
             .await
+            .map_err(db_err)?
         {
-            Ok(rows) => {
-                let today = chrono::Utc::now().date_naive();
-                for row in rows {
-                    let study_date_str: String = row.get("study_date");
-                    let words_learned: i64 = row.get("words_learned");
-
-                    if let Ok(study_date) =
-                        chrono::NaiveDate::parse_from_str(&study_date_str, "%Y-%m-%d")
-                    {
-                        let days_ago = (today - study_date).num_days();
-                        if days_ago >= 0 && days_ago < 7 {
-                            let index = (6 - days_ago) as usize;
-                            weekly_progress[index] = words_learned as i32;
-                        }
-                    }
+            let date: String = row.get("study_date");
+            let words: i64 = row.get("words");
+            if let Ok(date) = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d") {
+                let days_ago = (today - date).num_days();
+                if (0..7).contains(&days_ago) {
+                    weekly_progress[(6 - days_ago) as usize] = words as i32;
                 }
-            }
-            Err(_) => {
-                // 保持默认的0值
             }
         }
 
@@ -188,7 +124,7 @@ impl StatisticsRepository {
         );
 
         Ok(StudyStatistics {
-            total_words_learned,
+            total_words_learned: total_words_learned as i32,
             average_accuracy,
             streak_days,
             completion_rate,
@@ -196,17 +132,78 @@ impl StatisticsRepository {
         })
     }
 
+    /// 每日学习量（本地日期 >= `since`，只含有学习的日期，按日期升序）；不含已删除计划
+    pub async fn get_daily_learning_activity(
+        &self,
+        since: chrono::NaiveDate,
+    ) -> AppResult<Vec<DailyLearningActivity>> {
+        let db_err = |e: sqlx::Error| {
+            self.logger
+                .database_operation("SELECT", "statistics", false, Some(&e.to_string()));
+            AppError::DatabaseError(e.to_string())
+        };
+        let since = since.format("%Y-%m-%d").to_string();
+
+        let query = format!(
+            "WITH {}, {},
+             practiced AS (
+                 SELECT DATE(r.created_at, 'localtime') AS d, COUNT(DISTINCT r.word_id) AS n
+                 FROM word_practice_records r
+                 JOIN practice_sessions ps ON ps.id = r.session_id
+                 JOIN study_plans sp ON sp.id = ps.plan_id
+                 WHERE r.kind = 'learn' AND sp.deleted_at IS NULL
+                   AND DATE(r.created_at, 'localtime') >= ?
+                 GROUP BY d
+             ),
+             learned AS (
+                 SELECT DATE(m.end_time, 'localtime') AS d, COUNT(DISTINCT m.word_id) AS n
+                 FROM mastered m
+                 JOIN study_plans sp ON sp.id = m.plan_id
+                 WHERE sp.deleted_at IS NULL AND m.end_time IS NOT NULL
+                   AND DATE(m.end_time, 'localtime') >= ?
+                 GROUP BY d
+             ),
+             days AS (SELECT d FROM practiced UNION SELECT d FROM learned)
+             SELECT days.d AS study_date,
+                    COALESCE(p.n, 0) AS practiced,
+                    COALESCE(l.n, 0) AS mastered
+             FROM days
+             LEFT JOIN practiced p ON p.d = days.d
+             LEFT JOIN learned l ON l.d = days.d
+             WHERE days.d IS NOT NULL
+             ORDER BY days.d",
+            FIRST_LEARN_CTE, MASTERED_CTE
+        );
+        let rows = sqlx::query(&query)
+            .bind(&since)
+            .bind(&since)
+            .fetch_all(self.pool.as_ref())
+            .await
+            .map_err(db_err)?;
+
+        Ok(rows
+            .iter()
+            .map(|row| DailyLearningActivity {
+                date: row.get("study_date"),
+                practiced_words: row.get::<i64, _>("practiced") as i32,
+                mastered_words: row.get::<i64, _>("mastered") as i32,
+            })
+            .collect())
+    }
+
     /// 获取数据库统计
     pub async fn get_database_statistics(&self) -> AppResult<DatabaseOverview> {
-        use crate::handlers::shared::classify_table_type;
-
         let all_tables_query = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != '_sqlx_migrations' ORDER BY name";
         let table_rows = sqlx::query(all_tables_query)
             .fetch_all(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "sqlite_master", false, Some(&e.to_string()));
+                self.logger.database_operation(
+                    "SELECT",
+                    "sqlite_master",
+                    false,
+                    Some(&e.to_string()),
+                );
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -220,7 +217,9 @@ impl StatisticsRepository {
             let table_type = classify_table_type(&table_name);
 
             let count_query = format!("SELECT COUNT(*) as count FROM {}", table_name);
-            let row = sqlx::query(&count_query).fetch_one(self.pool.as_ref()).await;
+            let row = sqlx::query(&count_query)
+                .fetch_one(self.pool.as_ref())
+                .await;
 
             let record_count = match row {
                 Ok(row) => row.get::<i64, _>("count"),
@@ -278,11 +277,7 @@ impl StatisticsRepository {
         let mut deleted_records = 0i64;
         let mut affected_tables = Vec::new();
 
-        let mut tx = self.pool.begin().await.map_err(|e| {
-            self.logger
-                .database_operation("BEGIN", "transaction", false, Some(&e.to_string()));
-            AppError::DatabaseError(e.to_string())
-        })?;
+        let mut tx = crate::services::srs::begin_write(&self.pool).await?;
 
         for table_name in &user_data_tables {
             let count_query = format!("SELECT COUNT(*) as count FROM {}", table_name);
@@ -315,9 +310,14 @@ impl StatisticsRepository {
                     }
                     Err(e) => {
                         let _ = tx.rollback().await;
+                        self.logger.error(
+                            "RESET",
+                            &format!("清空 {} 失败", table_name),
+                            Some(&e.to_string()),
+                        );
                         return Ok(ResetResult {
                             success: false,
-                            message: format!("Failed to delete data from {}: {}", table_name, e),
+                            message: "清空数据没有完成，已全部撤销，请稍后再试".to_string(),
                             deleted_records: 0,
                             affected_tables: vec![],
                         });
@@ -346,9 +346,9 @@ impl StatisticsRepository {
         Ok(ResetResult {
             success: true,
             message: format!(
-                "Successfully reset user data. Deleted {} records from {} tables.",
-                deleted_records,
-                affected_tables.len()
+                "已从 {} 张表删除 {} 条记录",
+                affected_tables.len(),
+                deleted_records
             ),
             deleted_records,
             affected_tables,
@@ -357,14 +357,23 @@ impl StatisticsRepository {
 
     /// 重置选定的表
     pub async fn reset_selected_tables(&self, table_names: &[String]) -> AppResult<ResetResult> {
+        // 表名会拼进 SQL：只接受库里真实存在的用户数据表（配置、迁移记录、系统表不能清）
+        let existing: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        )
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for name in table_names {
+            if PROTECTED_TABLES.contains(&name.as_str()) || !existing.iter().any(|t| t == name) {
+                return Err(AppError::ValidationError(
+                    "选中的数据不能清空，请刷新页面后重新选择".to_string(),
+                ));
+            }
+        }
         let mut deleted_records = 0i64;
         let mut affected_tables = Vec::new();
 
-        let mut tx = self.pool.begin().await.map_err(|e| {
-            self.logger
-                .database_operation("BEGIN", "transaction", false, Some(&e.to_string()));
-            AppError::DatabaseError(e.to_string())
-        })?;
+        let mut tx = crate::services::srs::begin_write(&self.pool).await?;
 
         for table_name in table_names {
             let count_query = format!("SELECT COUNT(*) as count FROM {}", table_name);
@@ -397,9 +406,14 @@ impl StatisticsRepository {
                     }
                     Err(e) => {
                         let _ = tx.rollback().await;
+                        self.logger.error(
+                            "RESET",
+                            &format!("清空 {} 失败", table_name),
+                            Some(&e.to_string()),
+                        );
                         return Ok(ResetResult {
                             success: false,
-                            message: format!("Failed to delete data from {}: {}", table_name, e),
+                            message: "清空数据没有完成，已全部撤销，请稍后再试".to_string(),
                             deleted_records: 0,
                             affected_tables: vec![],
                         });
@@ -428,9 +442,9 @@ impl StatisticsRepository {
         Ok(ResetResult {
             success: true,
             message: format!(
-                "Successfully reset selected tables. Deleted {} records from {} tables.",
-                deleted_records,
-                affected_tables.len()
+                "已从 {} 张表删除 {} 条记录",
+                affected_tables.len(),
+                deleted_records
             ),
             deleted_records,
             affected_tables,
@@ -452,7 +466,8 @@ impl StatisticsRepository {
         let total_books: i64 = books_row.get("count");
 
         // 获取单词总数
-        let words_query = "SELECT COUNT(*) as count FROM words";
+        // 只统计未删除单词本里的单词
+        let words_query = "SELECT COUNT(*) as count FROM words w JOIN word_books b ON b.id = w.word_book_id WHERE b.deleted_at IS NULL";
         let words_row = sqlx::query(words_query)
             .fetch_one(self.pool.as_ref())
             .await
@@ -466,11 +481,12 @@ impl StatisticsRepository {
         // 获取词性统计
         let pos_query = r#"
             SELECT
-                COALESCE(part_of_speech, pos_english, pos_abbreviation) as pos,
+                COALESCE(w.part_of_speech, w.pos_english, w.pos_abbreviation) as pos,
                 COUNT(*) as count
-            FROM words
-            WHERE part_of_speech IS NOT NULL OR pos_english IS NOT NULL OR pos_abbreviation IS NOT NULL
-            GROUP BY COALESCE(part_of_speech, pos_english, pos_abbreviation)
+            FROM words w
+            JOIN word_books b ON b.id = w.word_book_id
+            WHERE b.deleted_at IS NULL
+            GROUP BY COALESCE(w.part_of_speech, w.pos_english, w.pos_abbreviation)
         "#;
         let pos_rows = sqlx::query(pos_query)
             .fetch_all(self.pool.as_ref())
@@ -481,37 +497,13 @@ impl StatisticsRepository {
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        let mut nouns = 0;
-        let mut verbs = 0;
-        let mut adjectives = 0;
-        let mut others = 0;
-
+        // 归类规则与单个单词本统计一致（WordTypeDistribution::add）
+        let mut word_types = WordTypeDistribution::default();
         for row in pos_rows {
             let pos: Option<String> = row.get("pos");
             let count: i64 = row.get("count");
-
-            if let Some(pos_str) = pos {
-                let pos_lower = pos_str.to_lowercase();
-                if pos_lower.starts_with("n") || pos_lower == "noun" || pos_lower == "nouns" || pos_lower == "名词" {
-                    nouns += count;
-                } else if pos_lower.starts_with("v") || pos_lower == "verb" || pos_lower == "verbs" || pos_lower == "动词" {
-                    verbs += count;
-                } else if pos_lower.starts_with("adj") || pos_lower == "adjective" || pos_lower == "adjectives" || pos_lower == "形容词" {
-                    adjectives += count;
-                } else {
-                    others += count;
-                }
-            } else {
-                others += count;
-            }
+            word_types.add(pos.as_deref(), count as i32);
         }
-
-        let word_types = WordTypeDistribution {
-            nouns: nouns as i32,
-            verbs: verbs as i32,
-            adjectives: adjectives as i32,
-            others: others as i32,
-        };
 
         self.logger.database_operation(
             "SELECT",
@@ -544,8 +536,12 @@ impl StatisticsRepository {
             .fetch_optional(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "study_plans", false, Some(&e.to_string()));
+                self.logger.database_operation(
+                    "SELECT",
+                    "study_plans",
+                    false,
+                    Some(&e.to_string()),
+                );
                 AppError::DatabaseError(e.to_string())
             })?;
 
@@ -556,167 +552,114 @@ impl StatisticsRepository {
                 row.get::<i64, _>("total_words"),
             ),
             None => {
-                return Err(AppError::NotFound(format!("学习计划 {} 不存在", plan_id)));
+                return Err(AppError::NotFound(
+                    "学习计划不存在，可能已被删除".to_string(),
+                ));
             }
         };
+
+        // 本次统计的“今天”（本地日期，只取一次）
+        let today = crate::time::local_today();
 
         // 2. 计算时间相关统计
-        let (total_days, time_progress_percentage) = if let (Some(start), Some(end)) = (&start_date, &end_date) {
-            let start_date = chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d")
-                .map_err(|_| AppError::ValidationError("无效的开始日期格式".to_string()))?;
-            let end_date = chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d")
-                .map_err(|_| AppError::ValidationError("无效的结束日期格式".to_string()))?;
+        let (total_days, time_progress_percentage) =
+            if let (Some(start), Some(end)) = (&start_date, &end_date) {
+                let start_date = chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d")
+                    .map_err(|_| AppError::ValidationError("无效的开始日期格式".to_string()))?;
+                let end_date = chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d")
+                    .map_err(|_| AppError::ValidationError("无效的结束日期格式".to_string()))?;
 
-            let total_days = (end_date - start_date).num_days() + 1;
-            let today = chrono::Utc::now().date_naive();
-            let time_progress = if today <= start_date {
-                0.0
-            } else if today >= end_date {
-                100.0
-            } else {
-                let elapsed_days = (today - start_date).num_days() + 1;
-                (elapsed_days as f64 / total_days as f64) * 100.0
-            };
-
-            (total_days, time_progress)
-        } else {
-            (0, 0.0)
-        };
-
-        // 3. 计算已学单词数
-        let completed_words_query = r#"
-            SELECT COUNT(DISTINCT wpr.word_id) as completed_count
-            FROM word_practice_records wpr
-            JOIN practice_sessions ps ON wpr.session_id = ps.id
-            WHERE ps.plan_id = ? AND ps.completed = TRUE
-        "#;
-
-        let completed_words: i64 = sqlx::query(completed_words_query)
-            .bind(plan_id)
-            .fetch_one(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "word_practice_records", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?
-            .get("completed_count");
-
-        // 4. 计算练习时间
-        let practice_time_query = r#"
-            SELECT
-                COUNT(CASE WHEN completed = TRUE THEN 1 END) as completed_sessions,
-                COALESCE(SUM(CASE WHEN completed = TRUE THEN
-                    CAST((julianday(end_time) - julianday(start_time)) * 24 * 60 * 60 * 1000 AS INTEGER)
-                END), 0) as total_active_time_ms
-            FROM practice_sessions
-            WHERE plan_id = ?
-        "#;
-
-        let (completed_sessions, total_active_time) = sqlx::query(practice_time_query)
-            .bind(plan_id)
-            .fetch_one(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "practice_sessions", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })
-            .map(|row| (
-                row.get::<i64, _>("completed_sessions"),
-                row.get::<i64, _>("total_active_time_ms"),
-            ))?;
-
-        let total_minutes = total_active_time / (1000 * 60);
-
-        // 5. 获取练习准确率
-        let accuracy_query = r#"
-            SELECT
-                COUNT(*) as total_steps,
-                COUNT(CASE WHEN is_correct = TRUE THEN 1 END) as correct_steps
-            FROM word_practice_records wpr
-            JOIN practice_sessions ps ON wpr.session_id = ps.id
-            WHERE ps.plan_id = ? AND ps.completed = TRUE
-        "#;
-
-        let avg_accuracy = sqlx::query(accuracy_query)
-            .bind(plan_id)
-            .fetch_one(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "word_practice_records", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })
-            .map(|row| {
-                let total_steps: i64 = row.get("total_steps");
-                let correct_steps: i64 = row.get("correct_steps");
-                if total_steps > 0 {
-                    (correct_steps as f64 / total_steps as f64) * 100.0
-                } else {
-                    0.0
-                }
-            })?;
-
-        // 6. 计算逾期统计
-        let (overdue_days, overdue_ratio) = if let Some(start) = &start_date {
-            let start_date = chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d").unwrap_or_default();
-            let today = chrono::Utc::now().date_naive();
-
-            if today > start_date {
-                let overdue_query = r#"
-                    SELECT COUNT(*) as overdue_count
-                    FROM study_plan_schedules sps
-                    WHERE sps.plan_id = ?
-                    AND sps.schedule_date < date('now')
-                    AND (sps.completed_words_count IS NULL OR sps.completed_words_count < sps.total_words_count)
-                "#;
-
-                let overdue_count: i64 = sqlx::query(overdue_query)
-                    .bind(plan_id)
-                    .fetch_one(self.pool.as_ref())
-                    .await
-                    .map_err(|e| {
-                        self.logger
-                            .database_operation("SELECT", "study_plan_schedules", false, Some(&e.to_string()));
-                        AppError::DatabaseError(e.to_string())
-                    })?
-                    .get("overdue_count");
-
-                let overdue_ratio = if total_days > 0 {
-                    (overdue_count as f64 / total_days as f64) * 100.0
-                } else {
-                    0.0
-                };
-
-                (overdue_count, overdue_ratio)
+                time_progress(start_date, end_date, today)
             } else {
                 (0, 0.0)
-            }
-        } else {
-            (0, 0.0)
+            };
+
+        let db_err = |e: sqlx::Error| {
+            self.logger.database_operation(
+                "SELECT",
+                "study_plan_statistics",
+                false,
+                Some(&e.to_string()),
+            );
+            AppError::DatabaseError(e.to_string())
         };
 
-        // 7. 计算连续学习天数
-        let plan_streak_query = r#"
-            SELECT COUNT(DISTINCT DATE(ps.end_time)) as streak_days
-            FROM practice_sessions ps
-            WHERE ps.completed = TRUE
-            AND ps.plan_id = ?
-            AND DATE(ps.end_time) >= DATE('now', '-7 days')
-        "#;
-
-        let plan_streak_days: i32 = sqlx::query(plan_streak_query)
+        // 3. 已掌握 / 已学的单词数与首答正确率
+        let summary_query = format!(
+            "WITH {}, {}
+             SELECT
+                 (SELECT COUNT(*) FROM study_plan_words WHERE plan_id = ?1 AND srs_box >= {mastered_box}) AS completed_count,
+                 (SELECT COUNT(*) FROM study_plan_words WHERE plan_id = ?1 AND srs_box >= {learned_box}) AS learned_count,
+                 COALESCE((SELECT AVG(is_correct) * 100.0 FROM first_learn WHERE plan_id = ?1), 0.0) AS avg_accuracy",
+            FIRST_LEARN_CTE,
+            MASTERED_CTE,
+            mastered_box = SRS_MASTERED_BOX,
+            learned_box = SRS_LEARNED_BOX
+        );
+        let summary = sqlx::query(&summary_query)
             .bind(plan_id)
             .fetch_one(self.pool.as_ref())
             .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "practice_sessions", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })
-            .map(|row| row.get::<i64, _>("streak_days") as i32)
-            .unwrap_or(0);
+            .map_err(db_err)?;
+        let completed_words: i64 = summary.get("completed_count");
+        let learned_words: i64 = summary.get("learned_count");
+        let avg_accuracy: f64 = summary.get("avg_accuracy");
+
+        // 4. 练习时长（有效时长，不含暂停）与学习天数（完成过练习的本地日期）
+        let time_row = sqlx::query(
+            "SELECT COALESCE(SUM(active_time), 0) AS active_ms,
+                    COUNT(DISTINCT DATE(end_time, 'localtime')) AS study_days
+             FROM practice_sessions
+             WHERE plan_id = ? AND completed = TRUE",
+        )
+        .bind(plan_id)
+        .fetch_one(self.pool.as_ref())
+        .await
+        .map_err(db_err)?;
+        let total_active_time: i64 = time_row.get("active_ms");
+        let study_days: i64 = time_row.get("study_days");
+        let total_minutes = total_active_time / (1000 * 60);
+
+        // 6. 日程天数：练完（status = completed，与日历同一口径）/ 逾期（日期已过、没练，且计划仍在进行）
+        let today_str = crate::time::format_date(today);
+        let schedule_row = sqlx::query(
+            "SELECT
+                 COUNT(*) AS schedules,
+                 COALESCE(SUM(CASE WHEN sps.status = 'completed' THEN 1 ELSE 0 END), 0) AS practiced,
+                 COALESCE(SUM(CASE WHEN COALESCE(sps.status, '') != 'completed' AND sps.schedule_date < ?2
+                                    AND sp.unified_status IN ('Active', 'Pending') THEN 1 ELSE 0 END), 0) AS overdue
+             FROM study_plan_schedules sps
+             JOIN study_plans sp ON sp.id = sps.plan_id
+             WHERE sps.plan_id = ?1 AND sps.total_words_count > 0",
+        )
+        .bind(plan_id)
+        .bind(&today_str)
+        .fetch_one(self.pool.as_ref())
+        .await
+        .map_err(db_err)?;
+        let schedule_days: i64 = schedule_row.get("schedules");
+        let practiced_days: i64 = schedule_row.get("practiced");
+        let overdue_days: i64 = schedule_row.get("overdue");
+        let overdue_ratio = if schedule_days > 0 {
+            overdue_days as f64 / schedule_days as f64 * 100.0
+        } else {
+            0.0
+        };
+
+        // 7. 连续学习天数（该计划，本地日期）
+        let plan_dates: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT DATE(end_time, 'localtime') FROM practice_sessions
+             WHERE plan_id = ? AND completed = TRUE AND end_time IS NOT NULL",
+        )
+        .bind(plan_id)
+        .fetch_all(self.pool.as_ref())
+        .await
+        .map_err(db_err)?;
+        let plan_dates: Vec<chrono::NaiveDate> = plan_dates
+            .iter()
+            .filter_map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+            .collect();
+        let plan_streak_days = streak_days(&plan_dates, today);
 
         self.logger.database_operation(
             "SELECT",
@@ -726,8 +669,9 @@ impl StatisticsRepository {
         );
 
         Ok(StudyPlanStatistics {
-            average_daily_study_minutes: if completed_sessions > 0 {
-                total_minutes / completed_sessions
+            // 按学习天数平均（不是按会话数）
+            average_daily_study_minutes: if study_days > 0 {
+                total_minutes / study_days
             } else {
                 0
             },
@@ -740,12 +684,174 @@ impl StatisticsRepository {
             average_accuracy_rate: avg_accuracy,
             overdue_ratio,
             streak_days: plan_streak_days,
-            total_days,
-            completed_days: completed_sessions,
+            // 日程天数（学习日）；没有日程时退回计划的自然天数
+            total_days: if schedule_days > 0 {
+                schedule_days
+            } else {
+                total_days
+            },
+            completed_days: practiced_days,
             overdue_days,
             total_words,
             completed_words,
+            learned_words,
             total_study_minutes: total_minutes,
         })
+    }
+}
+
+/// 计划时间进度：返回 (总天数, 百分比)。口径与前端 `src/utils/timeProgress.ts` 一致：
+/// 截至今天开始时已过去的自然日 / 总天数（含首尾），即第 k 天为 (k-1)/n；开始前 0，结束日之后 100。
+/// 使用本地日期（原实现用 UTC，在 UTC+8 的 0–8 点会少算一天）。
+fn time_progress(
+    start: chrono::NaiveDate,
+    end: chrono::NaiveDate,
+    today: chrono::NaiveDate,
+) -> (i64, f64) {
+    let total_days = (end - start).num_days() + 1;
+    let pct = if today < start {
+        0.0
+    } else if today > end {
+        100.0
+    } else {
+        (today - start).num_days() as f64 / total_days as f64 * 100.0
+    };
+    (total_days, pct)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{
+        memory_pool, seed_passed_word, seed_schedule, seed_session, seed_step, test_logger,
+    };
+
+    #[tokio::test]
+    async fn daily_learning_activity_counts_practiced_and_mastered_by_local_day() {
+        let pool = memory_pool().await;
+        let fx = seed_schedule(&pool, 3).await;
+        // 10-05：已完成会话，word1 三步全对（学会），word2 第 1 步答错（练过未学会）
+        seed_session(&pool, &fx, "s1", true).await;
+        sqlx::query(
+            "UPDATE practice_sessions SET end_time = '2026-10-05T12:30:00+00:00' WHERE id = 's1'",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        for step in 1..=3 {
+            seed_step(
+                &pool,
+                "s1",
+                fx.word_ids[0],
+                fx.schedule_word_ids[0],
+                step,
+                true,
+                &format!("2026-10-05T12:00:0{}+00:00", step),
+            )
+            .await;
+        }
+        seed_step(
+            &pool,
+            "s1",
+            fx.word_ids[1],
+            fx.schedule_word_ids[1],
+            1,
+            false,
+            "2026-10-05T12:01:00+00:00",
+        )
+        .await;
+        // 10-06：未完成会话，word3 练过；同一单词多步只算一次
+        seed_session(&pool, &fx, "s2", false).await;
+        seed_passed_word(
+            &pool,
+            "s2",
+            fx.word_ids[2],
+            fx.schedule_word_ids[2],
+            "2026-10-06",
+        )
+        .await;
+        // 早于 since 的记录不返回
+        seed_step(
+            &pool,
+            "s2",
+            fx.word_ids[0],
+            fx.schedule_word_ids[0],
+            1,
+            true,
+            "2026-09-01T12:00:00+00:00",
+        )
+        .await;
+
+        let repo = StatisticsRepository::new(pool.clone(), test_logger());
+        let since = chrono::NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+        let days = repo.get_daily_learning_activity(since).await.unwrap();
+        assert_eq!(
+            days,
+            vec![
+                DailyLearningActivity {
+                    date: "2026-10-05".into(),
+                    practiced_words: 2,
+                    mastered_words: 1
+                },
+                DailyLearningActivity {
+                    date: "2026-10-06".into(),
+                    practiced_words: 1,
+                    mastered_words: 0
+                },
+            ]
+        );
+
+        // 已删除计划不计入
+        sqlx::query("UPDATE study_plans SET deleted_at = '2026-10-07 00:00:00'")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        assert!(repo
+            .get_daily_learning_activity(since)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn learned_counts_words_practiced_once_and_mastered_needs_box_4() {
+        let pool = memory_pool().await;
+        let fx = seed_schedule(&pool, 3).await;
+        // 记忆等级：未学 0、学过 1、掌握 4
+        for (word_id, srs_box) in fx.word_ids.iter().zip([0, 1, 4]) {
+            sqlx::query(
+                "INSERT INTO study_plan_words (plan_id, word_id, srs_box) VALUES (?, ?, ?)",
+            )
+            .bind(fx.plan_id)
+            .bind(word_id)
+            .bind(srs_box)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        }
+        let repo = StatisticsRepository::new(pool.clone(), test_logger());
+
+        let plan = repo.get_study_plan_statistics(fx.plan_id).await.unwrap();
+        assert_eq!((plan.learned_words, plan.completed_words), (2, 1));
+        assert_eq!(
+            repo.get_study_statistics()
+                .await
+                .unwrap()
+                .total_words_learned,
+            2
+        );
+    }
+
+    #[test]
+    fn time_progress_counts_days_before_today() {
+        let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let (start, end) = (d("2026-10-05"), d("2026-10-07"));
+        let pct = |today: &str| time_progress(start, end, d(today)).1.round();
+        assert_eq!(time_progress(start, end, d("2026-10-05")).0, 3);
+        assert_eq!(pct("2026-10-04"), 0.0);
+        assert_eq!(pct("2026-10-05"), 0.0);
+        assert_eq!(pct("2026-10-06"), 33.0);
+        assert_eq!(pct("2026-10-07"), 67.0);
+        assert_eq!(pct("2026-10-08"), 100.0);
     }
 }

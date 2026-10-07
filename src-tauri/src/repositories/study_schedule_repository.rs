@@ -2,12 +2,10 @@
 //!
 //! 提供 Repository 模式的数据访问封装
 
-
-
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::types::{common::Id, study::*};
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, SqliteConnection, SqlitePool};
 use std::sync::Arc;
 
 /// 学习日程仓储
@@ -22,6 +20,74 @@ impl StudyScheduleRepository {
     /// 创建新的仓储实例
     pub fn new(pool: Arc<SqlitePool>, logger: Arc<Logger>) -> Self {
         Self { pool, logger }
+    }
+
+    /// 根据已完成的练习会话重算日程掌握数与状态（在调用方事务内执行）。
+    ///
+    /// 状态：有已完成会话即 completed（练完）。掌握数口径：日程内的单词，只要在该日程**任一已完成**会话中三个步骤的**首次作答**（kind = learn，
+    /// 不含纠正后重考与当轮小测）都正确，即计为完成；按单词去重。与 `PracticeRepository::find_word_states_by_session` 的
+    /// `passed` 判定一致。日历与今日日程读取 `completed_words_count` / `status`。
+    pub async fn refresh_completion(
+        &self,
+        conn: &mut SqliteConnection,
+        schedule_id: Id,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE study_plan_schedules
+            SET completed_words_count = (
+                    SELECT COUNT(DISTINCT p.word_id) FROM (
+                        SELECT f.session_id, f.word_id
+                        FROM (
+                            SELECT r.session_id, r.word_id, r.is_correct, COALESCE(sw2.is_review, 0) AS is_review,
+                                   ROW_NUMBER() OVER (PARTITION BY r.session_id, r.word_id, r.step
+                                                      ORDER BY r.created_at, r.id) AS rn
+                            FROM word_practice_records r
+                            JOIN practice_sessions s ON s.id = r.session_id
+                            LEFT JOIN study_plan_schedule_words sw2 ON sw2.id = r.plan_word_id
+                            WHERE s.schedule_id = study_plan_schedules.id AND s.completed = TRUE
+                              AND r.kind = 'learn'
+                        ) f
+                        WHERE f.rn = 1
+                        GROUP BY f.session_id, f.word_id
+                        -- 当次通过：新词三步首答全对，复习词第三步首答对
+                        HAVING SUM(f.is_correct) = COUNT(*)
+                           AND COUNT(*) = CASE WHEN MAX(f.is_review) = 1 THEN 1 ELSE 3 END
+                    ) p
+                    JOIN study_plan_schedule_words sw
+                      ON sw.schedule_id = study_plan_schedules.id AND sw.word_id = p.word_id
+                ),
+                status = 'in-progress',
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+            WHERE id = ?
+            "#,
+        )
+        .bind(schedule_id)
+        .execute(&mut *conn)
+        .await?;
+
+        // 日程“练完”：有一次已完成的练习即为 completed（错题由纠正、重考与之后的复习处理，
+        // 不要求三步全对，否则总错一个词的日程会永远逾期）。掌握情况看 completed_words_count。
+        sqlx::query(
+            "UPDATE study_plan_schedules SET status = 'completed'
+             WHERE id = ?1 AND EXISTS (
+                 SELECT 1 FROM practice_sessions WHERE schedule_id = ?1 AND completed = TRUE
+             )",
+        )
+        .bind(schedule_id)
+        .execute(&mut *conn)
+        .await?;
+
+        self.logger.database_operation(
+            "UPDATE",
+            "study_plan_schedules",
+            true,
+            Some(&format!(
+                "Refreshed completion for schedule {}",
+                schedule_id
+            )),
+        );
+        Ok(())
     }
 
     // ==================== 学习日程基本操作 ====================
@@ -50,7 +116,7 @@ impl StudyScheduleRepository {
                 let schedule = StudyPlanSchedule {
                     id: row.get("id"),
                     plan_id: row.get("plan_id"),
-                    day: row.get("day_number"),  // 从 day_number 映射
+                    day: row.get("day_number"), // 从 day_number 映射
                     schedule_date: row.get("schedule_date"),
                     new_words_count: row.get("new_words_count"),
                     review_words_count: row.get("review_words_count"),
@@ -76,20 +142,19 @@ impl StudyScheduleRepository {
         }
     }
 
-
     // ==================== 学习日程单词关联 ====================
 
     /// 查找日程的单词
     pub async fn find_schedule_words(&self, schedule_id: Id) -> AppResult<Vec<ScheduleWordInfo>> {
         let query = r#"
             SELECT
-                spsw.id as plan_word_id, spsw.word_id,
+                spsw.id as plan_word_id, spsw.word_id, spsw.is_review,
                 w.word, w.meaning, w.description, w.ipa,
                 w.syllables, w.phonics_segments
             FROM study_plan_schedule_words spsw
             JOIN words w ON spsw.word_id = w.id
             WHERE spsw.schedule_id = ?
-            ORDER BY spsw.id
+            ORDER BY spsw.is_review DESC, spsw.id
         "#;
 
         let rows = sqlx::query(query)
@@ -97,64 +162,29 @@ impl StudyScheduleRepository {
             .fetch_all(self.pool.as_ref())
             .await?;
 
+        let ids: Vec<i64> = rows.iter().map(|row| row.get("word_id")).collect();
+        let mut examples =
+            crate::repositories::word_repository::examples_by_word_ids(self.pool.as_ref(), &ids)
+                .await?;
         let words = rows
             .iter()
             .map(|row| ScheduleWordInfo {
                 plan_word_id: row.get("plan_word_id"),
                 word_id: row.get("word_id"),
+                is_review: row.get("is_review"),
                 word: row.get("word"),
                 meaning: row.get("meaning"),
                 description: row.get("description"),
                 ipa: row.get("ipa"),
                 syllables: row.get("syllables"),
                 phonics_segments: row.get("phonics_segments"),
+                examples: examples
+                    .remove(&row.get::<i64, _>("word_id"))
+                    .unwrap_or_default(),
             })
             .collect();
 
         Ok(words)
-    }
-
-    /// 删除学习计划中单词的所有日程安排
-    pub async fn delete_schedule_words_by_word_and_plan(
-        &self,
-        word_id: Id,
-        plan_id: Id,
-    ) -> AppResult<usize> {
-        let query = r#"
-            DELETE FROM study_plan_schedule_words
-            WHERE word_id = ?
-            AND schedule_id IN (
-                SELECT id FROM study_plan_schedules WHERE plan_id = ?
-            )
-        "#;
-
-        let result = sqlx::query(query)
-            .bind(word_id)
-            .bind(plan_id)
-            .execute(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation(
-                    "DELETE",
-                    "study_plan_schedule_words",
-                    false,
-                    Some(&e.to_string()),
-                );
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let deleted_count = result.rows_affected() as usize;
-        self.logger.database_operation(
-            "DELETE",
-            "study_plan_schedule_words",
-            true,
-            Some(&format!(
-                "Deleted {} schedule words for word {} in plan {}",
-                deleted_count, word_id, plan_id
-            )),
-        );
-
-        Ok(deleted_count)
     }
 
     /// 查询学习计划在日期范围内的日程数据
@@ -163,14 +193,17 @@ impl StudyScheduleRepository {
         plan_id: Id,
         start_date: &str,
         end_date: &str,
-    ) -> AppResult<Vec<(String, i32, i32, i32, i32)>> {
+    ) -> AppResult<Vec<PlanCalendarSchedule>> {
         let query = r#"
             SELECT
                 sps.schedule_date,
                 sps.total_words_count as total_words,
                 sps.new_words_count as new_words,
                 sps.review_words_count as review_words,
-                sps.completed_words_count as completed_words
+                COALESCE(sps.completed_words_count, 0) as completed_words,
+                sps.status as schedule_status,
+                EXISTS (SELECT 1 FROM practice_sessions ps
+                        WHERE ps.schedule_id = sps.id AND ps.completed = FALSE) as has_open_session
             FROM study_plan_schedules sps
             WHERE sps.plan_id = ?
                 AND sps.schedule_date BETWEEN ? AND ?
@@ -184,21 +217,26 @@ impl StudyScheduleRepository {
             .fetch_all(self.pool.as_ref())
             .await
             .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "study_plan_schedules", false, Some(&e.to_string()));
+                self.logger.database_operation(
+                    "SELECT",
+                    "study_plan_schedules",
+                    false,
+                    Some(&e.to_string()),
+                );
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        let schedules: Vec<(String, i32, i32, i32, i32)> = rows
+        let schedules: Vec<PlanCalendarSchedule> = rows
             .into_iter()
-            .map(|row| {
-                (
-                    row.get("schedule_date"),
-                    row.get("total_words"),
-                    row.get("new_words"),
-                    row.get("review_words"),
-                    row.get("completed_words"),
-                )
+            .map(|row| PlanCalendarSchedule {
+                schedule_date: row.get("schedule_date"),
+                total_words: row.get("total_words"),
+                new_words: row.get("new_words"),
+                review_words: row.get("review_words"),
+                completed_words: row.get("completed_words"),
+                practiced: row.get::<Option<String>, _>("schedule_status").as_deref()
+                    == Some("completed"),
+                has_open_session: row.get("has_open_session"),
             })
             .collect();
 
@@ -206,7 +244,11 @@ impl StudyScheduleRepository {
             "SELECT",
             "study_plan_schedules",
             true,
-            Some(&format!("Found {} schedules for plan {}", schedules.len(), plan_id)),
+            Some(&format!(
+                "Found {} schedules for plan {}",
+                schedules.len(),
+                plan_id
+            )),
         );
 
         Ok(schedules)
@@ -231,7 +273,7 @@ impl StudyScheduleRepository {
                     plan_id, day_number, schedule_date,
                     new_words_count, review_words_count, total_words_count, completed_words_count, status,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 0, 'not-started', datetime('now'), datetime('now'))
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, 'not-started', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             "#;
 
             let result = sqlx::query(query)
@@ -248,7 +290,10 @@ impl StudyScheduleRepository {
                         "INSERT",
                         "study_plan_schedules",
                         false,
-                        Some(&format!("Failed to create schedule for day {}: {}", daily_plan.day, e)),
+                        Some(&format!(
+                            "Failed to create schedule for day {}: {}",
+                            daily_plan.day, e
+                        )),
                     );
                     AppError::DatabaseError(format!(
                         "Failed to create schedule for day {}: {}",
@@ -280,16 +325,16 @@ impl StudyScheduleRepository {
             INSERT INTO study_plan_schedule_words (
                 schedule_id, word_id, wordbook_id, is_review, review_count,
                 priority, difficulty_level, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         "#;
 
         for word in words {
-            let word_id: i64 = word.word_id.parse().map_err(|e| {
-                AppError::ValidationError(format!("Invalid word_id format: {}", e))
+            let word_id: i64 = word.word_id.parse().map_err(|_| {
+                AppError::ValidationError("学习日程数据格式不正确（单词编号）".to_string())
             })?;
 
-            let wordbook_id: i64 = word.wordbook_id.parse().map_err(|e| {
-                AppError::ValidationError(format!("Invalid wordbook_id format: {}", e))
+            let wordbook_id: i64 = word.wordbook_id.parse().map_err(|_| {
+                AppError::ValidationError("学习日程数据格式不正确（单词本编号）".to_string())
             })?;
 
             sqlx::query(query)
@@ -323,12 +368,15 @@ impl StudyScheduleRepository {
             "INSERT",
             "study_plan_schedule_words",
             true,
-            Some(&format!("Created {} schedule words for schedule {}", words.len(), schedule_id)),
+            Some(&format!(
+                "Created {} schedule words for schedule {}",
+                words.len(),
+                schedule_id
+            )),
         );
 
         Ok(())
     }
-
 }
 
 // ==================== 辅助类型定义 ====================
@@ -338,11 +386,28 @@ impl StudyScheduleRepository {
 pub struct ScheduleWordInfo {
     pub plan_word_id: i64,
     pub word_id: i64,
+    /// 复习词（只做第三步）
+    pub is_review: bool,
     pub word: String,
     pub meaning: String,
     pub description: Option<String>,
     pub ipa: Option<String>,
     pub syllables: Option<String>,
     pub phonics_segments: Option<String>,
+    pub examples: Vec<crate::types::wordbook::WordExample>,
 }
 
+/// 计划日历：某天的日程
+#[derive(Debug, Clone)]
+pub struct PlanCalendarSchedule {
+    pub schedule_date: String,
+    pub total_words: i32,
+    pub new_words: i32,
+    pub review_words: i32,
+    /// 已掌握单词数
+    pub completed_words: i32,
+    /// 已练完（有已完成的练习会话）
+    pub practiced: bool,
+    /// 有练了一半的会话
+    pub has_open_session: bool,
+}

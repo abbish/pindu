@@ -5,18 +5,19 @@
 //! # 注意
 //! 此模块当前独立实现,未来将集成到 Service 层
 
-
-
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::types::{common::Id, wordbook::*};
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, SqliteConnection, SqlitePool};
 use std::sync::Arc;
 
 /// 单词本查询过滤器
 #[derive(Debug, Clone, Default)]
 pub struct WordBookFilters {
+    /// normal / draft / deleted（deleted = 已删除，只能在“已删除”里看到）
     pub status: Option<String>,
+    /// 不指定状态时是否也列出已删除的
+    pub include_deleted: bool,
 }
 
 /// 单词本仓储
@@ -48,8 +49,10 @@ impl WordBookRepository {
         let query = r#"
             SELECT
                 wb.id, wb.title, wb.description, wb.icon, wb.icon_color,
-                wb.total_words, wb.linked_plans, wb.created_at, wb.updated_at,
-                wb.last_used, wb.status
+                (SELECT COUNT(*) FROM words w WHERE w.word_book_id = wb.id) AS total_words,
+                (SELECT COUNT(DISTINCT spw.plan_id) FROM study_plan_words spw
+                 JOIN words w ON w.id = spw.word_id WHERE w.word_book_id = wb.id) AS linked_plans,
+                wb.created_at, wb.updated_at, wb.last_used, wb.status, wb.deleted_at
             FROM word_books wb
             WHERE wb.id = ? AND wb.deleted_at IS NULL
         "#;
@@ -88,16 +91,22 @@ impl WordBookRepository {
             r#"
             SELECT
                 wb.id, wb.title, wb.description, wb.icon, wb.icon_color,
-                wb.total_words, wb.linked_plans, wb.created_at, wb.updated_at,
-                wb.last_used, wb.status
+                (SELECT COUNT(*) FROM words w WHERE w.word_book_id = wb.id) AS total_words,
+                (SELECT COUNT(DISTINCT spw.plan_id) FROM study_plan_words spw
+                 JOIN words w ON w.id = spw.word_id WHERE w.word_book_id = wb.id) AS linked_plans,
+                wb.created_at, wb.updated_at, wb.last_used, wb.status, wb.deleted_at
             FROM word_books wb
-            WHERE wb.deleted_at IS NULL
+            WHERE 1 = 1
         "#,
         );
 
-        // 添加过滤条件
-        if filters.status.is_some() {
-            sql.push_str(" AND wb.status = ?");
+        // 已删除的单词本只在“已删除”或“包含已删除”时出现
+        let status = filters.status.clone();
+        match status.as_deref() {
+            Some("deleted") => sql.push_str(" AND wb.deleted_at IS NOT NULL"),
+            Some(_) => sql.push_str(" AND wb.deleted_at IS NULL AND wb.status = ?"),
+            None if filters.include_deleted => {}
+            None => sql.push_str(" AND wb.deleted_at IS NULL"),
         }
 
         sql.push_str(" ORDER BY wb.updated_at DESC");
@@ -105,8 +114,8 @@ impl WordBookRepository {
         let mut query = sqlx::query(&sql);
 
         // 绑定参数
-        if let Some(status) = &filters.status {
-            query = query.bind(status);
+        if let Some(status) = status.as_deref().filter(|s| *s != "deleted") {
+            query = query.bind(status.to_string());
         }
 
         let rows = query.fetch_all(self.pool.as_ref()).await.map_err(|e| {
@@ -126,46 +135,32 @@ impl WordBookRepository {
         let all_tags: std::collections::HashMap<Id, Vec<crate::types::wordbook::ThemeTag>> =
             self.get_all_theme_tags().await?;
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|row| {
                 let id: Id = row.get("id");
                 let tags = all_tags.get(&id).cloned().unwrap_or_default();
                 self.row_to_entity(row, tags)
             })
-            .collect::<AppResult<Vec<WordBook>>>()?)
+            .collect::<AppResult<Vec<WordBook>>>()
     }
 
-    /// 创建单词本
+    /// 创建单词本及其主题标签（同一事务）
     pub async fn create(&self, request: CreateWordBookRequest) -> AppResult<Id> {
-        let query = r#"
-            INSERT INTO word_books (title, description, icon, icon_color, status)
-            VALUES (?, ?, ?, ?, 'normal')
-        "#;
-
-        sqlx::query(query)
-            .bind(&request.title)
-            .bind(&request.description)
-            .bind(&request.icon)
-            .bind(&request.icon_color)
-            .execute(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("INSERT", "word_books", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let row = sqlx::query("SELECT last_insert_rowid() as id")
-            .fetch_one(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "word_books", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let id: Id = row.get("id");
+        let mut tx = self.pool.begin().await?;
+        let id = self
+            .insert_conn(
+                &mut tx,
+                &request.title,
+                &request.description,
+                &request.icon,
+                &request.icon_color,
+                "normal",
+            )
+            .await?;
+        if let Some(tag_ids) = &request.theme_tag_ids {
+            self.add_theme_tags_conn(&mut tx, id, tag_ids).await?;
+        }
+        tx.commit().await?;
 
         self.logger.database_operation(
             "INSERT",
@@ -173,21 +168,61 @@ impl WordBookRepository {
             true,
             Some(&format!("Created word book {}", id)),
         );
-
-        // 插入主题标签关联
-        if let Some(tag_ids) = &request.theme_tag_ids {
-            for tag_id in tag_ids {
-                if let Err(e) = self.add_theme_tag(id, *tag_id).await {
-                    self.logger.error(
-                        "WORDBOOK_REPOSITORY",
-                        &format!("Failed to add theme tag {} to word book {}", tag_id, id),
-                        Some(&e.to_string()),
-                    );
-                }
-            }
-        }
-
         Ok(id)
+    }
+
+    /// 插入单词本（在调用方事务内执行），返回新 ID
+    pub async fn insert_conn(
+        &self,
+        conn: &mut SqliteConnection,
+        title: &str,
+        description: &str,
+        icon: &str,
+        icon_color: &str,
+        status: &str,
+    ) -> AppResult<Id> {
+        let result = sqlx::query(&format!(
+            "INSERT INTO word_books (title, description, icon, icon_color, status, created_at, updated_at, last_used)
+             VALUES (?, ?, ?, ?, ?, {now}, {now}, {now})",
+            now = crate::time::SQL_NOW_UTC
+        ))
+        .bind(title)
+        .bind(description)
+        .bind(icon)
+        .bind(icon_color)
+        .bind(status)
+        .execute(&mut *conn)
+        .await?;
+        // 必须取同一连接上的插入结果；另发 `SELECT last_insert_rowid()` 可能落到池中其它连接
+        Ok(result.last_insert_rowid())
+    }
+
+    /// 关联主题标签（在调用方事务内执行；已存在的关联忽略）
+    pub async fn add_theme_tags_conn(
+        &self,
+        conn: &mut SqliteConnection,
+        word_book_id: Id,
+        tag_ids: &[Id],
+    ) -> AppResult<()> {
+        for tag_id in tag_ids {
+            sqlx::query(
+                "INSERT OR IGNORE INTO word_book_theme_tags (word_book_id, theme_tag_id, created_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+            )
+            .bind(word_book_id)
+            .bind(tag_id)
+            .execute(&mut *conn)
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// 单词本是否存在且未删除（在调用方事务内读取）
+    pub async fn exists_active_conn(&self, conn: &mut SqliteConnection, id: Id) -> AppResult<bool> {
+        let row = sqlx::query("SELECT id FROM word_books WHERE id = ? AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
+        Ok(row.is_some())
     }
 
     /// 更新单词本
@@ -222,10 +257,13 @@ impl WordBookRepository {
         }
 
         if set_clauses.is_empty() {
-            return Err(AppError::ValidationError("至少需要提供一个要更新的字段".to_string()));
+            return Err(AppError::ValidationError(
+                "至少需要提供一个要更新的字段".to_string(),
+            ));
         }
 
-        set_clauses.push("updated_at = CURRENT_TIMESTAMP");
+        let updated_at = format!("updated_at = {}", crate::time::SQL_NOW_UTC);
+        set_clauses.push(&updated_at);
 
         let query = format!(
             "UPDATE word_books SET {} WHERE id = ? AND deleted_at IS NULL",
@@ -238,8 +276,10 @@ impl WordBookRepository {
         }
         query_builder = query_builder.bind(id);
 
+        // 单词本与主题标签在一个事务里改完，失败时不留下标签被清空的单词本
+        let mut tx = self.pool.begin().await?;
         let rows_affected = query_builder
-            .execute(self.pool.as_ref())
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 self.logger
@@ -249,7 +289,7 @@ impl WordBookRepository {
             .rows_affected();
 
         if rows_affected == 0 {
-            return Err(AppError::NotFound(format!("单词本 {} 不存在", id)));
+            return Err(AppError::NotFound("单词本不存在，可能已被删除".to_string()));
         }
 
         self.logger.database_operation(
@@ -259,30 +299,28 @@ impl WordBookRepository {
             Some(&format!("Updated word book {}", id)),
         );
 
-        // 更新主题标签
+        // 更新主题标签：整体替换
         if let Some(tag_ids) = &request.theme_tag_ids {
-            // 先删除旧的关联
-            self.remove_all_theme_tags(id).await?;
-
-            // 添加新的关联
-            for tag_id in tag_ids {
-                self.add_theme_tag(id, *tag_id).await?;
-            }
+            sqlx::query("DELETE FROM word_book_theme_tags WHERE word_book_id = ?")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            self.add_theme_tags_conn(&mut tx, id, tag_ids).await?;
         }
+        tx.commit().await?;
 
         Ok(())
     }
 
     /// 软删除单词本
     pub async fn delete(&self, id: Id) -> AppResult<()> {
-        let query = r#"
-            UPDATE word_books
-            SET deleted_at = CURRENT_TIMESTAMP,
-                status = 'deleted'
-            WHERE id = ? AND deleted_at IS NULL
-        "#;
+        let query = format!(
+            "UPDATE word_books SET deleted_at = {now}, updated_at = {now}, status = 'deleted'
+             WHERE id = ? AND deleted_at IS NULL",
+            now = crate::time::SQL_NOW_UTC
+        );
 
-        let rows_affected = sqlx::query(query)
+        let rows_affected = sqlx::query(&query)
             .bind(id)
             .execute(self.pool.as_ref())
             .await
@@ -294,7 +332,7 @@ impl WordBookRepository {
             .rows_affected();
 
         if rows_affected == 0 {
-            return Err(AppError::NotFound(format!("单词本 {} 不存在", id)));
+            return Err(AppError::NotFound("单词本不存在，可能已被删除".to_string()));
         }
 
         self.logger.database_operation(
@@ -329,57 +367,12 @@ impl WordBookRepository {
 
         let total_words: i64 = row.get("count");
 
-        // 获取词性分布
-        // 注意: words 表没有 deleted_at 字段
-        // 使用 pos_english 字段进行统计，因为 part_of_speech 字段可能为空
-        let pos_query = r#"
-            SELECT 
-                COALESCE(part_of_speech, pos_english, pos_abbreviation) as pos,
-                COUNT(*) as count
-            FROM words
-            WHERE word_book_id = ? 
-              AND (part_of_speech IS NOT NULL OR pos_english IS NOT NULL OR pos_abbreviation IS NOT NULL)
-            GROUP BY COALESCE(part_of_speech, pos_english, pos_abbreviation)
-        "#;
-
-        let rows = sqlx::query(pos_query)
-            .bind(id)
-            .fetch_all(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "words", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        // 转换为 WordTypeDistribution
-        let mut word_types = WordTypeDistribution {
-            nouns: 0,
-            verbs: 0,
-            adjectives: 0,
-            others: 0,
-        };
-
-        for row in rows {
-            let pos: Option<String> = row.get("pos");
-            let count: i64 = row.get("count");
-
-            if let Some(pos_str) = pos {
-                let pos_lower = pos_str.to_lowercase();
-                // 匹配多种词性格式：n/n./noun/nouns, v/v./verb/verbs, adj/adj./adjective/adjectives
-                if pos_lower.starts_with("n") || pos_lower == "noun" || pos_lower == "nouns" || pos_lower == "名词" {
-                    word_types.nouns += count as i32;
-                } else if pos_lower.starts_with("v") || pos_lower == "verb" || pos_lower == "verbs" || pos_lower == "动词" {
-                    word_types.verbs += count as i32;
-                } else if pos_lower.starts_with("adj") || pos_lower == "adjective" || pos_lower == "adjectives" || pos_lower == "形容词" {
-                    word_types.adjectives += count as i32;
-                } else {
-                    word_types.others += count as i32;
-                }
-            } else {
-                word_types.others += count as i32;
-            }
-        }
+        // 词性分布（归类规则见 WordTypeDistribution::add）
+        let word_types = self
+            .word_type_distributions(Some(id))
+            .await?
+            .remove(&id)
+            .unwrap_or_default();
 
         Ok(WordBookStatistics {
             total_books: 1, // 当前查询单个单词本
@@ -432,8 +425,8 @@ impl WordBookRepository {
         let update_query = r#"
             UPDATE word_books
             SET total_words = (SELECT COUNT(*) FROM words WHERE word_book_id = ?),
-                last_used = datetime('now'),
-                updated_at = datetime('now')
+                last_used = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
             WHERE id = ?
         "#;
 
@@ -458,7 +451,83 @@ impl WordBookRepository {
         Ok(())
     }
 
+    /// 各单词本的词性分布（一次查询）；`book_id` 为 None 时统计全部单词本
+    pub async fn word_type_distributions(
+        &self,
+        book_id: Option<Id>,
+    ) -> AppResult<std::collections::HashMap<Id, WordTypeDistribution>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT word_book_id,
+                   COALESCE(part_of_speech, pos_english, pos_abbreviation) AS pos,
+                   COUNT(*) AS count
+            FROM words
+            WHERE (?1 IS NULL OR word_book_id = ?1)
+            GROUP BY word_book_id, COALESCE(part_of_speech, pos_english, pos_abbreviation)
+            "#,
+        )
+        .bind(book_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        let mut map: std::collections::HashMap<Id, WordTypeDistribution> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let pos: Option<String> = row.get("pos");
+            let count: i64 = row.get("count");
+            map.entry(row.get("word_book_id"))
+                .or_default()
+                .add(pos.as_deref(), count as i32);
+        }
+        Ok(map)
+    }
+
     // ===== 辅助方法 =====
+
+    /// 恢复已删除的单词本（回到正式状态）
+    pub async fn restore(&self, id: Id) -> AppResult<bool> {
+        Ok(sqlx::query(&format!(
+            "UPDATE word_books SET deleted_at = NULL, status = 'normal', updated_at = {}
+             WHERE id = ? AND deleted_at IS NOT NULL",
+            crate::time::SQL_NOW_UTC
+        ))
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?
+        .rows_affected()
+            > 0)
+    }
+
+    /// 用到这个单词本的单词、且还没结束（草稿 / 待开始 / 进行中 / 已暂停）的计划名称
+    pub async fn unfinished_plan_names(&self, id: Id) -> AppResult<Vec<String>> {
+        Ok(sqlx::query_scalar(
+            "SELECT DISTINCT sp.name FROM study_plans sp
+             JOIN study_plan_words spw ON spw.plan_id = sp.id
+             JOIN words w ON w.id = spw.word_id
+             WHERE w.word_book_id = ? AND sp.deleted_at IS NULL
+               AND sp.unified_status IN ('Draft', 'Pending', 'Active', 'Paused')
+             ORDER BY sp.name",
+        )
+        .bind(id)
+        .fetch_all(self.pool.as_ref())
+        .await?)
+    }
+
+    /// 单词本练习后刷新“最近使用”（练习完成时调用，调用方事务内）
+    pub async fn touch_last_used_by_schedule_conn(
+        conn: &mut SqliteConnection,
+        schedule_id: Id,
+    ) -> AppResult<()> {
+        sqlx::query(&format!(
+            "UPDATE word_books SET last_used = {} WHERE id IN (
+                 SELECT DISTINCT w.word_book_id FROM study_plan_schedule_words sw
+                 JOIN words w ON w.id = sw.word_id WHERE sw.schedule_id = ?)",
+            crate::time::SQL_NOW_UTC
+        ))
+        .bind(schedule_id)
+        .execute(&mut *conn)
+        .await?;
+        Ok(())
+    }
 
     /// 将数据库行转换为实体
     fn row_to_entity(
@@ -477,9 +546,10 @@ impl WordBookRepository {
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
             last_used: row.get("last_used"),
-            deleted_at: None, // 已通过 WHERE deleted_at IS NULL 过滤
+            deleted_at: row.get("deleted_at"),
             status: row.get("status"),
             theme_tags: if tags.is_empty() { None } else { Some(tags) },
+            word_types: None,
         })
     }
 
@@ -557,77 +627,15 @@ impl WordBookRepository {
 
         Ok(result)
     }
-
-    /// 添加主题标签关联
-    async fn add_theme_tag(&self, word_book_id: Id, tag_id: Id) -> AppResult<()> {
-        let query = r#"
-            INSERT INTO word_book_theme_tags (word_book_id, theme_tag_id)
-            VALUES (?, ?)
-        "#;
-
-        sqlx::query(query)
-            .bind(word_book_id)
-            .bind(tag_id)
-            .execute(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation(
-                    "INSERT",
-                    "word_book_theme_tags",
-                    false,
-                    Some(&e.to_string()),
-                );
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        Ok(())
-    }
-
-    /// 删除单词本的所有主题标签关联
-    async fn remove_all_theme_tags(&self, word_book_id: Id) -> AppResult<()> {
-        let query = r#"
-            DELETE FROM word_book_theme_tags
-            WHERE word_book_id = ?
-        "#;
-
-        sqlx::query(query)
-            .bind(word_book_id)
-            .execute(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation(
-                    "DELETE",
-                    "word_book_theme_tags",
-                    false,
-                    Some(&e.to_string()),
-                );
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logger::Logger;
-    use std::path::PathBuf;
+    use crate::test_support::{memory_pool, test_logger};
 
     async fn create_test_repository() -> WordBookRepository {
-        let pool = SqlitePool::connect(":memory:")
-            .await
-            .expect("Failed to create test database");
-
-        // 运行迁移
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await
-            .expect("Failed to run migrations");
-
-        let logger = Logger::new(&PathBuf::from(".")).expect("Failed to create logger");
-
-        WordBookRepository::new(Arc::new(pool), Arc::new(logger))
+        WordBookRepository::new(memory_pool().await, test_logger())
     }
 
     #[tokio::test]
@@ -636,7 +644,7 @@ mod tests {
 
         let request = CreateWordBookRequest {
             title: "Test Book".to_string(),
-            description: Some("Test Description".to_string()),
+            description: "Test Description".to_string(),
             icon: "📚".to_string(),
             icon_color: "#FF5733".to_string(),
             theme_tag_ids: None,
@@ -655,13 +663,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_find_all_empty() {
+    async fn find_all_includes_newly_created_book() {
         let repo = create_test_repository().await;
+        // 001 迁移自带示例单词本，库在迁移后不为空
+        let before = repo.find_all(WordBookFilters::default()).await.unwrap();
 
-        let filters = WordBookFilters::default();
-        let result = repo.find_all(filters).await;
+        let id = repo
+            .create(CreateWordBookRequest {
+                title: "Listed Book".to_string(),
+                description: String::new(),
+                icon: "📚".to_string(),
+                icon_color: "#FF5733".to_string(),
+                theme_tag_ids: None,
+            })
+            .await
+            .unwrap();
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let after = repo.find_all(WordBookFilters::default()).await.unwrap();
+        assert_eq!(after.len(), before.len() + 1);
+        assert!(after.iter().any(|b| b.id == id && b.title == "Listed Book"));
     }
 }

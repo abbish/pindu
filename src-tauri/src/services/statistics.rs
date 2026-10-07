@@ -2,7 +2,7 @@
 //!
 //! 封装统计相关的业务逻辑
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::repositories::statistics_repository::StatisticsRepository;
 use crate::types::*;
@@ -14,21 +14,36 @@ use std::sync::Arc;
 /// 负责统计的业务逻辑处理
 pub struct StatisticsService {
     repository: StatisticsRepository,
-    logger: Arc<Logger>,
 }
 
 impl StatisticsService {
     /// 创建新的服务实例
     pub fn new(pool: Arc<SqlitePool>, logger: Arc<Logger>) -> Self {
         Self {
-            repository: StatisticsRepository::new(pool, logger.clone()),
-            logger,
+            repository: StatisticsRepository::new(pool, logger),
         }
     }
 
     /// 获取学习统计
     pub async fn get_study_statistics(&self) -> AppResult<StudyStatistics> {
         self.repository.get_study_statistics().await
+    }
+
+    /// 最近 `days` 天（含今天，本地日期）的每日学习量；`days` 取 1–730
+    pub async fn get_daily_learning_activity(
+        &self,
+        days: i64,
+    ) -> AppResult<Vec<DailyLearningActivity>> {
+        if !(1..=730).contains(&days) {
+            return Err(AppError::ValidationError(format!(
+                "days 应在 1–730 之间，收到 {}",
+                days
+            )));
+        }
+        let today = crate::time::local_today();
+        self.repository
+            .get_daily_learning_activity(today - chrono::Duration::days(days - 1))
+            .await
     }
 
     /// 获取数据库统计
