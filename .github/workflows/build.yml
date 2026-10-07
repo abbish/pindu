@@ -1,5 +1,7 @@
-name: Build and Release
+name: Build
 
+# 用一键构建脚本（scripts/package.mjs）在三个系统上各构建一次，验证用户本机构建的流程可用。
+# 产物不签名，只作为 CI 附件下载（发布方式见 docs/BUILD.md：用户在自己的机器上构建）。
 on:
   push:
     tags:
@@ -7,100 +9,44 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+          - os: macos-latest
+            name: macos
+          - os: ubuntu-22.04
+            name: linux
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        
-      - name: Install dependencies
-        run: npm install
-        
-      - name: Build Windows
-        run: npm run bundle:win
-        
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/
 
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        
-      - name: Install dependencies
-        run: npm install
-        
-      - name: Build macOS
-        run: npm run bundle:mac
-        
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: src-tauri/target/universal-apple-darwin/release/bundle/
+          node-version: '22'
+          cache: npm
 
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        
-      - name: Install system dependencies
+
+      - name: Install Linux system libraries
+        if: runner.os == 'Linux'
         run: |
           sudo apt update
-          sudo apt install -y libwebkit2gtk-4.0-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-          
-      - name: Install dependencies
-        run: npm install
-        
-      - name: Build Linux
-        run: npm run bundle:linux
-        
-      - name: Upload Linux artifacts
+          sudo apt install -y build-essential curl wget file pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev
+
+      - name: Check build environment
+        run: node scripts/package.mjs --check
+
+      - name: Build installers
+        run: node scripts/package.mjs
+
+      - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: linux-build
-          path: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/
-
-  release:
-    needs: [build-windows, build-macos, build-linux]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            windows-build/**/*
-            macos-build/**/*
-            linux-build/**/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ matrix.name }}-installers
+          path: release/

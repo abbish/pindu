@@ -27,7 +27,7 @@ lerna-debug.log*
 # Tauri
 src-tauri/target/
 src-tauri/gen/
-src-tauri/Cargo.lock
+# Cargo.lock 需要入库：用户本机构建时锁定依赖版本
 
 # Database files
 *.db
@@ -71,3 +71,16 @@ pids
 *.pid
 *.seed
 *.pid.lock
+
+# agent sidecar 编译产物（npm run agent:build 生成）
+src-tauri/binaries/
+
+# Claude Code 个人本地设置
+.claude/settings.local.json
+
+# 一键构建产物（scripts/package.mjs）
+release/
+
+# 本地缓存与日志（clean:cache / clean:logs 会清理）
+.vite/
+logs/

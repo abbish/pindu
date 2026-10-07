@@ -1,99 +1,38 @@
-# RedLark 单词学习应用
+# 自然拼读（RedLark）
 
-基于 Tauri + React + TypeScript 构建的跨平台单词学习应用。
+跨平台桌面英语单词学习应用：AI 自然拼读分析与例句、AI 生成学习日程、三步练习法，数据全部保存在本机。
 
-## 🚀 快速开始
+## 构建安装包
 
-### 开发环境
+应用不做签名发布，请在自己的电脑上一键构建（macOS / Windows / Linux）：
 
 ```bash
-# 安装依赖
+./build.sh            # macOS / Linux
+build.cmd             # Windows（也可双击）
+npm run package       # 任意系统
+```
+
+需要先装好 Node.js 20+ 和 Rust，以及各系统的编译工具；`npm run package:check` 会检查并告诉你缺什么。
+完整步骤、安装方法与常见问题见 [docs/BUILD.md](./docs/BUILD.md)。
+
+## 开发
+
+```bash
 npm install
-
-# 启动开发服务器
-npm run tauri:dev
+npm run agent:install   # AI 助手（agent sidecar）依赖，首次
+npm run tauri:dev       # 开发模式
+npm run verify          # 一键验证：静态检查 + 前后端测试
 ```
 
-### 构建应用
+## 技术栈
 
-```bash
-# 构建当前平台
-npm run build:current
+- 前端：React 19 · TypeScript · Vite · shadcn/ui + Tailwind CSS v4
+- 桌面壳：Tauri 2
+- 后端：Rust · SQLite（sqlx）
+- AI：内置 agent（OpenAI 兼容接口）· 火山引擎豆包语音合成
 
-# 构建 Windows
-npm run build:win
+工程说明见 [CLAUDE.md](./CLAUDE.md)。
 
-# 构建 macOS (通用版本)
-npm run build:mac-universal
-
-# 构建 Linux
-npm run build:linux
-
-# 构建所有平台
-npm run build:all
-```
-
-### 构建安装包
-
-```bash
-# Windows 安装包 (MSI + NSIS)
-npm run bundle:win
-
-# macOS 安装包 (APP + DMG)
-npm run bundle:mac
-
-# Linux 安装包 (DEB + AppImage)
-npm run bundle:linux
-
-# 所有平台安装包
-npm run bundle:all
-```
-
-## 📚 文档
-
-- [构建命令详细说明](./BUILD_COMMANDS.md)
-- [Mac 构建指南](./BUILD_MAC.md)
-
-## 🛠 技术栈
-
-- **前端**: React 18 + TypeScript + Vite
-- **后端**: Tauri (Rust)
-- **数据库**: SQLite + SQLx
-- **样式**: CSS Modules + CSS 变量
-- **图标**: FontAwesome
-
-## 💻 开发环境要求
-
-- Node.js 18+
-- Rust (最新稳定版)
-- Tauri CLI: `cargo install tauri-cli`
-
-### 平台特定要求
-
-- **Windows**: Visual Studio Build Tools
-- **macOS**: Xcode Command Line Tools
-- **Linux**: WebKit2GTK 开发包
-
-## 🏗 项目结构
-
-```text
-src/                    # 前端源码
-├── components/         # React 组件
-├── pages/             # 页面组件
-├── services/          # 业务逻辑服务
-├── types/             # TypeScript 类型定义
-└── utils/             # 工具函数
-
-src-tauri/             # 后端源码
-├── src/               # Rust 源码
-├── migrations/        # 数据库迁移
-└── icons/             # 应用图标
-```
-
-## 📄 许可证
+## 许可证
 
 MIT License
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
