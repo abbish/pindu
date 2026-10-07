@@ -1,0 +1,133 @@
+[
+  {
+    "id": "kids-story",
+    "ms": 106943,
+    "usage": {
+      "prompt_tokens": 1011,
+      "completion_tokens": 4318,
+      "total_tokens": 5329,
+      "completion_tokens_details": {
+        "reasoning_tokens": 4051
+      },
+      "prompt_tokens_details": {
+        "cache_write_tokens": 768
+      }
+    },
+    "parsedRows": 32,
+    "reference": 32,
+    "extracted": 32,
+    "recall": 1,
+    "precision": 1,
+    "frequencyAccuracy": 1,
+    "missing": [],
+    "extra": [],
+    "sample": [
+      {
+        "word": "Tom",
+        "frequency": 2,
+        "pos": "n.",
+        "translation": "汤姆"
+      },
+      {
+        "word": "little",
+        "frequency": 1,
+        "pos": "adj.",
+        "translation": "小的"
+      },
+      {
+        "word": "red",
+        "frequency": 1,
+        "pos": "adj.",
+        "translation": "红色的"
+      }
+    ]
+  },
+  {
+    "id": "school-notice",
+    "ms": 53601,
+    "usage": {
+      "prompt_tokens": 845,
+      "completion_tokens": 2319,
+      "total_tokens": 3164,
+      "completion_tokens_details": {
+        "reasoning_tokens": 1931
+      },
+      "prompt_tokens_details": {
+        "cache_write_tokens": 768
+      }
+    },
+    "parsedRows": 49,
+    "reference": 47,
+    "extracted": 47,
+    "recall": 1,
+    "precision": 1,
+    "frequencyAccuracy": 1,
+    "missing": [],
+    "extra": [],
+    "sample": [
+      {
+        "word": "Dear",
+        "frequency": 1,
+        "pos": "adj.",
+        "translation": "亲爱的"
+      },
+      {
+        "word": "parents",
+        "frequency": 1,
+        "pos": "n.",
+        "translation": "父母"
+      },
+      {
+        "word": "our",
+        "frequency": 1,
+        "pos": "pron.",
+        "translation": "我们的"
+      }
+    ]
+  },
+  {
+    "id": "nature-article",
+    "ms": 136451,
+    "usage": {
+      "prompt_tokens": 1083,
+      "completion_tokens": 5860,
+      "total_tokens": 6943,
+      "cached_tokens": 768,
+      "completion_tokens_details": {
+        "reasoning_tokens": 5234
+      },
+      "prompt_tokens_details": {
+        "cached_tokens": 768,
+        "cache_write_tokens": 256
+      }
+    },
+    "parsedRows": 75,
+    "reference": 74,
+    "extracted": 74,
+    "recall": 1,
+    "precision": 1,
+    "frequencyAccuracy": 1,
+    "missing": [],
+    "extra": [],
+    "sample": [
+      {
+        "word": "Elephants",
+        "frequency": 3,
+        "pos": "n.",
+        "translation": "大象"
+      },
+      {
+        "word": "largest",
+        "frequency": 1,
+        "pos": "adj.",
+        "translation": "最大的"
+      },
+      {
+        "word": "land",
+        "frequency": 1,
+        "pos": "n.",
+        "translation": "陆地"
+      }
+    ]
+  }
+]

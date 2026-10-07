@@ -1,0 +1,110 @@
+[
+  {
+    "id": "kids-story",
+    "ms": 27876,
+    "firstTokenMs": 4663,
+    "toolCalls": "tokenize_text+submit_words",
+    "tokens": 2827,
+    "cost": 0.013247400000000001,
+    "reference": 32,
+    "extracted": 32,
+    "recall": 1,
+    "precision": 1,
+    "frequencyAccuracy": 1,
+    "missing": [],
+    "extra": [],
+    "sample": [
+      {
+        "frequency": 2,
+        "pos": "n.",
+        "translation": "汤姆",
+        "word": "tom"
+      },
+      {
+        "frequency": 1,
+        "pos": "adj.",
+        "translation": "小的",
+        "word": "little"
+      },
+      {
+        "frequency": 1,
+        "pos": "adj.",
+        "translation": "红色的",
+        "word": "red"
+      }
+    ]
+  },
+  {
+    "id": "school-notice",
+    "ms": 38041,
+    "firstTokenMs": 4838,
+    "toolCalls": "tokenize_text+submit_words",
+    "tokens": 3181,
+    "cost": 0.0228102,
+    "reference": 47,
+    "extracted": 47,
+    "recall": 1,
+    "precision": 1,
+    "frequencyAccuracy": 1,
+    "missing": [],
+    "extra": [],
+    "sample": [
+      {
+        "frequency": 1,
+        "pos": "adj.",
+        "translation": "亲爱的",
+        "word": "dear"
+      },
+      {
+        "frequency": 2,
+        "pos": "n.",
+        "translation": "父母",
+        "word": "parents"
+      },
+      {
+        "frequency": 1,
+        "pos": "det.",
+        "translation": "我们的",
+        "word": "our"
+      }
+    ]
+  },
+  {
+    "id": "nature-article",
+    "ms": 44930,
+    "firstTokenMs": 7749,
+    "toolCalls": "tokenize_text+submit_words",
+    "tokens": 4039,
+    "cost": 0.024704999999999998,
+    "reference": 74,
+    "extracted": 72,
+    "recall": 0.973,
+    "precision": 1,
+    "frequencyAccuracy": 1,
+    "missing": [
+      "that",
+      "their"
+    ],
+    "extra": [],
+    "sample": [
+      {
+        "frequency": 6,
+        "pos": "n.",
+        "translation": "大象",
+        "word": "elephants"
+      },
+      {
+        "frequency": 1,
+        "pos": "adj.",
+        "translation": "最大的",
+        "word": "largest"
+      },
+      {
+        "frequency": 1,
+        "pos": "n.",
+        "translation": "陆地",
+        "word": "land"
+      }
+    ]
+  }
+]
