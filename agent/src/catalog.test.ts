@@ -25,4 +25,8 @@ test('提供商名称与鉴权方式来自 pi', () => {
   // 地址需要账户 / 区域参数
   assert.equal(byId.get('amazon-bedrock')?.keyOnly ?? false, false);
   assert.equal(byId.get('cloudflare-workers-ai')?.keyOnly ?? false, false);
+  assert.equal(byId.get('google-vertex')?.keyOnly ?? false, false);
+  assert.equal(byId.get('azure')?.keyOnly ?? false, false);
+  // 地址写在每个模型上、只要一个密钥
+  for (const id of ['opencode', 'opencode-go', 'radius']) assert.equal(byId.get(id)?.keyOnly, true, id);
 });

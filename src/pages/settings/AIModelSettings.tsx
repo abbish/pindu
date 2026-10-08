@@ -39,8 +39,6 @@ interface Entry {
   /** pi 目录内的模型数 */
   catalogCount: number;
   provider: AIProvider | null;
-  /** 只填 API 密钥即可使用（来自 pi 目录） */
-  keyOnly: boolean;
   /** pi 对 API 密钥的说明；pi 不支持密钥鉴权时为 null */
   apiKeyLabel: string | null;
 }
@@ -130,8 +128,8 @@ export const AIModelSettings: React.FC = () => {
   const defaultModel = models.find(m => m.isDefault) ?? null;
   const modelCount = (providerId: Id) => models.filter(m => m.provider.id === providerId).length;
 
-  // 左栏：已配置（默认模型所在的在最前，其余按模型数、名称）| 未配置（只填密钥可用的在前，需要额外配置的在最后）
-  const { configured, unconfigured, extraSetup } = useMemo(() => {
+  // 已配置（默认模型所在的在最前，其余按模型数、名称）| 未配置：只列只填密钥就能用的（需要区域、账户 ID 或登录授权的不支持，不显示）
+  const { configured, unconfigured } = useMemo(() => {
     const byPi = new Map(catalog.map(c => [c.id, c]));
     const configuredEntries: Entry[] = providers.map(p => {
       const c = p.piProvider ? byPi.get(p.piProvider) : undefined;
@@ -143,13 +141,12 @@ export const AIModelSettings: React.FC = () => {
         api: c?.api ?? p.api,
         catalogCount: c?.modelCount ?? 0,
         provider: p,
-        keyOnly: true,
         apiKeyLabel: c?.apiKeyLabel ?? null,
       };
     });
     const mapped = new Set(providers.map(p => p.piProvider).filter(Boolean));
     const rest: Entry[] = catalog
-      .filter(c => !mapped.has(c.id))
+      .filter(c => !mapped.has(c.id) && c.keyOnly)
       .map(c => ({
         key: `pi-${c.id}`,
         name: c.name,
@@ -158,7 +155,6 @@ export const AIModelSettings: React.FC = () => {
         api: c.api,
         catalogCount: c.modelCount,
         provider: null,
-        keyOnly: c.keyOnly,
         apiKeyLabel: c.apiKeyLabel,
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
@@ -169,10 +165,10 @@ export const AIModelSettings: React.FC = () => {
         modelCount(b.provider!.id) - modelCount(a.provider!.id) ||
         a.name.localeCompare(b.name, 'zh-CN')
     );
-    return { configured: configuredEntries, unconfigured: rest.filter(e => e.keyOnly), extraSetup: rest.filter(e => !e.keyOnly) };
+    return { configured: configuredEntries, unconfigured: rest };
   }, [providers, catalog, models]);
 
-  const allEntries = [...configured, ...unconfigured, ...extraSetup];
+  const allEntries = [...configured, ...unconfigured];
   const selected = allEntries.find(e => e.key === selectedKey) ?? null;
 
   // 换提供商时收起密钥编辑、清空搜索
@@ -347,7 +343,7 @@ export const AIModelSettings: React.FC = () => {
 
   const statusText = (e: Entry) => {
     const count = e.provider ? modelCount(e.provider.id) : 0;
-    if (!e.provider) return e.keyOnly ? `${e.catalogCount} 个模型` : '暂不支持';
+    if (!e.provider) return `${e.catalogCount} 个模型`;
     if (!e.provider.isActive) return '已停用';
     if (!e.provider.hasApiKey) return '未填写密钥';
     return count > 0 ? `${count} 个模型` : '还没有添加模型';
@@ -416,7 +412,6 @@ export const AIModelSettings: React.FC = () => {
     const q = catalogQuery.trim().toLowerCase();
     const match = (e: Entry) => !q || e.name.toLowerCase().includes(q) || (e.piId ?? '').toLowerCase().includes(q);
     const keyOnlyList = unconfigured.filter(match);
-    const extraList = extraSetup.filter(match);
     return (
       <SettingsPanel title="添加提供商" back={backToOverview}>
         <div className="relative">
@@ -432,16 +427,11 @@ export const AIModelSettings: React.FC = () => {
               </Button>
             )}
           </div>
-        ) : keyOnlyList.length + extraList.length === 0 ? (
+        ) : keyOnlyList.length === 0 ? (
           <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">没有匹配的提供商</p>
         ) : (
           <>
-            {keyOnlyList.length > 0 && <SettingsSection title="填写 API 密钥即可使用">{keyOnlyList.map(providerRow)}</SettingsSection>}
-            {extraList.length > 0 && (
-              <SettingsSection title="暂不支持">
-                {extraList.map(providerRow)}
-              </SettingsSection>
-            )}
+            <SettingsSection title="填写 API 密钥即可使用">{keyOnlyList.map(providerRow)}</SettingsSection>
           </>
         )}
         {dialogs}
@@ -466,7 +456,6 @@ export const AIModelSettings: React.FC = () => {
         description={selected.baseUrl ? <span className="font-mono text-xs select-text">{selected.baseUrl}</span> : undefined}
       >
         {!provider ? (
-          selected.keyOnly ? (
             <SettingsSection title="连接">
               <SettingsRow label="API 密钥" stacked>
                 <Input
@@ -485,11 +474,6 @@ export const AIModelSettings: React.FC = () => {
                 </Button>
               </SettingsRow>
             </SettingsSection>
-          ) : (
-            <p className="rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
-              暂不支持这个提供商
-            </p>
-          )
         ) : (
           <>
             <SettingsSection title="连接">

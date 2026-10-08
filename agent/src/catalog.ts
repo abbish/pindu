@@ -27,7 +27,7 @@ export interface CatalogProvider {
   apiKeyLabel: string | null;
   /** 支持登录授权（OAuth） */
   supportsOAuth: boolean;
-  /** 只填 API 密钥就能用：pi 支持密钥鉴权，且提供商自带固定地址（无 {占位参数}） */
+  /** 只填 API 密钥就能用：pi 支持密钥鉴权，地址固定（提供商或每个模型自带，无 {占位参数}），且不用云平台签名鉴权 */
   keyOnly: boolean;
   models: CatalogModel[];
 }
@@ -38,6 +38,19 @@ interface PiProvider {
   baseUrl?: string;
   auth?: { apiKey?: { name?: string }; oauth?: unknown };
   getModels(): ReturnType<typeof getBuiltinModels>;
+}
+
+/** 固定地址：非空且没有 {账户 ID}、{location} 这类要用户另填的占位参数 */
+const isFixedUrl = (url: string | undefined) => !!url && !url.includes("{");
+
+/** 要云平台凭证签名的接口（Bedrock：AWS Access Key + Secret + 区域），一个 API 密钥不够 */
+const CLOUD_SIGNED_APIS = new Set(["bedrock-converse-stream"]);
+
+/** 只填一个 API 密钥就能用。地址可以写在提供商上，也可以写在每个模型上（如 OpenCode、Radius） */
+function isKeyOnly(provider: PiProvider, models: { api: string; baseUrl?: string }[]): boolean {
+  if (!provider.auth?.apiKey || models.length === 0) return false;
+  if (models.some(model => CLOUD_SIGNED_APIS.has(model.api))) return false;
+  return isFixedUrl(provider.baseUrl) || models.every(model => isFixedUrl(model.baseUrl));
 }
 
 export function buildCatalog(): CatalogProvider[] {
@@ -53,7 +66,7 @@ export function buildCatalog(): CatalogProvider[] {
         api: models[0]?.api ?? "",
         apiKeyLabel: apiKey ? (apiKey.name ?? "API key") : null,
         supportsOAuth: Boolean(provider.auth?.oauth),
-        keyOnly: Boolean(apiKey) && providerUrl !== "" && !providerUrl.includes("{"),
+        keyOnly: isKeyOnly(provider, models),
         models: models.map(model => ({
           id: model.id,
           name: model.name,
