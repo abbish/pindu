@@ -88,13 +88,11 @@ src-tauri/
 agent/                        agent sidecar 的 TS 工程（pi RPC + RedLark 工具）；npm run agent:build → src-tauri/binaries/redlark-agent-<triple>（不入库）
 docs/agent-harness/           agent harness 设计（DESIGN.md）与决策记录（DECISIONS.md，追加式）
 .claude/skills/                SDD harness：开发 workflow 与领域能力 Skill（见 §10）
-.claude/work/<work-id>/        跨会话 work item（brief / plan / progress / evidence / analysis）
+.claude/work/<work-id>/        跨会话 work item（brief / plan / progress / evidence / analysis；只在本机，不入库）
 .claude/hooks/                 PreToolUse 守卫：拦截修改历史迁移、删库、输出密钥
 scripts/validate-skills.sh     Skill 目录结构校验
 docs/NAMING_CONVENTIONS.md     前后端命名规范（本文件 §7.2 是摘要）
-docs/STUDY_PLAN_STATUS_DESIGN.md  学习计划统一状态设计
-plans/batch-analysis-event-driven-design.md  批量分析由轮询改事件推送的方案（未实施）
-docs/history/                 2026-01 后端重构过程文档（原根目录 *_SUMMARY / *_GUIDE 等），历史记录，可能与代码有出入
+docs/design/batch-analysis-event-driven.md  批量分析由轮询改事件推送的方案（未实施）
 ```
 
 ## 4. 后端架构（Rust）
@@ -186,7 +184,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 - 原则：**确定性的工作放进代码或工具**（分词计数、格式校验、日期与复习排期），模型只做判断与生成；结构化结果一律经 `submit_*` 工具交付，Rust 侧再按输入校正（只接受请求中的词、补齐遗漏）。新增 LLM 能力一律做成 agent 任务。
 - 任务用哪个模型：命令显式传的 model_id > 「设置 → AI 助手」的任务模型（`app_settings` 表 `agent.model.<task>`，task = extract/phonics/examples/plan/explain/tutor/passage，短文的规划 / 写作 / 出题 / 评分 / 导入翻译都用 passage）> 默认模型，统一经 `services/agent_settings.rs::AgentSettingsService::model_for`；批量分析的每批词数 / 同时请求数也在这里（`agent.batch_size` / `agent.max_concurrency`），后端以设置为准。
 - 模型配置：`ai_providers.pi_provider`（映射 pi 内置提供商）/ `api`；`ai_models` 的生成参数 `ModelGenerationSettings`（最大输出、温度、思考档、额外参数 → samplingParams、上下文、推理）整体保存；sidecar 启动时由 `agent/src/config.ts` 转成 pi 的 models.json。密钥只经 `REDLARK_KEY_<id>` 环境变量传入。
-- 进度：批量分析写 `progress_manager.rs`（`get_batch_analysis_progress`），学习计划写 `planning_progress.rs`（`get_analysis_progress`，取消经 `cancel_analysis` → sidecar `abort`）；前端约 500ms 轮询。改为事件推送的方案见 `plans/batch-analysis-event-driven-design.md`。
+- 进度：批量分析写 `progress_manager.rs`（`get_batch_analysis_progress`），学习计划写 `planning_progress.rs`（`get_analysis_progress`，取消经 `cancel_analysis` → sidecar `abort`）；前端约 500ms 轮询。改为事件推送的方案见 `docs/design/batch-analysis-event-driven.md`。
 - 真实调用回归：`cargo test agent::tasks::tests::real_ -- --ignored`（需 `REDLARK_E2E_MOONSHOT_KEY`）；提示词评测 `node agent/eval/eval-phonics.mjs` / `eval-extract.mjs`（需 `EVAL_MOONSHOT_KEY`，结果写 `agent/eval/results/`）。
 
 ## 5. 前端架构（React/TS）
@@ -268,11 +266,11 @@ export const fooService = new FooService();
 ## 8. 已知债务 / 注意事项
 
 
-- `handlers/word_analysis.rs` 的批量管线编排（含事件推送）仍在 handler 层；批量分析与学习计划规划各有一个进度管理器（`progress_manager.rs` / `planning_progress.rs`，前端轮询契约不同；改事件推送见 `plans/batch-analysis-event-driven-design.md`）。
+- `handlers/word_analysis.rs` 的批量管线编排（含事件推送）仍在 handler 层；批量分析与学习计划规划各有一个进度管理器（`progress_manager.rs` / `planning_progress.rs`，前端轮询契约不同；改事件推送见 `docs/design/batch-analysis-event-driven.md`）。
 - 历史迁移 020 / 021 / 023 / 031 在外键开启下重建 `study_plans`，会级联清空当时已有计划的子表数据（已实测）；不要以它们为重建模板，见 `sqlx-migration-standards.md`。
 - `src/types/api.ts` 中 Health/Export/Import 类型对应的后端未实现。
 - `src-tauri/Cargo.toml` 的 `[lib] name = "redlark_app_lib"`，包名 `pindu-app`；应用数据目录随 identifier 为 `com.redlark.pindu-app`（macOS: `~/Library/Application Support/com.redlark.pindu-app/`）。
-- `docs/history/` 里是 2026-01 重构过程文档；与代码冲突时以代码为准。`CLAUDE.md` + `.claude/skills` 是唯一的 agent 规则入口，不再引入其它工具（Augment、spec-workflow、superpowers 等）的规则文件。
+- `CLAUDE.md` + `.claude/skills` 是唯一的 agent 规则入口，不再引入其它工具（Augment、spec-workflow、superpowers 等）的规则文件。
 - 前端自动化测试刚起步（`node --test` 覆盖纯函数）；组件行为仍靠 `tauri:dev` 走查。
 
 ## 9. 典型改动路径

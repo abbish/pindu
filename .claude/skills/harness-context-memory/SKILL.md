@@ -28,7 +28,7 @@ description: "跨会话 work item 恢复与交接：用户要恢复、暂停、�
 - 只在批次完成、阻塞变化、关键决定或交接时更新记录。
 - 新证据改变路线时，替换、合并或删除已失效批次；历史经过进入 evidence 或 git，不把 `plan.md` 维护成追加日志。
 - 运行状态不写入 Claude Code 的 auto-memory 或用户级记忆；它属于仓库。
-- `.claude/work/` 可以提交进 git（便于多机续跑），也可由用户决定加入 `.gitignore`；本 Skill 不替用户决定。
+- `.claude/work/` 只在本机，已加入 `.gitignore`（开源仓库不收录开发过程记录）；需要跨机器续跑时自行同步。
 
 ## 恢复流程
 

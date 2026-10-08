@@ -1,0 +1,16 @@
+name: 功能建议 / Feature request
+description: 想要的新功能或改进
+labels: [enhancement]
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 学习场景
+      description: 谁在什么情况下会用到？现在遇到了什么不方便？
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你的想法
+      description: 希望怎么解决。也可以说说考虑过的其他做法。

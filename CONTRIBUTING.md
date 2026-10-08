@@ -48,7 +48,7 @@ src/            前端：React 19 + shadcn/ui + Tailwind v4；页面、服务层
 src-tauri/      后端：Rust（handlers → services → repositories）、SQLite 迁移、提示词
 agent/          内置 AI 助手（pi RPC sidecar + RedLark 工具），编译成单文件随应用分发
 scripts/        一键构建、验证与静态检查脚本
-docs/           设计文档；docs/history/ 是早期重构过程记录，可能与代码不符
+docs/           设计文档（agent-harness/ 内置 AI 助手、design/ 待实施方案）与 README 截图
 ```
 
 [CLAUDE.md](./CLAUDE.md) 是这个项目的工程说明：分层、命令归属、数据库表、AI 任务、前端约定都在里面，并且描述的是代码的**当前真实状态**。它也是 AI 编码助手（Claude Code）的入口，`.claude/skills/` 里有配套的开发流程。不用 AI 助手也建议读一遍。

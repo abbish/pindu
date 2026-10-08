@@ -1,7 +1,7 @@
 # RedLark Agent Harness 设计（pi 内置 sidecar）
 
-> 状态：已全部迁移（2026-10-07，见 D12）。决策记录见 [DECISIONS.md](./DECISIONS.md)；选型依据见 spike 记录 `.claude/work/agent-harness-spike/evidence.md`。
-> 本文描述**目标架构与契约**；实施进度以 `.claude/work/agent-harness-integration/progress.md` 为准。
+> 状态：已全部迁移（2026-10-07，见 D12）。选型与各项决策见 [DECISIONS.md](./DECISIONS.md)。
+> 本文描述架构与契约；与代码不一致时以代码为准。
 
 ## 1. 目标
 
@@ -104,7 +104,7 @@ redlark-agent [--no-session | --session-dir <dir> [--session <file>]]
 ## 7. 迁移与回退
 
 - 已完成：提词 / 批量拼读 / 学习计划 / 模型测试全部经 agent；旧 `ai_service`（async-openai）与回退开关已删除（D12）。
-- 进度：sidecar 事件推送替代 `EnhancedProgressManager` 轮询（顺带完成 `plans/batch-analysis-event-driven-design.md`）。
+- 进度：sidecar 事件推送替代 `EnhancedProgressManager` 轮询（顺带完成 `docs/design/batch-analysis-event-driven.md`）。
 
 ## 8. 构建与发布
 

@@ -1,0 +1,39 @@
+name: 问题反馈 / Bug report
+description: 应用出错、结果不对或无法构建
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 你做了什么操作，期望看到什么，实际看到了什么。有截图更好。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开「计划」
+        2. 点击……
+        3. 看到报错……
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 设置页或 package.json 里的版本号，或者构建时的提交哈希（git rev-parse --short HEAD）
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 系统
+      options: [macOS（Apple 芯片）, macOS（Intel）, Windows, Linux]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: 「设置 → 通用 → 系统日志」里相关的几行，或构建命令的完整输出。日志不含 API Key。
+      render: text

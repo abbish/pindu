@@ -13,7 +13,7 @@
 | 测试 | `cargo test`（crate 内测试，内存 SQLite）；`npm test` | 被覆盖的用例、聚合口径、错误形状 | 未覆盖路径 |
 | 静态检查 | `scripts/check-sql.py`（SQL 对迁移终态 schema）、`scripts/check-ipc-contract.py`、`scripts/schema-snapshot.py --table t` | SQL 引用的表/列是否存在、命令注册与参数名 | bind 类型/顺序、运行时拼接的 SQL |
 | AI 链路 | app.log 中 `AGENT` 行（任务名、用时、tokens、校验退回次数、stderr）；设置页「测试」；`agent/eval` 固定输入重跑；`cargo test agent::tasks::tests::real_ -- --ignored` | 发给 sidecar 的参数与提示词、工具调用参数（tool_execution_end）、Rust 校正丢弃了什么 | 模型“为什么”这么答 |
-| 进度 | `progress_manager.rs` 全局单例；前端 500ms 轮询 `get_batch_analysis_progress` | 批次状态快照 | 快照之间发生了什么（已知轮询丢中间态，见 `plans/batch-analysis-event-driven-design.md`） |
+| 进度 | `progress_manager.rs` 全局单例；前端 500ms 轮询 `get_batch_analysis_progress` | 批次状态快照 | 快照之间发生了什么（已知轮询丢中间态，见 `docs/design/batch-analysis-event-driven.md`） |
 
 ## 症状 → 首查链路
 

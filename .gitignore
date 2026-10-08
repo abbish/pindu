@@ -46,7 +46,6 @@ Thumbs.db
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-!.vscode/settings.json
 .idea/
 *.swp
 *.swo
@@ -75,8 +74,10 @@ pids
 # agent sidecar 编译产物（npm run agent:build 生成）
 src-tauri/binaries/
 
-# Claude Code 个人本地设置
+# Claude Code：个人本地设置、跨会话工作记录与验证日志（只在本机）
 .claude/settings.local.json
+.claude/work/
+.claude/logs/
 
 # 一键构建产物（scripts/package.mjs）
 release/

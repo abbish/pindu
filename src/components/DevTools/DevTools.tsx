@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatTime } from '../utils/datetime';
-import { API_CALL_EVENT, type ApiCallEventDetail } from '../api/client';
+import { formatTime } from '../../utils/datetime';
+import { API_CALL_EVENT, type ApiCallEventDetail } from '../../api/client';
 
 interface DevToolsProps {
   enabled?: boolean;

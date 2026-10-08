@@ -35,7 +35,7 @@ Tauri 会自动在前后端之间进行参数名称转换：
 | `startDate` | `start_date` | 开始日期 |
 | `endDate` | `end_date` | 结束日期 |
 | `aiPlanData` | `ai_plan_data` | AI规划数据 |
-| `lifecycleStatus` | `lifecycle_status` | 生命周期状态 |
+| `unifiedStatus` | `unified_status` | 学习计划状态 |
 | `createdAt` | `created_at` | 创建时间 |
 | `updatedAt` | `updated_at` | 更新时间 |
 | `deletedAt` | `deleted_at` | 删除时间 |
