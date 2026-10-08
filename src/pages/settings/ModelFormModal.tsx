@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { InlineError } from '@/components/InlineError';
 import { Loader2, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -116,18 +116,17 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl">
+      <DialogContent className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl" aria-describedby={undefined}>
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>{model ? '编辑模型' : '添加模型'}</DialogTitle>
-          <DialogDescription>参数留空时使用默认值</DialogDescription>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
           <div className="space-y-1.5">
-            <Label htmlFor="mf-provider">提供商 *</Label>
+            <Label htmlFor="mf-provider">提供商</Label>
             <Select value={providerId ? String(providerId) : undefined} onValueChange={(v) => setProviderId(Number(v))} disabled={!!model}>
               <SelectTrigger id="mf-provider" className="w-full">
-                <SelectValue placeholder="请选择提供商" />
+                <SelectValue placeholder="选择提供商" />
               </SelectTrigger>
               <SelectContent>
                 {providers.filter((p) => p.isActive || p.id === providerId).map((p) => (
@@ -139,13 +138,13 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="mf-model-id">模型 ID *</Label>
+              <Label htmlFor="mf-model-id">模型 ID</Label>
               <Input
                 id="mf-model-id"
                 value={modelId}
                 onChange={(e) => handleModelIdChange(e.target.value)}
                 list="pi-catalog-models"
-                placeholder={piProvider ? '可从 pi 目录中选择或直接输入' : '例如: deepseek-chat'}
+                placeholder="例如：deepseek-chat"
                 className="font-mono"
               />
               <datalist id="pi-catalog-models">
@@ -155,20 +154,20 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
               </datalist>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="mf-name">显示名称 *</Label>
-              <Input id="mf-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="例如: Kimi K3" />
+              <Label htmlFor="mf-name">显示名称</Label>
+              <Input id="mf-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="例如：Kimi K3" />
             </div>
           </div>
 
           {catalogModel && (
             <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-              pi 目录：上下文 {formatTokens(catalogModel.contextWindow)} · 最大输出 {formatTokens(catalogModel.maxTokens)}
-              {catalogModel.reasoning ? ` · 推理模型（思考档 ${catalogModel.thinkingLevels.join(' / ') || '不可调'}）` : ' · 非推理模型'}
+              上下文 {formatTokens(catalogModel.contextWindow)} · 最大输出 {formatTokens(catalogModel.maxTokens)}
+              {catalogModel.reasoning ? ` · 推理模型${catalogModel.thinkingLevels.length > 0 ? ` · 思考档 ${catalogModel.thinkingLevels.join(' / ')}` : ''}` : ' · 非推理模型'}
               {` · $${catalogModel.costInput} / $${catalogModel.costOutput} 每百万 token`}
             </p>
           )}
           {piProvider && modelId.trim() && !catalogModel && catalogModels.length > 0 &&
-            hint('不在 pi 目录中：请在下方补充上下文窗口与是否推理模型')}
+            hint('请补充下方的上下文窗口与推理模型')}
 
           <div className="space-y-1.5">
             <Label htmlFor="mf-desc">描述</Label>
@@ -188,7 +187,7 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={DEFAULT}>任务默认（提词 / 对话为「低」）</SelectItem>
+                    <SelectItem value={DEFAULT}>默认</SelectItem>
                     {THINKING_LEVELS.filter((l) => thinkingOptions.includes(l) || l === generation.thinkingLevel).map((level) => (
                       <SelectItem key={level} value={level}>{THINKING_LABELS[level]}（{level}）</SelectItem>
                     ))}
@@ -218,10 +217,9 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                   step={0.1}
                   placeholder="默认"
                 />
-                {hint('部分模型只接受固定值（如 Kimi K3 只能是 1）')}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="mf-extra">额外参数（JSON）</Label>
+                <Label htmlFor="mf-extra">额外参数</Label>
                 <Textarea
                   id="mf-extra"
                   value={generation.extraParams}
@@ -230,7 +228,6 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                   rows={2}
                   className="font-mono text-xs"
                 />
-                {hint('仅 OpenAI 兼容接口生效')}
               </div>
               {needsModelMeta && (
                 <>
@@ -246,7 +243,7 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={DEFAULT}>未设置</SelectItem>
-                        <SelectItem value="true">是（支持思考档）</SelectItem>
+                        <SelectItem value="true">是</SelectItem>
                         <SelectItem value="false">否</SelectItem>
                       </SelectContent>
                     </Select>

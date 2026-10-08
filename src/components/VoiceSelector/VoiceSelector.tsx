@@ -49,7 +49,7 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   testingVoiceId,
   disabled = false,
   title = "选择默认语音",
-  description = "选择一个语音作为默认的文本转语音引擎"
+  description
 }) => {
   const handleVoiceSelect = (voiceId: string) => {
     if (!disabled) {
@@ -100,7 +100,6 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
                     className="h-7 shrink-0"
                     onClick={(e) => handleVoiceTest(e, voice.voiceId)}
                     disabled={disabled || isTesting}
-                    title="试听语音"
                   >
                     {isTesting ? <Loader2 className="animate-spin" /> : <Play />}
                     {isTesting ? '试听中' : '试听'}

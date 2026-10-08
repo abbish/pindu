@@ -62,7 +62,7 @@ function taskCopy(task: PracticeTask, stage: PracticeStage, isReview: boolean): 
   }
   const retry = task.kind === 'retry' ? '再试一次 · ' : '';
   if (isReview) {
-    return { title: `${retry}复习：听写`, description: '答对推迟下次复习，答错明天再练' };
+    return { title: `${retry}复习：听写`, description: '' };
   }
   if (task.kind === 'review') {
     return { title: '当轮小测：听写', description: '' };
@@ -343,7 +343,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   // 只带 sessionId 时才直接读会话。
   const initialize = useCallback(async () => {
     if (!sessionId && (!planId || !scheduleId)) {
-      setError('没有指定要练习的计划日程，请从学习计划进入练习');
+      setError('请从学习计划进入练习');
       setLoading(false);
       return;
     }
@@ -362,7 +362,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       }
       const data = result.data;
       if (data.completed) {
-        setError('这次练习已经完成了，可以在学习计划里查看结果或开始新的练习。');
+        setError('这次练习已经完成');
         return;
       }
 
@@ -389,17 +389,17 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
         // 上次可能是暂停状态离开的：结束遗留的暂停，免得离开期间都算成暂停
         practiceService.resumePracticeSession({ sessionId: data.sessionId });
         if (sessionId && sessionId !== data.sessionId) {
-          toast.showInfo('接着这个日程没练完的那次继续', '你打开的那次练习已经结束了');
+          toast.showInfo('已接着上次没练完的继续');
         } else {
-          toast.showInfo('接着上次的进度继续', `已完成 ${done} / ${done + tasks.length} 题`);
+          toast.showInfo('已接着上次的进度继续', `已完成 ${done} / ${done + tasks.length} 题`);
         }
       } else if (sessionId && sessionId !== data.sessionId) {
-        toast.showInfo('开始了一次新的练习', '你打开的那次练习已经结束了');
+        toast.showInfo('已开始新的练习');
       }
 
       // 上次最后一题已经答完、但没来得及提交“完成”：直接完成
       if (tasks.length === 0) {
-        toast.showInfo('上次已经全部答完', '正在生成练习结果');
+        toast.showInfo('上次已经全部答完');
         completeSession(data);
       }
     } catch (error) {

@@ -132,7 +132,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
         explanation: prev.explanation || p.analysis_explanation,
         examples: prev.examples.some((e) => e.sentence.trim()) ? prev.examples : (p.examples ?? []),
       }));
-      toast.showSuccess('已补全空着的内容', '可以再检查修改后保存');
+      toast.showSuccess('已补全空着的内容');
     } catch (err) {
       setSubmitError({ title: '无法 AI 补全', message: messageOf(err) ?? '请再试一次' });
     } finally {

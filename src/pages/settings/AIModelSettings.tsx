@@ -78,6 +78,9 @@ export const AIModelSettings: React.FC = () => {
   const [providers, setProviders] = useState<AIProvider[]>([]);
   const [models, setModels] = useState<AIModelConfig[]>([]);
   const [catalog, setCatalog] = useState<CatalogProviderSummary[]>([]);
+  /** 读取提供商目录失败的原因（后端已转成用户能看懂的话） */
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -111,11 +114,17 @@ export const AIModelSettings: React.FC = () => {
     if (preferKey) setSelectedKey(preferKey);
   };
 
+  const loadCatalog = async () => {
+    setCatalogLoading(true);
+    const result = await aiModelService.getAgentCatalogProviders();
+    setCatalogLoading(false);
+    if (result.success) setCatalog(result.data);
+    setCatalogError(result.success ? null : result.error);
+  };
+
   useEffect(() => {
     loadData();
-    aiModelService.getAgentCatalogProviders().then(result => {
-      if (result.success) setCatalog(result.data);
-    });
+    loadCatalog();
   }, []);
 
   const defaultModel = models.find(m => m.isDefault) ?? null;
@@ -223,7 +232,7 @@ export const AIModelSettings: React.FC = () => {
     }
     setKeyDraft('');
     await loadData(`db-${result.data}`);
-    toast.showSuccess('已保存密钥', '接下来选择要使用的模型');
+    toast.showSuccess('已保存密钥');
     const created = await aiModelService.getAllAIProviders();
     const provider = created.success ? created.data.find(p => p.id === result.data) : undefined;
     if (provider) setSyncProvider(provider);
@@ -244,7 +253,7 @@ export const AIModelSettings: React.FC = () => {
     setConfirm({
       isOpen: true,
       title: `移除「${entry.name}」？`,
-      message: `它的密钥和 ${modelCount(entry.provider!.id)} 个模型会一起删除，之后可以重新配置。`,
+      message: `它的密钥和 ${modelCount(entry.provider!.id)} 个模型会一起删除`,
       confirmText: '移除',
       onConfirm: () => {
         setConfirm(prev => ({ ...prev, isOpen: false }));
@@ -260,7 +269,7 @@ export const AIModelSettings: React.FC = () => {
     setConfirm({
       isOpen: true,
       title: `删除模型「${m.displayName}」？`,
-      message: '删除后不能恢复，需要时可以重新添加。',
+      message: '删除后不能恢复',
       confirmText: '删除',
       onConfirm: () => {
         setConfirm(prev => ({ ...prev, isOpen: false }));
@@ -338,7 +347,7 @@ export const AIModelSettings: React.FC = () => {
 
   const statusText = (e: Entry) => {
     const count = e.provider ? modelCount(e.provider.id) : 0;
-    if (!e.provider) return e.keyOnly ? `目录内 ${e.catalogCount} 个模型` : '需要额外配置';
+    if (!e.provider) return e.keyOnly ? `${e.catalogCount} 个模型` : '暂不支持';
     if (!e.provider.isActive) return '已停用';
     if (!e.provider.hasApiKey) return '未填写密钥';
     return count > 0 ? `${count} 个模型` : '还没有添加模型';
@@ -415,14 +424,21 @@ export const AIModelSettings: React.FC = () => {
           <Input value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder="搜索提供商" aria-label="搜索提供商" className="pl-9" autoFocus />
         </div>
         {catalog.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">暂时读不到提供商列表，请稍后再试</p>
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            <p>{catalogLoading ? '正在读取提供商列表…' : catalogError ? `无法读取提供商列表：${catalogError}` : '没有可添加的提供商'}</p>
+            {catalogError && !catalogLoading && (
+              <Button variant="outline" size="sm" onClick={loadCatalog}>
+                重试
+              </Button>
+            )}
+          </div>
         ) : keyOnlyList.length + extraList.length === 0 ? (
           <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">没有匹配的提供商</p>
         ) : (
           <>
             {keyOnlyList.length > 0 && <SettingsSection title="填写 API 密钥即可使用">{keyOnlyList.map(providerRow)}</SettingsSection>}
             {extraList.length > 0 && (
-              <SettingsSection title="需要额外配置（暂不支持）">
+              <SettingsSection title="暂不支持">
                 {extraList.map(providerRow)}
               </SettingsSection>
             )}
@@ -447,17 +463,7 @@ export const AIModelSettings: React.FC = () => {
             </Badge>
           )
         }
-        description={
-          <>
-            {selected.piId ? `pi 提供商：${selected.piId}` : `自定义接口：${selected.api}`}
-            {selected.baseUrl && (
-              <>
-                {' · '}
-                <span className="font-mono text-xs select-text">{selected.baseUrl}</span>
-              </>
-            )}
-          </>
-        }
+        description={selected.baseUrl ? <span className="font-mono text-xs select-text">{selected.baseUrl}</span> : undefined}
       >
         {!provider ? (
           selected.keyOnly ? (
@@ -481,7 +487,7 @@ export const AIModelSettings: React.FC = () => {
             </SettingsSection>
           ) : (
             <p className="rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
-              {selected.apiKeyLabel ? `除了 ${selected.apiKeyLabel}，还需要区域、账户 ID 等参数，暂不支持` : '只支持登录授权，暂不支持'}
+              暂不支持这个提供商
             </p>
           )
         ) : (
@@ -630,7 +636,7 @@ export const AIModelSettings: React.FC = () => {
             </SettingsSection>
 
             <SettingsSection title="移除" tone="danger">
-              <SettingsRow label="移除这个提供商" description={`密钥和 ${modelCount(provider.id)} 个模型会一起删除`}>
+              <SettingsRow label="移除这个提供商">
                 <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => handleRemoveProvider(selected)} disabled={saving}>
                   移除…
                 </Button>

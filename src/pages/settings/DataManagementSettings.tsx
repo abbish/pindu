@@ -184,9 +184,11 @@ export const DataManagementSettings: React.FC = () => {
             const label = (
               <span className="flex items-center gap-2">
                 {table.display_name}
-                <Badge variant="outline" className="h-5 font-mono text-[10px] font-normal">
-                  {table.table_type}
-                </Badge>
+                {table.table_type === 'config' && (
+                  <Badge variant="outline" className="h-5 text-[11px] font-normal">
+                    配置
+                  </Badge>
+                )}
               </span>
             );
             return selecting ? (
@@ -195,14 +197,11 @@ export const DataManagementSettings: React.FC = () => {
                 className={cn('flex items-center gap-3 px-4 py-3 hover:bg-muted/40', checked && 'bg-destructive/5 hover:bg-destructive/10')}
               >
                 <Checkbox checked={checked} onCheckedChange={(v) => toggleTable(table.table_name, v === true)} aria-label={`选择 ${table.display_name}`} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">{label}</div>
-                  <div className="mt-0.5 truncate text-[13px] text-muted-foreground">{table.description}</div>
-                </div>
+                <div className="min-w-0 flex-1 text-sm font-medium">{label}</div>
                 {numberCell(table.record_count || 0, '条')}
               </label>
             ) : (
-              <SettingsRow key={table.table_name} label={label} description={table.description}>
+              <SettingsRow key={table.table_name} label={label}>
                 {numberCell(table.record_count || 0, '条')}
               </SettingsRow>
             );
@@ -252,7 +251,7 @@ export const DataManagementSettings: React.FC = () => {
                   <ul className="max-h-48 list-inside list-disc overflow-y-auto text-muted-foreground">
                     {selectedTables.map((t) => (
                       <li key={t.table_name}>
-                        {t.display_name}（{t.record_count || 0} 条记录）
+                        {t.display_name} · {t.record_count || 0} 条
                       </li>
                     ))}
                   </ul>
@@ -264,9 +263,9 @@ export const DataManagementSettings: React.FC = () => {
                 <>
                   <p>将删除：</p>
                   <ul className="list-inside list-disc text-muted-foreground">
-                    <li>所有单词本和单词（{countOf('word_books')} 个单词本）</li>
-                    <li>所有学习计划和进度（{countOf('study_plans')} 个学习计划）</li>
-                    <li>所有练习记录（{countOf('practice_sessions')} 个练习会话）</li>
+                    <li>{countOf('word_books')} 个单词本和其中的单词</li>
+                    <li>{countOf('study_plans')} 个学习计划和进度</li>
+                    <li>{countOf('practice_sessions')} 次练习的记录</li>
                   </ul>
                   <p className="font-medium">AI 模型与设置会保留。</p>
                 </>
@@ -317,7 +316,6 @@ export const DataManagementSettings: React.FC = () => {
                 <li>单词本和单词、学习计划和进度、练习记录</li>
                 <li>AI 模型配置与系统设置</li>
               </ul>
-              <p className="text-muted-foreground">应用随后重启，从空数据库开始。只想清理学习数据时，用「重置所有用户数据」。</p>
             </div>
           ) : (
             <div className="space-y-2 text-sm">

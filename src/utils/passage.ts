@@ -60,12 +60,12 @@ export const LEVEL_LABEL: Record<string, string> = { a1: '入门 A1', a2: '初�
 
 /** 计划的取词策略：名称与说明（顺序即界面顺序） */
 export const PLAN_SCOPES: { value: PlanWordScope; label: string; description: string }[] = [
-  { value: 'wrong', label: '错词', description: '练习时答错过的词' },
-  { value: 'weak', label: '还没记牢的词', description: '学过，但记忆等级还低（1–2 级）' },
-  { value: 'recent', label: '最近学的词', description: '最近 7 天第一次学的新词' },
-  { value: 'upcoming', label: '快到复习的词', description: '3 天内要复习的词，先在短文里见一见' },
-  { value: 'mastered', label: '已经掌握的词', description: '记忆等级 4 级以上，放进新语境里用一用' },
-  { value: 'learned', label: '全部学过的词', description: '计划里所有学过的词' },
+  { value: 'wrong', label: '错词', description: '练习时答错过' },
+  { value: 'weak', label: '还没记牢的词', description: '记忆等级 1–2 级' },
+  { value: 'recent', label: '最近学的词', description: '最近 7 天第一次学' },
+  { value: 'upcoming', label: '快到复习的词', description: '3 天内要复习' },
+  { value: 'mastered', label: '已经掌握的词', description: '记忆等级 4 级以上' },
+  { value: 'learned', label: '全部学过的词', description: '计划里学过的全部单词' },
 ];
 
 /** 取词策略显示名 */

@@ -65,7 +65,7 @@ export const AgentSettings: React.FC = () => {
   // 只列出启用且已填写密钥的模型；设置里指向的模型已不可用时也列出来，标明“不可用”
   const usable = models.filter((m) => m.isActive && m.provider.hasApiKey);
   const defaultModel = models.find((m) => m.isDefault);
-  const defaultText = defaultModel ? `跟随默认模型：${defaultModel.displayName}` : '跟随默认模型（尚未设置）';
+  const defaultText = defaultModel ? `跟随默认模型：${defaultModel.displayName}` : '跟随默认模型：未设置';
 
   return (
     <SettingsPanel title="AI 助手">
@@ -93,7 +93,7 @@ export const AgentSettings: React.FC = () => {
                   ))}
                   {missing && (
                     <SelectItem value={value} disabled>
-                      已选的模型不可用（已停用或缺少密钥），实际使用默认模型
+                      已选的模型不可用，改用默认模型
                     </SelectItem>
                   )}
                 </SelectContent>
@@ -118,7 +118,7 @@ export const AgentSettings: React.FC = () => {
             </SelectContent>
           </Select>
         </SettingsRow>
-        <SettingsRow label="同时请求数" description="服务商提示请求过于频繁（429）时调低">
+        <SettingsRow label="同时请求数">
           <Select value={String(settings.maxConcurrency)} disabled={saving} onValueChange={(v) => save({ maxConcurrency: Number(v) })}>
             <SelectTrigger className="w-32" aria-label="同时请求数">
               <SelectValue />

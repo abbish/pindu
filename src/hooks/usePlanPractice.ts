@@ -60,7 +60,7 @@ export function usePlanPractice(
       if (target) {
         onNavigate?.('word-practice', { planId, scheduleId: target.id, returnTo });
       } else {
-        toast.showInfo('现在没有要练的日程', '日程都已练完，可以在计划详情里再练一次');
+        toast.showInfo('日程都已练完', '可以在计划详情里再练一次');
         onNavigate?.('plan-detail', { planId });
       }
     },

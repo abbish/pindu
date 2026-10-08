@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,17 +19,17 @@ const PRESETS: Option[] = [
   { value: 'adult', label: '成人' },
 ];
 const LEARNERS: Option[] = [
-  { value: 'primary', label: '小学生（6–12 岁）' },
+  { value: 'primary', label: '小学生' },
   { value: 'junior', label: '初中生' },
   { value: 'senior', label: '高中生' },
   { value: 'adult', label: '成人' },
 ];
 const LEVELS: Option[] = [
-  { value: 'auto', label: '按学习者自动' },
-  { value: 'a1', label: '入门（A1）' },
-  { value: 'a2', label: '初级（A2）' },
-  { value: 'b1', label: '中级（B1）' },
-  { value: 'b2', label: '中高级（B2）' },
+  { value: 'auto', label: '自动' },
+  { value: 'a1', label: '入门 A1' },
+  { value: 'a2', label: '初级 A2' },
+  { value: 'b1', label: '中级 B1' },
+  { value: 'b2', label: '中高级 B2' },
 ];
 const LANGUAGES: Option[] = [
   { value: 'zh', label: '中文为主' },
@@ -41,12 +41,12 @@ const IPAS: Option[] = [
   { value: 'american', label: '美式' },
 ];
 const LENGTHS: Option[] = [
-  { value: 'brief', label: '精简（约 300 字）' },
-  { value: 'standard', label: '标准（约 650 字）' },
-  { value: 'detailed', label: '详细（约 1100 字）' },
+  { value: 'brief', label: '精简' },
+  { value: 'standard', label: '标准' },
+  { value: 'detailed', label: '详细' },
 ];
 const MEMORY_METHODS: Option[] = [
-  { value: 'auto', label: '按单词自动选择' },
+  { value: 'auto', label: '自动' },
   { value: 'phonics', label: '拼读与拼写规律' },
   { value: 'morphology', label: '构词与词根词缀' },
   { value: 'imagery', label: '场景画面与造句' },
@@ -54,7 +54,7 @@ const MEMORY_METHODS: Option[] = [
 const TUTOR_STYLES: Option[] = [
   { value: 'gentle', label: '温和鼓励' },
   { value: 'concise', label: '简洁直接' },
-  { value: 'socratic', label: '引导式（先提示再讲）' },
+  { value: 'socratic', label: '引导式' },
 ];
 /** 可以写补充要求的任务（key 与后端 PromptTask 一致） */
 const CUSTOM_TASKS: Option[] = [
@@ -265,12 +265,12 @@ export const PromptProfileSettings: React.FC = () => {
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title="补充要求" description="与内置规则冲突时，以内置规则为准">
+      <SettingsSection title="补充要求">
         <SettingsRow label="任务">
           <OptionSelect
             label="补充要求的任务"
             value={customTask}
-            options={CUSTOM_TASKS.map((t) => ({ ...t, label: profile.custom[t.value] ? `${t.label}（已设置）` : t.label }))}
+            options={CUSTOM_TASKS.map((t) => ({ ...t, label: profile.custom[t.value] ? `${t.label} · 已设置` : t.label }))}
             onChange={(v) => {
               setCustomTask(v);
               setCustomDraft(profile.custom[v] ?? '');
@@ -309,10 +309,9 @@ export const PromptProfileSettings: React.FC = () => {
       </SettingsSection>
 
       <Dialog open={previews != null} onOpenChange={(open) => !open && setPreviews(null)}>
-        <DialogContent className="flex max-h-[85vh] flex-col gap-3 sm:max-w-3xl">
+        <DialogContent className="flex max-h-[85vh] flex-col gap-3 sm:max-w-3xl" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>系统提示词预览</DialogTitle>
-            <DialogDescription>按当前设置生成，只读</DialogDescription>
           </DialogHeader>
           <OptionSelect
             label="预览的任务"

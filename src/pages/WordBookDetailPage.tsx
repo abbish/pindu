@@ -483,7 +483,6 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               bookId={wordBook.id}
               onOpen={(passageId) => onNavigate?.('passage-detail', { passageId })}
               onCountChange={setPassageCount}
-              emptyDescription="还没有引用这个单词本的短文。"
             />
           </div>
         </TabsContent>

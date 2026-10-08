@@ -337,7 +337,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
             id="aw-scene"
             value={sceneDraft}
             onChange={(e) => setSceneDraft(e.target.value)}
-            placeholder="例如：出国旅行常用词，覆盖机场、海关、酒店、问路、点餐"
+            placeholder="例如：出国旅行常用词"
             className="min-h-20 resize-none"
             aria-invalid={tooLong}
             autoFocus
@@ -410,7 +410,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
             {source === 'ai' ? (
               <div className="flex flex-col gap-5">
                 <div className="space-y-2">
-                  <Label htmlFor="aw-intent">{scene ? '这次想补充什么？' : '描述你想要的单词'}</Label>
+                  <Label htmlFor="aw-intent">{scene ? '补充什么单词' : '想要什么单词'}</Label>
                   <div className="relative">
                     <Textarea
                       id="aw-intent"

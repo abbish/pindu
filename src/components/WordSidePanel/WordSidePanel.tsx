@@ -75,7 +75,7 @@ export const WordSidePanel: React.FC<WordSidePanelProps> = ({
                 aria-selected={tab === t.key}
                 aria-disabled={locked}
                 onClick={() => !locked && onTabChange(t.key)}
-                title={locked ? '盖住单词写的时候不能看讲解，写完这一题再看' : undefined}
+                title={locked ? '写完这一题再看' : undefined}
                 className={cn(
                   'inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
                   tab === t.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',

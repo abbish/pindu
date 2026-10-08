@@ -371,7 +371,7 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
       </SettingsSection>
 
       <SettingsSection title="删除" tone="danger">
-        <SettingsRow label="删除这个计划" description="计划和全部练习记录会被删除，不能恢复；单词本不受影响">
+        <SettingsRow label="删除这个计划">
           <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={onDelete}>
             <Trash2 />
             删除…

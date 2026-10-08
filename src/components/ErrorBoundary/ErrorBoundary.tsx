@@ -53,7 +53,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </div>
           {import.meta.env.DEV && this.state.error && (
             <details className="w-full rounded-lg border bg-muted/40 p-3 text-left text-xs">
-              <summary className="cursor-default font-medium">错误详情（开发模式）</summary>
+              <summary className="cursor-default font-medium">错误详情</summary>
               <pre className="mt-2 max-h-80 overflow-auto font-mono whitespace-pre-wrap text-muted-foreground select-text">
                 {this.state.error.toString()}
                 {this.state.errorInfo?.componentStack}

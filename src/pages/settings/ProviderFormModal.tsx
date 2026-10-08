@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InlineError } from '@/components/InlineError';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -95,35 +95,34 @@ export const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{editing ? `编辑提供商 · ${provider.displayName}` : '添加提供商'}</DialogTitle>
-          <DialogDescription>选 pi 内置提供商会自动填好名称与地址</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="space-y-1.5">
-            <Label htmlFor="pf-pi">对应 pi 内置提供商</Label>
+            <Label htmlFor="pf-pi">内置提供商</Label>
             <Select value={form.piProvider || NONE} onValueChange={(v) => handlePiProviderChange(v === NONE ? '' : v)}>
               <SelectTrigger id="pf-pi" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NONE}>不映射（自定义 OpenAI / Anthropic 兼容端点）</SelectItem>
+                <SelectItem value={NONE}>自定义</SelectItem>
                 {catalogProviders.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}（{c.id} · {c.modelCount} 个模型）</SelectItem>
+                  <SelectItem key={c.id} value={c.id}>{c.name} · {c.modelCount} 个模型</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {catalogProviders.length === 0 && <p className="text-xs text-muted-foreground">暂时读不到 pi 提供商列表，只能使用自定义接口</p>}
+            {catalogProviders.length === 0 && <p className="text-xs text-muted-foreground">暂时读不到内置提供商列表</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="pf-name">名称（唯一标识）*</Label>
-              <Input id="pf-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例如: openai" disabled={editing} />
+              <Label htmlFor="pf-name">名称</Label>
+              <Input id="pf-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例如：openai" disabled={editing} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pf-display">显示名称 *</Label>
-              <Input id="pf-display" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="例如: OpenAI" />
+              <Label htmlFor="pf-display">显示名称</Label>
+              <Input id="pf-display" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="例如：OpenAI" />
             </div>
           </div>
           {!form.piProvider && (
@@ -134,19 +133,19 @@ export const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="openai-completions">OpenAI 兼容（Chat Completions）</SelectItem>
+                  <SelectItem value="openai-completions">OpenAI Chat Completions</SelectItem>
                   <SelectItem value="openai-responses">OpenAI Responses</SelectItem>
-                  <SelectItem value="anthropic-messages">Anthropic 兼容（Messages）</SelectItem>
+                  <SelectItem value="anthropic-messages">Anthropic Messages</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           )}
           <div className="space-y-1.5">
-            <Label htmlFor="pf-url">API 地址 *</Label>
-            <Input id="pf-url" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="例如: https://api.openai.com/v1" className="font-mono" />
+            <Label htmlFor="pf-url">API 地址</Label>
+            <Input id="pf-url" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="例如：https://api.openai.com/v1" className="font-mono" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="pf-key">{editing ? 'API 密钥' : 'API 密钥 *'}</Label>
+            <Label htmlFor="pf-key">API 密钥</Label>
             <Input
               id="pf-key"
               type="password"

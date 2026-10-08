@@ -271,7 +271,7 @@ const QuestionItem: React.FC<{
       {missing && (
         <p className="ml-8 flex items-center gap-1.5 text-sm text-destructive" role="alert">
           <CircleAlert className="size-4" />
-          {question.kind === 'open' ? '请用英文写下你的回答' : question.kind === 'true_false' ? '请判断正确还是错误' : '请选择一个答案'}
+          还没有作答
         </p>
       )}
 
@@ -511,7 +511,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
           <div className="min-w-0 flex-1">
             <div className="font-semibold">完成 · {scoreSummary(attempt)}</div>
             <div className="text-sm text-muted-foreground">
-              用时 {formatDuration(attempt.activeTime)} · {attempt.planId ? '已计入学习计划的短文任务' : '短文练习单独统计'}，不影响单词的记忆等级
+              用时 {formatDuration(attempt.activeTime)}
             </div>
             {attempt.gradingError && (
               <div className="mt-1 flex items-center gap-2 text-sm text-warning">

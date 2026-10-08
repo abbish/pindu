@@ -64,7 +64,7 @@ export const PlanLogsView: React.FC<PlanLogsViewProps> = ({ practiceSessions, lo
                   {formatDuration(session.activeTime)}
                   {session.pauseCount > 0 && (
                     <span className="ml-1.5 text-xs text-muted-foreground">
-                      （暂停 {session.pauseCount} 次，共 {formatDuration(session.totalTime)}）
+                      · 暂停 {session.pauseCount} 次
                     </span>
                   )}
                 </TableCell>

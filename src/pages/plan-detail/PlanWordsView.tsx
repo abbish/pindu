@@ -256,9 +256,7 @@ export const PlanWordsView: React.FC<PlanWordsViewProps> = ({ planWords, loading
           <AlertDialogHeader>
             <AlertDialogTitle>从计划移除 {selected.size} 个单词？</AlertDialogTitle>
             <AlertDialogDescription>
-              这些单词不再练习和复习
-              {selectedLearned > 0 && `；其中 ${selectedLearned} 个已学过，记忆等级和作答记录会一起删除`}
-              。单词本不受影响。
+              {selectedLearned > 0 ? `其中 ${selectedLearned} 个已学过，记忆等级和作答记录会一起删除` : '这些单词不再练习和复习'}，单词本不受影响
             </AlertDialogDescription>
           </AlertDialogHeader>
           {removeError && <InlineError title="无法移除单词">{removeError}</InlineError>}

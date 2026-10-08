@@ -65,7 +65,7 @@ export const GeneralSettings: React.FC = () => {
             检查更新
           </Button>
         </SettingsRow>
-        <SettingsRow label="自动检查更新" description="每天访问 github.com 检查一次">
+        <SettingsRow label="自动检查更新">
           <Switch checked={autoCheck} onCheckedChange={updater.setAutoCheck} aria-label="自动检查更新" />
         </SettingsRow>
       </SettingsSection>

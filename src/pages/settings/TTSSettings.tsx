@@ -136,8 +136,8 @@ export const TTSSettings: React.FC = () => {
       isOpen: true,
       title: all ? '清空全部语音缓存？' : `清理 ${olderThanDays} 天没用过的语音缓存？`,
       message: all
-        ? `将删除全部 ${cacheStats?.entries ?? 0} 条缓存（${size}）。之后每个单词、例句第一次播放时都要重新生成，需要联网并消耗语音合成额度。`
-        : `将删除 ${cacheStats?.staleEntries ?? 0} 条超过 ${olderThanDays} 天没播放过的缓存（${size}）。下次播放时会重新生成。`,
+        ? `删除全部 ${cacheStats?.entries ?? 0} 条缓存，共 ${size}。之后播放时重新生成，会消耗语音合成额度。`
+        : `删除 ${cacheStats?.staleEntries ?? 0} 条缓存，共 ${size}。`,
       type: all ? 'danger' : 'warning',
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, isOpen: false }));
@@ -207,8 +207,8 @@ export const TTSSettings: React.FC = () => {
         <SettingsRow label="默认音色">
           <span className="text-sm">{defaultVoice ? defaultVoice.displayName : config.defaultVoiceId}</span>
         </SettingsRow>
-        <SettingsRow label="资源 ID" description={config.resourceId ? undefined : '按音色自动推断'}>
-          <span className="font-mono text-xs select-text">{config.effectiveResourceId}</span>
+        <SettingsRow label="资源 ID">
+          <span className="font-mono text-xs select-text">{config.resourceId ? config.effectiveResourceId : `自动 · ${config.effectiveResourceId}`}</span>
         </SettingsRow>
         <SettingsRow label="语速与音质">
           <span className="text-sm tabular-nums">
@@ -229,7 +229,7 @@ export const TTSSettings: React.FC = () => {
           description={
             cacheStats
               ? cacheStats.entries > 0
-                ? `共 ${cacheStats.entries} 条，其中 ${cacheStats.staleDays} 天没播放过的 ${cacheStats.staleEntries} 条（${formatBytes(cacheStats.staleBytes)}）`
+                ? `${cacheStats.entries} 条 · ${cacheStats.staleDays} 天没播放过 ${cacheStats.staleEntries} 条`
                 : '还没有缓存'
               : undefined
           }

@@ -59,7 +59,7 @@ export const ThemeTagPicker: React.FC<ThemeTagPickerProps> = ({ themes, value, o
         >
           <span className="flex min-w-0 flex-1 flex-wrap gap-1">
             {selected.length === 0 ? (
-              <span className="px-1 text-muted-foreground">选择主题，可多选</span>
+              <span className="px-1 text-muted-foreground">选择主题</span>
             ) : (
               selected.map((tag) => (
                 <Badge key={tag.id} variant="secondary" className="gap-1 pr-1">
@@ -88,7 +88,7 @@ export const ThemeTagPicker: React.FC<ThemeTagPickerProps> = ({ themes, value, o
       <PopoverContent align="start" className="w-(--radix-popover-trigger-width) p-0">
         <Command>
           <CommandInput
-            placeholder={onCreate ? '搜索或新建主题…' : '搜索主题…'}
+            placeholder={onCreate ? '搜索或新建主题' : '搜索主题'}
             value={query}
             onValueChange={setQuery}
             maxLength={NAME_MAX}

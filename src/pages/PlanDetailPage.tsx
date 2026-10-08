@@ -69,41 +69,41 @@ export interface PlanDetailPageProps {
 const CONFIRMS: Partial<Record<StudyPlanAction, { title: string; description: string; destructive?: boolean }>> = {
   restart: {
     title: '重新学习这个计划？',
-    description: '这个计划的练习记录和记忆等级会清空，单词保持不变；日程从下一次练习那天重新开始。',
+    description: '练习记录和记忆等级会清空，日程从下次练习那天重新开始',
     destructive: true,
   },
   terminate: {
     title: '终止学习这个计划？',
-    description: '终止后不能再练习，也不再安排复习。练习记录会保留，之后可以「重新学习」。',
+    description: '终止后不能再练习，练习记录会保留',
     destructive: true,
   },
   delete: {
     title: '删除这个计划？',
-    description: '计划和它的全部练习记录会被彻底删除，不能恢复。单词本不受影响。',
+    description: '计划和全部练习记录会被删除，不能恢复，单词本不受影响',
     destructive: true,
   },
   complete: {
     title: '标记这个计划为已完成？',
-    description: '全部单词掌握后计划会自动完成。现在手动标记后就不能再练习、不再安排复习，练习记录会保留。',
+    description: '标记后不能再练习，练习记录会保留',
   },
   pause: {
     title: '暂停这个计划？',
-    description: '暂停期间不能练习、不安排复习，日历上也不算逾期。继续学习时，没练的日程和复习日期按暂停的天数往后顺延。',
+    description: '暂停期间不能练习，继续时没练的日程按暂停的天数顺延',
   },
   resume: {
     title: '继续学习这个计划？',
-    description: '没练的日程和复习日期会按暂停的天数往后顺延。',
+    description: '没练的日程和复习日期会按暂停的天数顺延',
   },
 };
 
 /** 操作完成后的提示：标题说结果，描述只在有后续影响时补充 */
 const SUCCESS_TOASTS: Partial<Record<StudyPlanAction, [string, string?]>> = {
   start: ['已开始学习'],
-  pause: ['已暂停计划', '继续学习时，日程会按暂停的天数顺延'],
-  resume: ['已继续学习', '日程已按暂停的天数顺延'],
+  pause: ['已暂停计划'],
+  resume: ['已继续学习'],
   complete: ['已标记为完成'],
   terminate: ['已终止学习'],
-  restart: ['已重新开始', '练习记录已清空，下一次练习那天就是第 1 天'],
+  restart: ['已重新开始'],
   publish: ['已发布计划'],
   delete: ['已删除计划'],
 };
@@ -304,16 +304,16 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
       return;
     }
     if (result.data.length === 0) {
-      toast.showInfo('这个计划还没有日程', '在「设置」页签追加单词本后再练习');
+      toast.showInfo('这个计划还没有日程', '在「设置」页签追加单词本');
       return;
     }
     // 统一规则：今天未练完 → 最早逾期 → 今天（再练）→ 第一个未练完
     const target = pickPracticeSchedule(result.data);
     if (target) onNavigate?.('word-practice', { planId: plan.id, scheduleId: target.id });
     else if (duePassages.length > 0) {
-      toast.showInfo('单词日程都练完了', '今天还有短文要读');
+      toast.showInfo('单词日程都练完了');
       setView('passages');
-    } else toast.showInfo('现在没有要练的日程', '日程都已练完，可以在「日程」页签里再练一次');
+    } else toast.showInfo('日程都已练完', '可以在「日程」页签再练一次');
   };
 
   const container = 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7';

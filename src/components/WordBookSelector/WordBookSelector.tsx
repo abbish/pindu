@@ -50,7 +50,6 @@ export const WordBookSelector: React.FC<WordBookSelectorProps> = ({ books, selec
       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center">
         <BookOpen className="size-5 text-muted-foreground" />
         <div className="text-sm font-medium">还没有可用的单词本</div>
-        <p className="text-sm text-muted-foreground">还没有带单词的单词本</p>
         {onCreateBook && (
           <Button size="sm" variant="outline" className="mt-1" onClick={onCreateBook}>
             <Plus />

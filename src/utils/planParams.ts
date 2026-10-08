@@ -6,14 +6,14 @@
 import { addLocalDays } from './datetime.ts';
 
 /** 每天新词数选项 */
-export const DAILY_NEW_WORDS_OPTIONS: { value: number; label: string; hint: string }[] = [
-  { value: 3, label: '3 个', hint: '低年级 / 零基础，轻松坚持' },
-  { value: 5, label: '5 个', hint: '小学生推荐' },
-  { value: 8, label: '8 个', hint: '中学生 / 有一定基础' },
-  { value: 10, label: '10 个', hint: '成人推荐' },
-  { value: 15, label: '15 个', hint: '每天时间较充裕' },
-  { value: 20, label: '20 个', hint: '强化，复习量会明显增加' },
-  { value: 30, label: '30 个', hint: '冲刺，需要每天坚持复习' },
+export const DAILY_NEW_WORDS_OPTIONS: { value: number; label: string }[] = [
+  { value: 3, label: '3 个' },
+  { value: 5, label: '5 个' },
+  { value: 8, label: '8 个' },
+  { value: 10, label: '10 个' },
+  { value: 15, label: '15 个' },
+  { value: 20, label: '20 个' },
+  { value: 30, label: '30 个' },
 ];
 
 export const DEFAULT_DAILY_NEW_WORDS = 10;

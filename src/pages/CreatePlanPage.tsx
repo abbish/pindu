@@ -177,7 +177,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
     withPassages ? { passages: toPassageInputs(passages), passageIntervalDays: passageInterval } : {};
 
   const finish = (planId: number) => {
-    toast.showSuccess(`已创建「${planName}」`, '第一次练习的那天就是第 1 天');
+    toast.showSuccess(`已创建「${planName}」`);
     onNavigate?.('plan-detail', { planId });
   };
 
@@ -348,11 +348,8 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
               '学习顺序',
               <label className="flex items-center gap-3 rounded-lg border p-3">
                 <Sparkles className="size-4 shrink-0 text-primary" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">AI 排序</span>
-                  <span className="block text-xs text-muted-foreground">由易到难，相关的词排在一起</span>
-                </span>
-                <Switch checked={useAi} onCheckedChange={setUseAi} disabled={busy} aria-label="AI 排序" />
+                <span className="min-w-0 flex-1 text-sm font-medium">AI 按难易排序</span>
+                <Switch checked={useAi} onCheckedChange={setUseAi} disabled={busy} aria-label="AI 按难易排序" />
               </label>
             )}
 

@@ -124,7 +124,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
         <div className="flex items-center gap-2 rounded-md bg-muted/60 px-3 py-1.5 text-xs text-muted-foreground">
           <FileText className="size-3.5 shrink-0" />
           <span className="min-w-0 flex-1 truncate">
-            已读取 <span className="font-medium text-foreground">{sourceLabel}</span>，可以直接修改，删掉不需要的部分
+            已读取 <span className="font-medium text-foreground">{sourceLabel}</span>
           </span>
           <Button variant="ghost" size="icon" className="size-6" aria-label="清除文件内容" onClick={clearFile} disabled={disabled}>
             <X />
@@ -150,7 +150,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
           </div>
         )}
         {dragging && reading === null && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md text-sm font-medium text-primary">松开即可导入文件</div>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md text-sm font-medium text-primary">松开导入文件</div>
         )}
         <span className={cn('pointer-events-none absolute right-3 bottom-2 text-xs tabular-nums', over ? 'text-destructive' : 'text-muted-foreground')}>
           {words > 0 && `${words} 词`}
@@ -159,7 +159,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        可拖入文件：{SHOWN_EXTENSIONS}，不超过 {formatBytes(IMPORT_MAX_FILE_BYTES)}
+        支持 {SHOWN_EXTENSIONS}，不超过 {formatBytes(IMPORT_MAX_FILE_BYTES)}
       </p>
       {over && <p className="text-xs text-destructive">超过 {maxChars} 字符，删掉一些或分几次添加</p>}
       {warnings.length > 0 && (

@@ -3,7 +3,7 @@ import { Loader2, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { cn } from '@/lib/utils';
@@ -108,10 +108,9 @@ export const SyncModelsModal: React.FC<SyncModelsModalProps> = ({ provider, onCl
 
   return (
     <Dialog open={provider !== null} onOpenChange={(open) => !open && !adding && onClose()}>
-      <DialogContent className="flex max-h-[85vh] flex-col gap-0 p-0 sm:max-w-3xl">
+      <DialogContent className="flex max-h-[85vh] flex-col gap-0 p-0 sm:max-w-3xl" aria-describedby={undefined}>
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>同步模型列表 · {provider?.displayName ?? ''}</DialogTitle>
-          <DialogDescription>勾选要添加的模型</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 py-4">
           {loading && (
@@ -149,7 +148,7 @@ export const SyncModelsModal: React.FC<SyncModelsModalProps> = ({ provider, onCl
                         {model.name && model.name !== model.id && <span className="ml-2 text-muted-foreground">{model.name}</span>}
                       </span>
                       <span className="flex shrink-0 flex-wrap justify-end gap-1">
-                        {model.inCatalog && <Badge variant="secondary">pi 目录</Badge>}
+                        {model.inCatalog && <Badge variant="secondary">内置</Badge>}
                         {model.thinkingLevels && model.thinkingLevels.length > 0 && <Badge variant="outline">思考 {model.thinkingLevels.join('/')}</Badge>}
                         {model.contextLength && <Badge variant="outline">{Math.round(model.contextLength / 1000)}K</Badge>}
                         {model.costInput != null && model.costOutput != null && (

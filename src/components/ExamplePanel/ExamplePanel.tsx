@@ -58,7 +58,7 @@ export const ExamplePanel: React.FC<ExamplePanelProps> = ({
         generating ? (
           <span className="inline-flex items-center gap-1">
             <PenLine className="size-3.5" />
-            {generating === 'append' ? 'AI 正在补充新例句…' : 'AI 正在重新写例句…'}
+            {generating === 'append' ? '正在补充例句…' : '正在重写例句…'}
           </span>
         ) : examples.length > 0 ? (
           `共 ${examples.length} 条例句`
@@ -72,7 +72,6 @@ export const ExamplePanel: React.FC<ExamplePanelProps> = ({
           onClick: () => onGenerate('append'),
           disabled: !!generating,
           spinning: generating === 'append',
-          title: examples.length > 0 ? '让 AI 再写几条不同场景的例句' : '让 AI 为这个单词写几条例句',
         },
         // 已有例句时才能「重新生成」（替换现有例句）
         ...(examples.length > 0
@@ -83,7 +82,7 @@ export const ExamplePanel: React.FC<ExamplePanelProps> = ({
               onClick: () => onGenerate('replace'),
               disabled: !!generating,
               spinning: generating === 'replace',
-              title: '用 AI 新写的例句替换现有例句',
+              title: '替换现有例句',
             }]
           : []),
       ]}

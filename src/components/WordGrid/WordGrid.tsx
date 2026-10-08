@@ -93,7 +93,7 @@ export const WordGrid: React.FC<WordGridProps> = ({ words, onWordToggle, onSelec
                   key={pos}
                   type="button"
                   aria-pressed={full}
-                  title={`${partOfSpeechLabel(pos)}：已选 ${stat.selected}/${stat.total}，点击${full ? '全部取消' : '全部选中'}`}
+                  title={`${partOfSpeechLabel(pos)} ${stat.selected}/${stat.total}`}
                   onClick={() => onSelectByPartOfSpeech(pos, !full)}
                   className={cn(
                     'inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',
@@ -128,7 +128,7 @@ export const WordGrid: React.FC<WordGridProps> = ({ words, onWordToggle, onSelec
                     {word.partOfSpeech}
                   </span>
                   {word.existing && (
-                    <Badge variant="outline" className="ml-auto h-5 shrink-0 border-transparent bg-warning-soft px-1.5 text-[11px] text-warning" title="已在单词本中，勾选后会用新的分析覆盖原有内容">
+                    <Badge variant="outline" className="ml-auto h-5 shrink-0 border-transparent bg-warning-soft px-1.5 text-[11px] text-warning" title="勾选会覆盖单词本里的原有内容">
                       已存在
                     </Badge>
                   )}

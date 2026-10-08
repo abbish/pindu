@@ -63,8 +63,8 @@ const SessionSummary: React.FC<{ session: PracticeSession }> = ({ session }) => 
 const discardMessage = (session: PracticeSession) => {
   const { done } = practiceProgress(session);
   return done > 0
-    ? `放弃后，这次已做的 ${done} 题作答记录会删除，这个日程需要重新开始。`
-    : '这次还没有作答，放弃后下次从头开始。';
+    ? `已做的 ${done} 题作答记录会删除，这个日程要从头开始。`
+    : '下次从头开始。';
 };
 
 /**
@@ -154,14 +154,14 @@ export const IncompletePracticeModal: React.FC<IncompletePracticeModalProps> = (
           <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3" role="alert">
             <p className="text-sm">
               {!single && <span className="font-medium">「{planName(confirming)}」：</span>}
-              {discardMessage(confirming)}确定放弃吗？
+              {discardMessage(confirming)}
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="outline" size="sm" autoFocus onClick={() => setConfirmingId(null)}>
-                不放弃
+                取消
               </Button>
               <Button variant="destructive" size="sm" onClick={() => discard(confirming)}>
-                确定放弃
+                放弃
               </Button>
             </div>
           </div>

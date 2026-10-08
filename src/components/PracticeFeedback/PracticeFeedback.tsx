@@ -13,7 +13,7 @@ export interface PracticeFeedbackData {
   answer: string;
   /** 出错的拼读块（答错时） */
   wrongChunks?: string[];
-  /** 这个词稍后还会再考一次（答错时） */
+  /** 这个词稍后再考一次（答错时） */
   willRetry?: boolean;
 }
 
@@ -48,7 +48,6 @@ export const PracticeFeedback: React.FC<PracticeFeedbackProps> = ({ feedback }) 
         <Icon className="size-5 shrink-0" />
         <div className="flex min-w-0 flex-col">
           <span className="font-semibold">{title}</span>
-          {type === 'fixed' && <span className="text-sm opacity-90">还有疑问？看看右边的 AI 讲解，或者问问 AI 老师</span>}
           {wrong && (
             <span className="text-sm opacity-90">
               {chunks.length > 0 ? (
@@ -57,7 +56,7 @@ export const PracticeFeedback: React.FC<PracticeFeedbackProps> = ({ feedback }) 
                   {chunks.map((c, i) => (
                     <strong key={i} className="mx-0.5 rounded bg-background/60 px-1 font-mono">{c}</strong>
                   ))}{' '}
-                  这{chunks.length > 1 ? '几' : '一'}块，照着正确拼写再打一遍
+                  这{chunks.length > 1 ? '几' : '一'}处，照着正确拼写再打一遍
                 </>
               ) : (
                 <>

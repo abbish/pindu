@@ -73,9 +73,9 @@ export const UpdateBanner: React.FC = () => {
       <div className="min-w-0 flex-1">
         {state.kind === 'available' &&
           (info.canInstall ? (
-            <>新版本 {info.version} 可以更新了（当前 {info.currentVersion}）</>
+            <>新版本 {info.version} 可以更新了</>
           ) : (
-            <>新版本 {info.version} 已发布（当前 {info.currentVersion}），请到 GitHub Releases 下载新的安装包</>
+            <>新版本 {info.version} 已发布，请到 GitHub 下载新的安装包</>
           ))}
         {state.kind === 'downloading' && (
           <div className="flex items-center gap-3">
@@ -83,7 +83,7 @@ export const UpdateBanner: React.FC = () => {
             {percent !== null && <Progress value={percent} className="h-1.5 max-w-60" />}
           </div>
         )}
-        {state.kind === 'ready' && <>{info.version} 已安装好，重启后生效（重启前 AI 功能暂停使用）</>}
+        {state.kind === 'ready' && <>{info.version} 已安装，重启后生效</>}
         {state.kind === 'failed' && <span className="text-destructive">无法更新到 {info.version}：{state.error}</span>}
       </div>
 

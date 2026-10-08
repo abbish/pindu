@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, FileText, Lock, Plus, Search, X } from 'lucide-reac
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -135,7 +135,7 @@ export const PlanPassagePicker: React.FC<PlanPassagePickerProps> = ({ items, onC
                       {s.name}
                     </SelectItem>
                   ))}
-                  <SelectItem value={NO_SET}>只朗读（不做题）</SelectItem>
+                  <SelectItem value={NO_SET}>只朗读</SelectItem>
                 </SelectContent>
               </Select>
               <ToggleGroup
@@ -223,10 +223,9 @@ const AddPassagesDialog: React.FC<{
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>添加短文</DialogTitle>
-          <DialogDescription>按勾选的顺序加到列表末尾</DialogDescription>
         </DialogHeader>
         {candidates === null ? (
           <div className="space-y-2">
@@ -260,7 +259,7 @@ const AddPassagesDialog: React.FC<{
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{c.passage.title}</span>
                         <span className="block text-xs text-muted-foreground">
-                          {LEVEL_LABEL[c.passage.level] ?? c.passage.level} · {c.passage.wordCount} 词 · {c.sets.length > 0 ? `${c.sets.length} 套题` : '还没有题，只能朗读'}
+                          {LEVEL_LABEL[c.passage.level] ?? c.passage.level} · {c.passage.wordCount} 词 · {c.sets.length > 0 ? `${c.sets.length} 套题` : '没有题'}
                         </span>
                       </span>
                       {c.overlap > 0 && (

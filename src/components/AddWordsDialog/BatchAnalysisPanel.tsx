@@ -61,7 +61,7 @@ export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job, sto
                   ? '排队中'
                   : starting
                     ? '正在准备分析…'
-                    : (job?.stage ?? '正在分析拼读、音标和例句')}
+                    : (job?.stage ?? '正在分析…')}
             </div>
             {!starting && (
               <p className="mt-1 text-sm text-muted-foreground">

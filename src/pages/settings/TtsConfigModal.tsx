@@ -36,10 +36,10 @@ export interface TtsConfigModalProps {
 
 /** 资源 ID 可选值；空字符串 = 按音色自动推断 */
 const RESOURCE_OPTIONS = [
-  { value: '', label: '自动（按音色推断，推荐）' },
-  { value: 'seed-tts-2.0', label: 'seed-tts-2.0（语音合成 2.0，*_uranus_bigtts 音色）' },
-  { value: 'seed-tts-1.0', label: 'seed-tts-1.0（语音合成 1.0，*_moon / *_mars_bigtts 音色）' },
-  { value: 'seed-icl-2.0', label: 'seed-icl-2.0（声音复刻 2.0，S_ 开头音色）' },
+  { value: '', label: '自动' },
+  { value: 'seed-tts-2.0', label: 'seed-tts-2.0 · *_uranus_bigtts 音色' },
+  { value: 'seed-tts-1.0', label: 'seed-tts-1.0 · *_moon / *_mars_bigtts 音色' },
+  { value: 'seed-icl-2.0', label: 'seed-icl-2.0 · S_ 开头的复刻音色' },
 ];
 
 /** 语速 [-50, 100] → 倍速文案 */
@@ -133,11 +133,11 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
               <RadioGroup value={authMode} onValueChange={(v) => setAuthMode(v as AuthMode)} className="flex gap-6">
                 <Label className="flex items-center gap-2 font-normal">
                   <RadioGroupItem value="apiKey" />
-                  API Key（推荐）
+                  API Key
                 </Label>
                 <Label className="flex items-center gap-2 font-normal">
                   <RadioGroupItem value="appToken" />
-                  AppID + Access Token（旧版控制台）
+                  AppID + Access Token
                 </Label>
               </RadioGroup>
               {authMode === 'apiKey' ? (
@@ -147,7 +147,7 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
                     id="tts-key"
                     type="password"
                     value={apiKey}
-                    placeholder={config.hasApiKey ? `已配置 ${config.apiKeyPreview ?? ''}，留空保持不变` : '请输入 API Key'}
+                    placeholder={config.hasApiKey ? `已配置 ${config.apiKeyPreview ?? ''}，留空保持不变` : 'API Key'}
                     onChange={(e) => setApiKey(e.target.value)}
                     autoComplete="off"
                   />
@@ -165,7 +165,7 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
                       id="tts-token"
                       type="password"
                       value={accessKey}
-                      placeholder={config.hasAccessKey ? `已配置 ${config.accessKeyPreview ?? ''}，留空保持不变` : '请输入 Access Token'}
+                      placeholder={config.hasAccessKey ? `已配置 ${config.accessKeyPreview ?? ''}，留空保持不变` : 'Access Token'}
                       onChange={(e) => setAccessKey(e.target.value)}
                       autoComplete="off"
                     />
@@ -190,7 +190,6 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
                 testingVoiceId={testingVoiceId}
                 disabled={saving}
                 title="预置英文音色"
-                description="试听按已保存的语速与资源 ID"
               />
               <div className="space-y-1.5">
                 <Label htmlFor="tts-custom-voice">自定义音色 ID</Label>
@@ -230,7 +229,6 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">与音色不匹配会报错，一般用「自动」</p>
               </div>
             </>
           )}
