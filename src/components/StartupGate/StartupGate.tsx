@@ -6,24 +6,47 @@ import { UpdateBanner, useCheckForUpdates } from '@/components/UpdateBanner';
 import { useUpdater } from '@/hooks/useUpdater';
 import { dataManagementService } from '@/services/dataManagementService';
 import type { StartupFailure } from '@/types';
+import { bootStatusText, finishBoot, setBootStatus } from '@/utils/bootSplash';
 
 export interface StartupGateProps {
   children: React.ReactNode;
 }
 
+/** 启动期间查询进度的间隔 */
+const POLL_MS = 120;
+
 /**
- * 启动关卡：数据库打开并升级成功才渲染应用；否则整窗只显示原因（数据原样保留，不调用其它命令）。
+ * 启动关卡：后端在后台打开（必要时备份、升级）数据库，期间显示启动画面（index.html 的 #boot）与进度；
+ * 就绪才渲染应用，启动画面淡出；失败则整窗只显示原因（数据原样保留，不调用其它命令）。
  * 失败原因由后端 `startup.rs` 给出：数据来自更新的版本、升级失败、升级前备份失败等。
  */
 export const StartupGate: React.FC<StartupGateProps> = ({ children }) => {
   const [state, setState] = useState<'checking' | 'ok' | StartupFailure>('checking');
 
   useEffect(() => {
-    dataManagementService.getStartupStatus().then((result) => {
+    let timer: number | undefined;
+    let stopped = false;
+    const poll = async () => {
+      const result = await dataManagementService.getStartupStatus();
+      if (stopped) return;
       // 读取状态本身失败时按正常启动处理，具体命令各自报错
-      if (!result.success || result.data.ok || !result.data.failure) setState('ok');
-      else setState(result.data.failure);
-    });
+      if (!result.success || result.data.ok) {
+        setBootStatus(bootStatusText(result.success ? result.data : null));
+        setState('ok');
+      } else if (result.data.failure) {
+        setState(result.data.failure);
+      } else {
+        setBootStatus(bootStatusText(result.data));
+        timer = window.setTimeout(poll, POLL_MS);
+        return;
+      }
+      finishBoot();
+    };
+    poll();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
   }, []);
 
   if (state === 'checking') return null;

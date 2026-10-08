@@ -23,7 +23,6 @@ mod test_support;
 
 use handlers::*;
 use tauri::Manager;
-use types::common::StartupStatus;
 
 /// 后台任务的日志：提交（INFO）、成功（INFO）、取消（INFO）、失败（ERROR，附错误）。
 /// 进度更新也会走 emit，只在这几个状态各记一次（排队只在提交时出现一次，结束状态只出现一次）。
@@ -126,15 +125,42 @@ pub fn run() {
             #[cfg(debug_assertions)]
             logger.info("APP", "Running in development mode with DevTools enabled");
 
-            // 打开并升级数据库：失败时不崩溃、不建新库，前端显示错误页（见 startup.rs）
-            let status = tauri::async_runtime::block_on(async {
-                if let Some(failure) = early_failure {
-                    return StartupStatus {
-                        ok: false,
-                        failure: Some(*failure),
-                    };
+            // 启动进度：窗口先显示启动画面（index.html），数据库在后台打开（startup::StartupState）
+            app.manage(startup::StartupState::default());
+            app.manage(logger.clone());
+            app.manage(dirs.clone());
+
+            // 视频库的文件经本机媒体服务给播放器（media_server.rs）；启动失败只影响视频播放
+            match tauri::async_runtime::block_on(media_server::MediaServer::start(
+                dirs.data.join("videos"),
+                logger.clone(),
+            )) {
+                Ok(server) => {
+                    app.manage(server);
                 }
-                match startup::open_database(&dirs, &logger).await {
+                Err(e) => logger.warn("APP", "无法启动视频播放服务", Some(&e.to_string())),
+            }
+
+            // 立即显示窗口：启动画面写在 index.html 里，第一帧就能画出来（不设原生背景色：
+            // 应用主题可以和系统不同，原生侧拿不到，设了反而让 macOS 标题栏颜色不对）
+            let window = app.get_webview_window("main").unwrap();
+            window.show().unwrap();
+
+            // 打开并升级数据库：失败时不崩溃、不建新库，前端显示错误页（见 startup.rs）。
+            // 完成前命令入口拒绝需要数据库的命令（startup::command_guard）
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let started = std::time::Instant::now();
+                let state = handle.state::<startup::StartupState>();
+                if let Some(failure) = early_failure {
+                    state.fail(*failure);
+                    return;
+                }
+                match startup::open_database(&dirs, &logger, |phase, detail| {
+                    state.set_phase(phase, detail)
+                })
+                .await
+                {
                     Ok(pool) => {
                         // 自适应复习：把今天到期的复习放进今天的日程，并清理过期未练的复习（失败不影响启动）
                         if let Err(e) = services::srs::sync_all_today(&pool).await {
@@ -155,35 +181,16 @@ pub fn run() {
                                 Some(&e.to_string()),
                             );
                         }
-                        app.manage(pool);
-                        StartupStatus {
-                            ok: true,
-                            failure: None,
-                        }
+                        handle.manage(pool);
+                        state.ready();
+                        logger.info(
+                            "STARTUP",
+                            &format!("数据已就绪（{:.1}s）", started.elapsed().as_secs_f64()),
+                        );
                     }
-                    Err(failure) => StartupStatus {
-                        ok: false,
-                        failure: Some(*failure),
-                    },
+                    Err(failure) => state.fail(*failure),
                 }
             });
-            // 视频库的文件经本机媒体服务给播放器（media_server.rs）；启动失败只影响视频播放
-            match tauri::async_runtime::block_on(media_server::MediaServer::start(
-                dirs.data.join("videos"),
-                logger.clone(),
-            )) {
-                Ok(server) => {
-                    app.manage(server);
-                }
-                Err(e) => logger.warn("APP", "无法启动视频播放服务", Some(&e.to_string())),
-            }
-            app.manage(status);
-            app.manage(logger);
-            app.manage(dirs);
-
-            // 在初始化完成后显示窗口
-            let window = app.get_webview_window("main").unwrap();
-            window.show().unwrap();
 
             Ok(())
         })

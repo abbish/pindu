@@ -66,8 +66,13 @@ export interface StartupFailure {
 
 /** 启动状态（对应 Rust `types::common::StartupStatus`） */
 export interface StartupStatus {
+  /** 数据库已打开，可以进入应用 */
   ok: boolean;
   failure: StartupFailure | null;
+  /** 启动阶段：opening / backing_up / upgrading / ready / failed */
+  phase: 'opening' | 'backing_up' | 'upgrading' | 'ready' | 'failed';
+  /** 阶段补充说明：备份 / 升级时为 "57 → 59" */
+  detail: string | null;
 }
 
 /** 检查到的新版本（对应 Rust `types::common::UpdateInfo`） */

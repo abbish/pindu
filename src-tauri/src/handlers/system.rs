@@ -75,7 +75,7 @@ pub async fn open_log_folder(app: AppHandle) -> AppResult<()> {
 /// 启动状态：数据库打开并升级成功为 ok；否则带原因（前端显示错误页，见 `startup.rs`）
 #[tauri::command]
 pub async fn get_startup_status(app: AppHandle) -> AppResult<StartupStatus> {
-    Ok(app.state::<StartupStatus>().inner().clone())
+    Ok(app.state::<crate::startup::StartupState>().snapshot())
 }
 
 /// 在访达 / 资源管理器中打开数据目录（数据库、升级备份、日志都在这里）

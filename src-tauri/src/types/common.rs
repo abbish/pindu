@@ -62,8 +62,13 @@ pub struct StartupFailure {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartupStatus {
+    /// 数据库已打开，可以进入应用
     pub ok: bool,
     pub failure: Option<StartupFailure>,
+    /// 启动阶段：opening（打开数据）/ backing_up（升级前备份）/ upgrading（升级数据）/ ready / failed
+    pub phase: String,
+    /// 阶段补充说明：备份 / 升级时为 "57 → 59"
+    pub detail: Option<String>,
 }
 
 /// 检查到的新版本

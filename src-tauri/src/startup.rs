@@ -62,9 +62,11 @@ pub fn prepare(app: &tauri::AppHandle) -> (AppDirs, Logger, Option<Box<StartupFa
 }
 
 /// 打开并升级数据库；成功返回连接池
+/// `on_phase(阶段, 说明)`：开始备份、开始升级时调用（启动画面显示进度）
 pub async fn open_database(
     dirs: &AppDirs,
     logger: &Logger,
+    on_phase: impl Fn(&str, Option<String>),
 ) -> Result<SqlitePool, Box<StartupFailure>> {
     let data_dir = dirs.data.display().to_string();
     let fail = |kind: &str, title: &str, message: String, detail: Option<String>| {
@@ -155,8 +157,10 @@ pub async fn open_database(
         return Ok(pool);
     }
 
+    let versions = format!("{} → {}", plan.applied_max, plan.target);
     // 新库直接建表；已有数据的库先备份再升级
     let backup = if plan.applied_max > 0 {
+        on_phase("backing_up", Some(versions.clone()));
         match backup(&pool, &dirs.backups_dir(), plan.applied_max, plan.target).await {
             Ok(path) => {
                 logger.info(
@@ -188,6 +192,7 @@ pub async fn open_database(
             plan.pending.len()
         ),
     );
+    on_phase("upgrading", Some(versions));
     if let Err(e) = MIGRATOR.run(&pool).await {
         pool.close().await;
         let step = match &e {
@@ -363,6 +368,53 @@ pub fn prune_backups(dir: &Path, keep: usize) -> std::io::Result<()> {
     Ok(())
 }
 
+/// 启动进度（Tauri 状态）：窗口显示后在后台打开数据库，期间逐步更新；`get_startup_status` 读取，启动画面据此显示进度。
+pub struct StartupState(std::sync::Mutex<crate::types::common::StartupStatus>);
+
+impl Default for StartupState {
+    fn default() -> Self {
+        Self(std::sync::Mutex::new(crate::types::common::StartupStatus {
+            ok: false,
+            failure: None,
+            phase: "opening".to_string(),
+            detail: None,
+        }))
+    }
+}
+
+impl StartupState {
+    fn update(&self, f: impl FnOnce(&mut crate::types::common::StartupStatus)) {
+        f(&mut self.0.lock().unwrap_or_else(|e| e.into_inner()));
+    }
+
+    pub fn snapshot(&self) -> crate::types::common::StartupStatus {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn set_phase(&self, phase: &str, detail: Option<String>) {
+        self.update(|s| {
+            s.phase = phase.to_string();
+            s.detail = detail;
+        });
+    }
+
+    pub fn ready(&self) {
+        self.update(|s| {
+            s.ok = true;
+            s.phase = "ready".to_string();
+            s.detail = None;
+        });
+    }
+
+    pub fn fail(&self, failure: StartupFailure) {
+        self.update(|s| {
+            s.ok = false;
+            s.phase = "failed".to_string();
+            s.failure = Some(failure);
+        });
+    }
+}
+
 /// 数据库没打开时仍然可用的命令：启动错误页（原因、数据 / 日志文件夹）、日志、应用内更新、退出与重启。
 /// 其余命令都要读写数据库，见 `command_guard`。
 pub const AVAILABLE_WITHOUT_DATABASE: &[&str] = &[
@@ -383,8 +435,8 @@ pub const AVAILABLE_WITHOUT_DATABASE: &[&str] = &[
 pub fn command_guard(app: &tauri::AppHandle, command: &str) -> Option<crate::error::AppError> {
     use tauri::Manager;
     let failure = app
-        .try_state::<crate::types::common::StartupStatus>()
-        .and_then(|status| status.failure.as_ref().map(|f| f.title.clone()));
+        .try_state::<StartupState>()
+        .and_then(|state| state.snapshot().failure.map(|f| f.title));
     blocked(
         command,
         app.try_state::<SqlitePool>().is_some(),
@@ -409,6 +461,21 @@ fn blocked(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn startup_state_moves_through_phases() {
+        let state = super::StartupState::default();
+        assert_eq!(state.snapshot().phase, "opening");
+        state.set_phase("upgrading", Some("57 → 59".into()));
+        let s = state.snapshot();
+        assert_eq!(
+            (s.phase.as_str(), s.detail.as_deref(), s.ok),
+            ("upgrading", Some("57 → 59"), false)
+        );
+        state.ready();
+        let s = state.snapshot();
+        assert!(s.ok && s.phase == "ready" && s.detail.is_none());
+    }
+
     #[test]
     fn commands_are_blocked_only_while_database_is_closed() {
         assert!(super::blocked("get_study_plans", true, None).is_none());
@@ -598,7 +665,7 @@ mod tests {
         pool.close().await;
 
         // 新版本启动：备份 → 迁移
-        let pool = open_database(&dirs, &logger).await.unwrap();
+        let pool = open_database(&dirs, &logger, |_, _| {}).await.unwrap();
         let count = |pool: SqlitePool| async move {
             let n: i64 =
                 sqlx::query_scalar("SELECT COUNT(*) FROM word_books WHERE title = '我的单词本'")
@@ -630,7 +697,7 @@ mod tests {
         assert_eq!(count(backup).await, 1, "备份里应有升级前的数据");
 
         // 再次启动：已是最新，不再备份
-        let pool = open_database(&dirs, &logger).await.unwrap();
+        let pool = open_database(&dirs, &logger, |_, _| {}).await.unwrap();
         pool.close().await;
         // 只数 .db（上面打开备份时 SQLite 会在旁边生成 -wal / -shm）
         let db_files = std::fs::read_dir(dirs.backups_dir())
