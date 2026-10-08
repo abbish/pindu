@@ -56,7 +56,6 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
       <PageHeader
         title="短文库"
-        description="用学过的单词写成的阅读短文，或者导入你自己的英文材料：可以自由阅读和听读，也可以出阅读理解题来练。练习单独统计，不影响单词的记忆等级。"
         actions={
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -89,7 +88,7 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
       <div className="flex items-center gap-3">
       <div className="relative w-72">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索标题或单词…" aria-label="搜索短文" className="px-8" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索标题或单词" aria-label="搜索短文" className="px-8" />
         {query && (
           <Button variant="ghost" size="icon" className="absolute top-1/2 right-1 size-7 -translate-y-1/2" aria-label="清空搜索" onClick={() => setQuery('')}>
             <X />

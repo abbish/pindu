@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { InlineError } from '@/components/InlineError';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { PassagePlanEditor, type EditablePlanItem, type PlanItemStatus } from '@/components/PassagePlanEditor';
@@ -139,13 +140,10 @@ const SourcePicker: React.FC<{
   );
 };
 
-/** AI 挑词条件的一行：左侧标题（可带说明），右侧控件 */
-const PickRow: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({ label, hint, children }) => (
+/** AI 挑词条件的一行：左侧标题，右侧控件 */
+const PickRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div className="flex items-center gap-4">
-    <div className="w-32 shrink-0">
-      <Label>{label}</Label>
-      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-    </div>
+    <Label className="w-20 shrink-0">{label}</Label>
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">{children}</div>
   </div>
 );
@@ -299,10 +297,10 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     prefs.statuses.length > 0 ? PICK_STATUSES.filter((p) => prefs.statuses.includes(p.value)).map((p) => p.label).join('、') : '学习情况不限',
   ].join(' · ');
   const total = required.size + extraWords.length + effectivePick;
-  const totalError = total < MIN_WORDS ? (aiMode ? '至少要有 1 个词：放宽学习情况，或加几个一定要用的词' : '至少要有 1 个词：勾选必用词，或输入单词') : null;
+  const totalError = total < MIN_WORDS ? (aiMode ? '没有可用的词：放宽学习情况，或加几个一定要用的词' : '至少选 1 个词') : null;
   const sceneHint = useMemo(() => {
     const descriptions = (books ?? []).filter((b) => bookIds.includes(b.id) && b.description?.trim()).map((b) => b.description.trim());
-    return descriptions.length > 0 ? `留空则按单词本场景：${descriptions.join('；')}` : '例如：在机场遇到航班延误；周末和朋友去野餐';
+    return descriptions.length > 0 ? `默认：${descriptions.join('；')}` : '例如：在机场遇到航班延误';
   }, [books, bookIds]);
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<number[]>>) => (id: number) =>
@@ -384,7 +382,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-7">
-      <PageHeader title="新建短文" description="选好词汇来源和单词，AI 先规划写几篇、每篇讲什么故事，你确认或修改后再逐篇写。写好后可以自由阅读、听读，也可以再出阅读理解题。" />
+      <PageHeader title="新建短文" />
       <Stepper steps={STEPS} current={step} />
 
       {planning ? (
@@ -392,8 +390,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
           <span className="flex size-12 items-center justify-center rounded-full bg-accent">
             <Loader2 className="size-6 animate-spin text-primary" />
           </span>
-          <div className="font-medium">AI 正在规划内容…</div>
-          <p className="max-w-md text-sm text-muted-foreground">决定写几篇、每篇讲什么故事、用哪些词，通常需要 20–40 秒。</p>
+          <div className="font-medium">正在规划内容…</div>
         </Card>
       ) : (
         <>
@@ -419,55 +416,45 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
               </div>
               {planIds.length > 0 && (
                 <Card className="gap-3 px-5 py-4">
-                  <div>
-                    <h2 className="font-semibold">从计划里取哪些词</h2>
-                    <p className="text-sm text-muted-foreground">按你在所选计划里的学习情况取词，可以多选（取并集）；只取已经学过的词。</p>
-                  </div>
+                  <h2 className="font-semibold">从计划里取哪些词</h2>
                   <div className="grid grid-cols-3 gap-2" role="group" aria-label="计划的取词策略">
                     {PLAN_SCOPES.map((s) => {
                       const count = countOf(s.value);
                       const on = scopes.includes(s.value);
                       return (
-                        <Label
-                          key={s.value}
-                          className={cn('flex items-start gap-2.5 rounded-lg border px-3 py-2.5 font-normal transition-colors hover:bg-muted/50', on && 'border-primary/60 bg-accent/40')}
-                        >
-                          <Checkbox checked={on} onCheckedChange={() => toggleScope(s.value)} className="mt-0.5" />
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center justify-between gap-2">
-                              <span className="font-medium">{s.label}</span>
+                        <Tooltip key={s.value}>
+                          <TooltipTrigger asChild>
+                            <Label
+                              className={cn('flex items-center gap-2.5 rounded-lg border px-3 py-2.5 font-normal transition-colors hover:bg-muted/50', on && 'border-primary/60 bg-accent/40')}
+                            >
+                              <Checkbox checked={on} onCheckedChange={() => toggleScope(s.value)} />
+                              <span className="min-w-0 flex-1 font-medium">{s.label}</span>
                               <span className={cn('text-xs tabular-nums', count === 0 ? 'text-muted-foreground' : 'text-foreground')}>{count == null ? '…' : `${count} 个`}</span>
-                            </span>
-                            <span className="block text-xs text-muted-foreground">{s.description}</span>
-                          </span>
-                        </Label>
+                            </Label>
+                          </TooltipTrigger>
+                          <TooltipContent>{s.description}</TooltipContent>
+                        </Tooltip>
                       );
                     })}
                   </div>
                 </Card>
               )}
-              <p className="text-sm text-muted-foreground">单词本和学习计划可以组合；也可以都不选，下一步直接输入单词。</p>
             </div>
           )}
 
           {step === 1 && (
             <div className="flex flex-col gap-4">
               {hasSources && (
-                <div className="flex items-center gap-3">
-                  <ToggleGroup type="single" value={pickMode} onValueChange={(v) => v && chooseMode(v as PickMode)} className="rounded-lg bg-muted p-0.5" aria-label="选词方式">
-                    <ToggleGroupItem value="ai" className={segmentItem}>
-                      <Sparkles />
-                      AI 帮我挑
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="manual" className={segmentItem}>
-                      <ListChecks />
-                      我自己选
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                  <p className="text-sm text-muted-foreground">
-                    {pickMode === 'ai' ? '设好条件，AI 按场景从所选来源里挑能自然写进故事的词。' : '从所选来源里勾选一定要写进短文的词。'}
-                  </p>
-                </div>
+                <ToggleGroup type="single" value={pickMode} onValueChange={(v) => v && chooseMode(v as PickMode)} className="self-start rounded-lg bg-muted p-0.5" aria-label="选词方式">
+                  <ToggleGroupItem value="ai" className={segmentItem}>
+                    <Sparkles />
+                    AI 帮我挑
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="manual" className={segmentItem}>
+                    <ListChecks />
+                    我自己选
+                  </ToggleGroupItem>
+                </ToggleGroup>
               )}
 
               {hasSources && pickMode === 'ai' && (
@@ -485,9 +472,8 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                         ))}
                       </SelectContent>
                     </Select>
-                    <span className="text-xs text-muted-foreground">一篇写不下时，AI 会拆成几篇</span>
                   </PickRow>
-                  <PickRow label="单词难度" hint="按「设置 → AI 助手」里的学习者水平判断">
+                  <PickRow label="单词难度">
                     <ToggleGroup type="single" value={prefs.difficulty} onValueChange={(v) => v && updatePrefs({ difficulty: v as PickPrefs['difficulty'] })} className="rounded-lg bg-muted p-0.5" aria-label="单词难度">
                       {DIFFICULTIES.map((d) => (
                         <ToggleGroupItem key={d.value} value={d.value} className={segmentItem}>
@@ -505,25 +491,20 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                       ))}
                     </ToggleGroup>
                   </PickRow>
-                  <PickRow label="学习情况" hint="可多选，不选即不限">
+                  <PickRow label="学习情况">
                     <StatusFilter value={prefs.statuses} onChange={(statuses) => updatePrefs({ statuses })} counts={statusCounts} label="AI 挑词的学习情况" />
+                    {candidates !== null && (
+                      <span className={cn('text-sm tabular-nums', poolSize === 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                        {poolSize === 0 ? '没有符合条件的词' : `符合条件 ${poolSize} 个`}
+                      </span>
+                    )}
                   </PickRow>
-                  <p className={cn('border-t pt-3 text-sm tabular-nums', candidates !== null && poolSize === 0 ? 'text-destructive' : 'text-muted-foreground')}>
-                    {candidates === null
-                      ? '正在统计符合条件的词…'
-                      : poolSize === 0
-                        ? '没有符合条件的词，换一换学习情况'
-                        : `符合条件 ${poolSize} 个${required.size > 0 ? '（不含一定要用的词）' : ''} · AI 按场景从中挑 ${effectivePick} 个`}
-                  </p>
                 </Card>
               )}
 
               <Card className="gap-3 px-5 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="font-semibold">{pickMode === 'ai' && hasSources ? '一定要用的词（可选）' : '必须出现的词'}</h2>
-                    <p className="text-sm text-muted-foreground">{pickMode === 'ai' && hasSources ? 'AI 只补剩下的名额。' : '勾选的词一定会写进短文。'}</p>
-                  </div>
+                  <h2 className="min-w-0 flex-1 font-semibold">一定要用的词</h2>
                   {hasSources && pickMode === 'ai' && (
                     <Button variant="outline" size="sm" onClick={() => setShowList((v) => !v)} aria-expanded={showList}>
                       {showList ? <ChevronUp /> : <ChevronDown />}
@@ -632,9 +613,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                 </div>
               </Card>
 
-              <p className={cn('text-right text-sm tabular-nums', totalError ? 'text-destructive' : 'text-muted-foreground')}>
-                {totalError ?? (effectivePick > 0 ? `一定要用 ${required.size + extraWords.length} 个，AI 再挑 ${effectivePick} 个` : `必用 ${required.size + extraWords.length} 个`)}
-              </p>
+              {totalError && <p className="text-right text-sm text-destructive">{totalError}</p>}
             </div>
           )}
 
@@ -642,17 +621,11 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
             <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-4">
               <Card className="gap-5 px-5 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="cp-scene">场景描述（可选）</Label>
+                  <Label htmlFor="cp-scene">场景</Label>
                   <Textarea id="cp-scene" value={scene} maxLength={SCENE_MAX} onChange={(e) => setScene(e.target.value)} placeholder={sceneHint} className="min-h-28 resize-none" />
-                  <p className="text-xs text-muted-foreground">
-                    AI 按这个场景写短文、选词义{effectivePick > 0 ? '、挑词' : ''}。{scene.trim().length} / {SCENE_MAX}
-                  </p>
                 </div>
                 <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <Label>篇幅</Label>
-                    <p className="mt-1 text-xs text-muted-foreground">短：一个小片段；标准：一个完整的小故事；长：更多细节和情节。语言难度按「设置 → AI 助手」里的学习者</p>
-                  </div>
+                  <Label>篇幅</Label>
                   <ToggleGroup type="single" value={length} onValueChange={(v) => v && setLength(v as typeof length)} className="rounded-lg bg-muted p-0.5" aria-label="篇幅">
                     {LENGTHS.map((l) => (
                       <ToggleGroupItem key={l.value} value={l.value} className={segmentItem}>
@@ -680,7 +653,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                   )}
                 </div>
                 <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">必须出现（{requiredWords.length}）</div>
+                  <div className="text-xs text-muted-foreground">一定要用（{requiredWords.length}）</div>
                   <div className="flex flex-wrap gap-1">
                     {requiredWords.length > 0 ? (
                       requiredWords.map((w) => (
@@ -694,12 +667,12 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                   </div>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">AI 按场景再挑</span>
+                  <span className="text-muted-foreground">AI 挑词</span>
                   <span>{effectivePick > 0 ? `最多 ${effectivePick} 个` : '不挑'}</span>
                 </div>
                 {effectivePick > 0 && (
                   <div className="flex justify-between gap-3">
-                    <span className="shrink-0 text-muted-foreground">挑词条件</span>
+                    <span className="shrink-0 text-muted-foreground">条件</span>
                     <span className="text-right">{pickSummary}</span>
                   </div>
                 )}
@@ -734,9 +707,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
               取消
             </Button>
           ) : (
-            <span className="text-sm text-muted-foreground">
-              {writing ? `正在逐篇写短文，每篇约 30–60 秒；可以离开这个页面，写好的会出现在短文库里` : '写好了，可以逐篇打开，也可以去短文库查看'}
-            </span>
+            writing && <span className="text-sm text-muted-foreground">离开页面后会继续写，写好的在短文库里</span>
           )}
           <div className="flex-1" />
           {step > 0 && statuses === null && (

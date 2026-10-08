@@ -141,7 +141,6 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ onNavigate }) => {
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
       <PageHeader
         title="学习日历"
-        description="查看学习计划和每日完成情况"
         actions={
           <Button onClick={() => onNavigate?.('create-plan')}>
             <Plus />

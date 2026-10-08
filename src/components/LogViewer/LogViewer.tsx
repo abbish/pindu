@@ -94,7 +94,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
       <DialogContent className="flex max-h-[85vh] flex-col gap-4 sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>系统日志</DialogTitle>
-          <DialogDescription>最近 {LOG_LIMIT} 条运行日志（app.log）</DialogDescription>
+          <DialogDescription>最近 {LOG_LIMIT} 条</DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center gap-2">

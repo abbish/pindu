@@ -52,7 +52,7 @@ export const AgentSettings: React.FC = () => {
 
   if (!settings) {
     return (
-      <SettingsPanel title="AI 助手" description="每个 AI 任务用哪个模型，以及批量分析的节奏。">
+      <SettingsPanel title="AI 助手">
         {loadError ? (
           <PageError title="无法加载 AI 助手设置" message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />
         ) : (
@@ -68,16 +68,13 @@ export const AgentSettings: React.FC = () => {
   const defaultText = defaultModel ? `跟随默认模型：${defaultModel.displayName}` : '跟随默认模型（尚未设置）';
 
   return (
-    <SettingsPanel
-      title="AI 助手"
-      description="提取单词、拼读分析、AI 讲解等功能由内置的 AI 助手（pi）完成。这里可以为每个任务单独指定模型，并按学习者调整讲解风格；导入单词、新建计划时页面上临时选的模型优先。"
-    >
-      <SettingsSection title="各任务使用的模型" description="能力强的模型更准确，速度快、价格低的模型更省；没有指定的任务跟随默认模型。">
+    <SettingsPanel title="AI 助手">
+      <SettingsSection title="各任务使用的模型">
         {settings.taskModels.map((t) => {
           const value = t.modelId == null ? FOLLOW_DEFAULT : String(t.modelId);
           const missing = t.modelId != null && !usable.some((m) => m.id === t.modelId);
           return (
-            <SettingsRow key={t.task} label={t.label} description={t.description}>
+            <SettingsRow key={t.task} label={t.label}>
               <Select
                 value={value}
                 disabled={saving}
@@ -106,8 +103,8 @@ export const AgentSettings: React.FC = () => {
         })}
       </SettingsSection>
 
-      <SettingsSection title="批量分析" description="导入单词时，单词会分批交给 AI 分析。">
-        <SettingsRow label="每批单词数" description="每次请求分析几个词。批次大更快，但单次出错要重做的也更多。">
+      <SettingsSection title="批量分析单词">
+        <SettingsRow label="每批单词数">
           <Select value={String(settings.batchSize)} disabled={saving} onValueChange={(v) => save({ batchSize: Number(v) })}>
             <SelectTrigger className="w-32" aria-label="每批单词数">
               <SelectValue />
@@ -121,7 +118,7 @@ export const AgentSettings: React.FC = () => {
             </SelectContent>
           </Select>
         </SettingsRow>
-        <SettingsRow label="同时请求数" description="同时进行的分析请求。服务商提示请求过于频繁（429）时调低。">
+        <SettingsRow label="同时请求数" description="服务商提示请求过于频繁（429）时调低">
           <Select value={String(settings.maxConcurrency)} disabled={saving} onValueChange={(v) => save({ maxConcurrency: Number(v) })}>
             <SelectTrigger className="w-32" aria-label="同时请求数">
               <SelectValue />

@@ -108,17 +108,17 @@ export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({ result, 
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
             <Trophy className="size-6 text-warning" />
-            练习完成！
+            练习完成
           </h1>
           <p className="text-muted-foreground">{g.description}</p>
         </div>
         <div className="grid grid-cols-3 gap-8 text-center">
           {[
-            { label: '本次通过', value: `${r.passedWords} / ${r.totalWords}` },
+            { label: '本次通过', value: `${r.passedWords} / ${r.totalWords}`, title: '新词三步首答全对，复习词写对' },
             { label: '正确率', value: `${r.wordAccuracy.toFixed(1)}%` },
             { label: '练习时间', value: formatDuration(r.activeTime) },
           ].map((s) => (
-            <div key={s.label}>
+            <div key={s.label} title={'title' in s ? s.title : undefined}>
               <div className="text-2xl font-semibold tabular-nums">{s.value}</div>
               <div className="text-xs text-muted-foreground">{s.label}</div>
             </div>
@@ -128,9 +128,7 @@ export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({ result, 
 
       <section className="space-y-3">
         <h2 className="text-base font-semibold">详细统计</h2>
-        <div className="grid grid-cols-6 gap-3">
-          <MetricCard label="总单词数" value={r.totalWords} unit="个" />
-          <MetricCard label="本次通过" value={r.passedWords} unit="个" icon={Check} hint="新词三步首答全对 / 复习词写对" />
+        <div className="grid grid-cols-4 gap-3">
           <MetricCard label="步骤正确率" value={r.stepAccuracy.toFixed(1)} unit="%" icon={Target} />
           <MetricCard label="平均用时" value={Math.round(r.averageTimePerWord / 1000)} unit="秒/词" icon={Clock} />
           <MetricCard label="暂停次数" value={r.pauseCount} unit="次" icon={PauseCircle} />

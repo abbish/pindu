@@ -326,11 +326,10 @@ export const AIModelSettings: React.FC = () => {
   };
 
   const panelTitle = 'AI 模型';
-  const panelDescription = '我们通过内置的 pi 调用模型：填写提供商的 API 密钥，再选择要使用的模型';
 
   if (loading) {
     return (
-      <SettingsPanel title={panelTitle} description={panelDescription}>
+      <SettingsPanel title={panelTitle}>
         <Skeleton className="h-16 rounded-xl" />
         <Skeleton className="h-64 rounded-xl" />
       </SettingsPanel>
@@ -410,20 +409,20 @@ export const AIModelSettings: React.FC = () => {
     const keyOnlyList = unconfigured.filter(match);
     const extraList = extraSetup.filter(match);
     return (
-      <SettingsPanel title="添加提供商" description="选择一个提供商，填写它的 API 密钥后就可以使用其中的模型" back={backToOverview}>
+      <SettingsPanel title="添加提供商" back={backToOverview}>
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder="搜索提供商" aria-label="搜索提供商" className="pl-9" autoFocus />
         </div>
         {catalog.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">pi 模型目录暂不可用（agent sidecar 未就绪）。</p>
+          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">暂时读不到提供商列表，请稍后再试</p>
         ) : keyOnlyList.length + extraList.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">没有匹配的提供商。</p>
+          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">没有匹配的提供商</p>
         ) : (
           <>
             {keyOnlyList.length > 0 && <SettingsSection title="填写 API 密钥即可使用">{keyOnlyList.map(providerRow)}</SettingsSection>}
             {extraList.length > 0 && (
-              <SettingsSection title="需要额外配置（暂不支持）" description="除 API 密钥外还需要区域、账户 ID 或登录授权">
+              <SettingsSection title="需要额外配置（暂不支持）">
                 {extraList.map(providerRow)}
               </SettingsSection>
             )}
@@ -463,7 +462,7 @@ export const AIModelSettings: React.FC = () => {
         {!provider ? (
           selected.keyOnly ? (
             <SettingsSection title="连接">
-              <SettingsRow label="API 密钥" description={`填写 ${selected.name} 的 API 密钥后，就可以选择它的模型来使用。`} stacked>
+              <SettingsRow label="API 密钥" stacked>
                 <Input
                   type="password"
                   value={keyDraft}
@@ -482,10 +481,7 @@ export const AIModelSettings: React.FC = () => {
             </SettingsSection>
           ) : (
             <p className="rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
-              {selected.apiKeyLabel
-                ? `这个提供商除了 ${selected.apiKeyLabel}，还需要额外的账户参数（如区域、账户 ID）。`
-                : '这个提供商只支持登录授权，不能填写 API 密钥。'}
-              目前只支持填写 API 密钥就能使用的提供商。
+              {selected.apiKeyLabel ? `除了 ${selected.apiKeyLabel}，还需要区域、账户 ID 等参数，暂不支持` : '只支持登录授权，暂不支持'}
             </p>
           )
         ) : (
@@ -493,7 +489,7 @@ export const AIModelSettings: React.FC = () => {
             <SettingsSection title="连接">
               <SettingsRow
                 label="API 密钥"
-                description={!editingKey && !provider.hasApiKey ? <span className="text-warning">未填写，填写后才能使用这个提供商的模型</span> : undefined}
+                description={!editingKey && !provider.hasApiKey ? <span className="text-warning">未填写，模型无法使用</span> : undefined}
                 stacked={editingKey}
               >
                 {editingKey ? (
@@ -530,7 +526,7 @@ export const AIModelSettings: React.FC = () => {
                   </>
                 )}
               </SettingsRow>
-              <SettingsRow label="启用" description="停用后，这个提供商的模型暂时不能使用" htmlFor="provider-active">
+              <SettingsRow label="启用" htmlFor="provider-active">
                 <Switch
                   id="provider-active"
                   checked={provider.isActive}
@@ -539,7 +535,7 @@ export const AIModelSettings: React.FC = () => {
                 />
               </SettingsRow>
               {!provider.piProvider && (
-                <SettingsRow label="接口" description="自定义的 OpenAI 兼容接口地址与协议">
+                <SettingsRow label="接口地址">
                   <Button size="sm" variant="outline" onClick={() => setCustomForm(provider)} disabled={saving}>
                     编辑接口…
                   </Button>
@@ -559,7 +555,7 @@ export const AIModelSettings: React.FC = () => {
                     size="sm"
                     onClick={() => setSyncProvider(provider)}
                     disabled={saving || !provider.isActive}
-                    title={provider.isActive ? '从提供商读取可用模型，勾选后添加' : '启用后才能选择模型'}
+                    title={provider.isActive ? undefined : '启用后才能选择模型'}
                   >
                     选择模型…
                   </Button>
@@ -572,7 +568,7 @@ export const AIModelSettings: React.FC = () => {
             >
               {selectedModels.length === 0 ? (
                 <p className="p-6 text-center text-sm text-muted-foreground">
-                  {modelQuery ? '没有匹配的模型。' : '还没有添加模型，点「选择模型」从提供商的模型列表里勾选。'}
+                  {modelQuery ? '没有匹配的模型' : '还没有模型'}
                 </p>
               ) : (
                 selectedModels.map((m) => {
@@ -634,7 +630,7 @@ export const AIModelSettings: React.FC = () => {
             </SettingsSection>
 
             <SettingsSection title="移除" tone="danger">
-              <SettingsRow label="移除这个提供商" description={`密钥和 ${modelCount(provider.id)} 个模型会一起删除，之后可以重新配置。`}>
+              <SettingsRow label="移除这个提供商" description={`密钥和 ${modelCount(provider.id)} 个模型会一起删除`}>
                 <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => handleRemoveProvider(selected)} disabled={saving}>
                   移除…
                 </Button>
@@ -650,19 +646,19 @@ export const AIModelSettings: React.FC = () => {
   /* ── 总览：默认模型 + 已配置的提供商 ── */
   if (loadError) {
     return (
-      <SettingsPanel title={panelTitle} description={panelDescription}>
+      <SettingsPanel title={panelTitle}>
         <PageError title="无法加载 AI 模型配置" message={loadError} onRetry={() => loadData()} />
       </SettingsPanel>
     );
   }
 
   return (
-    <SettingsPanel title={panelTitle} description={panelDescription}>
+    <SettingsPanel title={panelTitle}>
       <SettingsSection title="默认模型">
-        <SettingsRow label="默认模型" description="提词、拼读分析、学习计划、单词讲解与 AI 老师都使用它">
+        <SettingsRow label="默认模型">
           <Select value={defaultModel ? String(defaultModel.id) : undefined} onValueChange={(v) => run('无法设为默认模型', () => aiModelService.setDefaultAIModel(Number(v)))} disabled={saving}>
             <SelectTrigger className="w-64" aria-label="默认模型">
-              <SelectValue placeholder="未设置，请选择" />
+              <SelectValue placeholder="未设置" />
             </SelectTrigger>
             <SelectContent>
               {configured.map((entry) => {
@@ -685,7 +681,6 @@ export const AIModelSettings: React.FC = () => {
 
       <SettingsSection
         title="提供商"
-        description="已配置的模型提供商，点开管理密钥和模型"
         actions={
           <Button size="sm" variant="outline" onClick={() => setView('catalog')}>
             <Plus />
@@ -696,7 +691,7 @@ export const AIModelSettings: React.FC = () => {
         {configured.length > 0 ? (
           configured.map(providerRow)
         ) : (
-          <SettingsRow label="还没有配置提供商" description="添加一个提供商并填写 API 密钥后，就可以使用 AI 功能" />
+          <SettingsRow label="还没有配置提供商" description="添加后才能使用 AI 功能" />
         )}
       </SettingsSection>
       {dialogs}

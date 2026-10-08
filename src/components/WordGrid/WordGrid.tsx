@@ -70,7 +70,7 @@ export const WordGrid: React.FC<WordGridProps> = ({ words, onWordToggle, onSelec
   }, [words]);
 
   if (words.length === 0) {
-    return <EmptyState icon={<SearchX />} title="没有单词" description="换个描述或文本再试试" />;
+    return <EmptyState icon={<SearchX />} title="没有找到单词" />;
   }
 
   return (

@@ -192,14 +192,13 @@ export const PromptProfileSettings: React.FC = () => {
     <>
       <SettingsSection
         title="学习者"
-        description="AI 讲解、例句、答疑都会按这里的学习者调整措辞和难度。修改后，已缓存的单词讲解会在下次打开时按新设置重新生成。"
         actions={
           <Button variant="outline" size="sm" onClick={openPreview}>
             预览提示词
           </Button>
         }
       >
-        <SettingsRow label="快速套用" description="一键切换学习者、讲解语言和风格；兴趣场景、老师称呼与补充要求保持不变">
+        <SettingsRow label="快速套用" description="不改兴趣场景、称呼与补充要求">
           <div className="flex gap-2">
             {PRESETS.map((p) => (
               <Button key={p.value} variant="outline" size="sm" disabled={saving} onClick={() => applyPreset(p.value, p.label)}>
@@ -208,19 +207,19 @@ export const PromptProfileSettings: React.FC = () => {
             ))}
           </div>
         </SettingsRow>
-        <SettingsRow label="学习者" description="决定讲解对象、称呼与语气">
+        <SettingsRow label="学习者">
           <OptionSelect label="学习者" value={profile.learner} options={LEARNERS} disabled={saving} onChange={(v) => save({ learner: v })} />
         </SettingsRow>
-        <SettingsRow label="英语水平" description="决定例句长度与用词难度">
+        <SettingsRow label="英语水平">
           <OptionSelect label="英语水平" value={profile.level} options={LEVELS} disabled={saving} onChange={(v) => save({ level: v })} />
         </SettingsRow>
-        <SettingsRow label="讲解语言" description="AI 讲解和答疑用什么语言">
+        <SettingsRow label="讲解语言">
           <OptionSelect label="讲解语言" value={profile.language} options={LANGUAGES} disabled={saving} onChange={(v) => save({ language: v })} />
         </SettingsRow>
-        <SettingsRow label="音标" description="拼读分析与讲解使用的音标体系">
+        <SettingsRow label="音标">
           <OptionSelect label="音标" value={profile.ipa} options={IPAS} disabled={saving} onChange={(v) => save({ ipa: v })} className="w-32" />
         </SettingsRow>
-        <SettingsRow label="兴趣场景" description="例句和讲解优先用这些场景，如 足球、旅行、编程；最多 8 个，用顿号或逗号分隔">
+        <SettingsRow label="兴趣场景">
           <Input
             value={interestsDraft}
             disabled={saving}
@@ -229,7 +228,7 @@ export const PromptProfileSettings: React.FC = () => {
               const next = splitInterests(interestsDraft);
               if (next.join('、') !== profile.interests.join('、')) save({ interests: next });
             }}
-            placeholder="未设置"
+            placeholder="例如：足球、旅行、编程"
             aria-label="兴趣场景"
             className="w-56"
           />
@@ -237,16 +236,16 @@ export const PromptProfileSettings: React.FC = () => {
       </SettingsSection>
 
       <SettingsSection title="AI 讲解">
-        <SettingsRow label="详略" description="单词讲解的篇幅">
+        <SettingsRow label="讲解详略">
           <OptionSelect label="讲解详略" value={profile.explainLength} options={LENGTHS} disabled={saving} onChange={(v) => save({ explainLength: v })} />
         </SettingsRow>
-        <SettingsRow label="记忆方法" description="「这样记最牢」一节优先使用的方法">
+        <SettingsRow label="记忆方法">
           <OptionSelect label="记忆方法" value={profile.memoryMethod} options={MEMORY_METHODS} disabled={saving} onChange={(v) => save({ memoryMethod: v })} />
         </SettingsRow>
       </SettingsSection>
 
       <SettingsSection title="AI 老师">
-        <SettingsRow label="称呼" description="AI 老师的名字，留空即“英语老师”">
+        <SettingsRow label="称呼">
           <Input
             value={tutorNameDraft}
             maxLength={20}
@@ -261,15 +260,12 @@ export const PromptProfileSettings: React.FC = () => {
         <SettingsRow label="答疑风格">
           <OptionSelect label="答疑风格" value={profile.tutorStyle} options={TUTOR_STYLES} disabled={saving} onChange={(v) => save({ tutorStyle: v })} />
         </SettingsRow>
-        <SettingsRow label="回答后出个小问题" description="鼓励学习者自己说一说、用一用">
+        <SettingsRow label="回答后出个小问题">
           <Switch checked={profile.tutorQuiz} disabled={saving} onCheckedChange={(v) => save({ tutorQuiz: v })} aria-label="回答后出个小问题" />
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection
-        title="补充要求"
-        description="写给某个 AI 任务的个性化要求，会附在它的提示词末尾；与输出格式、正确性要求冲突时以内置规则为准。"
-      >
+      <SettingsSection title="补充要求" description="与内置规则冲突时，以内置规则为准">
         <SettingsRow label="任务">
           <OptionSelect
             label="补充要求的任务"
@@ -316,7 +312,7 @@ export const PromptProfileSettings: React.FC = () => {
         <DialogContent className="flex max-h-[85vh] flex-col gap-3 sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>系统提示词预览</DialogTitle>
-            <DialogDescription>按当前设置渲染的提示词（只读）。规则与格式部分内置在应用里，学习者、风格和补充要求会填进对应位置。</DialogDescription>
+            <DialogDescription>按当前设置生成，只读</DialogDescription>
           </DialogHeader>
           <OptionSelect
             label="预览的任务"

@@ -35,12 +35,6 @@ export interface WordSidePanelProps {
 }
 
 /** 各例句显示方式下给学生的说明 */
-const EXAMPLE_MODE_HINT: Record<ExampleDisplayMode, string> = {
-  full: '点击例句即可朗读',
-  masked: '例句中的单词已隐藏，听一听再拼写',
-  translation: '只显示中文，点击听英文例句',
-};
-
 const TABS: { key: WordSideTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'examples', label: '例句', icon: Quote },
   { key: 'explanation', label: 'AI 讲解', icon: GraduationCap },
@@ -65,15 +59,6 @@ export const WordSidePanel: React.FC<WordSidePanelProps> = ({
   explanationSuggested = false,
   explanationAutoGenerate = false,
 }) => {
-  const hint =
-    tab === 'examples'
-      ? examples.length > 0
-        ? EXAMPLE_MODE_HINT[exampleMode]
-        : '在不同场景里听一听这个单词'
-      : explanationLocked
-        ? '写完这一题就能看讲解、问 AI 老师'
-        : '不理解这个单词？看讲解，或者问问 AI 老师';
-
   return (
     <Card className="sticky top-6 gap-3 p-4">
       <header className="space-y-2">
@@ -105,7 +90,6 @@ export const WordSidePanel: React.FC<WordSidePanelProps> = ({
             );
           })}
         </div>
-        <p className="text-xs text-muted-foreground">{hint}</p>
       </header>
       <div role="tabpanel" hidden={tab !== 'examples'}>
         <ExamplePanel
@@ -125,8 +109,7 @@ export const WordSidePanel: React.FC<WordSidePanelProps> = ({
       {tab === 'explanation' && explanationLocked && (
         <div role="tabpanel" className="flex flex-col items-center gap-2 py-10 text-center">
           <Lock className="size-6 text-muted-foreground" />
-          <p className="font-medium">正在盖住单词写，先不看讲解</p>
-          <span className="text-sm text-muted-foreground">讲解里有这个单词的拼写。写完这一题，就能继续看讲解、问 AI 老师</span>
+          <p className="font-medium">写完这一题再看讲解</p>
         </div>
       )}
     </Card>

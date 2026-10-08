@@ -369,7 +369,6 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             <EmptyState
               icon={<Sparkles />}
               title="这个单词本还没有单词"
-              description="描述想学的主题让 AI 生成，或从你的材料（粘贴文本、Word、PDF、字幕等）里提取；添加时自动完成拼读分析"
             >
               <div className="flex gap-2">
                 <Button onClick={() => setAddWordsSource('ai')}>
@@ -435,7 +434,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               {[0, 1].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
             </div>
           ) : linkedPlans.length === 0 ? (
-            <EmptyState icon={<ListChecks />} title="暂无关联计划" description="用这个单词本创建学习计划后会显示在这里" />
+            <EmptyState icon={<ListChecks />} title="还没有学习计划用到这个单词本" />
           ) : (
             <div className="flex flex-col gap-3">
               {linkedPlans.map((plan) => {
@@ -472,8 +471,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
         {/* forceMount：页签计数在首次打开前也能显示 */}
         <TabsContent value="passages" forceMount className="data-[state=inactive]:hidden">
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-sm text-muted-foreground">引用了这个单词本的短文（在「素材库 · 短文库」里统一管理）。</p>
+            <div className="flex items-center justify-end gap-4">
               {totalWords > 0 && (
                 <Button variant="outline" onClick={() => onNavigate?.('create-passage', { bookIds: [wordBook.id] })}>
                   <Plus />
@@ -498,7 +496,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
           <AlertDialogHeader>
             <AlertDialogTitle>删除「{wordBook.title}」？</AlertDialogTitle>
             <AlertDialogDescription>
-              单词本和其中的 {wordBook.total_words || 0} 个单词会移到“已删除”，之后可以在单词本列表的“已删除”里恢复。正在被未结束的学习计划使用时不能删除。
+              单词本和其中的 {wordBook.total_words || 0} 个单词会移到「已删除」，可以从那里恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deleteError && <InlineError title="无法删除单词本">{deleteError}</InlineError>}

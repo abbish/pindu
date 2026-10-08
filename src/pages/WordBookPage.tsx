@@ -175,7 +175,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
   if (error && !data) {
     return (
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
-        <PageHeader title="我的单词本" description="管理和学习你的单词收藏" actions={createAction} />
+        <PageHeader title="我的单词本" actions={createAction} />
         <PageError title="无法加载单词本" message={error} onRetry={() => loadWordBookData(filters.status)} />
       </div>
     );
@@ -183,7 +183,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
-      <PageHeader title="我的单词本" description="管理和学习你的单词收藏" actions={createAction} />
+      <PageHeader title="我的单词本" actions={createAction} />
 
       <section aria-label="单词本统计" className="grid grid-cols-5 gap-3">
         {metrics.map((m) => (
@@ -198,7 +198,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
           <Input
             value={filters.searchTerm}
             onChange={(e) => setFilter('searchTerm', e.target.value)}
-            placeholder="搜索单词本..."
+            placeholder="搜索单词本"
             aria-label="搜索单词本"
             className="px-8"
           />
@@ -262,12 +262,11 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
         </div>
       ) : filteredBooks.length === 0 ? (
         isFiltering ? (
-          <EmptyState icon={<SearchX />} title="没有找到匹配的单词本" description="尝试调整筛选条件或搜索关键词" />
+          <EmptyState icon={<SearchX />} title="没有匹配的单词本" />
         ) : (
           <EmptyState
             icon={<BookOpen />}
             title="还没有单词本"
-            description="创建你的第一个单词本开始学习吧"
             action="创建单词本"
             actionIcon={<Plus />}
             onAction={() => setCreatingBook(true)}

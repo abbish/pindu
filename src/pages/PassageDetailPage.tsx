@@ -16,6 +16,7 @@ import { Card } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { PageError } from '@/components/PageError';
 import { SourceBadge } from '@/components/PassageList';
@@ -61,10 +62,15 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: (mode: Passag
           : '还没练过'}
       </div>
     </div>
-    <Button variant="outline" onClick={() => onStart('listening')}>
-      <Headphones />
-      听力练习
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="outline" onClick={() => onStart('listening')}>
+          <Headphones />
+          听力练习
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>先只听不看原文，不考选词填空</TooltipContent>
+    </Tooltip>
     <Button variant="outline" onClick={() => onStart('reading')}>
       <BookOpen />
       阅读练习
@@ -341,7 +347,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         <TabsContent value="sets">
           {passage.questionSets.length === 0 ? (
-            <EmptyState icon={<FileQuestion />} title="还没有阅读理解题" description="选好题型、题量和难度，AI 根据这篇短文出一套题；一篇短文可以有多套题">
+            <EmptyState icon={<FileQuestion />} title="还没有阅读理解题">
               <Button onClick={() => setShowGenerate(true)}>
                 <Sparkles />
                 生成阅读理解题
@@ -349,7 +355,6 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             </EmptyState>
           ) : (
             <div className="flex flex-col gap-3">
-              <p className={cn('text-sm text-muted-foreground')}>阅读练习看着原文答题；听力练习先只听不看原文（不考选词填空），提交后再看原文与翻译。成绩单独统计，不影响单词的记忆等级。</p>
               {passage.questionSets.map((s) => (
                 <QuestionSetRow key={s.id} set={s} onStart={(mode) => startPractice(s.id, mode)} onDelete={() => setSetToDelete(s)} />
               ))}

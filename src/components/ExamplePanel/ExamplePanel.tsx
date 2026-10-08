@@ -95,8 +95,7 @@ export const ExamplePanel: React.FC<ExamplePanelProps> = ({
       {examples.length === 0 ? (
         <div className="flex flex-col items-center gap-1.5 py-8 text-center">
           {generating ? <Loader2 className="size-6 animate-spin text-primary" /> : <MessageSquareOff className="size-6 text-muted-foreground" />}
-          <p className="font-medium">{generating ? 'AI 正在写例句…' : '这个单词还没有例句'}</p>
-          <span className="text-sm text-muted-foreground">{generating ? '大约需要十几秒' : '点击下方「补充例句」，让 AI 写几条不同场景的例句'}</span>
+          <p className="font-medium">{generating ? '正在写例句…' : '还没有例句'}</p>
         </div>
       ) : (
         <ol className={cn('flex flex-col gap-2', generating === 'replace' && 'opacity-50')}>
@@ -130,7 +129,7 @@ export const ExamplePanel: React.FC<ExamplePanelProps> = ({
           })}
           {generating === 'append' && (
             <li className="flex items-center gap-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> AI 正在写新例句…
+              <Loader2 className="size-4 animate-spin" /> 正在写例句…
             </li>
           )}
         </ol>

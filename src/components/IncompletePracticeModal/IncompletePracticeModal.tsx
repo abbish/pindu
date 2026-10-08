@@ -177,7 +177,7 @@ export const IncompletePracticeModal: React.FC<IncompletePracticeModalProps> = (
                 放弃这次练习
               </Button>
             ) : (
-              <span className="text-xs text-muted-foreground">之后也可以在「日历」页继续。</span>
+              <span />
             )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={onClose}>

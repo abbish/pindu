@@ -42,7 +42,7 @@ export const PlanScheduleView: React.FC<PlanScheduleViewProps> = ({ schedules, l
 
   if (loading) return <Skeleton className="h-80 rounded-xl" />;
   if (schedules.length === 0) {
-    return <EmptyState icon={<CalendarX />} title="暂无学习日程" description="编辑计划并生成日程后会显示在这里" />;
+    return <EmptyState icon={<CalendarX />} title="还没有学习日程" />;
   }
 
   const newWordsTotal = schedules.reduce((n, s) => n + s.new_words_count, 0);
@@ -62,7 +62,6 @@ export const PlanScheduleView: React.FC<PlanScheduleViewProps> = ({ schedules, l
         <div className="text-sm">
           共 <span className="font-semibold tabular-nums">{schedules.length}</span> 天 · {newWordsTotal} 个新词 · 已练完{' '}
           <span className="tabular-nums">{practicedDays}</span> 天
-          <span className="ml-2 text-muted-foreground">复习按记忆等级到期当天自动加入，未来的日子只显示新词</span>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setExpanded(expanded.size > 0 ? new Set() : new Set(withWords))}>
           {expanded.size > 0 ? '收起全部' : '展开全部单词'}
@@ -77,7 +76,14 @@ export const PlanScheduleView: React.FC<PlanScheduleViewProps> = ({ schedules, l
               <TableHead className="w-20">第几天</TableHead>
               <TableHead>日期</TableHead>
               <TableHead className="text-right">新学</TableHead>
-              <TableHead className="text-right">复习</TableHead>
+              <TableHead className="text-right">
+                <Tooltip>
+                  <TooltipTrigger className="inline-flex items-center gap-1">
+                    复习 <Info className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>到期当天才加入，未来的日子只显示新词</TooltipContent>
+                </Tooltip>
+              </TableHead>
               <TableHead className="w-48">
                 <Tooltip>
                   <TooltipTrigger className="inline-flex items-center gap-1">

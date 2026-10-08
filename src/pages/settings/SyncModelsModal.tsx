@@ -111,12 +111,12 @@ export const SyncModelsModal: React.FC<SyncModelsModalProps> = ({ provider, onCl
       <DialogContent className="flex max-h-[85vh] flex-col gap-0 p-0 sm:max-w-3xl">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>同步模型列表 · {provider?.displayName ?? ''}</DialogTitle>
-          <DialogDescription>从提供商读取可用模型，勾选后添加；已添加的不能重复选择。</DialogDescription>
+          <DialogDescription>勾选要添加的模型</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 py-4">
           {loading && (
             <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> 正在读取 {provider?.baseUrl}/models …
+              <Loader2 className="size-4 animate-spin" /> 正在读取模型列表…
             </div>
           )}
           {error && (
@@ -129,7 +129,7 @@ export const SyncModelsModal: React.FC<SyncModelsModalProps> = ({ provider, onCl
                 <Input
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
-                  placeholder={`搜索 ${remoteModels.length} 个模型，例如 gemini、deepseek、doubao`}
+                  placeholder={`搜索 ${remoteModels.length} 个模型`}
                   aria-label="搜索模型"
                   className="pl-8"
                 />

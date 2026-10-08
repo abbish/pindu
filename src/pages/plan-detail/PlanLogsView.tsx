@@ -27,7 +27,7 @@ export const PlanLogsView: React.FC<PlanLogsViewProps> = ({ practiceSessions, lo
     return <Skeleton className="h-64 rounded-xl" />;
   }
   if (practiceSessions.length === 0) {
-    return <EmptyState icon={<History />} title="暂无练习记录" description="开始练习后，每次练习都会记录在这里" />;
+    return <EmptyState icon={<History />} title="还没有练习记录" />;
   }
   return (
     <Card className="gap-0 overflow-hidden py-0">

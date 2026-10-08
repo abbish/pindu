@@ -126,10 +126,7 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
 
       {statuses === null && (
         <Card className="gap-3 px-5 py-4">
-          <div>
-            <h2 className="text-sm font-semibold">不满意？让 AI 重新规划</h2>
-            <p className="text-xs text-muted-foreground">写一句你想怎么调整，也可以直接改上面的标题和构思。</p>
-          </div>
+          <h2 className="text-sm font-semibold">重新规划</h2>
           <div className="flex gap-2">
             <Input
               value={feedback}

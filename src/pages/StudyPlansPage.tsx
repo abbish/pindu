@@ -120,7 +120,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
       return plans.length > 0 ? (
         renderPlans(plans)
       ) : (
-        <EmptyState icon={<FolderOpen />} title={`暂无${label}的学习计划`} description="切换到其他状态看看" />
+        <EmptyState icon={<FolderOpen />} title={`没有${label}的计划`} />
       );
     }
 
@@ -130,7 +130,6 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
         <EmptyState
           icon={<ListChecks />}
           title="还没有学习计划"
-          description="创建你的第一个学习计划开始学习吧"
           action="创建计划"
           actionIcon={<Plus />}
           onAction={() => onNavigate?.('create-plan')}
@@ -156,7 +155,6 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
       <PageHeader
         title="计划"
-        description="管理和跟踪你的学习进度"
         actions={
           <Button onClick={() => onNavigate?.('create-plan')}>
             <Plus />

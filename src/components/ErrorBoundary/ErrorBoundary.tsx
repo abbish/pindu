@@ -43,10 +43,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
             <TriangleAlert className="size-6" />
           </div>
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold">出现了一些问题</h2>
-            <p className="text-sm text-muted-foreground">应用遇到了意外错误，请尝试刷新页面或重新启动应用。</p>
-          </div>
+          <h2 className="text-lg font-semibold">应用出错了</h2>
           <div className="flex gap-2">
             <Button onClick={this.handleRetry}>重试</Button>
             <Button variant="outline" onClick={() => window.location.reload()}>

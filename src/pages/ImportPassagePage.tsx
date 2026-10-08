@@ -186,8 +186,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-7">
       <PageHeader
-        title="从我的材料导入短文"
-        description="把课文、故事、新闻或字幕变成短文：原文一字不改，AI 逐句翻译、起标题、标出重点词。导入后和其它短文一样可以朗读、出阅读理解题、做阅读和听力练习。"
+        title="导入短文"
       />
       <Stepper steps={STEPS} current={step} />
 
@@ -205,13 +204,10 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
           />
 
           <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-sm font-medium">每篇多长</div>
-              <p className="text-xs text-muted-foreground">长材料按段落拆成几篇，下一步可以合并或再拆开</p>
-            </div>
+            <div className="text-sm font-medium">每篇多长</div>
             <ToggleGroup type="single" value={String(targetWords)} onValueChange={(v) => v && setTargetWords(Number(v))} className="rounded-lg bg-muted p-0.5" aria-label="每篇多长">
               {LENGTHS.map((l) => (
-                <ToggleGroupItem key={l.value} value={String(l.value)} className={segmentItem} title={l.hint}>
+                <ToggleGroupItem key={l.value} value={String(l.value)} className={segmentItem}>
                   {l.label}
                   <span className="text-xs text-muted-foreground">{l.hint}</span>
                 </ToggleGroupItem>
@@ -262,7 +258,6 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-72 p-2">
-                <p className="px-2 pt-1 pb-2 text-xs text-muted-foreground">原文里属于所选单词本的词会标成目标词，朗读时可以点开单词卡片。</p>
                 {books === null ? (
                   <Loader2 className="mx-auto my-3 size-4 animate-spin text-muted-foreground" />
                 ) : books.length === 0 ? (
@@ -302,7 +297,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                       <Input
                         value={item.title}
                         onChange={(e) => setItems((prev) => renameItem(prev, i, e.target.value))}
-                        placeholder="不填由 AI 起标题"
+                        placeholder="AI 起标题"
                         aria-label={`第 ${i + 1} 篇标题`}
                         className="h-8 flex-1 font-medium"
                         maxLength={120}

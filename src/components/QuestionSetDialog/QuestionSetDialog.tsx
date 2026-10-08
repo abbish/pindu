@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InlineError } from '@/components/InlineError';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,11 +25,11 @@ export interface QuestionSetDialogProps {
 
 type CountKey = 'cloze' | 'choice' | 'trueFalse' | 'open';
 
-const TYPES: { key: CountKey; label: string; description: string; max: number }[] = [
-  { key: 'cloze', label: '选词填空', description: '在原文里挖空，从词库里选词填回（听力模式不考）', max: 8 },
-  { key: 'choice', label: '选择题', description: '细节、主旨、推断或猜词义', max: 6 },
-  { key: 'trueFalse', label: '判断题', description: '判断一句话与原文是否相符', max: 5 },
-  { key: 'open', label: '开放题', description: '用英文回答，AI 按评分要点打分并写评语', max: 2 },
+const TYPES: { key: CountKey; label: string; max: number }[] = [
+  { key: 'cloze', label: '选词填空', max: 8 },
+  { key: 'choice', label: '选择题', max: 6 },
+  { key: 'trueFalse', label: '判断题', max: 5 },
+  { key: 'open', label: '开放题', max: 2 },
 ];
 const DIFFICULTIES: QuestionDifficulty[] = ['basic', 'standard', 'advanced'];
 
@@ -41,7 +41,7 @@ export function defaultSpec(level: string): QuestionSetSpec {
 }
 
 /**
- * 生成阅读理解题（Dialog 表单）：每种题型的数量、难度、题组名称 → AI 出一套题（15–40 秒）。
+ * 生成阅读理解题（Dialog 表单）：每种题型的数量、难度、题组名称 → AI 出一套题。
  * 生成中可以关闭弹窗，完成后题组出现在「阅读理解」页签。
  */
 export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, onClose, passageId, level, existingSets, onGenerated }) => {
@@ -76,20 +76,16 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>生成阅读理解题</DialogTitle>
-          <DialogDescription>AI 根据这篇短文出一套题。一篇短文可以有多套题，每套可以选不同的题型和难度。</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col divide-y rounded-lg border">
             {TYPES.map((t) => (
               <div key={t.key} className="flex items-center gap-4 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">{t.label}</div>
-                  <div className="text-xs text-muted-foreground">{t.description}</div>
-                </div>
+                <div className="min-w-0 flex-1 text-sm font-medium">{t.label}</div>
                 <Select value={String(spec[t.key])} onValueChange={(v) => setSpec((s) => ({ ...s, [t.key]: Number(v) }))} disabled={generating}>
                   <SelectTrigger className="w-24" aria-label={`${t.label}数量`}>
                     <SelectValue />
@@ -107,10 +103,7 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
           </div>
 
           <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label>难度</Label>
-              <p className="mt-1 text-xs text-muted-foreground">基础考原文细节；提高加入推断与猜词义</p>
-            </div>
+            <Label>难度</Label>
             <ToggleGroup
               type="single"
               value={spec.difficulty}
@@ -135,7 +128,7 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
           {generating && (
             <p className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground" role="status">
               <Loader2 className="size-4 animate-spin" />
-              AI 正在出题，通常需要 15–40 秒。可以先关闭窗口，生成好后会出现在「阅读理解」里。
+              正在出题，关闭窗口也会继续
             </p>
           )}
           {error && <InlineError title="无法生成题目">{error}</InlineError>}

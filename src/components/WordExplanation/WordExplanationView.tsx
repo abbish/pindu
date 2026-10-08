@@ -161,8 +161,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
         {state.status === 'missing' ? (
           <div className="flex flex-col items-center gap-1.5 py-8 text-center">
             <GraduationCap className="size-6 text-muted-foreground" />
-            <p className="font-medium">这个单词还没有讲解</p>
-            <span className="text-sm text-muted-foreground">{autoGenerate && active ? 'AI 老师马上开始讲…' : '需要的话，让 AI 老师讲一讲'}</span>
+            <p className="font-medium">还没有讲解</p>
             <Button size="sm" className="mt-1" onClick={() => generate(wordId)}>
               让 AI 老师讲一讲
             </Button>
@@ -170,7 +169,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
         ) : state.status === 'error' ? (
           <div className="flex flex-col items-center gap-1.5 py-8 text-center">
             <AlertCircle className="size-6 text-destructive" />
-            <p className="font-medium">讲解生成失败</p>
+            <p className="font-medium">无法生成讲解</p>
             <span className="text-sm text-muted-foreground">{state.error}</span>
             <Button variant="outline" size="sm" className="mt-1" onClick={() => generate(wordId)}>
               <RotateCw />
@@ -184,8 +183,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
         ) : (
           <div className="flex flex-col items-center gap-1.5 py-8 text-center">
             <Loader2 className="size-6 animate-spin text-primary" />
-            <p className="font-medium">{state.status === 'generating' ? 'AI 老师正在思考怎么讲…' : '正在加载…'}</p>
-            {state.status === 'generating' && <span className="text-sm text-muted-foreground">讲解需要十几秒，写好的部分会先显示出来</span>}
+            <p className="font-medium">{state.status === 'generating' ? '正在生成讲解…' : '正在加载…'}</p>
           </div>
         )}
 
@@ -246,7 +244,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
           <Input
             value={question}
             maxLength={300}
-            placeholder="有不懂的地方？问问 AI 老师…"
+            placeholder="问问 AI 老师"
             aria-label="向 AI 老师提问"
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => {
@@ -264,7 +262,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
         meta={
           state.status === 'generating' ? (
             <span className="inline-flex items-center gap-1">
-              <PenLine className="size-3.5" /> AI 老师正在写讲解…
+              <PenLine className="size-3.5" /> 正在生成…
             </span>
           ) : state.status === 'ready' && state.meta ? (
             <span className="inline-flex items-center gap-1">

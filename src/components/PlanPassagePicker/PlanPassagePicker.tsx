@@ -226,7 +226,7 @@ const AddPassagesDialog: React.FC<{
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>添加短文</DialogTitle>
-          <DialogDescription>从短文库里选，含{overlapLabel}多的排在前面。按勾选的顺序加到列表末尾。</DialogDescription>
+          <DialogDescription>按勾选的顺序加到列表末尾</DialogDescription>
         </DialogHeader>
         {candidates === null ? (
           <div className="space-y-2">

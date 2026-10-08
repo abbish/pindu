@@ -119,7 +119,7 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
       <DialogContent className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>{model ? '编辑模型' : '添加模型'}</DialogTitle>
-          <DialogDescription>基本信息与生成参数；参数留空表示不发送，使用 pi 目录或服务端默认。</DialogDescription>
+          <DialogDescription>参数留空时使用默认值</DialogDescription>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
@@ -168,11 +168,11 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
             </p>
           )}
           {piProvider && modelId.trim() && !catalogModel && catalogModels.length > 0 &&
-            hint('该模型不在 pi 目录中，将作为新模型追加，请在下方补充上下文窗口与是否推理模型。')}
+            hint('不在 pi 目录中：请在下方补充上下文窗口与是否推理模型')}
 
           <div className="space-y-1.5">
             <Label htmlFor="mf-desc">描述</Label>
-            <Textarea id="mf-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="模型描述" rows={2} />
+            <Textarea id="mf-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
           </div>
 
           <section className="space-y-3 rounded-xl border p-4">
@@ -194,7 +194,6 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                     ))}
                   </SelectContent>
                 </Select>
-                {hint('思考越深越准确，但更慢、更贵；pi 会按模型能力自动收敛')}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="mf-max">最大输出 token</Label>
@@ -204,7 +203,7 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                   value={generation.maxTokens}
                   onChange={(e) => set({ maxTokens: e.target.value })}
                   min={1}
-                  placeholder={catalogModel ? `目录默认 ${formatTokens(catalogModel.maxTokens)}` : '留空 = 默认'}
+                  placeholder={catalogModel ? `默认 ${formatTokens(catalogModel.maxTokens)}` : '默认'}
                 />
               </div>
               <div className="space-y-1.5">
@@ -217,9 +216,9 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                   min={0}
                   max={2}
                   step={0.1}
-                  placeholder="留空 = 服务端默认"
+                  placeholder="默认"
                 />
-                {hint('部分模型只接受固定值（如 Kimi K3 只允许 1），不确定时留空')}
+                {hint('部分模型只接受固定值（如 Kimi K3 只能是 1）')}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="mf-extra">额外参数（JSON）</Label>
@@ -231,7 +230,7 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                   rows={2}
                   className="font-mono text-xs"
                 />
-                {hint('作为采样参数原样发送（仅 OpenAI 兼容接口生效）')}
+                {hint('仅 OpenAI 兼容接口生效')}
               </div>
               {needsModelMeta && (
                 <>

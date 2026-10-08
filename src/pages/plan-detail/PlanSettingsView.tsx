@@ -215,7 +215,7 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
       {!editable && (
         <p className="flex items-start gap-2 rounded-lg bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
           <Info className="mt-0.5 size-4 shrink-0" />
-          计划已结束，节奏、单词本和短文不能再调整；点页面右上角的「重新学习」后可以再改。
+          计划已结束，重新学习后才能修改
         </p>
       )}
 
@@ -225,7 +225,7 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
           {nameMissing && <p className="text-sm text-destructive">请填写计划名称</p>}
         </SettingsRow>
         <SettingsRow label="描述" htmlFor="ps-desc" columns>
-          <Textarea id="ps-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="可选：学习目标或备注" className="min-h-16 resize-none" />
+          <Textarea id="ps-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="学习目标或备注" className="min-h-16 resize-none" />
         </SettingsRow>
         {infoDirty && (
           <div className="flex justify-end gap-2 px-4 py-3">
@@ -249,8 +249,8 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
       </SettingsSection>
 
       {hasWords && (
-        <SettingsSection title="学习节奏" description={started ? '只重新安排还没学的新词；已学的单词、复习和练习记录不变' : '计划还没开始，所有新词按新的节奏重新安排'}>
-          <SettingsRow label="每天学几个新词" description={DAILY_NEW_WORDS_OPTIONS.find((o) => o.value === pace)?.hint} columns>
+        <SettingsSection title="学习节奏">
+          <SettingsRow label="每天学几个新词" columns>
             <ToggleGroup
               type="single"
               value={String(pace)}
@@ -269,7 +269,7 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
           {pace !== currentPace && (
             <div className="flex items-center gap-3 bg-accent/30 px-4 py-3">
               <p className="flex-1 text-sm">
-                从每天 {currentPace} 个改为 <strong>{pace}</strong> 个：还没学的新词会{started ? '从今天起' : ''}按新的节奏重新排日程。
+                每天 {currentPace} 个 → <strong>{pace}</strong> 个，没学的新词{started ? '从今天起' : ''}重新排日程
               </p>
               <Button variant="ghost" size="sm" onClick={() => setPace(currentPace)} disabled={savingPace}>
                 取消
@@ -285,7 +285,6 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
 
       <SettingsSection
         title="单词本"
-        description={hasWords ? '追加的单词排在还没学的新词后面；要去掉某些单词，在「单词」页签里移除' : '这个计划只练短文；追加单词本后会同时练单词'}
         actions={
           <Button variant="outline" size="sm" onClick={() => setAdding(true)} disabled={!editable || addableBooks.length === 0}>
             <Plus />
@@ -304,14 +303,9 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
 
       <SettingsSection
         title="短文"
-        description={
-          started
-            ? '没完成的短文从今天起按顺序重新排期；已完成的短文只能调整顺序'
-            : '第一次练习的那天读第 1 篇，之后按间隔依次排'
-        }
       >
         {hasWords && (
-          <SettingsRow label="练习内容" description={hasCompletedPassages ? '已经完成过短文，不能改回只练单词' : '同时练短文时，单词全部掌握、短文全部完成后计划才自动完成'} columns>
+          <SettingsRow label="练习内容" description={hasCompletedPassages ? '已完成过短文，不能改回只练单词' : undefined} columns>
             <ToggleGroup
               type="single"
               value={content}
@@ -349,7 +343,7 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
                   ))}
               </ToggleGroup>
             </SettingsRow>
-            <SettingsRow label="短文顺序" description="按顺序排期；可以换题组、改阅读 / 听力" columns>
+            <SettingsRow label="短文顺序" columns>
               <PlanPassagePicker
                 items={passageDrafts}
                 onChange={setPassageDrafts}
@@ -364,7 +358,7 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
         )}
         {passagesDirty && (
           <div className="flex items-center gap-3 bg-accent/30 px-4 py-3">
-            <p className="flex-1 text-sm">短文安排有改动，应用后{started ? '没完成的短文会重新排期' : '按新的顺序排期'}。</p>
+            <p className="flex-1 text-sm">{started ? '应用后，没完成的短文会重新排期' : '短文安排有改动'}</p>
             <Button variant="ghost" size="sm" onClick={resetPassages} disabled={savingPassages}>
               还原
             </Button>
@@ -377,7 +371,7 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
       </SettingsSection>
 
       <SettingsSection title="删除" tone="danger">
-        <SettingsRow label="删除这个计划" description="计划和它的全部练习记录会被彻底删除，不能恢复；单词本不受影响。">
+        <SettingsRow label="删除这个计划" description="计划和全部练习记录会被删除，不能恢复；单词本不受影响">
           <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={onDelete}>
             <Trash2 />
             删除…
@@ -396,7 +390,7 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>追加单词本</DialogTitle>
-            <DialogDescription>选中单词本里还不在计划中的单词，会按每天 {currentPace} 个排在还没学的新词后面。</DialogDescription>
+            <DialogDescription>新单词按每天 {currentPace} 个排在没学的新词后面</DialogDescription>
           </DialogHeader>
           <WordBookSelector books={addableBooks} selectedBooks={toAdd} onSelectionChange={setToAdd} />
           {addBooksError && <InlineError title="无法追加单词本">{addBooksError}</InlineError>}

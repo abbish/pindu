@@ -102,7 +102,6 @@ const ListeningPlayer: React.FC<{ texts: string[] }> = ({ texts }) => {
           慢速
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">先只听不看原文，提交后再看原文和翻译</p>
     </div>
   );
 };
@@ -257,7 +256,7 @@ const QuestionItem: React.FC<{
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 maxLength={OPEN_MAX}
-                placeholder="用英文写一两句话回答…"
+                placeholder="用英文回答"
                 className="min-h-24 resize-none"
                 aria-invalid={missing || undefined}
               />
@@ -418,7 +417,6 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
   const total = clozeQuestions.length + otherQuestions.length;
   const isMissing = (id: number) => showMissing && !finished && !(answers[id] ?? '').trim();
   const answered = [...clozeQuestions, ...otherQuestions].filter((q) => (answers[q.id] ?? '').trim()).length;
-  const hasOpen = otherQuestions.some((q) => q.kind === 'open');
 
   const frame = (content: React.ReactNode) => (
     <div className="flex h-svh flex-col overflow-hidden bg-background">
@@ -558,7 +556,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
           {showText && <PassageReader sentences={passage.sentences} translation={showZh ? 'all' : 'off'} renderSentence={mode === 'reading' ? renderSentence : undefined} />}
           {mode === 'reading' && !finished && clozeQuestions.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 border-t pt-3 select-none">
-              <span className="mr-1 text-xs text-muted-foreground">选词填空：点空位选词</span>
+              <span className="mr-1 text-xs text-muted-foreground">点空位选词</span>
               {set.clozeBank.map((w) => (
                 <span key={w} className={cn('rounded-full border px-2.5 py-0.5 text-sm', usedWords.has(w.toLowerCase()) && 'line-through opacity-40')}>
                   {w}
@@ -582,12 +580,11 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
             />
           ))}
           {otherQuestions.length === 0 && (
-            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">这套题只有选词填空，在左边的原文里作答</p>
+            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">在左边的原文里作答</p>
           )}
           {showMissing && !finished && answered < total && (
             <InlineError title={`还有 ${total - answered} 题没有作答`}>
-              标红的题目全部答完才能提交
-              {hasOpen ? '，提交后 AI 会给开放题评分' : ''}。
+              标红的题目答完才能提交
             </InlineError>
           )}
           {submitError && <InlineError title={submitError.title}>{submitError.message}</InlineError>}
@@ -598,7 +595,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
               </span>
               <Button size="lg" onClick={submit} disabled={submitting}>
                 {submitting && <Loader2 className="animate-spin" />}
-                {submitting ? (hasOpen ? '正在判分，AI 正在评开放题…' : '正在判分…') : '提交'}
+                {submitting ? '正在判分…' : '提交'}
               </Button>
             </div>
           )}

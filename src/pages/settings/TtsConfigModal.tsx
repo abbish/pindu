@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { KeyRound, Loader2, SlidersHorizontal, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InlineError } from '@/components/InlineError';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -121,10 +121,9 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl">
+      <DialogContent className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl" aria-describedby={undefined}>
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>编辑豆包语音合成配置</DialogTitle>
-          <DialogDescription>鉴权方式、默认音色与合成参数；密钥留空表示保持不变。</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
           {section(
@@ -134,7 +133,7 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
               <RadioGroup value={authMode} onValueChange={(v) => setAuthMode(v as AuthMode)} className="flex gap-6">
                 <Label className="flex items-center gap-2 font-normal">
                   <RadioGroupItem value="apiKey" />
-                  API Key（新版控制台，推荐）
+                  API Key（推荐）
                 </Label>
                 <Label className="flex items-center gap-2 font-normal">
                   <RadioGroupItem value="appToken" />
@@ -152,7 +151,7 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
                     onChange={(e) => setApiKey(e.target.value)}
                     autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">在火山引擎控制台「豆包语音 → API Key 管理」创建，并确认已开通「语音合成大模型」</p>
+                  <p className="text-xs text-muted-foreground">在火山引擎控制台「豆包语音 → API Key 管理」创建，需开通「语音合成大模型」</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
@@ -191,18 +190,19 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
                 testingVoiceId={testingVoiceId}
                 disabled={saving}
                 title="预置英文音色"
-                description="试听使用已保存的语速与资源设置"
+                description="试听按已保存的语速与资源 ID"
               />
               <div className="space-y-1.5">
                 <Label htmlFor="tts-custom-voice">自定义音色 ID</Label>
                 <Input
                   id="tts-custom-voice"
                   value={customVoiceId}
-                  placeholder="填写控制台音色列表中的音色 ID，例如 en_female_xxx_uranus_bigtts；填写后优先使用"
+                  placeholder="例如 en_female_xxx_uranus_bigtts"
                   onChange={(e) => setCustomVoiceId(e.target.value)}
                   autoComplete="off"
                   className="font-mono"
                 />
+                <p className="text-xs text-muted-foreground">填写后优先于上面的预置音色</p>
               </div>
             </>
           )}
@@ -217,7 +217,6 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
                   <span className="text-sm font-medium tabular-nums">{rateLabel(speechRate)}</span>
                 </div>
                 <Slider min={-50} max={100} step={10} value={[speechRate]} onValueChange={([v]) => setSpeechRate(v)} aria-label="语速" />
-                <p className="text-xs text-muted-foreground">单词跟读建议 0.8×–1.0×</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="tts-resource">资源 ID</Label>
@@ -231,7 +230,7 @@ export const TtsConfigModal: React.FC<TtsConfigModalProps> = ({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">音色与资源 ID 不匹配会报错 55000000，一般保持「自动」即可</p>
+                <p className="text-xs text-muted-foreground">与音色不匹配会报错，一般用「自动」</p>
               </div>
             </>
           )}

@@ -56,18 +56,19 @@ export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job, sto
             <div className="flex items-center gap-2 font-medium">
               <Loader2 className="size-4 animate-spin text-primary" />
               {stopping
-                ? '正在停止，等进行中的单词完成…'
+                ? '正在停止…'
                 : job?.status === 'queued'
-                  ? '排队中，前面的 AI 任务完成后开始'
+                  ? '排队中'
                   : starting
                     ? '正在准备分析…'
                     : (job?.stage ?? '正在分析拼读、音标和例句')}
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {starting
-                ? '马上开始'
-                : `已用 ${formatDuration(elapsed * 1000)}${remaining !== null && !stopping ? ` · 预计还需 ${formatDuration(remaining * 1000)}` : ''}`}
-            </p>
+            {!starting && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                已用 {formatDuration(elapsed * 1000)}
+                {remaining !== null && !stopping && ` · 预计还需 ${formatDuration(remaining * 1000)}`}
+              </p>
+            )}
           </div>
           <div className="text-right">
             <div className="text-2xl font-semibold tabular-nums">

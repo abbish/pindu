@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -186,11 +186,10 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl" onOpenAutoFocus={(e) => editing && e.preventDefault()}>
+      <DialogContent aria-describedby={undefined} className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl" onOpenAutoFocus={(e) => editing && e.preventDefault()}>
         <form onSubmit={submit} className="flex min-h-0 flex-col" noValidate>
           <DialogHeader className="border-b px-6 pt-5 pb-4">
             <DialogTitle>{editing ? `编辑「${word?.word}」` : '手动添加单词'}</DialogTitle>
-            <DialogDescription>{editing ? '修改释义、发音、拼读与例句。' : '填好单词和释义即可保存；其余内容可以让 AI 补全。'}</DialogDescription>
           </DialogHeader>
 
           <div className="flex min-h-0 flex-col gap-7 overflow-y-auto px-6 py-5">
@@ -223,9 +222,8 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                   </Select>
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
-                <p className="text-xs text-muted-foreground">AI 会按单词本的场景补全空着的音标、音节、拼读讲解和例句，不会改动已填写的内容。</p>
-                <Button type="button" size="sm" variant="outline" className="shrink-0 bg-background" onClick={aiFill} disabled={busy || !values.word.trim()}>
+              <div className="flex justify-end">
+                <Button type="button" size="sm" variant="outline" className="shrink-0" title="补全空着的音标、音节、拼读和例句，已填写的不改" onClick={aiFill} disabled={busy || !values.word.trim()}>
                   {filling ? <Loader2 className="animate-spin" /> : <Sparkles />}
                   {filling ? '正在补全…' : 'AI 补全'}
                 </Button>
@@ -260,7 +258,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                     按音节拆分
                   </Button>
                 </div>
-                <Input id="wf-seg" value={values.segments} onChange={(e) => set('segments', e.target.value)} placeholder="例如 el / e / ph / ant（用空格或 / 分隔）" className="font-mono placeholder:font-sans" />
+                <Input id="wf-seg" value={values.segments} onChange={(e) => set('segments', e.target.value)} placeholder="例如 el / e / ph / ant" className="font-mono placeholder:font-sans" />
                 {segmentPreview.length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1" aria-label="拼读块预览">
                     {segmentPreview.map((s, i) => (
@@ -284,10 +282,9 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
             {/* 例句 */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold">例句</h3>
-                  <p className="text-xs text-muted-foreground">第一条应是最简单的一句，练习时先展示它</p>
-                </div>
+                <h3 className="text-sm font-semibold" title="练习时先展示第一条">
+                  例句
+                </h3>
                 <Button type="button" size="sm" variant="outline" onClick={() => set('examples', [...values.examples, { sentence: '', translation: '' }])}>
                   <Plus />
                   添加例句
@@ -323,7 +320,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
             {/* 备注 */}
             <section className="space-y-1.5">
               <Label htmlFor="wf-desc">备注</Label>
-              <Textarea id="wf-desc" value={values.description} onChange={(e) => set('description', e.target.value)} placeholder="可选：记忆提示、易错点等" className="min-h-16 resize-none" />
+              <Textarea id="wf-desc" value={values.description} onChange={(e) => set('description', e.target.value)} placeholder="记忆提示、易错点" className="min-h-16 resize-none" />
             </section>
 
             {submitError && <InlineError title={submitError.title}>{submitError.message}</InlineError>}

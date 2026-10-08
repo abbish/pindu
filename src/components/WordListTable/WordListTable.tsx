@@ -217,7 +217,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
       </div>
 
       {!loading && words.length === 0 ? (
-        <EmptyState icon={<SearchX />} title="暂无单词" description="开始添加单词到这个单词本吧" />
+        <EmptyState icon={<SearchX />} title="没有单词" />
       ) : (
         <Card className="gap-0 overflow-hidden py-0">
           <Table>

@@ -155,11 +155,10 @@ export const TTSSettings: React.FC = () => {
   };
 
   const title = '语音合成';
-  const description = '火山引擎豆包语音合成大模型，用于单词与例句发音';
 
   if (loading || !config) {
     return (
-      <SettingsPanel title={title} description={description}>
+      <SettingsPanel title={title}>
         {!loading && loadError ? (
           <PageError title="无法加载语音合成配置" message={loadError} onRetry={loadData} />
         ) : (
@@ -181,7 +180,6 @@ export const TTSSettings: React.FC = () => {
   return (
     <SettingsPanel
       title={title}
-      description={description}
       aside={
         config.configured ? (
           <Badge variant="outline" className="border-transparent bg-success-soft text-success">
@@ -203,13 +201,13 @@ export const TTSSettings: React.FC = () => {
           </Button>
         }
       >
-        <SettingsRow label="鉴权" description="API Key，或 AppID + Access Token">
+        <SettingsRow label="鉴权">
           <span className={cn('font-mono text-xs select-text', !config.hasApiKey && !config.hasAccessKey && 'text-warning')}>{authText}</span>
         </SettingsRow>
-        <SettingsRow label="默认音色" description="练习时朗读单词和例句的声音">
+        <SettingsRow label="默认音色">
           <span className="text-sm">{defaultVoice ? defaultVoice.displayName : config.defaultVoiceId}</span>
         </SettingsRow>
-        <SettingsRow label="资源 ID" description={config.resourceId ? undefined : '未填写，按音色自动推断'}>
+        <SettingsRow label="资源 ID" description={config.resourceId ? undefined : '按音色自动推断'}>
           <span className="font-mono text-xs select-text">{config.effectiveResourceId}</span>
         </SettingsRow>
         <SettingsRow label="语速与音质">
@@ -217,7 +215,7 @@ export const TTSSettings: React.FC = () => {
             {(1 + config.speechRate / 100).toFixed(1)}× · {config.sampleRate / 1000}kHz MP3
           </span>
         </SettingsRow>
-        <SettingsRow label="试听" description={`用当前配置朗读：“${PREVIEW_TEXT}”`}>
+        <SettingsRow label="试听">
           <Button variant="outline" size="sm" onClick={handlePreview} disabled={previewing || !config.configured}>
             {previewing ? <Loader2 className="animate-spin" /> : <Play />}
             试听
@@ -231,9 +229,9 @@ export const TTSSettings: React.FC = () => {
           description={
             cacheStats
               ? cacheStats.entries > 0
-                ? `共 ${cacheStats.entries} 条，占用 ${formatBytes(cacheStats.totalBytes)}；其中 ${cacheStats.staleDays} 天没播放过的 ${cacheStats.staleEntries} 条（${formatBytes(cacheStats.staleBytes)}）。生成过的语音缓存在本机，再次播放不用重新生成。`
-                : '还没有缓存。生成过的语音会缓存在本机，再次播放不用重新生成。'
-              : '生成过的语音会缓存在本机，再次播放不用重新生成。'
+                ? `共 ${cacheStats.entries} 条，其中 ${cacheStats.staleDays} 天没播放过的 ${cacheStats.staleEntries} 条（${formatBytes(cacheStats.staleBytes)}）`
+                : '还没有缓存'
+              : undefined
           }
         >
           <div className="flex items-center gap-2">

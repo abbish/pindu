@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CircleCheck, FileText, FileUp, Loader2, MapPin, RotateCw, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CircleCheck, FileText, FileUp, Info, Loader2, MapPin, RotateCw, Sparkles } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Stepper } from '@/components/Stepper/Stepper';
 import { MaterialInput } from '@/components/MaterialInput';
 import { WordGrid, type ExtractedWord } from '@/components/WordGrid';
@@ -48,7 +49,6 @@ const INTENT_MAX = 500;
 /** 单词本描述上限（与后端 validate_description 一致） */
 const SCENE_MAX = 500;
 const MAX_TEXT = 5000;
-const LONG_TEXT = 3000;
 const INTENT_EXAMPLES = ['准备一场 TED 环境主题演讲', '三年级动物主题单元', '去英国旅行时机场和酒店会用到的词', '雅思写作常用的教育类词汇'];
 
 export interface AddWordsDialogProps {
@@ -287,7 +287,6 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     setPhase('analyzing');
   };
   const selected = candidates.filter((c) => c.selected);
-  const selectedExisting = selected.filter((c) => c.existing).length;
   const existingCount = candidates.filter((c) => c.existing).length;
   const busy = phase === 'fetching';
 
@@ -305,7 +304,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const segmentItem = 'h-7 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm';
 
   /** 来源选择卡片（单选） */
-  const sourceCard = (value: AddWordsSource, Icon: React.ComponentType<{ className?: string }>, title: string, hint: string) => (
+  const sourceCard = (value: AddWordsSource, Icon: React.ComponentType<{ className?: string }>, title: string) => (
     <button
       type="button"
       role="radio"
@@ -316,17 +315,14 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
         setError(null);
       }}
       className={cn(
-        'flex items-start gap-3 rounded-lg border p-3 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60',
+        'flex items-center gap-3 rounded-lg border p-3 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60',
         source === value ? 'border-primary bg-accent/40 ring-1 ring-primary/30' : 'hover:bg-muted/50'
       )}
     >
       <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-md', source === value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
         <Icon className="size-4" />
       </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-medium">{title}</span>
-        <span className="block text-xs text-muted-foreground">{hint}</span>
-      </span>
+      <span className="min-w-0 text-sm font-medium">{title}</span>
     </button>
   );
 
@@ -347,8 +343,8 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
             autoFocus
           />
           <div className="flex items-center justify-between gap-2">
-            <p className={cn('text-xs', tooLong ? 'text-destructive' : 'text-muted-foreground')}>
-              {sceneDraft.trim().length} / {SCENE_MAX}，保存为单词本描述
+            <p className={cn('text-xs tabular-nums', tooLong ? 'text-destructive' : 'text-muted-foreground')}>
+              {sceneDraft.trim().length} / {SCENE_MAX}
             </p>
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" onClick={() => setSceneDraft(null)} disabled={sceneSaving}>
@@ -366,12 +362,17 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     return (
       <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
         <MapPin className="size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1 text-sm">
-          <span className="font-medium">单词本场景</span>
-          <span className={cn('ml-2 text-xs', scene ? 'text-foreground' : 'text-muted-foreground')} title={scene || undefined}>
-            {scene || '未设置：AI 会按单词最常用的意思选择释义和例句'}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
+          <span className="shrink-0 font-medium">单词本场景</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="size-3.5 shrink-0 text-muted-foreground" aria-label="单词本场景的作用" />
+            </TooltipTrigger>
+            <TooltipContent>生成、释义、例句和讲解都按这个场景理解单词</TooltipContent>
+          </Tooltip>
+          <span className={cn('ml-1 truncate text-xs', scene ? 'text-foreground' : 'text-muted-foreground')} title={scene || undefined}>
+            {scene || '未设置'}
           </span>
-          {scene && <p className="truncate text-xs text-muted-foreground">生成、释义、例句和讲解都会按这个场景理解单词</p>}
         </div>
         <Button variant="ghost" size="sm" className="h-7 shrink-0" disabled={busy} onClick={() => setSceneDraft(scene)}>
           {scene ? '编辑' : '设置'}
@@ -393,18 +394,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
 
   const body = () => {
     if (phase === 'fetching') {
-      return centered(
-        source === 'ai' ? 'AI 正在挑选单词…' : 'AI 正在从文本中提取单词…',
-        source === 'ai' ? (
-          <>
-            “{intent.trim()}”
-            <br />
-            通常需要 10–40 秒
-          </>
-        ) : (
-          '通常需要 10–30 秒，文本越长越慢'
-        )
-      );
+      return centered(source === 'ai' ? '正在生成单词…' : '正在提取单词…');
     }
 
     switch (phase) {
@@ -412,8 +402,8 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
         return (
           <div className="flex flex-col gap-5">
             <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="单词来源">
-              {sourceCard('ai', Sparkles, 'AI 生成', '描述学习目的或场景，AI 挑选合适的单词')}
-              {sourceCard('text', FileUp, '从我的材料提取', '粘贴课文、文章或单词表，也可以导入 Word、PDF、字幕等文件')}
+              {sourceCard('ai', Sparkles, 'AI 生成')}
+              {sourceCard('text', FileUp, '从我的材料提取')}
             </div>
             {sceneCard()}
 
@@ -429,7 +419,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canFetch) fetchWords();
                       }}
-                      placeholder={scene ? '例如：海关、酒店入住（会放在单词本场景里理解）' : '例如：帮我准备一场 TED 环境主题演讲需要的单词，听众是大学生'}
+                      placeholder={scene ? '例如：海关、酒店入住' : '例如：TED 环境主题演讲，听众是大学生'}
                       maxLength={INTENT_MAX}
                       className="min-h-36 resize-none pb-7"
                       autoFocus
@@ -439,9 +429,9 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                     </span>
                   </div>
                   {!scene && (
-                    <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                      <Checkbox checked={useIntentAsScene} onCheckedChange={(v) => setUseIntentAsScene(v === true)} className="mt-px" />
-                      <span>同时设为单词本场景：之后补充单词、生成例句和讲解都会参考它，避免词义跑偏</span>
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Checkbox checked={useIntentAsScene} onCheckedChange={(v) => setUseIntentAsScene(v === true)} />
+                      <span>同时设为单词本场景</span>
                     </label>
                   )}
                   <div className="flex flex-wrap gap-1.5">
@@ -458,10 +448,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <Label>单词数量</Label>
-                    <p className="mt-1 text-xs text-muted-foreground">会自动避开单词本里已有的词</p>
-                  </div>
+                  <Label>单词数量</Label>
                   <ToggleGroup type="single" value={String(count)} onValueChange={(v) => v && setCount(Number(v))} className="rounded-lg bg-muted p-0.5" aria-label="单词数量">
                     {COUNT_OPTIONS.map((n) => (
                       <ToggleGroupItem key={n} value={String(n)} className={segmentItem}>
@@ -473,25 +460,19 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
               </div>
             ) : (
               <div className="flex flex-col gap-5">
-                <div className="space-y-1">
-                  <MaterialInput
-                    label="英文材料"
-                    text={text}
-                    onTextChange={setText}
-                    sourceLabel={fileName}
-                    onSourceLabelChange={setFileName}
-                    placeholder="粘贴课文、文章或单词表…"
-                    maxChars={MAX_TEXT}
-                    privacyNote
-                    autoFocus
-                  />
-                  {textLength <= MAX_TEXT && textLength > LONG_TEXT && <p className="text-xs text-muted-foreground">文本较长，提取会慢一些；分段添加更稳定</p>}
-                </div>
+                <MaterialInput
+                  label="英文材料"
+                  text={text}
+                  onTextChange={setText}
+                  sourceLabel={fileName}
+                  onSourceLabelChange={setFileName}
+                  placeholder="粘贴课文、文章或单词表…"
+                  maxChars={MAX_TEXT}
+                  privacyNote
+                  autoFocus
+                />
                 <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <Label>提取范围</Label>
-                    <p className="mt-1 text-xs text-muted-foreground">“值得学的词”会略过 a、the、is 这类简单词</p>
-                  </div>
+                  <Label>提取范围</Label>
                   <ToggleGroup type="single" value={mode} onValueChange={(v) => v && setMode(v as WordExtractionMode)} className="rounded-lg bg-muted p-0.5" aria-label="提取范围">
                     <ToggleGroupItem value="focus" className={segmentItem}>
                       值得学的词
@@ -512,10 +493,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
             {existingCount > 0 && (
               <p className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                <span>
-                  {existingCount} 个词已在单词本中，默认不选；勾选后会用新的分析覆盖原有内容
-                  {selectedExisting > 0 && `（已勾选 ${selectedExisting} 个）`}
-                </span>
+                <span>{existingCount} 个词已在单词本里，勾选会覆盖原有内容</span>
               </p>
             )}
             <WordGrid
@@ -542,7 +520,6 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                 <div className="font-medium">
                   {added > 0 ? `已加入单词本 ${added} 个` : '没有单词加入单词本'}，{failed.length} 个没有完成
                 </div>
-                <div className="mt-0.5 text-muted-foreground">可以重新分析这些词，或者直接完成</div>
               </div>
             </div>
             <ul className="divide-y rounded-lg border text-sm">
@@ -567,7 +544,6 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       case 'fetching':
         return (
           <>
-            <span className="mr-auto text-xs text-muted-foreground">模型：「设置 → AI 助手」中的“提取 / 生成单词”</span>
             {busy ? (
               <Button
                 variant="outline"
@@ -609,8 +585,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       case 'analyzing':
         return (
           <>
-            <span className="mr-auto text-xs text-muted-foreground">可以关闭窗口，分析会在后台继续，完成后自动加入单词本</span>
-            <Button variant="outline" onClick={stopAnalysis} disabled={stopped}>
+            <Button variant="outline" className="mr-auto" onClick={stopAnalysis} disabled={stopped}>
               {stopped && <Loader2 className="animate-spin" />}
               {stopped ? '正在停止…' : '停止分析'}
             </Button>
@@ -639,12 +614,13 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       <Dialog open={isOpen} onOpenChange={(open) => !open && requestClose()}>
         <DialogContent
           className="flex h-[min(680px,88vh)] flex-col gap-0 p-0 sm:max-w-3xl"
+          {...(bookTitle ? {} : { 'aria-describedby': undefined })}
           onInteractOutside={(e) => hasUnsavedWork && e.preventDefault()}
         >
           <DialogHeader className="gap-4 border-b px-6 pt-5 pb-4">
             <div>
               <DialogTitle>添加单词</DialogTitle>
-              <DialogDescription className="mt-1">{bookTitle ? `添加到「${bookTitle}」，` : ''}选好后自动完成拼读分析并保存</DialogDescription>
+              {bookTitle && <DialogDescription className="mt-1">添加到「{bookTitle}」</DialogDescription>}
             </div>
             <Stepper steps={STEPS} current={STEP_OF[phase]} />
           </DialogHeader>

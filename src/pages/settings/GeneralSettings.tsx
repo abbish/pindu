@@ -34,9 +34,9 @@ export const GeneralSettings: React.FC = () => {
   }, []);
 
   return (
-    <SettingsPanel title="通用" description="应用的外观、更新与诊断">
+    <SettingsPanel title="通用">
       <SettingsSection title="外观">
-        <SettingsRow label="主题" description="浅色、深色，或跟随系统自动切换；侧边栏底部也可以快速切换">
+        <SettingsRow label="主题">
           <ToggleGroup
             type="single"
             value={preference}
@@ -59,19 +59,19 @@ export const GeneralSettings: React.FC = () => {
       </SettingsSection>
 
       <SettingsSection title="更新">
-        <SettingsRow label={version ? `当前版本 ${version}` : '当前版本'} description="有新版本时，窗口顶部会出现提示，点一下就能下载安装">
+        <SettingsRow label={version ? `当前版本 ${version}` : '当前版本'}>
           <Button variant="outline" size="sm" disabled={updateState.kind === 'checking'} onClick={() => void checkForUpdates()}>
             {updateState.kind === 'checking' ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             检查更新
           </Button>
         </SettingsRow>
-        <SettingsRow label="自动检查更新" description="启动后和每天检查一次 GitHub 上有没有新版本（会访问 github.com）">
+        <SettingsRow label="自动检查更新" description="每天访问 github.com 检查一次">
           <Switch checked={autoCheck} onCheckedChange={updater.setAutoCheck} aria-label="自动检查更新" />
         </SettingsRow>
       </SettingsSection>
 
       <SettingsSection title="诊断">
-        <SettingsRow label="系统日志" description="遇到问题时查看最近的运行日志，或打开日志文件夹发给开发者">
+        <SettingsRow label="系统日志">
           <Button variant="outline" size="sm" onClick={async () => {
               const result = await dataManagementService.openLogFolder();
               if (!result.success) toast.showError('无法打开日志文件夹', result.error);

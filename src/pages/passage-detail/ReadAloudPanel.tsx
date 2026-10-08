@@ -316,7 +316,6 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
                 ))}
               </ToggleGroup>
             </SettingRow>
-            <p className="-mt-1 text-xs text-muted-foreground">停顿时跟着说一遍（影子跟读）；重复和停顿只在连续朗读时生效。</p>
             <SettingRow label="翻译">
               <ToggleGroup type="single" value={prefs.translation} onValueChange={(v) => v && updatePrefs({ translation: v as TranslationMode })} className="rounded-lg bg-muted p-0.5">
                 {[
@@ -330,22 +329,16 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
                 ))}
               </ToggleGroup>
             </SettingRow>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <Label htmlFor="ra-recall" className="text-sm font-normal">
-                  听后回忆
-                </Label>
-                <p className="text-xs text-muted-foreground">读完含目标词的句子后，把目标词挖空，点选刚听到的词再继续</p>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="ra-recall" className="text-sm font-normal">
+                读完挖空目标词
+              </Label>
               <Switch id="ra-recall" checked={prefs.recall} onCheckedChange={(v) => updatePrefs({ recall: v })} />
             </div>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <Label htmlFor="ra-focus" className="text-sm font-normal">
-                  聚焦朗读
-                </Label>
-                <p className="text-xs text-muted-foreground">朗读时正在读的句子最清晰，前后的句子逐渐模糊，帮助专注当下这一句</p>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="ra-focus" className="text-sm font-normal">
+                模糊前后句子
+              </Label>
               <Switch id="ra-focus" checked={prefs.focusBlur} onCheckedChange={(v) => updatePrefs({ focusBlur: v })} />
             </div>
             <div className="flex items-center justify-between gap-3">
@@ -358,7 +351,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
         </Popover>
       </div>
 
-      {blindDone && !blind && <p className="-mt-1 rounded-md bg-accent/50 px-3 py-1.5 text-xs text-accent-foreground select-none">盲听结束，已显示原文：对照看看哪些地方刚才没听出来。</p>}
+      {blindDone && !blind && <p className="-mt-1 rounded-md bg-accent/50 px-3 py-1.5 text-xs text-accent-foreground select-none">盲听结束，已显示原文</p>}
 
       <PassageReader
         sentences={passage.sentences}

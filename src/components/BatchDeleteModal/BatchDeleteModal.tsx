@@ -35,7 +35,7 @@ export const BatchDeleteModal: React.FC<BatchDeleteModalProps> = ({ isOpen, onCl
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{single ? `删除单词“${words[0]?.word}”？` : `删除 ${words.length} 个单词？`}</AlertDialogTitle>
-          <AlertDialogDescription>删除后无法恢复。如果学习计划里用到了这些单词，也会从计划中移除，相关的练习记录和记忆进度一并删除。</AlertDialogDescription>
+          <AlertDialogDescription>删除后无法恢复，学习计划里的这些单词和它们的练习记录也会一起删除。</AlertDialogDescription>
         </AlertDialogHeader>
         {!single && words.length > 0 && (
           <ul className="max-h-60 divide-y overflow-y-auto rounded-lg border text-sm">

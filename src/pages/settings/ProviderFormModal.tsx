@@ -98,13 +98,13 @@ export const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{editing ? `编辑提供商 · ${provider.displayName}` : '添加提供商'}</DialogTitle>
-          <DialogDescription>选择 pi 内置提供商时会自动带出名称与官方地址。</DialogDescription>
+          <DialogDescription>选 pi 内置提供商会自动填好名称与地址</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="pf-pi">对应 pi 内置提供商</Label>
             <Select value={form.piProvider || NONE} onValueChange={(v) => handlePiProviderChange(v === NONE ? '' : v)}>
-              <SelectTrigger id="pf-pi" className="w-full" title="映射后由 pi 负责该厂商的接口适配、思考档与模型目录">
+              <SelectTrigger id="pf-pi" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -114,13 +114,7 @@ export const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              {form.piProvider
-                ? '已映射：调用时使用 pi 内置的接口类型、兼容参数与模型目录'
-                : catalogProviders.length === 0
-                  ? 'pi 模型目录暂不可用（agent sidecar 未就绪），只能使用自定义端点'
-                  : '自定义端点：请填写 API 地址并选择接口类型'}
-            </p>
+            {catalogProviders.length === 0 && <p className="text-xs text-muted-foreground">暂时读不到 pi 提供商列表，只能使用自定义接口</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -161,16 +155,16 @@ export const ProviderFormModal: React.FC<ProviderFormModalProps> = ({
               placeholder={
                 editing
                   ? provider.hasApiKey
-                    ? `已配置（${provider.apiKeyPreview ?? ''}…），留空则保持不变`
-                    : '还没有配置，请输入API密钥'
-                  : '请输入API密钥'
+                    ? `已配置 ${provider.apiKeyPreview ?? ''}…，留空保持不变`
+                    : 'API 密钥'
+                  : 'API 密钥'
               }
               autoComplete="off"
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="pf-desc">描述</Label>
-            <Textarea id="pf-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="提供商描述（可选）" rows={2} />
+            <Textarea id="pf-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} />
           </div>
         </div>
         {saveError && <InlineError title={saveError.title}>{saveError.message}</InlineError>}

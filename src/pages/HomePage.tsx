@@ -170,8 +170,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
       {/* 页头：欢迎语 + 快捷操作 */}
       <PageHeader
-        title="欢迎回来！"
-        description="继续你的单词学习之旅吧"
+        title="欢迎回来"
         actions={
           <Button onClick={handleCreatePlan}>
             <CalendarPlus />
@@ -225,7 +224,6 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               actionIcon={<Plus />}
               icon={<CalendarPlus />}
               title="还没有学习计划"
-              description="创建你的第一个学习计划开始学习吧"
               action="创建学习计划"
               onAction={() => onNavigate?.('create-plan')}
             />

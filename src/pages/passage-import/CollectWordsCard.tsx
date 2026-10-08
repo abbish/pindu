@@ -75,7 +75,7 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
     return (
       <Card className="flex-row items-center gap-2 px-5 py-4 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
-        正在汇总这批材料里的生词…
+        正在汇总生词…
       </Card>
     );
   }
@@ -141,10 +141,8 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
       <div className="flex items-start gap-3">
         <BookPlus className="mt-0.5 size-5 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
-          <h2 className="font-semibold">把这批材料的生词整理成单词本</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {passages.length} 篇短文里有 {words.length} 个还不在单词本的重点词（已去重）。新建的单词本会自动补全音标、拼读和例句，可以直接用来建计划。
-          </p>
+          <h2 className="font-semibold">生词整理成单词本</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">{words.length} 个词还不在单词本里</p>
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -175,7 +173,6 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
             : `${target?.kind === 'new' ? '新建单词本' : '加入单词本'}（${picked.size} 个词）`}
         </Button>
       </div>
-      {running && <p className="text-xs text-muted-foreground">每篇需要十几秒到一分钟：补全音标、拼读和例句</p>}
       {error && <InlineError title="有些词没有整理进去">{error}</InlineError>}
     </Card>
   );

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -129,11 +129,10 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
           <DialogHeader>
             <DialogTitle>{editing ? '编辑单词本' : '新建单词本'}</DialogTitle>
-            <DialogDescription>{editing ? '修改名称、图标、主题与描述。' : '建好后在单词本里用 AI 生成或从文本添加单词。'}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">
@@ -153,16 +152,12 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
                 maxLength={TITLE_MAX}
                 autoFocus
                 aria-invalid={Boolean(errors.title)}
-                aria-describedby={errors.title ? 'wb-title-error' : 'wb-title-hint'}
+                aria-describedby={errors.title ? 'wb-title-error' : undefined}
               />
             </div>
-            {errors.title ? (
+            {errors.title && (
               <p id="wb-title-error" className="text-sm text-destructive">
                 {errors.title}
-              </p>
-            ) : (
-              <p id="wb-title-hint" className="text-xs text-muted-foreground">
-                点左边的图标可以换图标和颜色
               </p>
             )}
           </div>
@@ -172,7 +167,7 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
             {themes ? (
               <ThemeTagPicker id="wb-themes" themes={themes} value={values.themeIds} onChange={(ids) => set('themeIds', ids)} onCreate={createTheme} />
             ) : themesFailed ? (
-              <p className="text-sm text-muted-foreground">主题加载失败，可以先不选，之后在编辑里补上。</p>
+              <p className="text-sm text-muted-foreground">主题加载失败</p>
             ) : (
               <Skeleton className="h-9 w-full" />
             )}
@@ -184,7 +179,7 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
               id="wb-desc"
               value={values.description}
               onChange={(e) => set('description', e.target.value)}
-              placeholder="可选：这本单词本的来源或用途"
+              placeholder="例如：出国旅行常用词"
               rows={2}
               maxLength={DESCRIPTION_MAX}
               aria-invalid={Boolean(errors.description)}

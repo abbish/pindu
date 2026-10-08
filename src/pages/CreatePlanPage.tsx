@@ -55,10 +55,10 @@ const autoName = (books: WordBookOption[], passages: PlanPassageDraft[]) => {
   return '';
 };
 
-const CONTENT_OPTIONS: { value: PracticeContent; label: string; hint: string }[] = [
-  { value: 'words', label: '单词', hint: '按每天的新词数学单词，系统自动安排复习' },
-  { value: 'both', label: '单词 + 短文', hint: '学单词的同时，隔几天读一篇短文、做阅读理解' },
-  { value: 'passages', label: '短文', hint: '只读短文、做阅读理解，不学单词' },
+const CONTENT_OPTIONS: { value: PracticeContent; label: string }[] = [
+  { value: 'words', label: '单词' },
+  { value: 'both', label: '单词 + 短文' },
+  { value: 'passages', label: '短文' },
 ];
 
 /**
@@ -107,7 +107,6 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
   const suggestedName = autoName(chosenBooks, passages);
   const planName = name.trim() || suggestedName;
   const busy = phase === 'planning' || phase === 'saving';
-  const dailyHint = DAILY_NEW_WORDS_OPTIONS.find((o) => o.value === dailyNewWords)?.hint;
 
   // 可加入的短文：按与所选单词本的相关度排序（只练短文时不看单词本）
   const candidateBookIds = withWords ? selectedBooks : [];
@@ -278,12 +277,9 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
   const canCreate = !busy && Boolean(planName) && wordsReady && passagesReady;
   const aiOrdering = withWords && useAi;
 
-  const section = (title: string, hint: string | null, children: React.ReactNode) => (
+  const section = (title: string, children: React.ReactNode) => (
     <section className="space-y-3">
-      <div>
-        <h2 className="text-[15px] font-semibold">{title}</h2>
-        {hint && <p className="mt-0.5 text-sm text-muted-foreground">{hint}</p>}
-      </div>
+      <h2 className="text-[15px] font-semibold">{title}</h2>
       {children}
     </section>
   );
@@ -293,14 +289,13 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-8 py-7">
-      <PageHeader title="新建学习计划" description="选好要练的内容，右边会即时显示学习安排" />
+      <PageHeader title="新建学习计划" />
 
       <div className="grid grid-cols-[minmax(0,1fr)_380px] items-start gap-6">
         {/* 左：填写 */}
         <Card className="gap-8 p-6">
           {section(
             '练什么',
-            CONTENT_OPTIONS.find((o) => o.value === content)?.hint ?? null,
             <ToggleGroup
               type="single"
               value={content}
@@ -320,7 +315,6 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
           {withWords &&
             section(
               '单词本',
-              selectedBooks.length > 0 ? `已选 ${selectedBooks.length} 本，重复的单词只学一次` : '可以多选',
               <WordBookSelector
                 books={wordBooks}
                 selectedBooks={selectedBooks}
@@ -333,7 +327,6 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
           {withWords &&
             section(
               '每天学几个新词',
-              dailyHint ? `${dailyNewWords} 个：${dailyHint}` : null,
               <ToggleGroup
                 type="single"
                 value={String(dailyNewWords)}
@@ -353,27 +346,19 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
           {withWords &&
             section(
               '学习顺序',
-              null,
-              <label className="flex items-start gap-3 rounded-lg border p-3">
-                <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+              <label className="flex items-center gap-3 rounded-lg border p-3">
+                <Sparkles className="size-4 shrink-0 text-primary" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">AI 智能排序</span>
-                  <span className="block text-xs text-muted-foreground">
-                    按难度从易到难、把相关的词排在一起，约需 10–60 秒；关闭则按单词本里的顺序，立即创建
-                  </span>
+                  <span className="block text-sm font-medium">AI 排序</span>
+                  <span className="block text-xs text-muted-foreground">由易到难，相关的词排在一起</span>
                 </span>
-                <Switch checked={useAi} onCheckedChange={setUseAi} disabled={busy} aria-label="AI 智能排序" />
+                <Switch checked={useAi} onCheckedChange={setUseAi} disabled={busy} aria-label="AI 排序" />
               </label>
             )}
 
           {withPassages &&
             section(
               '短文',
-              passages.length > 0
-                ? `${passages.length} 篇，按列表顺序${intervalLabel(passageInterval)}；有题组的读完做题，选「只朗读」的读完点「读完了」`
-                : withWords
-                  ? '从短文库里选，含所选单词多的排在前面'
-                  : '从短文库里选',
               <div className="space-y-4">
                 <PlanPassagePicker
                   items={passages}
@@ -406,16 +391,14 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
           {section(
             '名称与描述',
-            null,
             <div className="space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="plan-name">计划名称</Label>
                 <Input id="plan-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={suggestedName || '例如：三年级上册词汇'} maxLength={100} disabled={busy} />
-                {!name.trim() && suggestedName && <p className="text-xs text-muted-foreground">不填就用“{suggestedName}”</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="plan-desc">描述</Label>
-                <Textarea id="plan-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="可选：学习目标或备注" className="min-h-16 resize-none" disabled={busy} />
+                <Textarea id="plan-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="学习目标或备注" className="min-h-16 resize-none" disabled={busy} />
               </div>
             </div>
           )}
@@ -430,7 +413,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
           {withWords &&
             (selectedBooks.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">选择单词本后，这里会显示要学多少天、每天学哪些词</p>
+              <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">还没有选择单词本</p>
             ) : previewError ? (
               <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{previewError}</p>
             ) : !meta ? (
@@ -448,7 +431,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
                   <div className="rounded-lg bg-muted/50 p-3">
                     <div className="text-2xl font-semibold tabular-nums">{meta.studyPeriodDays}</div>
                     <div className="text-xs text-muted-foreground">
-                      天（学新词 {learningDays} + 巩固 {CONSOLIDATION_DAYS}）
+                      天 · 学新词 {learningDays} 天，巩固 {CONSOLIDATION_DAYS} 天
                     </div>
                   </div>
                 </div>
@@ -462,7 +445,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">{useAi ? '前几天的新词（默认顺序，AI 会重新排）' : '前几天的新词'}</div>
+                  <div className="text-xs font-medium text-muted-foreground">前几天的新词</div>
                   <ol className="space-y-2">
                     {preview!.dailyPlans.slice(0, PREVIEW_DAYS).map((day) => (
                       <li key={day.day} className="flex gap-3 text-sm">
@@ -481,7 +464,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
           {withPassages &&
             (passages.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">添加短文后，这里会显示哪天读哪篇</p>
+              <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">还没有添加短文</p>
             ) : (
               <div className={withWords ? 'space-y-2 border-t pt-4' : 'space-y-2'}>
                 <div className="flex items-center gap-1.5 text-sm font-medium">
@@ -499,11 +482,6 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
                 </ol>
               </div>
             ))}
-
-          <p className="text-xs text-muted-foreground">
-            第一次练习的那天算第 1 天。
-            {withWords && '复习由系统按记忆情况自动安排（1、3、7、14、30 天），间隔 7 天后仍能写对才算掌握。'}
-          </p>
 
           <div className="space-y-3 border-t pt-4">
             {phase === 'planning' && <PlanningProgress job={planJob} onCancel={stopPlanning} />}

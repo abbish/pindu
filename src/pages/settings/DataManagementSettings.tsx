@@ -129,7 +129,7 @@ export const DataManagementSettings: React.FC = () => {
   );
 
   return (
-    <SettingsPanel title="数据管理" description="所有数据只保存在本机的 SQLite 数据库（vocabulary.db）中">
+    <SettingsPanel title="数据管理">
       <SettingsSection
         title="概览"
         actions={
@@ -152,14 +152,13 @@ export const DataManagementSettings: React.FC = () => {
             <SettingsRow label="总记录数">{numberCell(overview.total_records || 0, '条')}</SettingsRow>
           </>
         ) : (
-          <SettingsRow label="暂无统计" description="点击“刷新统计”加载数据库信息" />
+          <SettingsRow label="暂无统计" />
         )}
       </SettingsSection>
 
       {overview && (
         <SettingsSection
           title="数据表"
-          description={selecting ? '勾选要清空的数据表，其余数据不受影响' : '可以只清空部分数据表（选择性重置）'}
           actions={
             selecting ? (
               <>
@@ -223,15 +222,12 @@ export const DataManagementSettings: React.FC = () => {
       )}
 
       <SettingsSection title="危险操作" tone="danger">
-        <SettingsRow
-          label="重置所有用户数据"
-          description="永久删除所有单词本和单词、学习计划和学习进度、练习记录和会话、学习统计数据；AI 模型配置和系统设置会保留。"
-        >
+        <SettingsRow label="重置所有用户数据" description="删除单词本、计划和练习记录，保留 AI 模型与设置">
           <Button variant="destructive" size="sm" onClick={() => openReset('all')} disabled={busy || loading}>
             重置…
           </Button>
         </SettingsRow>
-        <SettingsRow label="删除数据库并重启" description="删除整个数据库文件并重启应用，重启后是全新的空数据库，连 AI 模型配置和系统设置也会丢失。">
+        <SettingsRow label="删除数据库并重启" description="包括 AI 模型与设置在内全部清空">
           <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteDialog({ isOpen: true, step: 'warning', confirmText: '' })} disabled={busy}>
             删除…
           </Button>
@@ -244,15 +240,15 @@ export const DataManagementSettings: React.FC = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <TriangleAlert className="size-5" />
-              {resetDialog.step === 'warning' ? (resetScope === 'selected' ? '确认重置选中的数据表' : '确认重置所有用户数据') : '最终确认'}
+              {resetDialog.step === 'warning' ? (resetScope === 'selected' ? '清空选中的数据表？' : '重置所有用户数据？') : '最终确认'}
             </DialogTitle>
-            <DialogDescription>此操作不可撤销！</DialogDescription>
+            <DialogDescription>删除后无法恢复</DialogDescription>
           </DialogHeader>
           {resetDialog.step === 'warning' ? (
             <div className="space-y-2 text-sm">
               {resetScope === 'selected' ? (
                 <>
-                  <p>您即将清空以下数据表：</p>
+                  <p>将清空：</p>
                   <ul className="max-h-48 list-inside list-disc overflow-y-auto text-muted-foreground">
                     {selectedTables.map((t) => (
                       <li key={t.table_name}>
@@ -261,25 +257,25 @@ export const DataManagementSettings: React.FC = () => {
                     ))}
                   </ul>
                   <p>
-                    总计：<strong>{selectedRecords.toLocaleString()}</strong> 条记录将被删除
+                    共 <strong>{selectedRecords.toLocaleString()}</strong> 条记录
                   </p>
                 </>
               ) : (
                 <>
-                  <p>您即将删除所有用户数据，包括：</p>
+                  <p>将删除：</p>
                   <ul className="list-inside list-disc text-muted-foreground">
                     <li>所有单词本和单词（{countOf('word_books')} 个单词本）</li>
                     <li>所有学习计划和进度（{countOf('study_plans')} 个学习计划）</li>
                     <li>所有练习记录（{countOf('practice_sessions')} 个练习会话）</li>
                   </ul>
-                  <p className="font-medium">AI 模型配置将被保留。</p>
+                  <p className="font-medium">AI 模型与设置会保留。</p>
                 </>
               )}
             </div>
           ) : (
             <div className="space-y-2 text-sm">
               <p>
-                请在下方输入 <strong className="font-mono">{RESET_TEXT}</strong> 来确认此操作：
+                输入 <strong className="font-mono">{RESET_TEXT}</strong> 确认：
               </p>
               <Input
                 value={resetDialog.confirmText}
@@ -310,26 +306,23 @@ export const DataManagementSettings: React.FC = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <TriangleAlert className="size-5" />
-              {deleteDialog.step === 'warning' ? '极度危险操作！' : '最终确认'}
+              {deleteDialog.step === 'warning' ? '删除数据库并重启？' : '最终确认'}
             </DialogTitle>
-            <DialogDescription>此操作将完全删除数据库文件并重启应用程序！</DialogDescription>
+            <DialogDescription>所有数据都会永久删除，无法恢复</DialogDescription>
           </DialogHeader>
           {deleteDialog.step === 'warning' ? (
             <div className="space-y-2 text-sm">
-              <p className="font-medium">将会发生的事情：</p>
+              <p>将删除：</p>
               <ul className="list-inside list-disc text-muted-foreground">
-                <li>完全删除数据库文件（vocabulary.db）</li>
-                <li>自动重启应用程序</li>
-                <li>重启后将创建全新的空数据库</li>
-                <li>所有数据将永久丢失，包括：单词本和单词、学习计划和进度、练习记录、AI 模型配置、系统设置</li>
+                <li>单词本和单词、学习计划和进度、练习记录</li>
+                <li>AI 模型配置与系统设置</li>
               </ul>
-              <p className="font-medium text-destructive">注意：此操作比“重置所有用户数据”更彻底，连 AI 配置也会丢失！</p>
-              <p className="text-muted-foreground">如果只想清理用户数据，请使用“重置所有用户数据”。</p>
+              <p className="text-muted-foreground">应用随后重启，从空数据库开始。只想清理学习数据时，用「重置所有用户数据」。</p>
             </div>
           ) : (
             <div className="space-y-2 text-sm">
               <p>
-                请在下方输入 <strong className="font-mono">{DELETE_TEXT}</strong> 来确认此操作：
+                输入 <strong className="font-mono">{DELETE_TEXT}</strong> 确认：
               </p>
               <Input
                 value={deleteDialog.confirmText}

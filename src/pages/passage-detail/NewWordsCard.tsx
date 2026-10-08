@@ -85,10 +85,7 @@ export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLab
 
   return (
     <Card className="gap-3 px-5 py-4">
-      <div>
-        <h2 className="text-sm font-semibold">材料里的生词</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">AI 标出的重点词里还不在单词本的，加进单词本（或新建一本）后可以按计划学习</p>
-      </div>
+      <h2 className="text-sm font-semibold">材料里的生词</h2>
       <ul className="max-h-60 space-y-0.5 overflow-y-auto">
         {words.map((w) => (
           <li key={w.word}>
@@ -107,7 +104,7 @@ export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLab
         {saving ? <Loader2 className="animate-spin" /> : <Plus />}
         {saving ? '正在加入…' : `${target?.kind === 'new' ? '新建并加入' : '加入'}${picked.size > 0 ? ` ${picked.size} 个词` : ''}`}
       </Button>
-      {saving && <p className="text-xs text-muted-foreground">正在补全音标、拼读和例句，大约需要十几秒到一分钟</p>}
+      {saving && <p className="text-xs text-muted-foreground">正在补全音标、拼读和例句…</p>}
       {error && <InlineError title={error.title}>{error.message}</InlineError>}
     </Card>
   );

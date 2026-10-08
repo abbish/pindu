@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, CircleCheckBig, FileText, Flame, Pause, Loader2, MoreHorizontal, Play, Target, Trash2 } from 'lucide-react';
+import { CalendarCheck, CircleCheckBig, FileText, Flame, Info, Pause, Loader2, MoreHorizontal, Play, Target, Trash2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -420,17 +420,25 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
       <div className="grid grid-cols-2 gap-3">
         <Card className="gap-4 p-5">
           <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-medium">学习进度</h2>
+            <h2 className="inline-flex items-center gap-1 text-sm font-medium">
+              学习进度
+              <Tooltip>
+                <TooltipTrigger aria-label="学习进度的口径">
+                  <Info className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-64">
+                  {!withWords ? '完成的短文 / 全部短文' : '已掌握的单词 / 全部单词；掌握 = 间隔 7 天后仍能写对'}
+                </TooltipContent>
+              </Tooltip>
+            </h2>
             <span className="text-2xl font-semibold text-primary tabular-nums">{Math.round(learnProgress)}%</span>
           </div>
           <PlanProgressBar learnProgress={learnProgress} timeProgress={timeProgress} status={status} className="h-2" />
-          <p className="text-xs text-muted-foreground">
-            {!withWords
-              ? `学习进度 = 完成的短文 / 全部短文（${plan.completed_passages} / ${plan.total_passages} 篇）。`
-              : withPassages
-                ? `单词进度 = 已掌握 / 总单词；短文已完成 ${plan.completed_passages} / ${plan.total_passages} 篇。单词全部掌握、短文全部完成后计划自动完成。`
-                : '学习进度 = 已掌握 / 总单词；掌握指间隔 7 天后仍能写对。'}
-          </p>
+          {withWords && withPassages && (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              短文 {plan.completed_passages} / {plan.total_passages} 篇
+            </p>
+          )}
         </Card>
         {!withWords ? (
           <Card className="gap-3 p-5">
@@ -526,7 +534,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
               [
                 !todaySchedule
                   ? canPractice
-                    ? '今天没有新词，也没有到期的复习'
+                    ? '今天没有任务'
                     : '计划不在进行中'
                   : todaySchedule.completed
                     ? '今天已练完'
@@ -543,11 +551,11 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
             value={duePassages.length}
             unit="篇短文"
             icon={CalendarCheck}
-            hint={duePassages.length > 0 ? (duePassages.some((p) => p.status === 'overdue') ? '含逾期没读的' : '今天要读') : canPractice ? '今天没有要读的短文' : '计划不在进行中'}
+            hint={duePassages.some((p) => p.status === 'overdue') ? '含逾期' : !canPractice ? '计划不在进行中' : undefined}
           />
         )}
         {withWords ? (
-          <MetricCard label="首次作答正确率" value={Math.round(statistics?.average_accuracy_rate || 0)} unit="%" icon={Target} hint="每题第一次作答，不含改正后的重考" />
+          <MetricCard label="首次作答正确率" value={Math.round(statistics?.average_accuracy_rate || 0)} unit="%" icon={Target} tip="每题第一次作答，不含改正后的重考" />
         ) : (
           <MetricCard label="短文进度" value={Math.round(passageProgress)} unit="%" icon={Target} hint={`已完成 ${plan.completed_passages} / ${plan.total_passages} 篇`} />
         )}

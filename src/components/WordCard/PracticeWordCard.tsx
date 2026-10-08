@@ -80,10 +80,10 @@ const ROUTINE: { key: string; label: string; stages: PracticeStage[] }[] = [
 const STAGE_ORDER: PracticeStage[] = ['look', 'write', 'feedback'];
 
 const PLACEHOLDER: Record<PracticeStage, string> = {
-  look: '先看一看、读一读，记住后点「盖住，开始写」',
+  look: '记住后盖住再写',
   write: '凭记忆拼出单词…',
   feedback: '',
-  correction: '照着上面的正确拼写再打一遍…',
+  correction: '照着正确拼写再打一遍…',
 };
 
 /** 被收起的信息：保留位置，说明“答完显示” */
@@ -145,7 +145,6 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
   const [imeWarning, setImeWarning] = useState(false);
   const reveal = stage === 'write' ? writeReveal(hintLevel) : FULL_REVEAL;
   const segments = word.phonicsSegments ?? [];
-  const letterCount = word.word.replace(/[^A-Za-z]/g, '').length;
 
   // 环节切换时把焦点放到该操作的位置：写 / 纠正 → 输入框；看·说不放焦点（Enter / 空格由窗口级快捷键处理，
   // 焦点停在「盖住」按钮上时空格会被按钮当成点击）
@@ -217,7 +216,7 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="text-lg font-semibold">{stepTitle}</h3>
-          <p className="text-sm text-muted-foreground">{stepDescription}</p>
+          {stepDescription && <p className="text-sm text-muted-foreground">{stepDescription}</p>}
         </div>
         <ol className="flex shrink-0 gap-1.5" aria-label="看-说-盖-写-查">
           {ROUTINE.map((item) => {
@@ -259,22 +258,19 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
                 ))}
               </h1>
               <span className="text-sm text-muted-foreground">
-                <span className="font-medium text-destructive">红色</span>是写错的字母，<span className="font-medium text-warning underline">下划线</span>是漏掉的字母
+                <span className="font-medium text-destructive">红色</span>写错 · <span className="font-medium text-warning underline">下划线</span>漏写
               </span>
             </>
           ) : reveal.word === 'show' ? (
             <h1 className={cn('text-5xl font-bold tracking-wide select-text', stage === 'feedback' && 'text-success')}>{word.word}</h1>
           ) : reveal.word === 'hint' ? (
-            <>
-              <LetterSlots text={word.word} />
-              <span className="text-sm text-muted-foreground">单词盖住了：共 {letterCount} 个字母</span>
-            </>
+            <LetterSlots text={word.word} />
           ) : (
             <>
               <span className="flex size-16 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
                 <HelpCircle className="size-8" />
               </span>
-              <span className="text-sm text-muted-foreground">听发音、看中文，把整个单词拼出来</span>
+              <span className="text-sm text-muted-foreground">听发音，拼出单词</span>
             </>
           )}
         </div>

@@ -83,7 +83,7 @@ const StartupErrorScreen: React.FC<{ failure: StartupFailure }> = ({ failure }) 
           </div>
           {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           <p className="text-sm text-muted-foreground">
-            你的数据没有被修改，也没有被删除。新版本可能已经修好了这个问题，可以先检查更新；如需帮助，请到 GitHub Issues 反馈并附上日志。
+            数据没有被修改或删除。新版本可能已修复这个问题，可以先检查更新；仍有问题请附上日志到 GitHub Issues 反馈。
           </p>
         </div>
       </div>

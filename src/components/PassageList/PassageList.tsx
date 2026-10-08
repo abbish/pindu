@@ -181,7 +181,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   }
   if (passages?.length === 0) {
     return (
-      <EmptyState icon={<FileText />} title="还没有短文" description={emptyDescription ?? '用单词本、学习计划里的词或你自己输入的词，让 AI 写一篇短文，可以自由阅读、听读，也可以出阅读理解题来练'}>
+      <EmptyState icon={<FileText />} title="还没有短文" description={emptyDescription}>
         <div className="flex gap-2">
           {onCreate && (
             <Button onClick={onCreate}>
@@ -202,7 +202,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   if (visible.length === 0) {
     if (!query.trim() && origin === 'imported') {
       return (
-        <EmptyState icon={<FileUp />} title="还没有导入的材料" description="粘贴英文，或导入 txt、Word、PDF、字幕文件，原文不改，AI 逐句翻译">
+        <EmptyState icon={<FileUp />} title="还没有导入的材料">
           {onImport && (
             <Button onClick={onImport}>
               <FileUp />

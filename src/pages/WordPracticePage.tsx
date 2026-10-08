@@ -55,30 +55,27 @@ export interface WordPracticePageProps {
   onNavigate?: NavigateFn;
 }
 
-/** 各任务的标题与说明 */
+/** 各任务的标题与说明（说明只在有看不见的后果时才写） */
 function taskCopy(task: PracticeTask, stage: PracticeStage, isReview: boolean): { title: string; description: string } {
   if (stage === 'correction') {
-    return { title: '查一查：改正拼写', description: '对照标出的字母和拼读块，照着正确拼写再打一遍' };
+    return { title: '查一查：改正拼写', description: '' };
   }
   const retry = task.kind === 'retry' ? '再试一次 · ' : '';
   if (isReview) {
-    return {
-      title: `${retry}复习：听写`,
-      description: '隔了几天再考：只听发音、看中文，不看答案拼出来。答对下次复习会推后，答错明天再练',
-    };
+    return { title: `${retry}复习：听写`, description: '答对推迟下次复习，答错明天再练' };
   }
   if (task.kind === 'review') {
-    return { title: '当轮小测：听写', description: '这一轮学过的单词再听写一遍，看看是不是真的记住了' };
+    return { title: '当轮小测：听写', description: '' };
   }
   if (task.step === 1) {
     return stage === 'look'
-      ? { title: `${retry}第一步：看 · 说`, description: '看清每个拼读块，跟着发音读一读；记住后点「盖住，开始写」' }
-      : { title: `${retry}第一步：盖 · 写`, description: '单词盖住了，凭记忆拼出来（有字母格和拼读块提示）' };
+      ? { title: `${retry}第一步：看 · 说`, description: '' }
+      : { title: `${retry}第一步：盖 · 写`, description: '' };
   }
   if (task.step === 2) {
-    return { title: `${retry}第二步：再盖再写`, description: '隔了几个单词再写一次：只剩发音、音标和字母格' };
+    return { title: `${retry}第二步：再盖再写`, description: '' };
   }
-  return { title: `${retry}第三步：听写`, description: '只听发音、看中文，独立拼出整个单词' };
+  return { title: `${retry}第三步：听写`, description: '' };
 }
 
 /** 任务对应的提示等级：第一步 1 级、第二步 2 级、第三步与小测 3 级 */
@@ -709,11 +706,11 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
         {withStatus ? (
           <>
             <span className="text-sm font-medium">{progressLabel}</span>
-            <div className="mx-auto flex max-w-lg flex-1 items-center gap-3" title="已完成的练习 / 全部练习（答错重考会增加题数）">
+            <div className="mx-auto flex max-w-lg flex-1 items-center gap-3" title="答错重考会增加题数">
               <Progress value={progressPercent} className="h-2 flex-1 [&>[data-slot=progress-indicator]]:bg-brand" />
               <span className="text-sm tabular-nums">{doneCount} / {totalCount}</span>
             </div>
-            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground tabular-nums" title="有效练习时长（不含暂停）">
+            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground tabular-nums" title="不含暂停">
               <Clock className="size-4" />
               {formatTime(nowActive())}
             </span>
@@ -735,21 +732,21 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
         <div className="flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground [&_svg]:size-6">{icon}</div>
         <h2 className="text-lg font-semibold">{title}</h2>
-        <div className="max-w-md text-sm text-muted-foreground">{text}</div>
+        {text && <div className="max-w-md text-sm text-muted-foreground">{text}</div>}
         {action}
       </div>
     );
 
   // 加载状态
   if (loading) {
-    return centered(<Loader2 className="animate-spin" />, '正在初始化练习…', '马上就好');
+    return centered(<Loader2 className="animate-spin" />, '正在准备练习…', null);
   }
 
   // 错误状态
   if (error) {
     return centered(
       <TriangleAlert />,
-      '练习初始化失败',
+      '无法开始练习',
       error,
       <Button onClick={() => initialize()}>
         <RotateCw />
@@ -763,7 +760,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     return centered(
       <Flag />,
       '这次练习已经全部做完',
-      isCompleting ? '正在生成练习结果…' : '还没有提交完成，点下面的按钮查看结果。',
+      isCompleting ? '正在生成练习结果…' : null,
       !isCompleting && <Button onClick={handleCompletePractice}>查看练习结果</Button>
     );
   }
@@ -772,8 +769,8 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   if (!session || words.length === 0 || !currentWord) {
     return centered(
       <BookOpen />,
-      '没有找到练习内容',
-      '该日程没有安排单词练习',
+      '这个日程没有单词练习',
+      null,
       <Button variant="outline" onClick={() => onNavigate?.('home')}>
         返回首页
       </Button>
@@ -787,7 +784,6 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <PauseCircle className="size-12 text-muted-foreground" />
             <h2 className="text-lg font-semibold">练习已暂停</h2>
-            <p className="text-sm text-muted-foreground">暂停期间不计入练习时长，进度已保存</p>
             <Button onClick={handlePauseResume}>
               <Play />
               继续练习
@@ -840,12 +836,12 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       <AlertDialog open={showExitConfirm} onOpenChange={(open) => !open && handleCancelExit()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确定要退出练习吗？</AlertDialogTitle>
-            <AlertDialogDescription>退出后您的练习进度将会保存，可以稍后继续练习。</AlertDialogDescription>
+            <AlertDialogTitle>退出练习？</AlertDialogTitle>
+            <AlertDialogDescription>进度会保存，下次可以接着练。</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>继续练习</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmExit}>确认退出</AlertDialogAction>
+            <AlertDialogAction onClick={handleConfirmExit}>退出</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

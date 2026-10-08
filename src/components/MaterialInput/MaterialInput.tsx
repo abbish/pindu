@@ -159,7 +159,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        也可以把文件拖到文本框里：{SHOWN_EXTENSIONS}，不超过 {formatBytes(IMPORT_MAX_FILE_BYTES)}
+        可拖入文件：{SHOWN_EXTENSIONS}，不超过 {formatBytes(IMPORT_MAX_FILE_BYTES)}
       </p>
       {over && <p className="text-xs text-destructive">超过 {maxChars} 字符，删掉一些或分几次添加</p>}
       {warnings.length > 0 && (
@@ -173,7 +173,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
       {privacyNote && (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <Info className="mt-0.5 size-3.5 shrink-0" />
-          材料保存在本机；处理时会把文字发送给「设置 → AI 模型」里配置的模型。
+          文字会发送给所配置的 AI 模型处理
         </p>
       )}
     </div>

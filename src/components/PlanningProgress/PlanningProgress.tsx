@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle2, Info, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { jobErrorText, jobPercent } from '@/components/Jobs';
@@ -35,7 +35,7 @@ export const PlanningProgress: React.FC<PlanningProgressProps> = ({ job, onCance
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">{done ? '排序完成' : failed ? '排序失败' : 'AI 正在排学习顺序'}</div>
           <div className="truncate text-xs text-muted-foreground">
-            {job?.status === 'queued' ? '排队中，前面的 AI 任务完成后开始' : (job?.stage ?? '准备中…')}
+            {job?.status === 'queued' ? '排队中' : (job?.stage ?? '准备中…')}
             {job?.startedAt && ` · 已用 ${elapsed} 秒`}
           </div>
         </div>
@@ -46,12 +46,6 @@ export const PlanningProgress: React.FC<PlanningProgressProps> = ({ job, onCance
         )}
       </div>
       <Progress value={pct} className="h-1 [&>[data-slot=progress-indicator]]:bg-brand" />
-      {elapsed > 60 && !done && (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Info className="size-3.5" />
-          单词较多时需要 1–3 分钟，请耐心等待。
-        </p>
-      )}
       {failed && job && <p className="text-xs text-destructive">{jobErrorText(job)}</p>}
     </div>
   );

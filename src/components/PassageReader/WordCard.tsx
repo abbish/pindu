@@ -71,7 +71,7 @@ export const TargetWord: React.FC<TargetWordProps> = ({ text, target, active, wo
             )}
           </div>
         ) : (
-          <p className="mt-3 text-sm text-muted-foreground">这是手动输入的词，没有单词本里的拼读资料。</p>
+          <p className="mt-3 text-sm text-muted-foreground">手动输入的词，没有拼读资料</p>
         )}
       </PopoverContent>
     </Popover>

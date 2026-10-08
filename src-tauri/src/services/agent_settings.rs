@@ -69,7 +69,7 @@ impl AgentTaskKind {
             }
             AgentTaskKind::Examples => "在练习里补充或重新生成例句",
             AgentTaskKind::Plan => "新建计划时评估难度、安排学习顺序",
-            AgentTaskKind::Explain => "练习时的单词深度讲解（会缓存）；建议用能力强的模型",
+            AgentTaskKind::Explain => "练习时的单词深度讲解；建议用能力强的模型",
             AgentTaskKind::Tutor => "练习时向 AI 老师提问；回答要快，可用速度快、价格低的模型",
             AgentTaskKind::Passage => "写阅读短文、出阅读理解题、给开放题评分；建议用能力强的模型",
         }
