@@ -143,7 +143,8 @@ case "$TARGET" in
     ;;
   windows-x86_64)
     FLAGS+=(
-      --enable-mediafoundation --enable-encoder=h264_mf
+      # h264_mf 用 D3D11 硬件帧，必须同时开 d3d11va
+      --enable-mediafoundation --enable-d3d11va --enable-encoder=h264_mf
       --target-os=mingw32 --arch=x86_64 --cross-prefix=x86_64-w64-mingw32- --enable-cross-compile
       --extra-ldflags="-static -static-libgcc"
     )
