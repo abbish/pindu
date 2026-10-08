@@ -1,4 +1,4 @@
-# 安装「自然拼读」
+# 安装「拼读」
 
 本项目**不提供现成的安装包**：应用没有做开发者签名，请在自己的电脑上构建，一条命令即可生成安装包。
 整个过程大约是：装好工具（一次性）→ 下载源码 → 运行构建脚本 → 安装 → 在应用里填好 AI 服务的 API Key。
@@ -61,7 +61,7 @@ npm run package:check        # 或 ./build.sh --check / build.cmd --check
 
 | 系统 | 产物 | 安装方式 |
 |---|---|---|
-| macOS | `.dmg`、`.app` | 打开 dmg，把「自然拼读」拖进「应用程序」 |
+| macOS | `.dmg`、`.app` | 打开 dmg，把「拼读」拖进「应用程序」 |
 | Windows | `*-setup.exe` | 双击安装 |
 | Debian / Ubuntu | `.deb`、`.AppImage` | `sudo apt install ./xxx.deb`，或 `chmod +x xxx.AppImage` 后直接运行 |
 | Fedora 等 | `.rpm`、`.AppImage` | `sudo dnf install ./xxx.rpm` |
@@ -69,7 +69,7 @@ npm run package:check        # 或 ./build.sh --check / build.cmd --check
 在本机构建的安装包可以直接打开。**拷到别的电脑上使用**时，系统会因为没有签名而拦截：
 
 - **macOS**：提示“无法验证开发者”时，在「系统设置 → 隐私与安全性」底部点「仍要打开」；或执行一次
-  `xattr -dr com.apple.quarantine "/Applications/自然拼读.app"`。
+  `xattr -dr com.apple.quarantine "/Applications/拼读.app"`。
 - **Windows**：SmartScreen 提示时点「更多信息 → 仍要运行」。
 
 ## 5. 首次使用：配置 AI 与发音

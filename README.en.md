@@ -1,4 +1,4 @@
-# RedLark (自然拼读)
+# RedLark (拼读)
 
 [中文](./README.md) · [Install](./INSTALL.md) · [Contributing](./CONTRIBUTING.md) · [Security & privacy](./SECURITY.md)
 

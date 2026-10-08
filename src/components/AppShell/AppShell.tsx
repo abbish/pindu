@@ -111,10 +111,10 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ch
           <SidebarHeader>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton size="lg" tooltip="自然拼读" onClick={() => onNavigate('home')}>
+                <SidebarMenuButton size="lg" tooltip="拼读" onClick={() => onNavigate('home')}>
                   <img src="/logo-maskable.png" alt="" className="size-8 shrink-0 rounded-lg" />
                   <div className="grid flex-1 text-left leading-tight">
-                    <span className="truncate font-semibold">自然拼读</span>
+                    <span className="truncate font-semibold">拼读</span>
                     <span className="truncate text-xs text-muted-foreground">Pindu.app</span>
                   </div>
                 </SidebarMenuButton>

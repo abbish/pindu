@@ -375,9 +375,9 @@ const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 function printNextSteps(collected) {
   console.log(`\n${bold('如何安装')}`);
   if (platform === 'darwin') {
-    console.log(`  打开 .dmg，把「自然拼读」拖进「应用程序」。本机构建的应用可以直接打开。
+    console.log(`  打开 .dmg，把「拼读」拖进「应用程序」。本机构建的应用可以直接打开。
   拷到别的 Mac 上时，系统会提示“无法验证开发者”，在那台 Mac 上执行一次：
-    xattr -dr com.apple.quarantine "/Applications/自然拼读.app"
+    xattr -dr com.apple.quarantine "/Applications/拼读.app"
   或在「系统设置 → 隐私与安全性」底部点「仍要打开」。`);
   } else if (platform === 'win32') {
     console.log(`  双击 *-setup.exe 安装。拷到别的电脑时如果出现 SmartScreen 提示，
@@ -395,7 +395,7 @@ function printNextSteps(collected) {
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
-  console.log(bold(`自然拼读 ${version} · 一键构建`) + dim(`  (${platform}-${arch}, Node ${process.versions.node})`));
+  console.log(bold(`拼读 ${version} · 一键构建`) + dim(`  (${platform}-${arch}, Node ${process.versions.node})`));
 
   step('检查构建环境');
   const host = hostTriple();

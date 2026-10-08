@@ -1,4 +1,4 @@
-# 自然拼读（RedLark）
+# 拼读（RedLark）
 
 [English](./README.en.md) · [安装](./INSTALL.md) · [参与开发](./CONTRIBUTING.md) · [安全与隐私](./SECURITY.md)
 
