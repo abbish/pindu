@@ -439,8 +439,24 @@ pub async fn list_provider_remote_models(
     );
     // 目录读取失败（如 sidecar 缺失）不阻断：退回只读远端
     let catalog = match agent_paths(&app) {
-        Ok(paths) => catalog::load_catalog(&paths).await.ok(),
-        Err(_) => None,
+        Ok(paths) => catalog::load_catalog(&paths)
+            .await
+            .inspect_err(|e| {
+                logger.warn(
+                    "AI_MODELS",
+                    "读取模型目录失败，只用远端 /models",
+                    Some(&e.to_string()),
+                )
+            })
+            .ok(),
+        Err(e) => {
+            logger.warn(
+                "AI_MODELS",
+                "找不到 AI 助手程序，只用远端 /models",
+                Some(&e.to_string()),
+            );
+            None
+        }
     };
 
     match service

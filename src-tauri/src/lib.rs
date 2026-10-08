@@ -22,6 +22,34 @@ use handlers::*;
 use tauri::Manager;
 use types::common::StartupStatus;
 
+/// 后台任务的日志：提交（INFO）、成功（INFO）、取消（INFO）、失败（ERROR，附错误）。
+/// 进度更新也会走 emit，只在这几个状态各记一次（排队只在提交时出现一次，结束状态只出现一次）。
+fn log_job(app: &tauri::AppHandle, job: &jobs::Job) {
+    let Some(logger) = app.try_state::<logger::Logger>() else {
+        return;
+    };
+    let head = format!("[{}] {}「{}」", job.id, job.kind, job.title);
+    match job.status {
+        jobs::JobStatus::Queued => logger.info("JOB", &format!("{} 已提交", head)),
+        jobs::JobStatus::Running => {}
+        jobs::JobStatus::Succeeded => logger.info(
+            "JOB",
+            &format!(
+                "{} 完成（{} → {}）",
+                head,
+                job.started_at.as_deref().unwrap_or("—"),
+                job.finished_at.as_deref().unwrap_or("—")
+            ),
+        ),
+        jobs::JobStatus::Cancelled => logger.info("JOB", &format!("{} 已取消", head)),
+        jobs::JobStatus::Failed => logger.error(
+            "JOB",
+            &format!("{} 失败", head),
+            job.error.as_ref().map(|e| e.to_string()).as_deref(),
+        ),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
@@ -67,6 +95,7 @@ pub fn run() {
             let emitter = app.handle().clone();
             app.manage(jobs::Jobs::new(move |job| {
                 use tauri::Emitter;
+                log_job(&emitter, job);
                 let _ = emitter.emit(jobs::EVENT, job);
             }));
 
@@ -175,6 +204,7 @@ pub fn run() {
             get_system_logs,
             get_log_level,
             set_log_level,
+            write_client_log,
             open_log_folder,
             open_data_folder,
             get_startup_status,

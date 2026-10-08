@@ -198,8 +198,15 @@ pub async fn complete_practice_session(
                 "complete_practice_session",
                 true,
                 Some(&format!(
-                    "练习会话已完成，正确率: {:.1}%",
-                    result.word_accuracy * 100.0
+                    "计划 {} 日程 {}（{}）：{} 词，通过 {}，单词通过率 {:.1}%，步骤正确率 {:.1}%，有效时长 {}s",
+                    result.plan_id,
+                    result.schedule_id,
+                    result.schedule_date,
+                    result.total_words,
+                    result.passed_words,
+                    result.word_accuracy,
+                    result.step_accuracy,
+                    active_time
                 )),
             );
             Ok(result)

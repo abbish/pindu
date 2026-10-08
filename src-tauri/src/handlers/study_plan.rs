@@ -46,10 +46,6 @@ pub async fn get_study_plan(app: AppHandle, plan_id: i64) -> AppResult<StudyPlan
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
 
-    logger.info(
-        "PARAM_DEBUG",
-        &format!("get_study_plan received plan_id: {}", plan_id),
-    );
     logger.api_request("get_study_plan", Some(&format!("plan_id: {}", plan_id)));
 
     let service = StudyPlanService::new(

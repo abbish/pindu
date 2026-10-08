@@ -224,9 +224,10 @@ impl StatisticsRepository {
             let record_count = match row {
                 Ok(row) => row.get::<i64, _>("count"),
                 Err(_) => {
-                    self.logger.info(
-                        "TABLE_STATS_DEBUG",
+                    self.logger.debug(
+                        "STATISTICS",
                         &format!("Table {} does not exist or query failed", table_name),
+                        None,
                     );
                     0
                 }
@@ -286,9 +287,10 @@ impl StatisticsRepository {
             let record_count = match count_result {
                 Ok(row) => row.get::<i64, _>("count"),
                 Err(_) => {
-                    self.logger.info(
-                        "RESET_DEBUG",
+                    self.logger.debug(
+                        "RESET",
                         &format!("Table {} does not exist or is empty", table_name),
+                        None,
                     );
                     continue;
                 }
@@ -304,7 +306,7 @@ impl StatisticsRepository {
                         deleted_records += rows_affected;
                         affected_tables.push(table_name.to_string());
                         self.logger.info(
-                            "RESET_DEBUG",
+                            "RESET",
                             &format!("Deleted {} records from {}", rows_affected, table_name),
                         );
                     }
@@ -382,9 +384,10 @@ impl StatisticsRepository {
             let record_count = match count_result {
                 Ok(row) => row.get::<i64, _>("count"),
                 Err(_) => {
-                    self.logger.info(
-                        "RESET_DEBUG",
+                    self.logger.debug(
+                        "RESET",
                         &format!("Table {} does not exist or is empty", table_name),
+                        None,
                     );
                     continue;
                 }
@@ -400,7 +403,7 @@ impl StatisticsRepository {
                         deleted_records += rows_affected;
                         affected_tables.push(table_name.clone());
                         self.logger.info(
-                            "RESET_DEBUG",
+                            "RESET",
                             &format!("Deleted {} records from {}", rows_affected, table_name),
                         );
                     }

@@ -253,7 +253,9 @@ export const fooService = new FooService();
 - Rust：`cargo fmt`；`cargo check` / `cargo clippy` 零警告（verify 用 `-D warnings` 强制）；SQL 只在 repositories；错误用 `AppError` 变体而不是 `anyhow!` 字符串直接上抛。
 - 一个用户动作写多张表 → service 开事务、repository 写方法接收 `&mut SqliteConnection`（`.claude/skills/deliver-backend-rust/references/transaction-and-repository-conventions.md`）。不留 `TODO` 空实现，不吞 contract 写入的错误。
 - 错误 wire 形状固定为 `{code, message}`（`AppError` 手写 Serialize），见 IPC contract §4。
-- 日志：handler 入口 `api_request`，出口 `api_response`；日志参数里不得出现 API Key 明文。前端禁止 `console.log/info/debug`（ESLint `no-console` + 棘轮）。
+- 日志：handler 入口 `api_request`，出口 `api_response`（只读查询 `get_/list_/preview_/find_/diagnose_` 成功记 DEBUG，其余 INFO，失败一律 ERROR）；日志参数里不得出现 API Key 明文，长文本只记长度。前端禁止 `console.log/info/debug`（ESLint `no-console` + 棘轮）。
+  - 级别含义：ERROR = 操作失败、需要排查；WARN = 降级 / 自动恢复 / 结果可疑但继续（重试、校验退回、读设置失败用默认）；INFO = 用户动作与业务结果（改数据的命令、练习完成摘要、后台任务提交 / 结束、AI 运行开始 / 完成、启动与升级）；DEBUG = 排查明细（只读查询、SQL、发给模型的消息与工具结果）。
+  - 组件名大写（`API` `AGENT` `JOB` `DATABASE` `STARTUP` `TTS` …）；前端经 `apiClient.log` → `write_client_log` 写入，组件名带 `UI:` 前缀（界面崩溃、未捕获异常、没进到命令里的 IPC 错误）。不要留 `*_DEBUG` 之类的临时组件；吞掉的错误（`.ok()`、`let _ =`）若影响结果，至少记一条 WARN。
 - 敏感数据：API Key 不得出现在任何返回给前端的列表类型里（用 `*Safe` 类型 + `mask_api_key`）。
 
 ### 7.4 测试与验证

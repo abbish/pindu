@@ -1,7 +1,7 @@
 //! 系统命令：日志查看与级别、日志 / 数据文件夹、启动状态
 
 use crate::error::{AppError, AppResult};
-use crate::logger::Logger;
+use crate::logger::{LogLevel, Logger};
 use crate::services::log_settings::LogSettingsService;
 use crate::types::common::StartupStatus;
 use sqlx::SqlitePool;
@@ -43,6 +43,23 @@ pub async fn set_log_level(app: AppHandle, level: String) -> AppResult<String> {
         Err(e) => logger.api_response("set_log_level", false, Some(&e.to_string())),
     }
     result
+}
+
+/// 前端写一条日志（界面崩溃、未处理的异常、IPC 层错误），组件名统一加 `UI:` 前缀。
+/// 级别无法识别时按 ERROR；本命令自身不记 api_request，避免刷屏。
+#[tauri::command]
+pub async fn write_client_log(
+    app: AppHandle,
+    level: String,
+    component: String,
+    message: String,
+    details: Option<String>,
+) -> AppResult<()> {
+    let level = LogLevel::parse(&level).unwrap_or(LogLevel::Error);
+    let component = format!("UI:{}", component.trim());
+    app.state::<Logger>()
+        .log(level, &component, &message, details.as_deref());
+    Ok(())
 }
 
 /// 在访达 / 资源管理器中打开日志文件夹（反馈问题时附上日志）

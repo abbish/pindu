@@ -91,9 +91,10 @@ pub async fn add_word_to_book(
                 Arc::new(logger.inner().clone()),
             );
             if let Err(e) = wordbook_service.update_statistics(book_id).await {
-                logger.info(
+                logger.warn(
                     "WORD_BOOK_UPDATE",
-                    &format!("Failed to update word book stats: {}", e),
+                    "更新单词本统计失败",
+                    Some(&e.to_string()),
                 );
             }
 
@@ -199,9 +200,10 @@ pub async fn delete_words(app: AppHandle, book_id: Id, word_ids: Vec<Id>) -> App
                 Arc::new(logger.inner().clone()),
             );
             if let Err(e) = wordbook_service.update_statistics(book_id).await {
-                logger.info(
+                logger.warn(
                     "WORD_BOOK_UPDATE",
-                    &format!("Failed to update word book stats: {}", e),
+                    "更新单词本统计失败",
+                    Some(&e.to_string()),
                 );
             }
             logger.api_response(

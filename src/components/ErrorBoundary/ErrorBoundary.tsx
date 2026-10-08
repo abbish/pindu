@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { RotateCw, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { apiClient } from '@/api/client';
 
 interface Props {
   children: ReactNode;
@@ -26,6 +27,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    apiClient.log('ERROR', 'render', `界面出错：${error.message}`, `${error.stack ?? ''}\n组件栈：${errorInfo.componentStack ?? ''}`);
     this.setState({ error, errorInfo });
   }
 

@@ -226,14 +226,16 @@ impl Logger {
         self.log(LogLevel::Error, component, message, details);
     }
 
+    /// 命令进入：只读查询（页面加载、轮询）记 DEBUG，改数据的操作记 INFO
     pub fn api_request(&self, command: &str, args: Option<&str>) {
         let message = format!("API Request: {}", command);
-        self.log(LogLevel::Info, "API", &message, args);
+        self.log(success_level(command), "API", &message, args);
     }
 
+    /// 命令结束：成功同上分级；失败一律 ERROR
     pub fn api_response(&self, command: &str, success: bool, details: Option<&str>) {
         let level = if success {
-            LogLevel::Info
+            success_level(command)
         } else {
             LogLevel::Error
         };
@@ -259,6 +261,22 @@ impl Logger {
         };
         let message = format!("Database {}: {}", operation, table);
         self.log(level, "DATABASE", &message, details);
+    }
+}
+
+/// 只读查询命令（按命名约定：get_ / list_ / preview_ / find_ / diagnose_ 开头）。
+/// 首页、日历、计划卡会反复调用它们，记 INFO 会占满日志（实测约八成），所以成功时记 DEBUG。
+fn is_read_only(command: &str) -> bool {
+    ["get_", "list_", "preview_", "find_", "diagnose_"]
+        .iter()
+        .any(|p| command.starts_with(p))
+}
+
+fn success_level(command: &str) -> LogLevel {
+    if is_read_only(command) {
+        LogLevel::Debug
+    } else {
+        LogLevel::Info
     }
 }
 
@@ -444,6 +462,20 @@ mod tests {
         logger.set_min_level(LogLevel::Debug);
         clone.debug("TEST", "debug shown", None);
         assert!(logger.recent_lines(1).unwrap()[0].contains("debug shown"));
+    }
+
+    #[test]
+    fn read_only_commands_log_at_debug_but_failures_stay_errors() {
+        let logger = Logger::new(&temp_dir("api")).unwrap();
+        logger.set_min_level(LogLevel::Info);
+        logger.api_request("get_study_plans", None);
+        logger.api_response("get_study_plans", true, None);
+        logger.api_request("start_practice_session", None);
+        logger.api_response("get_study_plans", false, Some("boom"));
+        let lines = logger.recent_lines(10).unwrap();
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].contains("FAILED") && lines[0].contains("\"ERROR\""));
+        assert!(lines[1].contains("start_practice_session"));
     }
 
     #[test]
