@@ -20,9 +20,12 @@ import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
 import { studyService } from '@/services/studyService';
 import { wordBookService } from '@/services/wordbookService';
+import { toUserMessage } from '@/api/errors';
+import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { isJobActive } from '@/types/job';
 import { getStatusDisplay } from '@/types/study';
 import { PLAN_SCOPE_LABEL, PLAN_SCOPES } from '@/utils/passage';
-import type { GeneratePassageRequest, PassageWordCandidate, PickDifficulty, PickFrequency, PickStatus, PlanScopeCount, PlanWordScope } from '@/types/passage';
+import type { GeneratePassageRequest, PassageItemStatus, PassageWordCandidate, PickDifficulty, PickFrequency, PickStatus, PlanScopeCount, PlanWordScope } from '@/types/passage';
 import type { StudyPlanWithProgress, UnifiedStudyPlanStatus, WordBook } from '@/types';
 import type { NavigateFn, RouteParams } from '../navigation';
 
@@ -192,8 +195,9 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   const [planning, setPlanning] = useState(false);
   const [planItems, setPlanItems] = useState<EditablePlanItem[]>([]);
   const [planNote, setPlanNote] = useState('');
-  /** 逐篇生成的状态（null = 还没开始生成） */
-  const [statuses, setStatuses] = useState<PlanItemStatus[] | null>(null);
+  /** 写短文的后台任务：每次提交写哪几篇（规划里的序号）；重写失败的篇目是新的一次 */
+  const [runs, setRuns] = useState<{ jobId: string; indexes: number[] }[]>([]);
+  const jobs = useJobs();
   const [error, setError] = useState<{ title: string; message: string } | null>(null);
 
   useEffect(() => {
@@ -348,29 +352,48 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     if (!result.success) return setError({ title: '无法生成内容规划', message: result.error });
     setPlanItems(result.data.items.map((item) => ({ ...item, include: true })));
     setPlanNote(result.data.note);
-    setStatuses(null);
+    setRuns([]);
     setStep(3);
   };
 
-  /** 写规划里的第 i 篇 */
-  const writeItem = async (i: number, items: EditablePlanItem[]) => {
-    setStatuses((prev) => prev && prev.map((st, j) => (j === i ? { state: 'running' } : st)));
-    const { include: _include, ...item } = items[i];
-    const result = await passageService.generatePassage({ ...baseRequest(), planItem: item });
-    setStatuses((prev) => prev && prev.map((st, j) => (j === i ? (result.success ? { state: 'done', passageId: result.data.id } : { state: 'failed', error: result.error }) : st)));
-    return result.success ? result.data.id : null;
-  };
-
-  /** 按规划逐篇生成（只生成勾选的）；只生成一篇且成功时直接打开它 */
-  const generateAll = async () => {
-    const items = planItems;
-    const chosen = items.map((it, i) => (it.include ? i : -1)).filter((i) => i >= 0);
-    setStatuses(items.map((it) => (it.include ? { state: 'waiting' } : { state: 'skipped' })));
+  /** 提交后台任务写这几篇（规划里的序号）；离开页面也会继续 */
+  const write = async (indexes: number[]) => {
     setError(null);
-    let lastId: number | null = null;
-    for (const i of chosen) lastId = (await writeItem(i, items)) ?? lastId;
-    if (chosen.length === 1 && lastId != null) onNavigate?.('passage-detail', { passageId: lastId });
+    const items = indexes.map((i) => {
+      const { include: _include, ...item } = planItems[i];
+      return item;
+    });
+    const started = await passageService.startGeneration({ base: baseRequest(), items });
+    if (!started.success) return setError({ title: '无法开始写短文', message: started.error });
+    setRuns((prev) => [...prev, { jobId: started.data, indexes }]);
   };
+  const generateAll = () => write(planItems.map((it, i) => (it.include ? i : -1)).filter((i) => i >= 0));
+
+  /** 逐篇状态：从后台任务的 detail 读；后提交的覆盖先提交的（重写失败的篇目） */
+  const statuses: PlanItemStatus[] | null = useMemo(() => {
+    if (runs.length === 0) return null;
+    const out: PlanItemStatus[] = planItems.map(() => ({ state: 'skipped' }));
+    for (const run of runs) {
+      const job = jobs.find((j) => j.id === run.jobId);
+      const items = (job?.detail as { items?: PassageItemStatus[] } | null)?.items;
+      run.indexes.forEach((idx, k) => {
+        const item = items?.[k];
+        if (item?.state === 'done' && item.passageId) out[idx] = { state: 'done', passageId: item.passageId };
+        else if (item?.state === 'failed') out[idx] = { state: 'failed', error: toUserMessage(item.error ?? '') };
+        else if (item?.state === 'running') out[idx] = { state: 'running' };
+        else if (job && !isJobActive(job)) out[idx] = { state: 'failed', error: job.status === 'cancelled' ? '已停止' : '没有写成' };
+        else out[idx] = { state: 'waiting' };
+      });
+    }
+    return out;
+  }, [runs, jobs, planItems]);
+
+  // 只写一篇且写好了：还在这个页面时直接打开它
+  useOnJobFinished((job) => {
+    if (runs.length !== 1 || job.id !== runs[0].jobId || runs[0].indexes.length !== 1) return;
+    const ids = (job.result as { passageIds?: number[] } | null)?.passageIds ?? [];
+    if (ids.length === 1) onNavigate?.('passage-detail', { passageId: ids[0] });
+  });
 
   const selectedSources = [
     ...(books ?? []).filter((b) => bookIds.includes(b.id)).map((b) => ({ key: `b${b.id}`, icon: <BookOpen />, name: b.title })),
@@ -692,7 +715,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
               onReplan={(feedback) => makePlan(feedback)}
               statuses={statuses}
               onOpen={(passageId) => onNavigate?.('passage-detail', { passageId })}
-              onRetry={(i) => writeItem(i, planItems)}
+              onRetry={(i) => write([i])}
             />
           )}
         </>
@@ -707,7 +730,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
               取消
             </Button>
           ) : (
-            writing && <span className="text-sm text-muted-foreground">离开页面后会继续写，写好的在短文库里</span>
+            writing && <span className="text-sm text-muted-foreground">离开页面后继续</span>
           )}
           <div className="flex-1" />
           {step > 0 && statuses === null && (

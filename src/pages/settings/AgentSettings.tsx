@@ -13,6 +13,7 @@ import { PromptProfileSettings } from './PromptProfileSettings';
 const FOLLOW_DEFAULT = 'default';
 const BATCH_SIZES = [3, 5, 8, 10, 15, 20];
 const CONCURRENCIES = [1, 2, 3, 4, 5];
+const TIMEOUTS = [3, 5, 10, 15, 20, 30, 45, 60];
 
 const modelLabel = (m: AIModelConfig) => `${m.displayName}（${m.provider.displayName}）`;
 
@@ -127,6 +128,23 @@ export const AgentSettings: React.FC = () => {
               {CONCURRENCIES.map((n) => (
                 <SelectItem key={n} value={String(n)}>
                   {n} 个
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection title="AI 请求">
+        <SettingsRow label="每次最长等待">
+          <Select value={String(settings.timeoutMinutes)} disabled={saving} onValueChange={(v) => save({ timeoutMinutes: Number(v) })}>
+            <SelectTrigger className="w-32" aria-label="每次最长等待">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TIMEOUTS.map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n} 分钟
                 </SelectItem>
               ))}
             </SelectContent>

@@ -48,6 +48,10 @@ test('AI 服务常见失败给出处理办法', () => {
   assert.match(toUserMessage('外部服务错误: 豆包语音合成失败：401', 'EXTERNAL_SERVICE_ERROR'), /语音服务.*设置 → 语音合成/);
   assert.match(toUserMessage('外部服务错误: 429 Too Many Requests', 'EXTERNAL_SERVICE_ERROR'), /额度/);
   assert.match(toUserMessage('外部服务错误: request timed out', 'EXTERNAL_SERVICE_ERROR'), /超时/);
+  assert.equal(
+    toUserMessage('外部服务错误: agent 超时（15 分钟）未完成；stderr: ', 'EXTERNAL_SERVICE_ERROR'),
+    'AI 超过 15 分钟还没完成，可以到「设置 → AI 助手」调长每次最长等待',
+  );
   assert.equal(toUserMessage('外部服务错误: 模型没有提交例句', 'EXTERNAL_SERVICE_ERROR'), '模型没有提交例句');
   assert.equal(toUserMessage('外部服务错误: 无法启动 agent：spawn ENOENT', 'EXTERNAL_SERVICE_ERROR'), 'AI 助手没能启动，请重启应用后再试');
 });

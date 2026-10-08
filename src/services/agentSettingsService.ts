@@ -18,6 +18,8 @@ export interface AgentSettings {
   batchSize: number;
   /** 同时请求数（1–5） */
   maxConcurrency: number;
+  /** AI 一次任务的等待上限，分钟（3–60） */
+  timeoutMinutes: number;
 }
 
 /** 更新请求：只改传了的字段（对应 Rust `UpdateAgentSettingsRequest`） */
@@ -25,6 +27,7 @@ export interface UpdateAgentSettingsRequest {
   taskModels?: { task: string; modelId: number | null }[];
   batchSize?: number;
   maxConcurrency?: number;
+  timeoutMinutes?: number;
 }
 
 class AgentSettingsService extends BaseService {

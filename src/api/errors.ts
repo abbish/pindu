@@ -102,6 +102,8 @@ const describeExternal = (message: string): string => {
   if (/model.{0,40}(not found|does not exist|not exist)|no such model|模型不存在/.test(lower)) {
     return `找不到所选模型，请到${settings}检查模型名称`;
   }
+  const agentTimeout = /agent 超时（(\d+) 分钟）/.exec(message);
+  if (agentTimeout) return `AI 超过 ${agentTimeout[1]} 分钟还没完成，可以到「设置 → AI 助手」调长每次最长等待`;
   if (/timed? ?out|timeout|超时/.test(lower)) return `${service}响应超时，请稍后再试`;
   if (/error sending request|connect|dns|network|网络|unreachable|connection/.test(lower)) {
     return `连不上${service}，请检查网络后再试`;

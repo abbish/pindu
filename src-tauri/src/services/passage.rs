@@ -392,7 +392,7 @@ impl PassageService {
     // ==================== 写短文 ====================
 
     /// 校验请求里的通用字段（篇幅、场景、AI 挑词数与挑词条件）
-    fn validate_request(request: &GeneratePassageRequest) -> AppResult<()> {
+    pub(crate) fn validate_request(request: &GeneratePassageRequest) -> AppResult<()> {
         let length = request.length.as_deref().unwrap_or("standard");
         if !matches!(length, "short" | "standard" | "long") {
             return Err(AppError::ValidationError(format!(
@@ -1096,6 +1096,8 @@ pub(crate) mod tests {
             en: en.to_string(),
             zh: zh.to_string(),
             paragraph: false,
+            start_ms: None,
+            end_ms: None,
         })
         .collect()
     }

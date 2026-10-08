@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   Check,
@@ -29,13 +29,17 @@ import { useToast } from '@/components/Toast/ToastContainer';
 import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
 import { wordBookService } from '@/services/wordbookService';
+import { jobService } from '@/services/jobService';
+import { toUserMessage } from '@/api/errors';
+import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { isJobActive } from '@/types/job';
 import {
   lengthHint,
   mergeWithPrevious,
   renameItem,
   splitAt,
 } from '@/utils/passageImport';
-import type { ImportPreview, ImportPreviewItem } from '@/types/passage';
+import type { ImportPreview, ImportPreviewItem, PassageItemStatus } from '@/types/passage';
 import type { NavigateFn } from '@/navigation';
 
 export interface ImportPassagePageProps {
@@ -58,7 +62,6 @@ type DraftItem = ImportPreviewItem & { key: string };
 
 let keySeq = 0;
 const withKey = (it: ImportPreviewItem): DraftItem => ({ ...it, key: `i${++keySeq}` });
-const newRequestId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
 /**
  * 导入我的材料（passage-import B3）：粘贴或选文件 → 预览与拆分（清理、分句、拆篇由后端确定性完成，用户可合并 / 拆开 / 改标题）
@@ -84,9 +87,9 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
   const [aiKeyWords, setAiKeyWords] = useState(true);
 
   // ③ 导入
-  const [statuses, setStatuses] = useState<ItemState[] | null>(null);
-  const cancelled = useRef(false);
-  const currentRequest = useRef<string | null>(null);
+  /** 导入的后台任务：每次提交导入哪几篇（预览里的序号）；重试没导入的是新的一次 */
+  const [runs, setRuns] = useState<{ jobId: string; indexes: number[] }[]>([]);
+  const jobs = useJobs();
 
   useEffect(() => {
     wordBookService.getAllWordBooks().then((result) => {
@@ -95,14 +98,32 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
     });
   }, []);
 
-  // 离开页面时中止正在导入的那一篇（否则 AI 会在后台继续运行、消耗额度）
-  useEffect(
-    () => () => {
-      cancelled.current = true;
-      if (currentRequest.current) passageService.cancelImport(currentRequest.current);
-    },
-    []
-  );
+  /** 逐篇状态：从后台任务的 detail 读；后提交的覆盖先提交的 */
+  const statuses: ItemState[] | null = useMemo(() => {
+    if (runs.length === 0) return null;
+    const out: ItemState[] = items.map(() => ({ state: 'waiting' }));
+    for (const run of runs) {
+      const job = jobs.find((j) => j.id === run.jobId);
+      const detail = (job?.detail as { items?: PassageItemStatus[] } | null)?.items;
+      run.indexes.forEach((idx, k) => {
+        const item = detail?.[k];
+        if (item?.state === 'done' && item.passageId) out[idx] = { state: 'done', passageId: item.passageId, title: item.title ?? items[idx]?.title ?? '' };
+        else if (item?.state === 'failed') out[idx] = { state: 'failed', error: toUserMessage(item.error ?? '') };
+        else if (item?.state === 'running') out[idx] = { state: 'running' };
+        else if (job && !isJobActive(job)) out[idx] = job.status === 'cancelled' ? { state: 'cancelled' } : { state: 'failed', error: '没有导入' };
+        else out[idx] = { state: 'waiting' };
+      });
+    }
+    return out;
+  }, [runs, jobs, items]);
+
+  // 这一次全部导入成功：提示一次（失败的在列表里显示原因）
+  useOnJobFinished((job) => {
+    const run = runs.find((r) => r.jobId === job.id);
+    if (!run || job.status !== 'succeeded') return;
+    const ids = (job.result as { passageIds?: number[] } | null)?.passageIds ?? [];
+    if (ids.length === run.indexes.length) toast.showSuccess(`已导入 ${ids.length} 篇短文`);
+  });
 
   const hasMaterial = text.trim().length > 0;
   const running = statuses !== null && statuses.some((s) => s.state === 'running' || s.state === 'waiting');
@@ -120,55 +141,35 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
     setStep(1);
   };
 
-  /** 逐篇导入；只处理 indexes 指定的篇（重试失败的） */
+  /** 提交后台任务导入这几篇（预览里的序号）；离开页面也会继续 */
   const runImport = async (indexes: number[]) => {
     if (!preview) return;
-    cancelled.current = false;
-    setStatuses((prev) => {
-      const next: ItemState[] = prev ?? items.map(() => ({ state: 'waiting' }));
-      return next.map((s, i) => (indexes.includes(i) ? { state: 'waiting' } : s));
-    });
-    let imported = 0;
-    let failed = 0;
-    for (const i of indexes) {
-      if (cancelled.current) break;
-      const item = items[i];
-      const requestId = newRequestId();
-      currentRequest.current = requestId;
-      setStatuses((prev) => prev && prev.map((s, j) => (j === i ? { state: 'running' } : s)));
-      const result = await passageService.importPassage({
-        requestId,
-        title: item.title.trim() || null,
-        sentences: item.sentences,
+    const started = await passageService.startImport({
+      items: indexes.map((i) => ({
+        title: items[i].title.trim() || null,
+        sentences: items[i].sentences,
         sourceLabel: preview.sourceLabel,
         bookIds,
         aiKeyWords,
-      });
-      currentRequest.current = null;
-      // 取消与保存撞在一起时以结果为准：已存进库的就是已导入（否则重试会重复建一篇）
-      const state: ItemState = result.success
-        ? { state: 'done', passageId: result.data.id, title: result.data.title }
-        : cancelled.current
-          ? { state: 'cancelled' }
-          : { state: 'failed', error: result.error };
-      if (state.state === 'done') imported += 1;
-      if (state.state === 'failed') failed += 1;
-      setStatuses((prev) => prev && prev.map((s, j) => (j === i ? state : s)));
+      })),
+    });
+    if (!started.success) {
+      toast.showError('无法开始导入', started.error);
+      return;
     }
-    // 取消后没轮到的篇标为已取消
-    if (cancelled.current) setStatuses((prev) => prev && prev.map((s) => (s.state === 'waiting' ? { state: 'cancelled' } : s)));
-    else if (imported > 0 && failed === 0) toast.showSuccess(`已导入 ${imported} 篇短文`);
+    setRuns((prev) => [...prev, { jobId: started.data, indexes }]);
   };
 
   const startImport = () => {
     setStep(2);
-    setStatuses(items.map(() => ({ state: 'waiting' })));
     runImport(items.map((_, i) => i));
   };
 
   const cancelImport = async () => {
-    cancelled.current = true;
-    if (currentRequest.current) await passageService.cancelImport(currentRequest.current);
+    for (const run of runs) {
+      const job = jobs.find((j) => j.id === run.jobId);
+      if (job && isJobActive(job)) await jobService.cancel(job.id);
+    }
   };
 
   const doneItems = (statuses ?? []).flatMap((s) => (s.state === 'done' ? [s] : []));

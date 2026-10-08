@@ -13,6 +13,9 @@ import { useTheme, type ThemePreference } from '@/hooks/useTheme';
 import { updater, useUpdater } from '@/hooks/useUpdater';
 import { useCheckForUpdates } from '@/components/UpdateBanner';
 import { dataManagementService } from '../../services/dataManagementService';
+import { videoService } from '../../services/videoService';
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
+import type { MediaToolsStatus } from '@/types/video';
 
 const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }[] = [
   { value: 'system', label: '跟随系统', icon: Monitor },
@@ -21,7 +24,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }
 ];
 
 /**
- * 设置「通用」：外观（主题）、更新（版本与自动检查）与诊断（系统日志）。
+ * 设置「通用」：外观（主题）、更新（版本与自动检查）、视频组件（ffmpeg 位置）与诊断（系统日志）。
  */
 /** 日志记录级别：选中的级别及更严重的才写入日志 */
 const LOG_LEVELS = [
@@ -50,6 +53,17 @@ export const GeneralSettings: React.FC = () => {
   useEffect(() => {
     getVersion().then(setVersion, () => setVersion(''));
   }, []);
+  const [media, setMedia] = useState<MediaToolsStatus | null>(null);
+  useEffect(() => {
+    videoService.getMediaToolsStatus().then((r) => r.success && setMedia(r.data));
+  }, []);
+  const pickMediaDir = async () => {
+    const dir = await openFileDialog({ directory: true, multiple: false, title: '选择 ffmpeg 和 ffprobe 所在的文件夹' });
+    if (typeof dir !== 'string') return;
+    const result = await videoService.setFfmpegDir(dir);
+    if (result.success) setMedia(result.data);
+    else toast.showError('无法使用这个文件夹', result.error);
+  };
 
   return (
     <SettingsPanel title="通用">
@@ -85,6 +99,15 @@ export const GeneralSettings: React.FC = () => {
         </SettingsRow>
         <SettingsRow label="自动检查更新">
           <Switch checked={autoCheck} onCheckedChange={updater.setAutoCheck} aria-label="自动检查更新" />
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection title="视频组件">
+        <SettingsRow label="ffmpeg" description={media?.available ? (media.dir ?? undefined) : '没有找到'}>
+          <Button variant="outline" size="sm" onClick={pickMediaDir}>
+            <FolderOpen />
+            选择文件夹
+          </Button>
         </SettingsRow>
       </SettingsSection>
 

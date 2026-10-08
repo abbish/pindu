@@ -133,8 +133,8 @@ impl AgentConnection {
             if tokio::time::Instant::now() >= deadline {
                 self.notify("abort").await;
                 return Err(agent_error(format!(
-                    "agent 超时（{} 秒）未完成",
-                    timeout.as_secs()
+                    "agent 超时（{} 分钟）未完成",
+                    timeout.as_secs().div_ceil(60)
                 )));
             }
             match tokio::time::timeout(CANCEL_POLL, self.events.recv()).await {

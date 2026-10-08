@@ -17,41 +17,14 @@ use crate::types::passage::{
     PassageSentence, PassageSource, PassageTargetWord, PrepareImportRequest,
 };
 use sqlx::SqlitePool;
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 const MAX_SENTENCE_CHARS: usize = 1_000;
 const MAX_TITLE_CHARS: usize = 120;
 const MAX_LABEL_CHARS: usize = 200;
 const MAX_BOOKS: usize = 20;
 const MIN_WORDS: usize = 5;
-
-/// 正在进行的导入（requestId）；取消只对进行中的请求生效，结束时一并移除，不会越积越多
-static ACTIVE: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
-/// 进行中且被取消的导入
-static CANCELLED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
-
-fn is_cancelled(request_id: &str) -> bool {
-    CANCELLED
-        .lock()
-        .map(|set| set.contains(request_id))
-        .unwrap_or(false)
-}
-
-fn begin(request_id: &str) {
-    if let Ok(mut set) = ACTIVE.lock() {
-        set.insert(request_id.to_string());
-    }
-}
-
-fn forget(request_id: &str) {
-    if let Ok(mut set) = ACTIVE.lock() {
-        set.remove(request_id);
-    }
-    if let Ok(mut set) = CANCELLED.lock() {
-        set.remove(request_id);
-    }
-}
 
 fn cancelled_error() -> AppError {
     AppError::ValidationError("已取消导入".to_string())
@@ -77,39 +50,20 @@ impl PassageImportService {
         passage_import::prepare_request(request)
     }
 
-    /// 取消某篇导入（进行中的 AI 调用会中止；还没开始的会直接返回“已取消”）
-    pub fn cancel(request_id: &str) {
-        let request_id = request_id.trim();
-        let active = ACTIVE
-            .lock()
-            .map(|set| set.contains(request_id))
-            .unwrap_or(false);
-        if active {
-            if let Ok(mut set) = CANCELLED.lock() {
-                set.insert(request_id.to_string());
-            }
-        }
-    }
-
-    /// 导入一篇：校验 → 翻译（可取消）→ 目标词（单词本匹配 + AI 重点词）→ 保存
+    /// 导入一篇：校验 → 翻译（`cancelled` 为真时中止）→ 目标词（单词本匹配 + AI 重点词）→ 保存。
+    /// 由后台任务 `start_passage_import` 逐篇调用
     pub async fn import(
         &self,
         request: &ImportPassageRequest,
         paths: &AgentPaths,
+        cancelled: &(dyn Fn() -> bool + Sync),
     ) -> AppResult<Passage> {
-        let request_id = request.request_id.trim();
-        if request_id.is_empty() || request_id.len() > 100 {
-            return Err(AppError::ValidationError("导入请求缺少编号".to_string()));
-        }
-        begin(request_id);
-        let result = self.import_inner(request_id, request, paths).await;
-        forget(request_id);
-        result
+        self.import_inner(cancelled, request, paths).await
     }
 
     async fn import_inner(
         &self,
-        request_id: &str,
+        cancelled: &(dyn Fn() -> bool + Sync),
         request: &ImportPassageRequest,
         paths: &AgentPaths,
     ) -> AppResult<Passage> {
@@ -208,7 +162,7 @@ impl PassageImportService {
             });
         }
 
-        if is_cancelled(request_id) {
+        if cancelled() {
             return Err(cancelled_error());
         }
         let profile = PromptProfileService::load(&self.pool).await?;
@@ -225,17 +179,11 @@ impl PassageImportService {
                 key_words: request.ai_key_words,
             },
             &self.logger,
-            || is_cancelled(request_id),
+            cancelled,
         )
         .await
-        .map_err(|e| {
-            if is_cancelled(request_id) {
-                cancelled_error()
-            } else {
-                e
-            }
-        })?;
-        if is_cancelled(request_id) {
+        .map_err(|e| if cancelled() { cancelled_error() } else { e })?;
+        if cancelled() {
             return Err(cancelled_error());
         }
 
@@ -268,6 +216,8 @@ impl PassageImportService {
                 en: en.clone(),
                 zh,
                 paragraph: s.paragraph || i == 0,
+                start_ms: None,
+                end_ms: None,
             })
             .collect();
         let title = title
@@ -498,9 +448,8 @@ mod tests {
         }
     }
 
-    fn request(id: &str, sentences: &[&str]) -> ImportPassageRequest {
+    fn request(sentences: &[&str]) -> ImportPassageRequest {
         ImportPassageRequest {
-            request_id: id.into(),
             title: None,
             sentences: sentences
                 .iter()
@@ -520,35 +469,32 @@ mod tests {
         let pool = memory_pool().await;
         let service = PassageImportService::new(pool.clone(), test_logger());
         assert!(service
-            .import(&request("", &["Tom has a red kite today."]), &paths())
-            .await
-            .is_err());
-        assert!(service.import(&request("a", &[]), &paths()).await.is_err());
-        assert!(service
-            .import(&request("b", &["Hi there."]), &paths())
+            .import(&request(&[]), &paths(), &|| false)
             .await
             .is_err());
         assert!(service
-            .import(&request("c", &["Tom has a red kite.", "  "]), &paths())
+            .import(&request(&["Hi there."]), &paths(), &|| false)
             .await
             .is_err());
-        let mut missing_book = request("d", &["Tom has a red kite today."]);
+        assert!(service
+            .import(&request(&["Tom has a red kite.", "  "]), &paths(), &|| {
+                false
+            })
+            .await
+            .is_err());
+        let mut missing_book = request(&["Tom has a red kite today."]);
         missing_book.book_ids = vec![404];
-        assert!(service.import(&missing_book, &paths()).await.is_err());
+        assert!(service
+            .import(&missing_book, &paths(), &|| false)
+            .await
+            .is_err());
 
-        // 只取消进行中的导入：没开始（或已结束）的编号不会留在登记表里
-        PassageImportService::cancel("e");
-        assert!(!is_cancelled("e"));
-        // 进行中被取消：在调用模型之前就返回“已取消”，结束后标记清除
-        begin(" f ".trim());
-        PassageImportService::cancel(" f ");
-        assert!(is_cancelled("f"));
+        // 已取消：在调用模型之前就返回“已取消”
         let err = service
-            .import(&request("f", &["Tom has a red kite today."]), &paths())
+            .import(&request(&["Tom has a red kite today."]), &paths(), &|| true)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("已取消"), "{err}");
-        assert!(!is_cancelled("f"));
     }
 
     #[tokio::test]

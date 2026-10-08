@@ -22,6 +22,11 @@ import { PageError } from '@/components/PageError';
 import { SourceBadge } from '@/components/PassageList';
 import { QuestionSetDialog } from '@/components/QuestionSetDialog';
 import { ReadAloudPanel } from './passage-detail/ReadAloudPanel';
+import { ClipStudyPanel } from './passage-detail/ClipStudyPanel';
+import { videoService } from '@/services/videoService';
+import { useJob, useOnJobFinished } from '@/hooks/useJobs';
+import { jobErrorText } from '@/components/Jobs';
+import type { PassageVideo } from '@/types/video';
 import { NewWordsCard } from './passage-detail/NewWordsCard';
 import { usePageTitle } from '@/components/AppShell/pageTitle';
 import { useToast } from '@/components/Toast/ToastContainer';
@@ -100,6 +105,22 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const [passage, setPassage] = useState<Passage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState('text');
+  /** 正在出题的后台任务（这个页面开着时由页面提示结果） */
+  const [qsJobId, setQsJobId] = useState<string | null>(null);
+  const qsJob = useJob(qsJobId);
+  useOnJobFinished((job) => {
+    if (job.id !== qsJobId) return;
+    setQsJobId(null);
+    if (job.status === 'succeeded') {
+      const r = job.result as { name?: string; count?: number } | null;
+      toast.showSuccess(`已生成「${r?.name ?? '题组'}」`, `共 ${r?.count ?? 0} 题`);
+      load();
+    } else if (job.status === 'failed') {
+      toast.showError('无法生成题目', jobErrorText(job));
+    }
+  });
+  /** 视频短片：有就默认打开「视频」页签 */
+  const [clip, setClip] = useState<PassageVideo | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [setToDelete, setSetToDelete] = useState<QuestionSetSummary | null>(null);
@@ -154,6 +175,19 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!passageId) return;
+    let stale = false;
+    videoService.getPassageVideo(passageId).then((r) => {
+      if (stale || !r.success || !r.data) return;
+      setClip(r.data);
+      setTab('video');
+    });
+    return () => {
+      stale = true;
+    };
+  }, [passageId]);
 
   const startPractice = (setId: number, mode: PassageMode) => {
     onNavigate?.('passage-practice', { setId, mode });
@@ -283,6 +317,11 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
       <Tabs value={tab} onValueChange={setTab} className="gap-4">
         <TabsList>
+          {clip && (
+            <TabsTrigger value="video" className="px-3">
+              视频
+            </TabsTrigger>
+          )}
           <TabsTrigger value="text" className="px-3">
             原文
           </TabsTrigger>
@@ -290,6 +329,12 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             阅读理解<span className="text-xs text-muted-foreground tabular-nums">{passage.questionSets.length}</span>
           </TabsTrigger>
         </TabsList>
+
+        {clip && (
+          <TabsContent value="video">
+            <ClipStudyPanel video={clip} sentences={passage.sentences} onPractice={() => setTab('sets')} />
+          </TabsContent>
+        )}
 
         <TabsContent value="text">
           <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6">
@@ -346,6 +391,12 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         </TabsContent>
 
         <TabsContent value="sets">
+          {qsJob && (
+            <p className="mb-3 flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground" role="status">
+              <Loader2 className="size-4 animate-spin" />
+              正在出题…
+            </p>
+          )}
           {passage.questionSets.length === 0 ? (
             <EmptyState icon={<FileQuestion />} title="还没有阅读理解题">
               <Button onClick={() => setShowGenerate(true)}>
@@ -369,10 +420,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         passageId={passage.id}
         level={passage.level}
         existingSets={passage.questionSets.length}
-        onGenerated={(set) => {
-          toast.showSuccess(`已生成「${set.name}」`, `共 ${set.questions.length} 题`);
+        onStarted={(jobId) => {
+          setQsJobId(jobId);
           setTab('sets');
-          load();
         }}
       />
 

@@ -38,7 +38,7 @@ export const JobsSheet: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) 
       <SheetContent className="flex w-[420px] flex-col gap-0 sm:max-w-[420px]">
         <SheetHeader>
           <SheetTitle>后台任务</SheetTitle>
-          <SheetDescription>AI 分析、写短文、处理视频等耗时的工作都在这里，离开页面也会继续。</SheetDescription>
+          <SheetDescription className="sr-only">正在进行和已结束的任务</SheetDescription>
         </SheetHeader>
         <div className="flex items-center justify-between gap-2 px-4">
           <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>

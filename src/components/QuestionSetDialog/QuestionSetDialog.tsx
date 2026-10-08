@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { passageService } from '@/services/passageService';
 import { DIFFICULTY_LABEL } from '@/utils/passage';
-import type { QuestionDifficulty, QuestionSet, QuestionSetSpec } from '@/types/passage';
+import type { QuestionDifficulty, QuestionSetSpec } from '@/types/passage';
 
 export interface QuestionSetDialogProps {
   isOpen: boolean;
@@ -20,7 +20,7 @@ export interface QuestionSetDialogProps {
   /** 已有题组数（默认名称“第 N 套”） */
   existingSets: number;
   /** 生成成功（关闭弹窗后仍在生成的，完成时也会回调） */
-  onGenerated: (set: QuestionSet) => void;
+  onStarted: (jobId: string) => void;
 }
 
 type CountKey = 'cloze' | 'choice' | 'trueFalse' | 'open';
@@ -44,30 +44,29 @@ export function defaultSpec(level: string): QuestionSetSpec {
  * 生成阅读理解题（Dialog 表单）：每种题型的数量、难度、题组名称 → AI 出一套题。
  * 生成中可以关闭弹窗，完成后题组出现在「阅读理解」页签。
  */
-export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, onClose, passageId, level, existingSets, onGenerated }) => {
+export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, onClose, passageId, level, existingSets, onStarted }) => {
   const [spec, setSpec] = useState<QuestionSetSpec>(() => defaultSpec(level));
   const [name, setName] = useState('');
-  const [generating, setGenerating] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen && !generating) {
-      setSpec(defaultSpec(level));
-      setName('');
-      setError(null);
-    }
-    // 只在打开时重置；生成中重新打开保持进度
+    if (!isOpen) return;
+    setSpec(defaultSpec(level));
+    setName('');
+    setError(null);
   }, [isOpen, level]);
 
   const total = spec.cloze + spec.choice + spec.trueFalse + spec.open;
 
+  /** 出题是后台任务：提交后关闭弹窗，进度在页面和顶栏任务按钮里 */
   const generate = async () => {
-    setGenerating(true);
+    setStarting(true);
     setError(null);
-    const result = await passageService.generateQuestionSet({ passageId, name: name.trim() || null, spec });
-    setGenerating(false);
+    const result = await passageService.startQuestionSetGeneration({ passageId, name: name.trim() || null, spec });
+    setStarting(false);
     if (result.success) {
-      onGenerated(result.data);
+      onStarted(result.data);
       onClose();
     } else {
       setError(result.error);
@@ -86,7 +85,7 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
             {TYPES.map((t) => (
               <div key={t.key} className="flex items-center gap-4 px-3 py-2.5">
                 <div className="min-w-0 flex-1 text-sm font-medium">{t.label}</div>
-                <Select value={String(spec[t.key])} onValueChange={(v) => setSpec((s) => ({ ...s, [t.key]: Number(v) }))} disabled={generating}>
+                <Select value={String(spec[t.key])} onValueChange={(v) => setSpec((s) => ({ ...s, [t.key]: Number(v) }))} disabled={starting}>
                   <SelectTrigger className="w-24" aria-label={`${t.label}数量`}>
                     <SelectValue />
                   </SelectTrigger>
@@ -110,7 +109,7 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
               onValueChange={(v) => v && setSpec((s) => ({ ...s, difficulty: v as QuestionDifficulty }))}
               className="rounded-lg bg-muted p-0.5"
               aria-label="难度"
-              disabled={generating}
+              disabled={starting}
             >
               {DIFFICULTIES.map((d) => (
                 <ToggleGroupItem key={d} value={d} className="h-7 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm">
@@ -122,25 +121,19 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
 
           <div className="space-y-2">
             <Label htmlFor="qs-name">名称</Label>
-            <Input id="qs-name" value={name} maxLength={30} disabled={generating} onChange={(e) => setName(e.target.value)} placeholder={`第 ${existingSets + 1} 套`} />
+            <Input id="qs-name" value={name} maxLength={30} disabled={starting} onChange={(e) => setName(e.target.value)} placeholder={`第 ${existingSets + 1} 套`} />
           </div>
 
-          {generating && (
-            <p className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground" role="status">
-              <Loader2 className="size-4 animate-spin" />
-              正在出题，关闭窗口也会继续
-            </p>
-          )}
           {error && <InlineError title="无法生成题目">{error}</InlineError>}
         </div>
 
         <DialogFooter className="items-center">
           <span className="mr-auto text-xs text-muted-foreground">{total === 0 ? '至少选一种题型' : `共 ${total} 题`}</span>
           <Button variant="outline" onClick={onClose}>
-            {generating ? '关闭' : '取消'}
+            取消
           </Button>
-          <Button onClick={generate} disabled={generating || total === 0}>
-            {generating ? <Loader2 className="animate-spin" /> : <Sparkles />}
+          <Button onClick={generate} disabled={starting || total === 0}>
+            {starting ? <Loader2 className="animate-spin" /> : <Sparkles />}
             生成题目
           </Button>
         </DialogFooter>

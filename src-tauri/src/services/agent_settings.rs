@@ -8,7 +8,9 @@ use crate::repositories::settings_repository::SettingsRepository;
 use crate::types::ai_model::AIModelConfig;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// 使用 AI 的任务
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +88,17 @@ pub const DEFAULT_BATCH_SIZE: i64 = 5;
 /// 同时进行的请求数（服务商限流时调低）
 pub const CONCURRENCY_RANGE: std::ops::RangeInclusive<i64> = 1..=5;
 pub const DEFAULT_CONCURRENCY: i64 = 3;
+/// AI 一次任务最长等多久（分钟）：长视频规划、慢模型的深度思考都可能要好几分钟
+pub const TIMEOUT_MINUTES_RANGE: std::ops::RangeInclusive<i64> = 3..=60;
+pub const DEFAULT_TIMEOUT_MINUTES: i64 = 15;
+
+/// 当前生效的等待上限（分钟），启动时与每次保存设置后更新；agent 任务启动时读取
+static TIMEOUT_MINUTES: AtomicI64 = AtomicI64::new(DEFAULT_TIMEOUT_MINUTES);
+
+/// AI 任务的等待上限（「设置 → AI 助手」，所有 agent 任务共用）
+pub fn task_timeout() -> Duration {
+    Duration::from_secs(TIMEOUT_MINUTES.load(Ordering::Relaxed).max(1) as u64 * 60)
+}
 
 /// 一个任务的模型设置
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -105,6 +118,8 @@ pub struct AgentSettings {
     pub task_models: Vec<AgentTaskModel>,
     pub batch_size: i64,
     pub max_concurrency: i64,
+    /// AI 一次任务的等待上限（分钟）
+    pub timeout_minutes: i64,
 }
 
 /// 更新请求：只改传了的字段；`task_models` 里 model_id 为 None 表示恢复跟随默认模型
@@ -117,6 +132,8 @@ pub struct UpdateAgentSettingsRequest {
     pub batch_size: Option<i64>,
     #[serde(default)]
     pub max_concurrency: Option<i64>,
+    #[serde(default)]
+    pub timeout_minutes: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,7 +172,17 @@ impl AgentSettingsService {
             max_concurrency: int("agent.max_concurrency")
                 .filter(|v| CONCURRENCY_RANGE.contains(v))
                 .unwrap_or(DEFAULT_CONCURRENCY),
+            timeout_minutes: int("agent.timeout_minutes")
+                .filter(|v| TIMEOUT_MINUTES_RANGE.contains(v))
+                .unwrap_or(DEFAULT_TIMEOUT_MINUTES),
         })
+    }
+
+    /// 读设置并让等待上限生效（启动时调用）
+    pub async fn apply_timeout(&self) -> AppResult<()> {
+        let settings = self.get().await?;
+        TIMEOUT_MINUTES.store(settings.timeout_minutes, Ordering::Relaxed);
+        Ok(())
     }
 
     pub async fn update(&self, request: UpdateAgentSettingsRequest) -> AppResult<AgentSettings> {
@@ -163,6 +190,13 @@ impl AgentSettingsService {
             if !BATCH_SIZE_RANGE.contains(&v) {
                 return Err(AppError::ValidationError(
                     "每批词数需在 3–20 之间".to_string(),
+                ));
+            }
+        }
+        if let Some(v) = request.timeout_minutes {
+            if !TIMEOUT_MINUTES_RANGE.contains(&v) {
+                return Err(AppError::ValidationError(
+                    "等待上限需在 3–60 分钟之间".to_string(),
                 ));
             }
         }
@@ -192,8 +226,13 @@ impl AgentSettingsService {
         if let Some(v) = request.max_concurrency {
             SettingsRepository::set(&mut tx, "agent.max_concurrency", Some(&v.to_string())).await?;
         }
+        if let Some(v) = request.timeout_minutes {
+            SettingsRepository::set(&mut tx, "agent.timeout_minutes", Some(&v.to_string())).await?;
+        }
         tx.commit().await?;
-        self.get().await
+        let settings = self.get().await?;
+        TIMEOUT_MINUTES.store(settings.timeout_minutes, Ordering::Relaxed);
+        Ok(settings)
     }
 
     /// 某个任务要用的模型：显式指定 > 任务设置（模型不可用时忽略）> 默认模型
@@ -250,7 +289,8 @@ mod tests {
             .update(UpdateAgentSettingsRequest {
                 task_models: None,
                 batch_size: Some(50),
-                max_concurrency: None
+                max_concurrency: None,
+                timeout_minutes: None,
             })
             .await
             .is_err());
@@ -261,7 +301,8 @@ mod tests {
                     model_id: None
                 }]),
                 batch_size: None,
-                max_concurrency: None
+                max_concurrency: None,
+                timeout_minutes: None,
             })
             .await
             .is_err());
@@ -271,10 +312,31 @@ mod tests {
                 task_models: None,
                 batch_size: Some(8),
                 max_concurrency: Some(1),
+                timeout_minutes: None,
             })
             .await
             .unwrap();
         assert_eq!((s.batch_size, s.max_concurrency), (8, 1));
+        assert_eq!(s.timeout_minutes, DEFAULT_TIMEOUT_MINUTES);
+        assert!(service
+            .update(UpdateAgentSettingsRequest {
+                task_models: None,
+                batch_size: None,
+                max_concurrency: None,
+                timeout_minutes: Some(1),
+            })
+            .await
+            .is_err());
+        let s = service
+            .update(UpdateAgentSettingsRequest {
+                task_models: None,
+                batch_size: None,
+                max_concurrency: None,
+                timeout_minutes: Some(30),
+            })
+            .await
+            .unwrap();
+        assert_eq!(s.timeout_minutes, 30);
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["maxConcurrency"], 1);
         assert_eq!(v["taskModels"][0]["task"], "extract");

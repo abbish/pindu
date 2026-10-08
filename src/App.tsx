@@ -20,6 +20,8 @@ import { PassageLibraryPage } from './pages/PassageLibraryPage';
 import { CreatePassagePage } from './pages/CreatePassagePage';
 import { ImportPassagePage } from './pages/ImportPassagePage';
 import { PassageDetailPage } from './pages/PassageDetailPage';
+import { VideoLibraryPage } from './pages/VideoLibraryPage';
+import { VideoEditorPage } from './pages/video-editor/VideoEditorPage';
 import { FOCUS_PAGES, type NavigateFn, type PageKey, type Route, type RouteParams } from './navigation';
 
 function App() {
@@ -79,6 +81,10 @@ function App() {
             onNavigate={navigate}
           />
         );
+      case 'videos':
+        return <VideoLibraryPage onNavigate={navigate} />;
+      case 'video-editor':
+        return <VideoEditorPage key={route.params?.videoId} videoId={route.params?.videoId} onNavigate={navigate} />;
       case 'calendar':
         return <CalendarPage onNavigate={navigate} />;
       case 'settings':

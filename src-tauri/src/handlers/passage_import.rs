@@ -6,8 +6,8 @@ use crate::logger::Logger;
 use crate::services::passage_import;
 use crate::services::passage_import_service::PassageImportService;
 use crate::types::passage::{
-    AddPassageWordsRequest, ImportPassageRequest, ImportPreview, MaterialText, Passage,
-    PassageNewWord, PrepareImportRequest, ReadMaterialRequest,
+    AddPassageWordsRequest, ImportPreview, MaterialText, PassageNewWord, PrepareImportRequest,
+    ReadMaterialRequest,
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -70,37 +70,100 @@ pub async fn prepare_passage_import(
     finish(&logger, "prepare_passage_import", result)
 }
 
-/// 导入一篇（AI 翻译、起标题、估水平、挑重点词；原文不改）
+/// 导入几篇材料（后台任务）：逐篇 AI 翻译、起标题、估水平、挑重点词（原文不改）后保存；
+/// 逐篇状态在 job.detail.items，导入好的 id 在 job.result.passageIds。一篇失败不影响其余
 #[tauri::command]
-pub async fn import_passage(app: AppHandle, request: ImportPassageRequest) -> AppResult<Passage> {
+pub async fn start_passage_import(
+    app: AppHandle,
+    request: crate::types::passage::ImportPassagesRequest,
+) -> AppResult<String> {
+    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::types::passage::PassageItemStatus;
     let logger = app.state::<Logger>();
     logger.api_request(
-        "import_passage",
-        Some(&format!(
-            "request_id: {}, sentences: {}, books: {:?}, ai_key_words: {}",
-            request.request_id,
-            request.sentences.len(),
-            request.book_ids,
-            request.ai_key_words
-        )),
+        "start_passage_import",
+        Some(&format!("items: {}", request.items.len())),
     );
-    let result = match agent_paths(&app) {
-        Ok(paths) => service(&app).import(&request, &paths).await,
-        Err(e) => Err(e),
-    };
-    finish(&logger, "import_passage", result)
-}
-
-/// 取消某篇导入
-#[tauri::command]
-pub async fn cancel_passage_import(app: AppHandle, request_id: String) -> AppResult<()> {
-    let logger = app.state::<Logger>();
-    logger.api_request(
-        "cancel_passage_import",
-        Some(&format!("request_id: {}", request_id)),
-    );
-    PassageImportService::cancel(&request_id);
-    finish(&logger, "cancel_passage_import", Ok(()))
+    let result = async {
+        if request.items.is_empty() || request.items.len() > 20 {
+            return Err(AppError::ValidationError("一次导入 1–20 篇".to_string()));
+        }
+        let paths = agent_paths(&app)?;
+        let svc = service(&app);
+        let count = request.items.len();
+        let label = request.items[0].source_label.clone();
+        let spec = JobSpec {
+            kind: "passage_import",
+            title: if count == 1 {
+                format!("导入材料 · {label}")
+            } else {
+                format!("导入 {count} 篇材料 · {label}")
+            },
+            lane: Lane::Agent,
+            detached: true,
+            link: Some(JobLink::new("passages", serde_json::Value::Null)),
+        };
+        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
+            let mut items: Vec<PassageItemStatus> = (0..count)
+                .map(|_| PassageItemStatus {
+                    state: "waiting".into(),
+                    passage_id: None,
+                    title: None,
+                    error: None,
+                })
+                .collect();
+            let publish = |items: &[PassageItemStatus]| {
+                let done = items
+                    .iter()
+                    .filter(|i| i.state == "done" || i.state == "failed")
+                    .count();
+                ctx.progress(done as u64, count as u64);
+                ctx.detail(serde_json::json!({ "items": items }));
+            };
+            publish(&items);
+            let mut ids = Vec::new();
+            let cancelled = || ctx.is_cancelled();
+            for (i, item) in request.items.iter().enumerate() {
+                if ctx.is_cancelled() {
+                    break;
+                }
+                ctx.stage(format!("第 {}/{} 篇 · 翻译", i + 1, count));
+                items[i].state = "running".into();
+                publish(&items);
+                match svc.import(item, &paths, &cancelled).await {
+                    Ok(passage) => {
+                        items[i].state = "done".into();
+                        items[i].passage_id = Some(passage.id);
+                        items[i].title = Some(passage.title.clone());
+                        ids.push(passage.id);
+                    }
+                    Err(e) => {
+                        items[i].state = "failed".into();
+                        items[i].error = Some(e.to_string());
+                    }
+                }
+                publish(&items);
+            }
+            if ids.len() == 1 {
+                ctx.set_link(JobLink::new(
+                    "passage-detail",
+                    serde_json::json!({ "passageId": ids[0] }),
+                ));
+            }
+            if ids.is_empty() && !ctx.is_cancelled() {
+                let reason = items
+                    .iter()
+                    .find_map(|i| i.error.clone())
+                    .unwrap_or_else(|| "请再试一次".to_string());
+                return Err(AppError::ExternalServiceError(format!(
+                    "没有导入成功：{reason}"
+                )));
+            }
+            Ok(serde_json::json!({ "passageIds": ids }))
+        }))
+    }
+    .await;
+    finish(&logger, "start_passage_import", result)
 }
 
 /// 短文里还不在单词本的词（AI 挑的重点词）

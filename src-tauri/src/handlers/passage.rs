@@ -1,7 +1,7 @@
 //! 短文练习命令：生成短文、列表 / 详情 / 删除、开始与提交作答、开放题重新评分、统计
 
 use super::{agent_paths, finish};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::services::passage::PassageService;
 use crate::types::passage::{
@@ -69,20 +69,101 @@ pub async fn plan_passages(
     finish(&logger, "plan_passages", result)
 }
 
-/// 生成一篇短文（独立素材；AI 写短文，约 20–60 秒；阅读理解题另外生成）
+/// 按内容规划逐篇写短文（后台任务）：立即返回任务 id；逐篇状态在 job.detail.items，写好的短文 id 在 job.result.passageIds。
+/// 一篇失败不影响其余；全部失败时任务失败
 #[tauri::command]
-pub async fn generate_passage(
+pub async fn start_passage_generation(
     app: AppHandle,
-    request: GeneratePassageRequest,
-) -> AppResult<Passage> {
+    request: crate::types::passage::GeneratePassagesRequest,
+) -> AppResult<String> {
+    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::types::passage::PassageItemStatus;
     let logger = app.state::<Logger>();
-    logger.api_request("generate_passage", Some(&format!("{:?}", request)));
+    logger.api_request(
+        "start_passage_generation",
+        Some(&format!("items: {}", request.items.len())),
+    );
     let result = async {
+        if request.items.is_empty() || request.items.len() > 10 {
+            return Err(AppError::ValidationError("一次写 1–10 篇".to_string()));
+        }
+        PassageService::validate_request(&request.base)?;
         let paths = agent_paths(&app)?;
-        service(&app).generate(&request, &paths).await
+        let svc = service(&app);
+        let count = request.items.len();
+        let spec = JobSpec {
+            kind: "passage_generate",
+            title: if count == 1 {
+                format!("写短文 · {}", request.items[0].title)
+            } else {
+                format!("写 {count} 篇短文")
+            },
+            lane: Lane::Agent,
+            detached: true,
+            link: Some(JobLink::new("passages", serde_json::Value::Null)),
+        };
+        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
+            let mut items: Vec<PassageItemStatus> = (0..count)
+                .map(|_| PassageItemStatus {
+                    state: "waiting".into(),
+                    passage_id: None,
+                    title: None,
+                    error: None,
+                })
+                .collect();
+            let publish = |items: &[PassageItemStatus]| {
+                let done = items
+                    .iter()
+                    .filter(|i| i.state == "done" || i.state == "failed")
+                    .count();
+                ctx.progress(done as u64, count as u64);
+                ctx.detail(serde_json::json!({ "items": items }));
+            };
+            publish(&items);
+            let mut ids = Vec::new();
+            for (i, item) in request.items.iter().enumerate() {
+                if ctx.is_cancelled() {
+                    break;
+                }
+                ctx.stage(format!("第 {}/{} 篇 · {}", i + 1, count, item.title));
+                items[i].state = "running".into();
+                publish(&items);
+                let mut one = request.base.clone();
+                one.plan_item = Some(item.clone());
+                match svc.generate(&one, &paths).await {
+                    Ok(passage) => {
+                        items[i].state = "done".into();
+                        items[i].passage_id = Some(passage.id);
+                        items[i].title = Some(passage.title.clone());
+                        ids.push(passage.id);
+                    }
+                    Err(e) => {
+                        items[i].state = "failed".into();
+                        items[i].error = Some(e.to_string());
+                    }
+                }
+                publish(&items);
+            }
+            if ids.len() == 1 {
+                ctx.set_link(JobLink::new(
+                    "passage-detail",
+                    serde_json::json!({ "passageId": ids[0] }),
+                ));
+            }
+            if ids.is_empty() && !ctx.is_cancelled() {
+                let reason = items
+                    .iter()
+                    .find_map(|i| i.error.clone())
+                    .unwrap_or_else(|| "请再试一次".to_string());
+                return Err(AppError::ExternalServiceError(format!(
+                    "没有写成短文：{reason}"
+                )));
+            }
+            Ok(serde_json::json!({ "passageIds": ids }))
+        }))
     }
     .await;
-    finish(&logger, "generate_passage", result)
+    finish(&logger, "start_passage_generation", result)
 }
 
 /// 短文列表（可按来源单词本或计划筛选）
@@ -142,20 +223,40 @@ pub async fn delete_passage(app: AppHandle, passage_id: i64) -> AppResult<()> {
     finish(&logger, "delete_passage", result)
 }
 
-/// 为短文生成一套阅读理解题（AI，约 15–40 秒）
+/// 出一套阅读理解题（后台任务）：立即返回任务 id；完成后题组已保存，job.result 为 `{ setId, name, count }`
 #[tauri::command]
-pub async fn generate_question_set(
+pub async fn start_question_set_generation(
     app: AppHandle,
     request: GenerateQuestionSetRequest,
-) -> AppResult<QuestionSet> {
+) -> AppResult<String> {
+    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
     let logger = app.state::<Logger>();
-    logger.api_request("generate_question_set", Some(&format!("{:?}", request)));
+    logger.api_request(
+        "start_question_set_generation",
+        Some(&format!("{:?}", request)),
+    );
     let result = async {
         let paths = agent_paths(&app)?;
-        service(&app).generate_question_set(&request, &paths).await
+        let svc = service(&app);
+        let passage = svc.get(request.passage_id).await?;
+        let spec = JobSpec {
+            kind: "question_set",
+            title: format!("出阅读理解题 · {}", passage.title),
+            lane: Lane::Agent,
+            detached: true,
+            link: Some(JobLink::new(
+                "passage-detail",
+                serde_json::json!({ "passageId": request.passage_id }),
+            )),
+        };
+        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
+            ctx.stage("AI 正在出题");
+            let set = svc.generate_question_set(&request, &paths).await?;
+            Ok(serde_json::json!({ "setId": set.id, "name": set.name, "count": set.questions.len() }))
+        }))
     }
     .await;
-    finish(&logger, "generate_question_set", result)
+    finish(&logger, "start_question_set_generation", result)
 }
 
 /// 题组详情（题目、答案与选词填空词库）

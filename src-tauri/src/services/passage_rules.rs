@@ -311,6 +311,8 @@ pub fn passage_from_submission(
             en: text(s, "en").replace("[[", "").replace("]]", ""),
             zh: text(s, "zh"),
             paragraph: false,
+            start_ms: None,
+            end_ms: None,
         })
         .filter(|s| !s.en.is_empty())
         .collect();
@@ -899,6 +901,8 @@ mod tests {
             en: en.to_string(),
             zh: "中文".into(),
             paragraph: false,
+            start_ms: None,
+            end_ms: None,
         })
         .collect()
     }

@@ -48,8 +48,7 @@ impl JobStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lane {
     Agent,
-    /// ffmpeg 处理视频（视频库接入后使用）
-    #[allow(dead_code)]
+    /// ffmpeg 处理视频
     Media,
 }
 
@@ -358,6 +357,12 @@ impl JobCtx {
     pub fn detail(&self, detail: Value) {
         self.jobs
             .update(&self.id, false, |job| job.detail = Some(detail));
+    }
+
+    /// 改「打开」的跳转目标（结果生成后才知道，如新写的短文）
+    pub fn set_link(&self, link: JobLink) {
+        self.jobs
+            .update(&self.id, true, |job| job.link = Some(link));
     }
 
     /// 阶段说明（立即推送）

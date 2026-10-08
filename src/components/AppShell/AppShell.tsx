@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { BookOpen, CalendarDays, FileText, Home, ListChecks, Moon, Settings, Sun } from 'lucide-react';
+import { BookOpen, CalendarDays, Clapperboard, FileText, Home, ListChecks, Moon, Settings, Sun } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -61,6 +61,7 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
     items: [
       { key: 'wordbooks', label: '单词本', icon: BookOpen },
       { key: 'passages', label: '短文库', icon: FileText },
+      { key: 'videos', label: '视频库', icon: Clapperboard },
     ],
   },
 ];

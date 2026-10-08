@@ -39,7 +39,7 @@ fn word_count(text: &str) -> usize {
     words_of(text).count()
 }
 
-fn is_cjk(c: char) -> bool {
+pub(crate) fn is_cjk(c: char) -> bool {
     matches!(c as u32,
         0x3040..=0x30FF   // 假名
         | 0x3400..=0x4DBF
@@ -238,7 +238,7 @@ fn clean_subtitle(text: &str) -> Vec<String> {
 }
 
 /// 去掉 `<i>`、`<c.yellow>`、`{\an8}` 一类标签
-fn strip_tags(line: &str) -> String {
+pub(crate) fn strip_tags(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut depth_angle = false;
     let mut depth_curly = false;
@@ -256,7 +256,7 @@ fn strip_tags(line: &str) -> String {
 }
 
 /// 去掉字幕里的 [Music]、(laughs) 一类音效说明
-fn strip_brackets(line: &str) -> String {
+pub(crate) fn strip_brackets(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut depth = 0usize;
     for c in line.chars() {

@@ -31,6 +31,10 @@ export interface RouteParams {
    * returnTo：练完 / 退出回到哪里（默认短文详情）
    */
   'passage-practice': { setId: number; mode: PassageMode; planId?: number; returnTo?: PassagePracticeReturn };
+  /** 视频库 */
+  videos: undefined;
+  /** 剪辑编辑器：预览、调整切分规划（整窗页面） */
+  'video-editor': { videoId: number };
   calendar: undefined;
   settings: undefined;
 }
@@ -41,7 +45,7 @@ export type PageKey = keyof RouteParams;
 export type PassagePracticeReturn = 'plan-detail' | 'home' | 'calendar';
 
 /** 顶部导航中的一级页面 */
-export type TopLevelPage = 'home' | 'plans' | 'wordbooks' | 'passages' | 'calendar' | 'settings';
+export type TopLevelPage = 'home' | 'plans' | 'wordbooks' | 'passages' | 'videos' | 'calendar' | 'settings';
 
 /** 从计划进入素材页面时带上的计划（面包屑显示「计划 › 计划名 › …」） */
 export interface PlanContext {
@@ -59,7 +63,7 @@ export type Route = { [K in PageKey]: { page: K; params?: RouteParams[K] } }[Pag
  * 专注模式页面：不进 AppShell（侧边栏 + 顶栏），页面自绘整窗框架（如单词练习）。
  * 其余页面都由 AppShell 包裹，页面只渲染内容区。
  */
-export const FOCUS_PAGES: ReadonlySet<PageKey> = new Set<PageKey>(['word-practice', 'passage-practice']);
+export const FOCUS_PAGES: ReadonlySet<PageKey> = new Set<PageKey>(['word-practice', 'passage-practice', 'video-editor']);
 
 /** 页面所属的一级导航（侧边栏高亮） */
 export const TOP_LEVEL_OF: Record<PageKey, TopLevelPage> = {
@@ -76,6 +80,8 @@ export const TOP_LEVEL_OF: Record<PageKey, TopLevelPage> = {
   'import-passage': 'passages',
   'passage-detail': 'passages',
   'passage-practice': 'passages',
+  videos: 'videos',
+  'video-editor': 'videos',
   calendar: 'calendar',
   settings: 'settings',
 };
@@ -95,6 +101,8 @@ export const PAGE_TITLE: Record<PageKey, string> = {
   'import-passage': '从我的材料导入',
   'passage-detail': '短文详情',
   'passage-practice': '短文练习',
+  videos: '视频库',
+  'video-editor': '剪辑编辑器',
   calendar: '学习日历',
   settings: '设置',
 };

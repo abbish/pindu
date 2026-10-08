@@ -20,9 +20,6 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, Instant};
 
-/// 提词任务允许的最长时间（含模型思考）
-const EXTRACT_TIMEOUT: Duration = Duration::from_secs(300);
-
 /// 重点模式排除的基础功能词（与旧提示词的过滤清单一致）
 pub const FOCUS_STOPWORDS: &[&str] = &[
     "a", "an", "the", "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us",
@@ -138,31 +135,20 @@ pub async fn run_task(
     task: &AgentTask,
     model: &AIModelConfig,
     message: &str,
-    timeout: Duration,
     logger: &Logger,
     on_event: impl FnMut(&super::protocol::AgentEvent),
 ) -> AppResult<TaskRun> {
-    run_task_cancellable(
-        paths,
-        task,
-        model,
-        message,
-        timeout,
-        logger,
-        || false,
-        on_event,
-    )
-    .await
+    run_task_cancellable(paths, task, model, message, logger, || false, on_event).await
 }
 
-/// 同 `run_task`，可由 `cancelled()` 中止（如规划页的“取消”）
+/// 同 `run_task`，可由 `cancelled()` 中止（如规划页的“取消”）。
+/// 等待上限统一取「设置 → AI 助手」（`agent_settings::task_timeout`）
 #[allow(clippy::too_many_arguments)]
 pub async fn run_task_cancellable(
     paths: &AgentPaths,
     task: &AgentTask,
     model: &AIModelConfig,
     message: &str,
-    timeout: Duration,
     logger: &Logger,
     cancelled: impl Fn() -> bool,
     mut on_event: impl FnMut(&super::protocol::AgentEvent),
@@ -180,10 +166,15 @@ pub async fn run_task_cancellable(
     };
     let run = process
         .connection
-        .prompt_cancellable(message, timeout, cancelled, |event| {
-            log.event(event);
-            on_event(event);
-        })
+        .prompt_cancellable(
+            message,
+            crate::services::agent_settings::task_timeout(),
+            cancelled,
+            |event| {
+                log.event(event);
+                on_event(event);
+            },
+        )
         .await;
     let stats = process
         .connection
@@ -230,7 +221,6 @@ pub async fn extract_words(
             MessageTemplate::ExtractWords,
             &[("scene", scene), ("text", text)],
         ),
-        EXTRACT_TIMEOUT,
         logger,
         |_| {},
     )
@@ -352,7 +342,6 @@ pub async fn generate_words(
         &generate_words_task(profile),
         model,
         &message,
-        EXTRACT_TIMEOUT,
         logger,
         |_| {},
     )
@@ -386,9 +375,6 @@ pub async fn generate_words(
         unique_count: count,
     })
 }
-
-/// 单批拼读分析允许的最长时间（含校验失败后的重交）
-const PHONICS_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub fn phonics_batch_task(profile: &PromptProfile) -> AgentTask {
     AgentTask {
@@ -511,7 +497,6 @@ pub async fn analyze_phonics_batch(
                 ("hints", &context.hint_lines(words)),
             ],
         ),
-        PHONICS_TIMEOUT,
         logger,
         |_| {},
     )
@@ -551,9 +536,6 @@ pub async fn analyze_phonics_batch(
     );
     Ok(result)
 }
-
-/// 规划排序允许的最长时间（大词表时输出较长）
-const PLAN_TIMEOUT: Duration = Duration::from_secs(600);
 
 pub fn plan_order_task(profile: &PromptProfile) -> AgentTask {
     AgentTask {
@@ -620,7 +602,6 @@ pub async fn plan_word_order(
         &plan_order_task(profile),
         model,
         &message,
-        PLAN_TIMEOUT,
         logger,
         cancelled,
         |_| {
@@ -650,8 +631,6 @@ pub async fn plan_word_order(
 }
 
 // ==================== 例句补充 / 重新生成 ====================
-
-const EXAMPLES_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// 例句生成方式
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -802,7 +781,6 @@ pub async fn generate_examples(
         &word_examples_task(profile),
         model,
         &word_examples_message(word, mode, scene),
-        EXAMPLES_TIMEOUT,
         logger,
         |_| {},
     )
@@ -840,7 +818,6 @@ pub async fn generate_examples(
 
 // ==================== AI 老师答疑 ====================
 
-const TUTOR_TIMEOUT: Duration = Duration::from_secs(120);
 /// 带入上下文的最近对话轮数（学生 + 老师各算一条）
 pub const TUTOR_HISTORY_LIMIT: usize = 12;
 
@@ -919,7 +896,6 @@ pub async fn ask_tutor(
         &word_tutor_task(profile),
         model,
         message,
-        TUTOR_TIMEOUT,
         logger,
         |event| {
             if let AgentEvent::TextDelta(delta) = event {
@@ -941,8 +917,6 @@ pub async fn ask_tutor(
 }
 
 // ==================== 单词讲解 ====================
-
-const EXPLAIN_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// 单词深度讲解任务：无工具，直接输出 Markdown（展示用的长文本，不是结构化数据）
 pub fn explain_word_task(profile: &PromptProfile) -> AgentTask {
@@ -990,7 +964,6 @@ pub async fn explain_word(
         &explain_word_task(profile),
         model,
         &explain_word_message(word, scene),
-        EXPLAIN_TIMEOUT,
         logger,
         |event| {
             if let AgentEvent::TextDelta(delta) = event {
@@ -1023,12 +996,6 @@ pub async fn explain_word(
 }
 
 // ==================== 短文库 ====================
-
-/// 写短文允许的最长时间（含校验失败后的重交）
-const PASSAGE_TIMEOUT: Duration = Duration::from_secs(420);
-const PASSAGE_QUESTIONS_TIMEOUT: Duration = Duration::from_secs(300);
-const PASSAGE_GRADE_TIMEOUT: Duration = Duration::from_secs(120);
-const PASSAGE_TRANSLATE_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// 写短文：结构化结果经 submit_passage 交付
 pub fn passage_task(profile: &PromptProfile) -> AgentTask {
@@ -1177,7 +1144,6 @@ pub async fn plan_passages(
         &passage_plan_task(profile),
         model,
         &passage_plan_message(spec),
-        PASSAGE_QUESTIONS_TIMEOUT,
         logger,
         |_| {},
     )
@@ -1219,7 +1185,6 @@ pub async fn generate_passage(
         &passage_task(profile),
         model,
         &passage_message(spec),
-        PASSAGE_TIMEOUT,
         logger,
         |_| {},
     )
@@ -1301,7 +1266,6 @@ pub async fn generate_questions(
         &passage_questions_task(profile),
         model,
         &passage_questions_message(q),
-        PASSAGE_QUESTIONS_TIMEOUT,
         logger,
         |_| {},
     )
@@ -1375,7 +1339,6 @@ pub async fn grade_open_answers(
         &passage_grade_task(profile),
         model,
         &passage_grade_message(passage_text, answers),
-        PASSAGE_GRADE_TIMEOUT,
         logger,
         |_| {},
     )
@@ -1442,7 +1405,6 @@ pub async fn translate_passage(
         &passage_translate_task(profile),
         model,
         &passage_translate_message(spec),
-        PASSAGE_TRANSLATE_TIMEOUT,
         logger,
         cancelled,
         |_| {},
@@ -1472,6 +1434,147 @@ pub async fn translate_passage(
     Ok(translation)
 }
 
+/// 视频：规划场景切分，结构化结果经 submit_video_plan 交付；有修改意见时提示词多一节「按意见修改」
+pub fn video_plan_task(profile: &PromptProfile, feedback: bool) -> AgentTask {
+    AgentTask {
+        name: "video-plan",
+        system_prompt: prompts::system_prompt(
+            PromptTask::VideoPlan,
+            profile,
+            &[("feedback", if feedback { "yes" } else { "" })],
+        ),
+        tools: &["submit_video_plan"],
+        // 判断场景边界需要通读全片
+        default_thinking: "medium",
+    }
+}
+
+/// 当前规划的一段：第一条与最后一条字幕的编号（从 1 开始）、标题
+pub type CueRange = (usize, usize, String);
+
+/// 一次切分规划的请求
+pub struct VideoPlanSpec<'a> {
+    pub duration_ms: i64,
+    /// 这次要规划的字幕（长视频分块时只是其中一块）
+    pub cues: &'a [crate::services::subtitle::Cue],
+    /// `cues[0]` 在全片里的下标：编号 = offset + 1 起
+    pub offset: usize,
+    /// 全片字幕条数
+    pub total: usize,
+    /// 分块时：第几块、共几块（从 1 开始）
+    pub part: Option<(usize, usize)>,
+    pub requirements: &'a str,
+    pub min_seconds: i64,
+    pub max_seconds: i64,
+    /// 按意见修改：当前规划（每段的字幕编号范围与标题，编号从 1 开始）与意见
+    pub revise: Option<(&'a [CueRange], &'a str)>,
+}
+
+fn clock(ms: i64) -> String {
+    let s = ms.max(0) / 1000;
+    format!("{:02}:{:02}.{}", s / 60, s % 60, (ms.max(0) % 1000) / 100)
+}
+
+pub fn video_plan_message(spec: &VideoPlanSpec) -> String {
+    let cues: Vec<String> = spec
+        .cues
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let zh = if c.zh.is_empty() {
+                String::new()
+            } else {
+                format!(" / {}", c.zh)
+            };
+            format!(
+                "{}. [{}–{}] {}{}",
+                spec.offset + i + 1,
+                clock(c.start_ms),
+                clock(c.end_ms),
+                c.en,
+                zh
+            )
+        })
+        .collect();
+    let (current, feedback) = match spec.revise {
+        Some((ranges, feedback)) => (
+            ranges
+                .iter()
+                .enumerate()
+                .map(|(i, (first, last, title))| {
+                    format!("第 {} 段：{}–{} {}", i + 1, first, last, title)
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            feedback.trim().to_string(),
+        ),
+        None => (String::new(), String::new()),
+    };
+    let part = match (spec.part, spec.cues.first(), spec.cues.last()) {
+        (Some((k, n)), Some(first), Some(last)) => format!(
+            "第 {k}/{n} 部分：第 {}–{} 条字幕（{}–{}）",
+            spec.offset + 1,
+            spec.offset + spec.cues.len(),
+            clock(first.start_ms),
+            clock(last.end_ms)
+        ),
+        _ => String::new(),
+    };
+    prompts::message(
+        MessageTemplate::VideoPlan,
+        &[
+            ("duration", &clock(spec.duration_ms)),
+            ("count", &spec.total.to_string()),
+            ("part", &part),
+            ("min_seconds", &spec.min_seconds.to_string()),
+            ("max_seconds", &spec.max_seconds.to_string()),
+            ("requirements", spec.requirements.trim()),
+            ("current", &current),
+            ("feedback", &feedback),
+            ("cues", &cues.join("\n")),
+        ],
+    )
+}
+
+/// 规划切分（可取消），返回 submit_video_plan 的原始提交（由 services::video_plan 换算与校正）
+pub async fn plan_video(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &PromptProfile,
+    spec: &VideoPlanSpec<'_>,
+    logger: &Logger,
+    cancelled: impl Fn() -> bool,
+) -> AppResult<Value> {
+    let run = run_task_cancellable(
+        paths,
+        &video_plan_task(profile, spec.revise.is_some()),
+        model,
+        &video_plan_message(spec),
+        logger,
+        cancelled,
+        |_| {},
+    )
+    .await?;
+    let submission = run
+        .outcome
+        .last_successful_call("submit_video_plan")
+        .ok_or_else(|| {
+            AppError::ExternalServiceError("AI 没有交回切分规划，请再试一次".to_string())
+        })?;
+    logger.info(
+        "VIDEO",
+        &format!(
+            "video-plan 完成：model={} 字幕 {} 条 用时 {:.1}s tokens={} retries={}",
+            model.model_id,
+            spec.cues.len(),
+            run.elapsed.as_secs_f64(),
+            run.stats["tokens"]["total"],
+            run.outcome.retries
+        ),
+    );
+    Ok(submission.details.clone())
+}
+
 /// 设置页「测试」：经 agent 走真实调用链（含思考档 / 额外参数），返回模型回复与用量
 pub async fn test_model(
     paths: &AgentPaths,
@@ -1485,16 +1588,7 @@ pub async fn test_model(
         tools: &[],
         default_thinking: "low",
     };
-    let run = run_task(
-        paths,
-        &task,
-        model,
-        text,
-        Duration::from_secs(120),
-        logger,
-        |_| {},
-    )
-    .await?;
+    let run = run_task(paths, &task, model, text, logger, |_| {}).await?;
     let reply = run.outcome.text.trim().to_string();
     if reply.is_empty() {
         return Err(AppError::ExternalServiceError(

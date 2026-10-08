@@ -10,5 +10,8 @@
     <string>zh_CN</string>
     <string>en</string>
   </array>
+  <!-- 跟读练习录自己的声音（只在本机回放对比，不上传） -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>跟读练习时录下你的声音，用来和原声对比回放。录音只在本机，不会上传。</string>
 </dict>
 </plist>

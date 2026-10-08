@@ -12,6 +12,11 @@ pub struct PassageSentence {
     /// 本句开始一个新段落（导入的材料保留原文分段；AI 写的短文为 false）
     #[serde(default)]
     pub paragraph: bool,
+    /// 视频短片：这句在短片里的开始 / 结束（毫秒，相对短片开头）；文字短文为空
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_ms: Option<i64>,
 }
 
 /// 短文用到的目标词
@@ -310,6 +315,34 @@ pub struct PassagePlanItem {
     pub length: String,
 }
 
+/// 按内容规划写几篇短文（start_passage_generation，后台任务）
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratePassagesRequest {
+    /// 来源、必用词、挑词偏好、主题与篇幅（plan_item 由下面的 items 逐篇填入）
+    pub base: GeneratePassageRequest,
+    pub items: Vec<PassagePlanItem>,
+}
+
+/// 导入几篇材料（start_passage_import，后台任务），逐篇翻译保存
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPassagesRequest {
+    pub items: Vec<ImportPassageRequest>,
+}
+
+/// 写短文 / 导入任务里一篇的状态（job.detail.items）
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PassageItemStatus {
+    /// waiting / running / done / failed
+    pub state: String,
+    pub passage_id: Option<Id>,
+    /// 写好 / 导入好的短文标题
+    pub title: Option<String>,
+    pub error: Option<String>,
+}
+
 /// 内容规划：写几篇、每篇的构思和用词，以及给用户的说明
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -537,8 +570,6 @@ pub struct ImportPreview {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportPassageRequest {
-    /// 前端为每篇生成，用于取消
-    pub request_id: String,
     /// 为空时由 AI 起标题
     #[serde(default)]
     pub title: Option<String>,

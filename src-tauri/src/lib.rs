@@ -6,6 +6,8 @@ mod handlers;
 mod jobs;
 mod log_bridge;
 mod logger;
+mod media;
+mod media_server;
 #[cfg(target_os = "macos")]
 mod menu;
 mod repositories;
@@ -80,6 +82,7 @@ pub fn run() {
     });
     builder
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(handlers::PendingUpdate::default())
         .plugin(tauri_plugin_process::init())
@@ -140,6 +143,18 @@ pub fn run() {
                         // 日志级别：设置页保存的（未设置为默认）
                         services::log_settings::LogSettingsService::apply_saved(&pool, &logger)
                             .await;
+                        // AI 任务的等待上限（设置 → AI 助手）
+                        let agent_settings = services::agent_settings::AgentSettingsService::new(
+                            std::sync::Arc::new(pool.clone()),
+                            std::sync::Arc::new(logger.clone()),
+                        );
+                        if let Err(e) = agent_settings.apply_timeout().await {
+                            logger.warn(
+                                "AGENT",
+                                "读取 AI 等待上限失败，用默认值",
+                                Some(&e.to_string()),
+                            );
+                        }
                         app.manage(pool);
                         StartupStatus {
                             ok: true,
@@ -152,6 +167,16 @@ pub fn run() {
                     },
                 }
             });
+            // 视频库的文件经本机媒体服务给播放器（media_server.rs）；启动失败只影响视频播放
+            match tauri::async_runtime::block_on(media_server::MediaServer::start(
+                dirs.data.join("videos"),
+                logger.clone(),
+            )) {
+                Ok(server) => {
+                    app.manage(server);
+                }
+                Err(e) => logger.warn("APP", "无法启动视频播放服务", Some(&e.to_string())),
+            }
             app.manage(status);
             app.manage(logger);
             app.manage(dirs);
@@ -279,12 +304,12 @@ pub fn run() {
             get_passage_word_candidates,
             get_plan_scope_counts,
             plan_passages,
-            generate_passage,
+            start_passage_generation,
             get_passages,
             get_passage,
             get_passage_words,
             delete_passage,
-            generate_question_set,
+            start_question_set_generation,
             get_question_set,
             delete_question_set,
             start_passage_attempt,
@@ -298,8 +323,7 @@ pub fn run() {
             complete_plan_passage_reading,
             read_material_file,
             prepare_passage_import,
-            import_passage,
-            cancel_passage_import,
+            start_passage_import,
             get_passage_new_words,
             add_passage_words_to_book,
             get_tts_config,
@@ -308,7 +332,20 @@ pub fn run() {
             cancel_job,
             remove_job,
             clear_finished_jobs,
-            quit_app
+            quit_app,
+            get_media_tools_status,
+            set_ffmpeg_dir,
+            start_video_import,
+            get_videos,
+            get_video,
+            get_video_peaks,
+            rename_video,
+            save_video_plan,
+            start_video_plan,
+            start_video_processing,
+            get_passage_video,
+            delete_video,
+            delete_video_source
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

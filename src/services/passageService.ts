@@ -3,7 +3,8 @@ import type { ApiResult, Word } from '../types';
 import type {
   AddPassageWordsRequest,
   GeneratePassageRequest,
-  ImportPassageRequest,
+  GeneratePassagesRequest,
+  ImportPassagesRequest,
   ImportPreview,
   PassageNewWord,
   PassageOrigin,
@@ -53,9 +54,9 @@ class PassageService extends BaseService {
     );
   }
 
-  /** 写一篇短文（AI，约 30–60 秒） */
-  async generatePassage(request: GeneratePassageRequest): Promise<ApiResult<Passage>> {
-    return this.executeWithLoading(() => this.client.invoke<Passage>('generate_passage', { request }));
+  /** 按内容规划逐篇写短文（后台任务）：返回任务 id；逐篇状态在 job.detail.items，写好的 id 在 job.result.passageIds */
+  async startGeneration(request: GeneratePassagesRequest): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_passage_generation', { request }));
   }
 
   async getPassages(filter: { bookId?: number; planId?: number; origin?: PassageOrigin } = {}): Promise<ApiResult<PassageSummary[]>> {
@@ -75,9 +76,9 @@ class PassageService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<void>('delete_passage', { passageId }));
   }
 
-  /** 为短文出一套阅读理解题（AI，约 15–40 秒） */
-  async generateQuestionSet(request: GenerateQuestionSetRequest): Promise<ApiResult<QuestionSet>> {
-    return this.executeWithLoading(() => this.client.invoke<QuestionSet>('generate_question_set', { request }));
+  /** 出一套阅读理解题（后台任务）：返回任务 id；完成后题组已保存，job.result 为 { setId, name, count } */
+  async startQuestionSetGeneration(request: GenerateQuestionSetRequest): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_question_set_generation', { request }));
   }
 
   async getQuestionSet(setId: number): Promise<ApiResult<QuestionSet>> {
@@ -125,14 +126,9 @@ class PassageService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<ImportPreview>('prepare_passage_import', { request }));
   }
 
-  /** 导入一篇：AI 逐句翻译、起标题、估水平、挑重点词后保存（原文不改） */
-  async importPassage(request: ImportPassageRequest): Promise<ApiResult<Passage>> {
-    return this.executeWithLoading(() => this.client.invoke<Passage>('import_passage', { request }));
-  }
-
-  /** 取消正在导入的那一篇 */
-  async cancelImport(requestId: string): Promise<ApiResult<void>> {
-    return this.executeWithLoading(() => this.client.invoke<void>('cancel_passage_import', { requestId }));
+  /** 导入几篇材料（后台任务）：返回任务 id；逐篇状态在 job.detail.items，导入好的 id 在 job.result.passageIds */
+  async startImport(request: ImportPassagesRequest): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_passage_import', { request }));
   }
 
   /** 短文里还不在单词本的目标词 */

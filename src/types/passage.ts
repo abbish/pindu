@@ -6,6 +6,9 @@ export interface PassageSentence {
   zh: string;
   /** 本句开始新段落（导入的材料保留原文分段；AI 写的短文为 false） */
   paragraph: boolean;
+  /** 视频短片：这句在短片里的开始 / 结束（毫秒）；文字短文没有 */
+  startMs?: number;
+  endMs?: number;
 }
 
 /** 短文用到的目标词 */
@@ -445,7 +448,6 @@ export interface ImportPreview {
 /** 导入一篇：AI 逐句翻译（原文不改）后保存 */
 export interface ImportPassageRequest {
   /** 前端生成，用于取消 */
-  requestId: string;
   /** 为空时 AI 起标题 */
   title?: string | null;
   /** 最多 120 句 */
@@ -483,4 +485,25 @@ export interface MaterialText {
   /** 文件名 */
   sourceLabel: string;
   warnings: string[];
+}
+
+/** 导入几篇材料（后台任务） */
+export interface ImportPassagesRequest {
+  items: ImportPassageRequest[];
+}
+
+/** 按内容规划写几篇短文（后台任务） */
+export interface GeneratePassagesRequest {
+  /** 来源、必用词、挑词偏好、主题与篇幅（planItem 不填） */
+  base: GeneratePassageRequest;
+  items: PassagePlanItem[];
+}
+
+/** 写短文任务里一篇的状态（job.detail.items） */
+export interface PassageItemStatus {
+  state: 'waiting' | 'running' | 'done' | 'failed';
+  passageId: number | null;
+  /** 写好 / 导入好的短文标题 */
+  title: string | null;
+  error: string | null;
 }
