@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 const AGENT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(AGENT_DIR, '..', 'src-tauri', 'binaries');
-const BUN = join(AGENT_DIR, 'node_modules', '.bin', process.platform === 'win32' ? 'bun.exe' : 'bun');
+// bun 的 npm 包在所有系统上都把可执行文件放在 bin/bun.exe（.bin 下在 Windows 只有 .cmd 启动脚本，不能直接执行）
+const BUN = join(AGENT_DIR, 'node_modules', 'bun', 'bin', 'bun.exe');
 const ENTRY = join(AGENT_DIR, 'src', 'host.ts');
 
 /** Rust target triple → bun 编译目标 */

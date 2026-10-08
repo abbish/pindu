@@ -84,7 +84,7 @@ pub fn run() {
                     }
                     Err(failure) => StartupStatus {
                         ok: false,
-                        failure: Some(failure),
+                        failure: Some(*failure),
                     },
                 }
             });

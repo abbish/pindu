@@ -23,18 +23,21 @@ const BACKUP_PREFIX: &str = "vocabulary-before-v";
 pub const KEEP_BACKUPS: usize = 5;
 
 /// 打开并升级数据库；成功返回连接池
-pub async fn open_database(dirs: &AppDirs, logger: &Logger) -> Result<SqlitePool, StartupFailure> {
+pub async fn open_database(
+    dirs: &AppDirs,
+    logger: &Logger,
+) -> Result<SqlitePool, Box<StartupFailure>> {
     let data_dir = dirs.data.display().to_string();
     let fail = |kind: &str, title: &str, message: String, detail: Option<String>| {
         logger.error("STARTUP", title, Some(&format!("{message} {detail:?}")));
-        StartupFailure {
+        Box::new(StartupFailure {
             kind: kind.to_string(),
             title: title.to_string(),
             message,
             detail,
             data_dir: data_dir.clone(),
             backup_dir: dirs.backups_dir().display().to_string(),
-        }
+        })
     };
 
     let db_path = dirs.db_path();
