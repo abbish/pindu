@@ -6,6 +6,8 @@
 
 支持 macOS、Windows、Linux。学习数据保存在本机的 SQLite 数据库里，不需要注册账号；AI 和发音用你自己的 API Key。
 
+![拼读首页：学习计划、学习统计与热力图](docs/screenshots/home.png)
+
 ## 功能
 
 **单词本**
@@ -33,6 +35,15 @@
 
 - 学习者档案：小学生 / 中学生 / 成人预设，可调英语水平、讲解语言、音标体系、讲解详略和答疑风格。
 - 不同任务可以用不同模型；浅色 / 深色 / 跟随系统主题。
+
+## 截图
+
+<table>
+  <tr><td width="50%"><img src="docs/screenshots/practice.png" alt="单词练习：拼读拆分、音标、例句"><br>单词练习：拼读拆分、音标、例句</td><td width="50%"><img src="docs/screenshots/passage.png" alt="短文阅读：目标词高亮、逐句朗读"><br>短文阅读：目标词高亮、逐句朗读</td></tr>
+  <tr><td width="50%"><img src="docs/screenshots/plan.png" alt="计划详情：记忆等级与每日日程"><br>计划详情：记忆等级与每日日程</td><td width="50%"><img src="docs/screenshots/wordbook.png" alt="单词本：AI 拼读分析结果"><br>单词本：AI 拼读分析结果</td></tr>
+</table>
+
+截图使用的是演示数据。
 
 ## 安装
 

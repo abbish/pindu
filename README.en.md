@@ -8,6 +8,8 @@ Runs on macOS, Windows and Linux. Your learning data lives in a local SQLite dat
 
 > The user interface is currently in Simplified Chinese only.
 
+![Pindu.app home: study plans, statistics and activity heatmap](docs/screenshots/home.png)
+
 ## Features
 
 **Word books**
@@ -35,6 +37,15 @@ Runs on macOS, Windows and Linux. Your learning data lives in a local SQLite dat
 
 - Learner profile presets (primary school / secondary school / adult) with adjustable English level, explanation language, phonetic notation, detail level and tutor style.
 - Different models per task; light / dark / system theme.
+
+## Screenshots
+
+<table>
+  <tr><td width="50%"><img src="docs/screenshots/practice.png" alt="Word practice: phonics chunks, IPA, examples"><br>Word practice: phonics chunks, IPA, examples</td><td width="50%"><img src="docs/screenshots/passage.png" alt="Passage reader: target words, read-aloud"><br>Passage reader: target words, read-aloud</td></tr>
+  <tr><td width="50%"><img src="docs/screenshots/plan.png" alt="Plan detail: memory levels and daily schedule"><br>Plan detail: memory levels and daily schedule</td><td width="50%"><img src="docs/screenshots/wordbook.png" alt="Word book: AI phonics analysis"><br>Word book: AI phonics analysis</td></tr>
+</table>
+
+Screenshots use demo data.
 
 ## Install
 
