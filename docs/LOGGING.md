@@ -20,7 +20,7 @@
 | **ERROR** | 操作失败，需要有人排查 | 命令失败（`API … FAILED`）、AI 模型报错或进程失败、后台任务失败、界面崩溃、启动或升级失败 |
 | **WARN** | 没失败，但走了降级或自动恢复，或者结果可疑 | AI 自动重试、结果没过校验被退回、没交出结果、读设置失败改用默认值、统计没更新上、找不到可选组件 |
 | **INFO** | 用户动作与业务结果（改数据的命令一条一行） | 改数据的命令、练习完成摘要、计划状态变化、后台任务提交 / 结束、AI 运行开始 / 完成、清空数据、启动 |
-| **DEBUG** | 排查明细，平时不需要 | 只读查询（`get_` / `list_` / `preview_` / `find_` / `diagnose_`）、SQL、发给模型的消息、工具返回的结果 |
+| **DEBUG** | 排查明细，平时不需要 | 只读查询（`get_` / `list_` / `preview_` / `find_` / `diagnose_`）、高频命令（`submit_step_result`、`save_practice_progress`、`text_to_speech`，见 `logger.rs::HIGH_FREQUENCY`）、SQL、发给模型的消息、工具返回的结果 |
 
 用户可以在「设置 → 通用 → 诊断」选择最低级别。选 WARN 时 INFO 和 DEBUG 都不写，所以**排查问题必需的信息不能只放在 DEBUG**。
 

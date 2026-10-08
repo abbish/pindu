@@ -251,7 +251,7 @@ fn install_panic_hook(logger: &Logger) {
             std::backtrace::Backtrace::force_capture()
         );
         let line = json!({
-            "timestamp": chrono::Local::now().to_rfc3339(),
+            "timestamp": crate::logger::timestamp(),
             "level": "ERROR",
             "component": "PANIC",
             "message": format!("程序崩溃：{}（{}）", reason, location),

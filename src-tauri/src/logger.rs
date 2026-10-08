@@ -85,6 +85,11 @@ impl LogLevel {
     }
 }
 
+/// 日志行的时间：本地时间 + 时区偏移（给人看的诊断输出；时间规范的豁免只在本文件，见 scripts/check-time.py）
+pub(crate) fn timestamp() -> String {
+    Local::now().to_rfc3339()
+}
+
 /// 一条日志（写入前的结构）
 pub struct Record<'a> {
     pub level: LogLevel,
@@ -98,7 +103,7 @@ pub struct Record<'a> {
 impl Record<'_> {
     fn to_line(&self) -> String {
         let mut entry = json!({
-            "timestamp": Local::now().to_rfc3339(),
+            "timestamp": timestamp(),
             "level": self.level.as_str(),
             "component": self.component,
             "message": self.message,
@@ -399,8 +404,15 @@ fn is_read_only(command: &str) -> bool {
         .any(|p| command.starts_with(p))
 }
 
+/// 高频命令：练习中每一步、每次自动保存、每次朗读都会调用，成功时只记 DEBUG（结果汇总在完成练习那一条）
+const HIGH_FREQUENCY: [&str; 3] = [
+    "submit_step_result",
+    "save_practice_progress",
+    "text_to_speech",
+];
+
 fn success_level(command: &str) -> LogLevel {
-    if is_read_only(command) {
+    if is_read_only(command) || HIGH_FREQUENCY.contains(&command) {
         LogLevel::Debug
     } else {
         LogLevel::Info
@@ -598,6 +610,7 @@ mod tests {
         logger.api_request("get_study_plans", None);
         logger.api_response("get_study_plans", true, None);
         logger.api_request("start_practice_session", None);
+        logger.api_request("submit_step_result", None);
         logger.api_response("get_study_plans", false, Some("boom"));
         let lines = logger.recent_lines(10).unwrap();
         assert_eq!(lines.len(), 2, "{lines:?}");

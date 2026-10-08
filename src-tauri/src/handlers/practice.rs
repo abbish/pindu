@@ -198,7 +198,7 @@ pub async fn complete_practice_session(
                 "complete_practice_session",
                 true,
                 Some(&format!(
-                    "计划 {} 日程 {}（{}）：{} 词，通过 {}，单词通过率 {:.1}%，步骤正确率 {:.1}%，有效时长 {}s",
+                    "计划 {} 日程 {}（{}）：{} 词，通过 {}，单词通过率 {:.1}%，步骤正确率 {:.1}%，有效时长 {:.0}s",
                     result.plan_id,
                     result.schedule_id,
                     result.schedule_date,
@@ -206,7 +206,7 @@ pub async fn complete_practice_session(
                     result.passed_words,
                     result.word_accuracy,
                     result.step_accuracy,
-                    active_time
+                    active_time as f64 / 1000.0
                 )),
             );
             Ok(result)

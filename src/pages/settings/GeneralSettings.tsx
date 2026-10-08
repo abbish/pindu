@@ -113,7 +113,7 @@ export const GeneralSettings: React.FC = () => {
 
       <SettingsSection title="诊断">
         <SettingsRow label="记录级别" description="只记录选中级别及更严重的日志">
-          <Select value={logLevel ?? undefined} onValueChange={changeLogLevel} disabled={logLevel === null}>
+          <Select value={logLevel ?? ''} onValueChange={changeLogLevel} disabled={logLevel === null}>
             <SelectTrigger className="w-36" aria-label="日志记录级别">
               <SelectValue />
             </SelectTrigger>
