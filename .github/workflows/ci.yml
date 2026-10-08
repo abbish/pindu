@@ -39,7 +39,16 @@ jobs:
       - name: Install Linux system libraries
         run: |
           sudo apt update
-          sudo apt install -y build-essential pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev
+          sudo apt install -y build-essential pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev meson ninja-build nasm zlib1g-dev
+
+      # 随应用分发的 ffmpeg（tauri externalBin，编译检查也需要它存在）：源码与构建脚本不变时直接复用
+      - name: Cache ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: |
+            src-tauri/binaries/ffmpeg-*
+            src-tauri/binaries/ffprobe-*
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg/**') }}
 
       - name: Install dependencies
         run: |

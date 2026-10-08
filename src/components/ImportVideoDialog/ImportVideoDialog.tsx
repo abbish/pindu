@@ -134,8 +134,8 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
               <div>
-                <div className="font-medium">还没有视频组件</div>
-                <p className="mt-0.5 text-muted-foreground">需要 ffmpeg 和 ffprobe 所在的文件夹</p>
+                <div className="font-medium">视频组件不可用</div>
+                <p className="mt-0.5 text-muted-foreground">重新安装应用，或选择 ffmpeg 所在的文件夹</p>
               </div>
             </div>
             <Button variant="outline" size="sm" onClick={pickToolsDir}>

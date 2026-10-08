@@ -11,7 +11,34 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Windows 版 ffmpeg 在 Linux 上用 mingw 交叉编译（scripts/ffmpeg/），给 Windows 构建使用
+  ffmpeg-windows:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache ffmpeg
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-out
+          key: ffmpeg-windows-${{ hashFiles('scripts/ffmpeg/**') }}
+
+      - name: Build ffmpeg for Windows
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt update
+          sudo apt install -y mingw-w64 meson ninja-build nasm pkg-config
+          node scripts/ffmpeg/prepare.mjs --out ffmpeg-out x86_64-pc-windows-msvc
+
+      - name: Upload ffmpeg
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-windows
+          path: ffmpeg-out/windows-x86_64/ff*.exe
+
   build:
+    needs: ffmpeg-windows
     strategy:
       fail-fast: false
       matrix:
@@ -49,7 +76,33 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt update
-          sudo apt install -y build-essential curl wget file pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev rpm
+          sudo apt install -y build-essential curl wget file pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev rpm meson ninja-build nasm zlib1g-dev
+
+      # 随应用分发的 ffmpeg：macOS / Linux 在本机编译（scripts/ffmpeg/），Windows 用 ffmpeg-windows 任务的产物
+      - name: Install ffmpeg build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install meson ninja pkgconf nasm
+
+      - name: Cache ffmpeg
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            src-tauri/binaries/ffmpeg-*
+            src-tauri/binaries/ffprobe-*
+          key: ffmpeg-${{ matrix.name }}-${{ hashFiles('scripts/ffmpeg/**') }}
+
+      - name: Download ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-windows
+          path: ffmpeg-prebuilt/windows-x86_64
+
+      - name: Use prebuilt ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "FFMPEG_PREBUILT_DIR=$GITHUB_WORKSPACE/ffmpeg-prebuilt" >> "$GITHUB_ENV"
 
       - name: Check build environment
         run: node scripts/package.mjs --check ${{ matrix.args }}

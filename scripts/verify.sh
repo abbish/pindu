@@ -71,6 +71,10 @@ if [[ -d agent/node_modules ]]; then
   if ! ls src-tauri/binaries/redlark-agent-* >/dev/null 2>&1; then
     run "agent sidecar 编译（缺失时）" node agent/scripts/build.mjs
   fi
+  # 随应用分发的 ffmpeg 同样是 externalBin：缺失时编译当前平台的（scripts/ffmpeg/）
+  if ! ls src-tauri/binaries/ffmpeg-* >/dev/null 2>&1; then
+    run "ffmpeg 编译（缺失时）" node scripts/ffmpeg/prepare.mjs
+  fi
 else
   skip "agent 检查" "agent/node_modules 未安装（npm run agent:install）"
 fi

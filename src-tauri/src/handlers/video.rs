@@ -23,13 +23,13 @@ const MAX_SUBTITLE_BYTES: u64 = 5 * 1024 * 1024;
 pub(crate) async fn media_tools(app: &AppHandle) -> AppResult<Option<MediaTools>> {
     let pool = app.state::<SqlitePool>();
     let setting = SettingsRepository::get(pool.inner(), media::FFMPEG_DIR_SETTING).await?;
-    Ok(media::locate(setting.as_deref(), &crate::app_paths::dirs(app).data).await)
+    Ok(media::locate(setting.as_deref()).await)
 }
 
 async fn require_tools(app: &AppHandle) -> AppResult<MediaTools> {
     media_tools(app).await?.ok_or_else(|| {
         AppError::ValidationError(
-            "还没有视频组件（ffmpeg），请在「设置 → 通用 → 视频组件」里选择它所在的文件夹"
+            "视频组件不可用，请重新安装应用，或在「设置 → 通用 → 视频组件」里选择 ffmpeg 所在的文件夹"
                 .to_string(),
         )
     })

@@ -1,6 +1,7 @@
 //! ffmpeg / ffprobe 调用（唯一 owner）：定位程序、读取视频信息、转码与精确切分（带进度与取消）、波形峰值、缩略图。
 //!
-//! - 程序位置：设置里指定的目录（`media.ffmpeg_dir`）> 数据目录 `tools/ffmpeg/` > 开发版环境变量 `PINDU_FFMPEG_DIR` > PATH 与常见安装位置。
+//! - 程序位置：设置里指定的目录（`media.ffmpeg_dir`）> 随应用自带的（与主程序同目录，tauri externalBin；构建见 `scripts/ffmpeg/`）
+//!   > 开发版环境变量 `PINDU_FFMPEG_DIR` > PATH 与常见安装位置。
 //! - 输出统一为浏览器能直接播放的 H.264 + AAC mp4（`+faststart`）：优先硬件编码器（macOS videotoolbox、Windows Media Foundation），
 //!   没有时用 libopenh264 / libx264。切分重新编码，起止精确到帧（流复制只能切在关键帧上）。
 
@@ -41,6 +42,8 @@ pub struct MediaToolsStatus {
     pub dir: Option<String>,
     pub version: Option<String>,
     pub encoder: Option<String>,
+    /// 用的是随应用自带的
+    pub built_in: bool,
 }
 
 /// ffprobe 读出的视频信息
@@ -75,13 +78,23 @@ fn exe(name: &str) -> String {
     }
 }
 
+/// 随应用自带的 ffmpeg 所在目录：tauri 把 externalBin 放在主程序旁边（macOS 为 Contents/MacOS）
+fn built_in_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(Path::to_path_buf)
+}
+
 /// 按优先级列出可能放 ffmpeg 的目录
-fn candidate_dirs(setting: Option<&str>, data_dir: &Path) -> Vec<PathBuf> {
+fn candidate_dirs(setting: Option<&str>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(dir) = setting.filter(|d| !d.trim().is_empty()) {
         dirs.push(PathBuf::from(dir.trim()));
     }
-    dirs.push(data_dir.join("tools").join("ffmpeg"));
+    if let Some(dir) = built_in_dir() {
+        dirs.push(dir);
+    }
     #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var("PINDU_FFMPEG_DIR") {
         dirs.push(PathBuf::from(dir));
@@ -96,8 +109,8 @@ fn candidate_dirs(setting: Option<&str>, data_dir: &Path) -> Vec<PathBuf> {
 }
 
 /// 按优先级找 ffmpeg
-pub async fn locate(setting: Option<&str>, data_dir: &Path) -> Option<MediaTools> {
-    for dir in candidate_dirs(setting, data_dir) {
+pub async fn locate(setting: Option<&str>) -> Option<MediaTools> {
+    for dir in candidate_dirs(setting) {
         if let Some(tools) = locate_in(&dir).await {
             return Some(tools);
         }
@@ -154,6 +167,7 @@ impl MediaTools {
                 dir: None,
                 version: None,
                 encoder: None,
+                built_in: false,
             };
         };
         let version = Command::new(&tools.ffmpeg)
@@ -168,9 +182,11 @@ impl MediaTools {
                     .next()
                     .map(str::to_string)
             });
+        let dir = tools.ffmpeg.parent().map(Path::to_path_buf);
         MediaToolsStatus {
             available: true,
-            dir: tools.ffmpeg.parent().map(|d| d.display().to_string()),
+            built_in: dir.is_some() && dir == built_in_dir(),
+            dir: dir.map(|d| d.display().to_string()),
             version,
             encoder: Some(tools.encoder.clone()),
         }
@@ -534,14 +550,12 @@ mod tests {
     }
 
     #[test]
-    fn candidate_dirs_put_setting_first() {
-        let dirs = candidate_dirs(Some("/custom"), Path::new("/data"));
+    fn candidate_dirs_put_setting_first_then_built_in() {
+        let built_in = built_in_dir().unwrap();
+        let dirs = candidate_dirs(Some("/custom"));
         assert_eq!(dirs[0], PathBuf::from("/custom"));
-        assert_eq!(dirs[1], PathBuf::from("/data/tools/ffmpeg"));
-        assert_eq!(
-            candidate_dirs(Some("  "), Path::new("/data"))[0],
-            PathBuf::from("/data/tools/ffmpeg")
-        );
+        assert_eq!(dirs[1], built_in);
+        assert_eq!(candidate_dirs(Some("  "))[0], built_in);
     }
 
     #[test]

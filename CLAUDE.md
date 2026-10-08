@@ -16,7 +16,7 @@
 | 后端 | Rust 2021 · tokio · sqlx 0.8 (sqlite, migrate, WAL) · reqwest · thiserror |
 | AI | 内置 agent harness：pi（`@earendil-works/pi-coding-agent`，RPC sidecar `redlark-agent`，bun 单文件） |
 | 数据库 | SQLite，文件 `<数据目录>/vocabulary.db`（数据目录见 §4.3），启动时先备份再跑 `src-tauri/migrations/` |
-| 外部服务 | OpenAI 兼容接口（AI 分析/规划；种子提供商 OpenRouter / MiniMax / 月之暗面 / DeepSeek，均可「同步模型」读取 `/models`）· 火山引擎豆包语音合成（TTS，V3 HTTP 单向流式，带 SHA256 音频缓存）· ffmpeg / ffprobe（视频库：转码、精确切分、波形与缩略图；独立程序，不随应用分发，位置见 `media.rs`） |
+| 外部服务 | OpenAI 兼容接口（AI 分析/规划；种子提供商 OpenRouter / MiniMax / 月之暗面 / DeepSeek，均可「同步模型」读取 `/models`）· 火山引擎豆包语音合成（TTS，V3 HTTP 单向流式，带 SHA256 音频缓存）· ffmpeg / ffprobe（视频库：转码、精确切分、波形与缩略图；最小 LGPL 版随应用分发（externalBin，`scripts/ffmpeg/` 从固定版本源码编译），查找顺序见 `media.rs`） |
 | 包管理 | npm（有 package-lock.json）+ Cargo |
 
 **无路由库、无状态管理库**；UI 组件库唯一选择是 shadcn/ui（源码在 `src/components/ui/`，不引入其它 UI 库）。页面切换靠 `App.tsx` 里的 `currentPage` 字符串 + `pageParams`。
@@ -27,6 +27,7 @@
 npm install                 # 前端依赖
 npm run tauri:dev           # 开发（前端 :1420 + Rust 热编译）
 npm run agent:install       # agent sidecar 依赖（首次）；npm run agent:build 编译当前平台 sidecar（tauri:dev / package 会自动编译）
+npm run ffmpeg:prepare      # 随应用分发的 ffmpeg / ffprobe（缺失时下载固定版本源码并编译，需 meson / ninja / pkg-config，x86 需 nasm；tauri:dev / verify / package 会自动调用）
 npm run agent:test          # agent sidecar 工具测试（node --test）
 npm run verify              # 一键验证（= bash scripts/verify.sh）：SQL/IPC/类型/CSS 变量静态检查 + tsc + lint 棘轮 + 前端测试 + cargo fmt/check/clippy/test
 npm run type-check          # tsc --noEmit
@@ -88,6 +89,7 @@ src-tauri/
 ├── migrations/001..059_*.sql
 └── src/test_support.rs       #[cfg(test)] 内存库与种子数据
 
+scripts/ffmpeg/                随应用分发的 ffmpeg：sources.json（版本 + sha256）、build.sh（LGPL 最小配置）、prepare.mjs（→ src-tauri/binaries/ffmpeg-<triple>）；许可证随包分发在 src-tauri/licenses/
 agent/                        agent sidecar 的 TS 工程（pi RPC + RedLark 工具）；npm run agent:build → src-tauri/binaries/redlark-agent-<triple>（不入库）
 docs/agent-harness/           agent harness 设计（DESIGN.md）与决策记录（DECISIONS.md，追加式）
 docs/RELEASING.md             发版流程：改版本号 → docs/releases/vX.md 更新说明 → 打标签 → CI 出 Release 草稿（安装包 + 更新包 + latest.json）→ 发布；更新签名私钥管理

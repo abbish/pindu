@@ -107,6 +107,8 @@ export interface MediaToolsStatus {
   dir: string | null;
   version: string | null;
   encoder: string | null;
+  /** 用的是随应用自带的 */
+  builtIn: boolean;
 }
 
 /** AI 规划切分（后台任务） */

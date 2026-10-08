@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 一键构建安装包（跨平台，零依赖，只用 Node 内置模块）。
-// 应用不签名发布，用户在自己的机器上构建：检查环境 → 安装依赖 → 编译 agent sidecar → tauri build → 收集产物到 release/。
+// 应用不签名发布，用户在自己的机器上构建：检查环境 → 安装依赖 → 编译 agent sidecar → 准备 ffmpeg → tauri build → 收集产物到 release/。
 // 开发者本地打包工具，用法见 CONTRIBUTING.md「本地打包」，或 node scripts/package.mjs --help
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
@@ -275,7 +275,33 @@ function checkEnvironment(triple, rustTargets, bundles) {
     else warn('没有检测到 WebView2 运行时（Windows 10/11 通常自带；安装包会在需要时自动下载）');
   }
 
+  checkFfmpeg(triple, rustTargets, ok, bad, warn);
+
   return { problems, warnings };
+}
+
+/** 随应用分发的 ffmpeg（scripts/ffmpeg/）：已编好或有 CI 产物时不需要编译工具 */
+function checkFfmpeg(triple, rustTargets, ok, bad, warn) {
+  const ext = triple.includes('windows') ? '.exe' : '';
+  const built = [triple, ...rustTargets].every((t) =>
+    ['ffmpeg', 'ffprobe'].every((n) => {
+      const p = join(ROOT, 'src-tauri', 'binaries', `${n}-${t}${ext}`);
+      return existsSync(p) && statSync(p).size > 1024 * 1024;
+    }));
+  if (built) return ok('视频组件 ffmpeg（已编译）');
+  if (process.env.FFMPEG_PREBUILT_DIR) return ok(`视频组件 ffmpeg（使用 ${process.env.FFMPEG_PREBUILT_DIR}）`);
+  if (platform === 'win32') {
+    return bad('缺少视频组件 ffmpeg', 'Windows 上不能编译 ffmpeg：在 Linux / WSL 上运行\n  node scripts/ffmpeg/prepare.mjs --out <目录> x86_64-pc-windows-msvc\n再设置环境变量 FFMPEG_PREBUILT_DIR=<目录> 后重新构建。');
+  }
+  const hint = platform === 'darwin'
+    ? 'brew install meson ninja pkgconf nasm'
+    : /debian|ubuntu/.test(linuxDistro()) ? 'sudo apt install -y meson ninja-build nasm pkg-config zlib1g-dev' : '安装 meson、ninja、nasm、pkg-config 与 zlib 开发包';
+  const missing = ['make', 'meson', 'ninja', 'pkg-config'].filter((c) => capture(c, ['--version']) === null);
+  if (missing.length) return bad(`编译视频组件 ffmpeg 需要：${missing.join('、')}`, hint);
+  ok('视频组件 ffmpeg 编译工具（首次构建时编译，约 2–5 分钟）');
+  if (rustTargets.some((t) => t.startsWith('x86_64')) && capture('nasm', ['-v']) === null) {
+    warn('没有 nasm：x86_64 的 ffmpeg 不带汇编优化，转码会慢很多', hint);
+  }
 }
 
 // ───────────────────────── 构建步骤 ─────────────────────────
@@ -343,8 +369,8 @@ function collectArtifacts(triple, opts, version) {
 
   if (opts.noBundle) {
     const exe = join(base, IS_WIN ? 'pindu-app.exe' : 'pindu-app');
-    const sidecar = join(base, `redlark-agent${IS_WIN ? '.exe' : ''}`);
-    for (const f of [exe, sidecar]) {
+    const sidecars = ['redlark-agent', 'ffmpeg', 'ffprobe'].map((n) => join(base, `${n}${IS_WIN ? '.exe' : ''}`));
+    for (const f of [exe, ...sidecars]) {
       if (existsSync(f)) {
         const dest = join(outDir, relative(base, f));
         copyFileSync(f, dest);
@@ -443,6 +469,9 @@ function main() {
 
   step('编译 AI 助手（agent sidecar）');
   run(process.execPath, [join(ROOT, 'agent', 'scripts', 'build.mjs'), triple], { failMessage: 'AI 助手编译失败' });
+
+  step('准备视频组件（ffmpeg）');
+  run(process.execPath, [join(ROOT, 'scripts', 'ffmpeg', 'prepare.mjs'), triple], { failMessage: '视频组件 ffmpeg 准备失败' });
 
   step('构建应用（首次会编译全部 Rust 依赖，约 5–15 分钟）');
   // 清掉上次的安装包，避免把改名前的旧产物一起收集

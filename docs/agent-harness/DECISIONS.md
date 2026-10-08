@@ -318,3 +318,14 @@
 - **背景**：各 agent 任务原来各自写死超时（120–600 秒）。长视频规划、慢模型的深度思考会超过，用户只看到「响应超时」，也没有办法调整。
 - **决定**：删掉任务各自的超时；所有 agent 任务共用「设置 → AI 助手 → 每次最长等待」（`app_settings` 键 `agent.timeout_minutes`，3–60 分钟，默认 15），`agent_settings::task_timeout` 读取，启动时与保存设置后生效。超时的提示说明等了多久、去哪里调长。
 - **原因**：上限只是防止卡死的兜底，不是性能指标；任务都能取消，后台任务也不挡界面，默认放宽不会伤害体验。
+
+## D36 · 2026-10-08 · ffmpeg 随应用分发（最小 LGPL 版）
+
+- **背景**：视频库依赖 ffmpeg / ffprobe，用户不知道它是什么，也不会自己装。曾考虑第一次使用时自动下载，但下载只能放在 GitHub，国内经常很慢或连不上，还要处理断点续传、校验、macOS 隔离标记和离线使用。
+- **决定**：
+  1. 打进安装包，作为 tauri externalBin（与主程序同目录）。`media.rs` 查找顺序：设置里指定的目录 > 自带的 > 开发版 `PINDU_FFMPEG_DIR` > PATH。设置里的「视频组件」只在自带的不可用或改用了别的时显示。
+  2. 从固定版本源码自己编译（`scripts/ffmpeg/sources.json` 记 sha256）：FFmpeg 9.0.2 LGPL 最小配置，只开视频库用到的解码 / 解封装 / 滤镜 / 编码；h264 编码用系统硬件编码（VideoToolbox / Media Foundation），Linux 用 openh264；AV1 软解用 dav1d。依赖静态链接，产物只依赖系统库；macOS 单架构每个约 10 MB。
+  3. macOS / Linux 在本机编译（CI 用 actions/cache 按 `scripts/ffmpeg/**` 缓存）；Windows 版在 Linux 上用 mingw 交叉编译（build.yml 的 ffmpeg-windows 任务），Windows 构建用其产物（`FFMPEG_PREBUILT_DIR`）。
+  4. 许可证文本与第三方声明打进安装包（`src-tauri/licenses/` → Resources/licenses），写明源码地址与编译脚本。
+- **原因**：用户零配置、离线可用；LGPL 版足够（不需要 x264），作为独立程序分发合规；自己编译可以控制体积与功能，不依赖第三方预编译包。
+

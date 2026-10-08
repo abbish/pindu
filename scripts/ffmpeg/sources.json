@@ -1,0 +1,22 @@
+{
+  "_comment": "随应用分发的 ffmpeg 所用源码（固定版本 + sha256）。改版本后 build.sh 的产物会变，CI 缓存键随本文件变化。",
+  "ffmpeg": {
+    "version": "9.0.2",
+    "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+    "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
+    "license": "LGPL-2.1-or-later"
+  },
+  "dav1d": {
+    "version": "1.5.4",
+    "url": "https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz",
+    "sha256": "686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5",
+    "license": "BSD-2-Clause"
+  },
+  "openh264": {
+    "version": "2.6.0",
+    "url": "https://github.com/cisco/openh264/archive/refs/tags/v2.6.0.tar.gz",
+    "sha256": "558544ad358283a7ab2930d69a9ceddf913f4a51ee9bf1bfb9e377322af81a69",
+    "license": "BSD-2-Clause",
+    "only": "linux"
+  }
+}
