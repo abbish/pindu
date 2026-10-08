@@ -13,7 +13,7 @@
 | 测试 | `cargo test`（crate 内测试，内存 SQLite）；`npm test` | 被覆盖的用例、聚合口径、错误形状 | 未覆盖路径 |
 | 静态检查 | `scripts/check-sql.py`（SQL 对迁移终态 schema）、`scripts/check-ipc-contract.py`、`scripts/schema-snapshot.py --table t` | SQL 引用的表/列是否存在、命令注册与参数名 | bind 类型/顺序、运行时拼接的 SQL |
 | AI 链路 | app.log 中 `AGENT` 行（任务名、用时、tokens、校验退回次数、stderr）；设置页「测试」；`agent/eval` 固定输入重跑；`cargo test agent::tasks::tests::real_ -- --ignored` | 发给 sidecar 的参数与提示词、工具调用参数（tool_execution_end）、Rust 校正丢弃了什么 | 模型“为什么”这么答 |
-| 进度 | `progress_manager.rs` 全局单例；前端 500ms 轮询 `get_batch_analysis_progress` | 批次状态快照 | 快照之间发生了什么（已知轮询丢中间态，见 `docs/design/batch-analysis-event-driven.md`） |
+| 进度 | `jobs.rs` 后台任务；`job-updated` 事件（进度节流 200ms）+ `list_jobs` | 任务快照（status / stage / current / detail / error） | 节流期间的中间态；重启前的任务（只放内存） |
 
 ## 症状 → 首查链路
 
@@ -27,7 +27,7 @@
 | 迁移在空库 OK，在老库失败 | 历史数据不满足新约束 / 旧迁移曾被修改导致 checksum 不符 | 用真实库副本复现；`sqlx-migration-standards.md` |
 | 学习计划状态显示/可用操作不对 | `unified_status` 与 `status` 不一致；前端 `canTransitionTo` 与后端转换规则漂移 | 查 `study_plans` 行；对照 `services/study_plan.rs` 与 `src/types/study.ts` |
 | 日历 / 统计数字与明细不符 | 聚合 SQL 口径（`calendar_repository.rs` / `statistics_repository.rs`）vs 明细表；`study_plan_schedules` 与 `practice_sessions` 关联 | 先用 sqlite3 手算同一口径 |
-| AI 分析“卡住”或进度不动 | 后台任务 panic 未回写进度；轮询读到旧快照；`cancelled` 标志 | `app.log` 的 AI 分类；`progress_manager` 状态 |
+| AI 分析“卡住”或进度不动 | 任务在排队（agent 队列同时 2 个）；任务内部没有报进度；取消标志已设但还没到检查点 | `app.log` 的 AI 分类；`list_jobs` 的 status / stage |
 | AI 返回解析失败 | 模型未按 JSON 返回 / 字段名漂移 / 代码块包裹 | 打印原始响应；对照 `prompts/*.md` 的输出要求与 `Json*Response` |
 | 练习会话丢失 / 重复 | `practice_sessions.completed` 与 `word_practice_records` 不一致；`get_incomplete_practice_sessions` 口径 | 查两表实际行 |
 | TTS 无声 / 报错 | `volcengine_tts_config` 鉴权未配置；音色与资源 ID 不匹配（55000000）；Key 无效（45000010）；缓存文件路径失效 | `get_tts_config` 的 configured / effectiveResourceId；app.log 中 TTS 错误的 code；`tts_cache` 行与文件是否存在 |

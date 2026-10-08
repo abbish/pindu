@@ -55,7 +55,7 @@ plan 必须写出 `前态 → 动作 → 写入 → 关联状态（schedules / s
 ```
 src-tauri/src/prompts/<agent>.md      include_str! 编译进二进制 → 改完必须重新编译
 agent/src/tools/*.ts + agent::tasks   对应 submit_* 工具 schema / 校验 + Rust 结果校正
-handlers/word_analysis.rs / progress_manager.rs   批量管线与进度（如涉及）
+handlers/word_analysis.rs / services/word_analysis_job.rs / jobs.rs   批量分析任务与进度（如涉及）
 ```
 见 `../../deliver-ai-prompt/SKILL.md`。
 最窄验证：固定一组输入，用 `test_ai_model` 或真实 Provider 跑 ≥2 次，确认 JSON 可解析且关键字段齐全；语义质量按 `../../sdd-verify/references/verification-methods.md` 的“AI 语义”层评审，不以单次输出下结论。

@@ -28,6 +28,7 @@ import { PageTitleContext } from './pageTitle';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTheme } from '@/hooks/useTheme';
 import { PAGE_TITLE, TOP_LEVEL_OF, type NavigateFn, type PageKey, type TopLevelPage } from '@/navigation';
+import { JobIndicator } from '@/components/Jobs';
 import { UpdateBanner } from '../UpdateBanner';
 
 export interface AppShellProps {
@@ -200,6 +201,9 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ch
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
+            <div className="ml-auto">
+              <JobIndicator onNavigate={onNavigate} />
+            </div>
           </header>
           <UpdateBanner />
           <div className="min-h-0 flex-1 overflow-y-auto">

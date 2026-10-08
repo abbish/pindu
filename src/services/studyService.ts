@@ -58,35 +58,41 @@ export class StudyService extends BaseService {
     });
   }
 
-  /**
-   * 生成学习计划AI规划
-   */
+  /** 按默认顺序生成日程（不用 AI，立即完成） */
   async generateStudyPlanSchedule(request: StudyPlanScheduleRequest): Promise<ApiResult<StudyPlanAIResult>> {
-    return this.executeWithLoading(async () => {
-      // 验证必填字段
-      this.validateRequired(request, ['name', 'dailyNewWords', 'startDate', 'wordbookIds']);
+    return this.executeWithLoading(async () =>
+      this.client.invoke<StudyPlanAIResult>('generate_study_plan_schedule', { request: this.scheduleRequest(request) })
+    );
+  }
 
-      if (request.wordbookIds.length === 0) {
-        throw new Error('必须选择至少一个单词本');
-      }
+  /**
+   * AI 排学习顺序并生成日程（前台任务）：返回任务 id，结果（StudyPlanAIResult）在任务完成时的 job.result 里；
+   * 页面离开时应取消任务
+   */
+  async startStudyPlanOrdering(request: StudyPlanScheduleRequest): Promise<ApiResult<string>> {
+    return this.executeWithLoading(async () =>
+      this.client.invoke<string>('start_study_plan_ordering', { request: this.scheduleRequest(request) })
+    );
+  }
 
-      if (!Number.isInteger(request.dailyNewWords) || request.dailyNewWords < 1 || request.dailyNewWords > 50) {
-        throw new Error('每天新词数需在 1–50 之间');
-      }
-
-      // 转换参数名称以匹配后端期望的格式
-      const backendRequest = {
-        name: request.name,
-        description: request.description,
-        daily_new_words: request.dailyNewWords,
-        start_date: request.startDate,
-        wordbook_ids: request.wordbookIds,
-        model_id: request.modelId || null,
-        use_ai: request.useAi ?? true,
-      };
-
-      return this.client.invoke<StudyPlanAIResult>('generate_study_plan_schedule', { request: backendRequest });
-    });
+  /** 校验并转成后端的请求形状（snake_case 结构体字段） */
+  private scheduleRequest(request: StudyPlanScheduleRequest) {
+    this.validateRequired(request, ['name', 'dailyNewWords', 'startDate', 'wordbookIds']);
+    if (request.wordbookIds.length === 0) {
+      throw new Error('必须选择至少一个单词本');
+    }
+    if (!Number.isInteger(request.dailyNewWords) || request.dailyNewWords < 1 || request.dailyNewWords > 50) {
+      throw new Error('每天新词数需在 1–50 之间');
+    }
+    return {
+      name: request.name,
+      description: request.description,
+      daily_new_words: request.dailyNewWords,
+      start_date: request.startDate,
+      wordbook_ids: request.wordbookIds,
+      model_id: request.modelId || null,
+      use_ai: request.useAi ?? false,
+    };
   }
 
   /** 改每天新词数（就地生效）：只重排还没练过的新词日 */

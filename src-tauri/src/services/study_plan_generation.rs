@@ -1,16 +1,15 @@
 //! 学习计划生成：校验请求 → 读取单词 → agent 给出学习顺序与难度 / 优先级 → 确定性计算日程（DECISIONS D13）。
-//! 进度写入 `planning_progress`（前端轮询契约不变），用户取消时中止 agent 并返回空结果（与旧实现一致）。
+//! AI 排序作为前台任务运行（jobs.rs，结果只给新建计划页用）：阶段与模型输出段数经任务进度推送，取消时中止 agent。
 
-use crate::agent::session::CANCELLED;
 use crate::agent::{tasks, AgentPaths};
 use crate::error::{AppError, AppResult};
+use crate::jobs::JobCtx;
 use crate::logger::Logger;
-use crate::planning_progress::get_global_progress_manager;
 use crate::repositories::word_repository::WordRepository;
 use crate::services::study_planning::{
-    build_schedule, intensity_label, normalize_order, PlanParams, PlanWord, DAILY_NEW_WORDS_RANGE,
+    build_schedule, normalize_order, PlanParams, PlanWord, DAILY_NEW_WORDS_RANGE,
 };
-use crate::types::study::{StudyPlanAIResult, StudyPlanMetadata, StudyPlanScheduleRequest};
+use crate::types::study::{StudyPlanAIResult, StudyPlanScheduleRequest};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use std::time::Instant;
@@ -109,23 +108,6 @@ pub async fn preview(
     )
 }
 
-/// 取消时返回的空结果（前端据此不进入下一步）
-fn cancelled_result(request: &StudyPlanScheduleRequest) -> StudyPlanAIResult {
-    StudyPlanAIResult {
-        plan_metadata: StudyPlanMetadata {
-            total_words: 0,
-            study_period_days: 0,
-            intensity_level: intensity_label(request.daily_new_words).0.to_string(),
-            review_frequency: 0,
-            plan_type: String::new(),
-            start_date: request.start_date.clone(),
-            end_date: request.start_date.clone(),
-            daily_new_words: Some(request.daily_new_words),
-        },
-        daily_plans: vec![],
-    }
-}
-
 impl StudyPlanGenerator {
     pub fn new(pool: Arc<SqlitePool>, logger: Arc<Logger>, paths: AgentPaths) -> Self {
         Self {
@@ -138,31 +120,11 @@ impl StudyPlanGenerator {
     pub async fn generate(
         &self,
         request: &StudyPlanScheduleRequest,
+        ctx: &JobCtx,
     ) -> AppResult<StudyPlanAIResult> {
         validate_request(request)?;
-        let progress = get_global_progress_manager();
-        progress.start_analysis();
         let started = Instant::now();
-
-        let result = self.generate_inner(request, started).await;
-        match &result {
-            Ok(_) => progress.complete_analysis(),
-            Err(e) if e.to_string().contains(CANCELLED) => {
-                self.logger.info("STUDY_PLAN", "用户取消了学习计划规划");
-                return Ok(cancelled_result(request));
-            }
-            Err(e) => progress.error_analysis(&e.to_string()),
-        }
-        result
-    }
-
-    async fn generate_inner(
-        &self,
-        request: &StudyPlanScheduleRequest,
-        started: Instant,
-    ) -> AppResult<StudyPlanAIResult> {
-        let progress = get_global_progress_manager();
-        progress.update_step("读取单词本...", started);
+        ctx.stage("读取单词本…");
         let words = load_plan_words(&self.pool, &self.logger, &request.wordbook_ids).await?;
 
         let model = crate::services::agent_settings::AgentSettingsService::new(
@@ -174,24 +136,25 @@ impl StudyPlanGenerator {
             request.model_id,
         )
         .await?;
-        progress.update_step(
-            &format!("AI 正在评估 {} 个单词的难度并安排学习顺序...", words.len()),
-            started,
-        );
+        ctx.stage(format!(
+            "AI 正在评估 {} 个单词的难度并安排学习顺序…",
+            words.len()
+        ));
         let profile =
             crate::services::prompt_profile::PromptProfileService::load(&self.pool).await?;
+        // 输出长度不可预知：进度只报收到的输出段数（total = 0）
         let assessed = tasks::plan_word_order(
             &self.paths,
             &model,
             &profile,
             &words,
             &self.logger,
-            || progress.is_cancelled(),
-            |events| progress.update_chunk(events, 0, started),
+            || ctx.is_cancelled(),
+            |events| ctx.progress(u64::from(events), 0),
         )
         .await?;
 
-        progress.update_step("按每天新词数生成每日日程...", started);
+        ctx.stage("按每天新词数生成每日日程…");
         let ordered = normalize_order(&words, &assessed);
         let filled = ordered.len().saturating_sub(assessed.len());
         let schedule = build_schedule(
@@ -260,13 +223,6 @@ mod tests {
                 Err(AppError::ValidationError(_))
             ));
         }
-    }
-
-    #[test]
-    fn cancelled_result_is_empty() {
-        let r = cancelled_result(&request());
-        assert!(r.daily_plans.is_empty());
-        assert_eq!(r.plan_metadata.total_words, 0);
     }
 
     #[tokio::test]

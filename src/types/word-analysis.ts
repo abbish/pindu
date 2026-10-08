@@ -1,5 +1,3 @@
-import type { PhonicsWord } from './ai-model';
-
 /**
  * 批量单词分析类型定义
  * 对应后端 src-tauri/src/types/word_analysis.rs
@@ -24,66 +22,33 @@ export interface WordExtractionResult {
   uniqueCount: number;
 }
 
-/**
- * 批次信息
- */
-export interface BatchInfo {
-  totalBatches: number;
-  completedBatches: number;
-  currentBatch: number;
-  batchSize: number;
+/** 「分析并加入单词本」任务的请求（start_word_analysis） */
+export interface StartWordAnalysisRequest {
+  bookId: number;
+  words: string[];
+  /** 生成 / 提取时定好的释义，与 words 一一对应（空字符串表示没有） */
+  meanings?: string[];
+  modelId?: number;
 }
 
-/**
- * 提取进度
- */
-export interface ExtractionProgress {
-  totalWords: number;
-  extractedWords: number;
-  elapsedSeconds: number;
-}
-
-/**
- * 分析进度
- */
-export interface AnalysisProgress {
-  totalWords: number;
-  completedWords: number;
-  failedWords: number;
-  currentWord: string | null;
-  batchInfo: BatchInfo;
-  elapsedSeconds: number;
-}
-
-/**
- * 单词分析状态
- */
+/** 单个单词的分析状态 */
 export interface WordAnalysisStatus {
   word: string;
   status: 'pending' | 'analyzing' | 'completed' | 'failed';
+  /** 失败原因 */
   error: string | null;
-  result: PhonicsWord | null;
 }
 
-/**
- * 批量分析进度
- */
-export interface BatchAnalysisProgress {
-  status: string; // "extracting", "analyzing", "completed", "error"
-  currentStep: string; // 当前步骤描述
-  extractionProgress: ExtractionProgress | null;
-  analysisProgress: AnalysisProgress | null;
-  wordStatuses: WordAnalysisStatus[] | null;
+/** 任务运行中的细节（job.detail）：逐词状态 */
+export interface WordAnalysisDetail {
+  words: WordAnalysisStatus[];
 }
 
-/**
- * 批量分析结果
- */
-export interface BatchAnalysisResult {
-  words: PhonicsWord[];
-  totalWords: number;
-  completedWords: number;
-  failedWords: number;
-  elapsedSeconds: number;
+/** 任务结果（job.result） */
+export interface WordAnalysisOutcome {
+  bookId: number;
+  addedCount: number;
+  updatedCount: number;
+  /** 没有分析成功的词（含停止时还没轮到的），可以再提交一次 */
+  failed: WordAnalysisStatus[];
 }
-

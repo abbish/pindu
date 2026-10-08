@@ -10,7 +10,6 @@ import {
   CreateWordRequest,
   UpdateWordRequest,
   WordQuery,
-  PlanningProgressState,
   PaginationQuery,
   PaginatedResponse,
   WordBookStatistics,
@@ -247,33 +246,6 @@ export class WordBookService extends BaseService {
         updated_count: number;
         skipped_count: number;
       }>('create_word_book_from_analysis', { request });
-    });
-  }
-
-  /**
-   * 获取分析进度
-   */
-  async getAnalysisProgress(): Promise<ApiResult<PlanningProgressState | null>> {
-    return this.executeWithLoading(async () => {
-      return this.client.invoke<PlanningProgressState | null>('get_analysis_progress');
-    });
-  }
-
-  /**
-   * 清除分析进度
-   */
-  async clearAnalysisProgress(): Promise<ApiResult<void>> {
-    return this.executeWithLoading(async () => {
-      return this.client.invoke<void>('clear_analysis_progress');
-    });
-  }
-
-  /**
-   * 取消分析
-   */
-  async cancelAnalysis(): Promise<ApiResult<void>> {
-    return this.executeWithLoading(async () => {
-      return this.client.invoke<void>('cancel_analysis');
     });
   }
 }

@@ -4,7 +4,6 @@
 
 use crate::error::AppResult;
 use crate::logger::Logger;
-use crate::planning_progress::{get_global_progress_manager, PlanningProgressState};
 use crate::types::*;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -55,51 +54,4 @@ pub async fn create_word_book_from_analysis(
             Err(e)
         }
     }
-}
-
-/// 获取单次拼读分析的进度
-#[tauri::command]
-pub async fn get_analysis_progress(app: AppHandle) -> AppResult<Option<PlanningProgressState>> {
-    let logger = app.state::<Logger>();
-    logger.api_request("get_analysis_progress", None);
-
-    let progress = get_global_progress_manager().get_progress();
-
-    logger.api_response(
-        "get_analysis_progress",
-        true,
-        Some(&format!("Progress: {:?}", progress.is_some())),
-    );
-    Ok(progress)
-}
-
-/// 取消并清除单次分析进度
-#[tauri::command]
-pub async fn clear_analysis_progress(app: AppHandle) -> AppResult<()> {
-    let logger = app.state::<Logger>();
-    logger.api_request("clear_analysis_progress", None);
-
-    // 先取消再清除
-    let progress_manager = get_global_progress_manager();
-    progress_manager.cancel_analysis();
-    progress_manager.clear_progress();
-
-    logger.api_response(
-        "clear_analysis_progress",
-        true,
-        Some("Progress cleared and analysis cancelled"),
-    );
-    Ok(())
-}
-
-/// 取消单次分析
-#[tauri::command]
-pub async fn cancel_analysis(app: AppHandle) -> AppResult<()> {
-    let logger = app.state::<Logger>();
-    logger.api_request("cancel_analysis", None);
-
-    get_global_progress_manager().cancel_analysis();
-
-    logger.api_response("cancel_analysis", true, Some("Analysis cancelled"));
-    Ok(())
 }

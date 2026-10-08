@@ -36,7 +36,7 @@ RedLark 的证据在哪里、常见症状对应哪条链路，读 `references/re
 ## 结论依据
 
 - **因果 finding**：用于解释可复现缺陷。证据定位到最早直接分歧，或通过能区分候选的实验支持该机制。
-- **设计 finding**：live surface 已显示重复 owner、冲突 contract、错误 consumer 或无消费者结构（如 `endpoints.ts` 的死命令名、双进度管理器、`diagnostics.rs` 混放）。它可以支持结构收敛，同时不宣称已经证明某次行为由它造成。
+- **设计 finding**：live surface 已显示重复 owner、冲突 contract、错误 consumer 或无消费者结构（如 `endpoints.ts` 的死命令名、`diagnostics.rs` 混放）。它可以支持结构收敛，同时不宣称已经证明某次行为由它造成。
 - **待决假设**：现有证据还不足以选择 owner 或改法。下一步只补一项最能区分候选的证据。
 
 ## 规则

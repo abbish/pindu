@@ -3,17 +3,16 @@ mod app_paths;
 mod database;
 mod error;
 mod handlers;
+mod jobs;
 mod logger;
 #[cfg(target_os = "macos")]
 mod menu;
-mod planning_progress;
 mod repositories;
 mod services;
 mod startup;
 mod time;
 mod types;
 
-mod progress_manager;
 mod prompts;
 
 #[cfg(test)]
@@ -41,9 +40,13 @@ pub fn run() {
     let builder = builder.menu(menu::build);
     #[cfg(target_os = "macos")]
     let builder = builder.on_menu_event(|app, event| {
+        use tauri::Emitter;
         if event.id() == menu::CHECK_UPDATE_ID {
-            use tauri::Emitter;
             let _ = app.emit("menu-check-update", ());
+        } else if event.id() == menu::SHOW_JOBS_ID {
+            let _ = app.emit("menu-show-jobs", ());
+        } else if event.id() == menu::QUIT_ID && !handlers::intercept_quit(app) {
+            app.exit(0);
         }
     });
     builder
@@ -51,7 +54,22 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(handlers::PendingUpdate::default())
         .plugin(tauri_plugin_process::init())
+        // 有后台任务在跑时，关窗先请用户确认（前端确认后调用 quit_app）
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if handlers::intercept_quit(window.app_handle()) {
+                    api.prevent_close();
+                }
+            }
+        })
         .setup(|app| {
+            // 后台任务：变化经 job-updated 事件推给前端（jobs.rs）
+            let emitter = app.handle().clone();
+            app.manage(jobs::Jobs::new(move |job| {
+                use tauri::Emitter;
+                let _ = emitter.emit(jobs::EVENT, job);
+            }));
+
             // 获取主窗口并打开开发者工具
             #[cfg(debug_assertions)]
             {
@@ -134,6 +152,7 @@ pub fn run() {
             get_study_plan,
             update_study_plan_basic_info,
             generate_study_plan_schedule,
+            start_study_plan_ordering,
             preview_study_plan,
             replan_study_plan_pace,
             add_word_books_to_plan,
@@ -171,15 +190,11 @@ pub fn run() {
             list_provider_remote_models,
             get_agent_catalog_providers,
             get_agent_catalog_models,
-            get_analysis_progress,
-            clear_analysis_progress,
-            cancel_analysis,
             // 批量分析相关命令
             extract_words_from_text,
             generate_words_from_intent,
-            analyze_extracted_words,
-            get_batch_analysis_progress,
-            cancel_batch_analysis,
+            start_word_analysis,
+            analyze_word,
             // 新增的学习计划单词管理命令
             get_study_plan_words,
             get_study_plan_word_books,
@@ -251,7 +266,12 @@ pub fn run() {
             get_passage_new_words,
             add_passage_words_to_book,
             get_tts_config,
-            update_tts_config
+            update_tts_config,
+            list_jobs,
+            cancel_job,
+            remove_job,
+            clear_finished_jobs,
+            quit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

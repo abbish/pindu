@@ -87,6 +87,14 @@ pub async fn install_update(app: AppHandle, on_progress: Channel<UpdateProgress>
                 "这种安装方式不支持应用内更新，请下载新的安装包".to_string(),
             ));
         }
+        let active = app.state::<crate::jobs::Jobs>().active_titles();
+        if !active.is_empty() {
+            return Err(AppError::ValidationError(format!(
+                "「{}」等 {} 个后台任务正在进行，等它们完成后再更新",
+                active[0],
+                active.len()
+            )));
+        }
         if let Err(n) = begin_update_install() {
             return Err(AppError::ValidationError(format!(
                 "有 {n} 个 AI 任务正在进行，等它们完成后再更新"

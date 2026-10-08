@@ -43,7 +43,7 @@ description: "技术方案与实施计划：用户要方案、设计、计划、
 
 - 每个 production 改动需要明确依据：已证实缺陷、当前 contract 违反、owner/consumer 错位或用户明确授权的改进。只有声称修复某个行为根因时才要求相应因果证据。
 - refactor 默认行为不变；允许变化的行为必须进入接受条件。
-- 新增抽象、trait、泛型 registry、全局单例、兼容分支或配置层前，必须证明当前问题、真实消费者、稳定变化点、较小替代为什么不够、验证入口和旧路径删除方式。项目已有两个进度管理器（`planning_progress` 与 `progress_manager::EnhancedProgressManager`，前端契约不同），不再新增第三个；新的 LLM 能力一律做成 agent 任务，不新增直连调用。
+- 新增抽象、trait、泛型 registry、全局单例、兼容分支或配置层前，必须证明当前问题、真实消费者、稳定变化点、较小替代为什么不够、验证入口和旧路径删除方式。耗时工作一律做成后台任务（`jobs.rs`，CLAUDE.md §4.4），不新增别的进度 / 取消机制；新的 LLM 能力一律做成 agent 任务，不新增直连调用。
 - 迁移批次必须写明：目标终态、与现有数据的兼容方式、是否需要重建表、前端/Repository 同步点。不能用删库重建替代。
 - 新增 Tauri 命令必须在 plan 中列出 `lib.rs` 注册和前端 service 调用点；缺一项就是不完整批次。
 - 涉及用户可见界面的批次必须写明采用的交互模式（`deliver-frontend-react/references/ui-interaction-patterns.md` 的场景行或具体 shadcn Block / Example）；自定义交互要写出查过的来源和偏离理由，否则不算 ready。UI 迁移 / 改版批次还必须附改版前的功能清单（`ui-system-standard.md` §6），功能删减需用户确认。

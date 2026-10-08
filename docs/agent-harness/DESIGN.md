@@ -104,7 +104,7 @@ redlark-agent [--no-session | --session-dir <dir> [--session <file>]]
 ## 7. 迁移与回退
 
 - 已完成：提词 / 批量拼读 / 学习计划 / 模型测试全部经 agent；旧 `ai_service`（async-openai）与回退开关已删除（D12）。
-- 进度：sidecar 事件推送替代 `EnhancedProgressManager` 轮询（顺带完成 `docs/design/batch-analysis-event-driven.md`）。
+- 进度：已由统一后台任务（`src-tauri/src/jobs.rs`，事件推送）替代原来的轮询进度管理器（D32）。
 
 ## 8. 构建与发布
 

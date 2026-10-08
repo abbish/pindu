@@ -29,6 +29,7 @@ pub mod study_planning;
 pub mod theme_tag;
 pub mod tts;
 pub mod word;
+pub mod word_analysis_job;
 pub mod word_examples;
 pub mod word_explanation;
 pub mod word_extraction;

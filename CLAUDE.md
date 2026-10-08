@@ -82,8 +82,7 @@ src-tauri/
 ├── src/database/mod.rs       MIGRATOR（内置迁移）、connect（WAL, synchronous=Normal, create_if_missing）、vacuum_into（整库备份）
 ├── src/agent/                内置 agent harness（pi sidecar）：protocol · config · session · tasks · catalog（pi 内置目录）（见 docs/agent-harness/DESIGN.md）
 ├── src/prompts.rs            提示词渲染唯一 owner（见 §6）；src/time.rs 取时与格式唯一入口（见 §7.5）；src/menu.rs macOS 中文菜单
-├── src/progress_manager.rs   EnhancedProgressManager：批量单词分析进度（前端轮询 get_batch_analysis_progress）
-├── src/planning_progress.rs  学习计划规划进度（前端轮询 get_analysis_progress；取消标志）
+├── src/jobs.rs               后台任务唯一 owner：提交即返回 jobId，agent / media 两条队列，进度与结果经 `job-updated` 事件推送；只放内存（见 §4.4）
 ├── src/prompts/agent/*.md    agent 任务提示词，include_str! 编译进二进制（见 §6）
 ├── migrations/001..058_*.sql
 └── src/test_support.rs       #[cfg(test)] 内存库与种子数据
@@ -96,7 +95,6 @@ docs/RELEASING.md             发版流程：改版本号 → docs/releases/vX.m
 .claude/hooks/                 PreToolUse 守卫：拦截修改历史迁移、删库、输出密钥
 scripts/validate-skills.sh     Skill 目录结构校验
 docs/NAMING_CONVENTIONS.md     前后端命名规范（本文件 §7.2 是摘要）
-docs/design/batch-analysis-event-driven.md  批量分析由轮询改事件推送的方案（未实施）
 ```
 
 ## 4. 后端架构（Rust）
@@ -126,14 +124,15 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 |---|---|
 | `handlers/wordbook.rs` | get_word_books, get_word_book_detail, get_word_book_linked_plans, get_word_book_statistics, get_global_word_book_statistics, get_theme_tags, create/update/delete_word_book, get_theme_tags / create_theme_tag（新建主题，1–10 字，同名复用）, restore_word_book |
 | `handlers/word.rs` | get_words_by_book（分页/搜索/词性过滤）, add_word_to_book / update_word（单词与释义必填、本内不重名）, delete_words（批量，单事务；单个删除也走它）, find_existing_words, generate_word_examples（AI 补充 append / 重新生成 replace 例句） |
-| `handlers/study_plan.rs` | get_study_plans, get_study_plan, generate_study_plan_schedule, create_study_plan_with_schedule, start/complete/terminate/restart/publish/delete_study_plan, pause/resume_study_plan（暂停 / 继续，继续时顺延）, get_study_plan_words, batch_remove_words_from_plan, get_study_plan_schedules, get_study_plan_calendar_data, get_plan_memory_overview, get_study_statistics, get_study_plan_statistics, get_study_plan_word_books, update_study_plan_basic_info（任何状态）, preview_study_plan（确定性预览，不用 AI）, replan_study_plan_pace（就地改每天新词数，只重排没练过的新词日）, add_word_books_to_plan（追加单词本）；generate_study_plan_schedule 的 `use_ai: false` 不经 sidecar |
+| `handlers/study_plan.rs` | get_study_plans, get_study_plan, generate_study_plan_schedule（默认顺序，立即完成）, start_study_plan_ordering（AI 排序，前台任务）, create_study_plan_with_schedule, start/complete/terminate/restart/publish/delete_study_plan, pause/resume_study_plan（暂停 / 继续，继续时顺延）, get_study_plan_words, batch_remove_words_from_plan, get_study_plan_schedules, get_study_plan_calendar_data, get_plan_memory_overview, get_study_statistics, get_study_plan_statistics, get_study_plan_word_books, update_study_plan_basic_info（任何状态）, preview_study_plan（确定性预览，不用 AI）, replan_study_plan_pace（就地改每天新词数，只重排没练过的新词日）, add_word_books_to_plan（追加单词本） |
 | `handlers/practice.rs` | start_practice_session, submit_step_result（`kind`: learn 首次作答 / retry 纠正后重考 / review 当轮小测；成绩与日程完成只看 learn）, save_practice_progress（中途时长落库，恢复后继续累计）, pause/resume/complete/cancel_practice_session, get_incomplete_practice_sessions, get_practice_session_detail, get_plan_practice_sessions |
-| `handlers/analysis.rs` | create_word_book_from_analysis, get_analysis_progress, clear_analysis_progress, cancel_analysis |
+| `handlers/analysis.rs` | create_word_book_from_analysis |
 | `handlers/statistics.rs` | get_daily_learning_activity（首页热力图：每个本地日期练过 / 学会的单词数）, get_database_statistics, reset_user_data, reset_selected_tables（表名只接受库里存在的用户数据表，配置表受保护）, delete_database_and_restart |
 | `handlers/calendar.rs` | get_today_study_schedules, get_calendar_month_data（日状态/月统计在 `services/calendar.rs` 纯函数 `build_month`） |
 | `handlers/diagnostics.rs` | diagnose_study_plan_data, diagnose_calendar_data, diagnose_today_schedules（仅开发排查，前端不调用；只在 debug 构建编译与注册，`#[cfg(debug_assertions)]`） |
 | `handlers/ai_model.rs` | get_all_ai_providers / get_all_ai_models（列表一律返回 `AIProviderSafe`/`AIModelConfigSafe`：has_api_key + 前 4 位预览）, set_default_ai_model, create/update/delete_ai_provider（含 `piProvider` / `api`）|model（生成参数为 `generation: ModelGenerationSettings`，整体替换）, list_provider_remote_models（pi 目录 + 远端 /models）, get_agent_catalog_providers / get_agent_catalog_models（pi 内置目录）, test_ai_model |
-| `handlers/word_analysis.rs` | extract_words_from_text, generate_words_from_intent（按描述生成单词，避开本内已有词）, analyze_extracted_words（拼读 + 例句）, get_batch_analysis_progress, cancel_batch_analysis |
+| `handlers/word_analysis.rs` | extract_words_from_text, generate_words_from_intent（按描述生成单词，避开本内已有词）, start_word_analysis（后台任务：分批拼读 + 例句，完成后直接加入单词本；关掉弹窗也继续）, analyze_word（单个词「AI 补全」，只返回不保存） |
+| `handlers/jobs.rs` | list_jobs, cancel_job, remove_job, clear_finished_jobs, quit_app（有任务在跑时关窗 / ⌘Q 先发 `quit-requested` 让前端确认） |
 | `handlers/word_explanation.rs` | generate_word_explanation（agent 实时生成，不落库；流式增量经 `word-explanation-delta` 事件推送，按 requestId 过滤；返回正文 + 推荐追问 `follow_ups`）, ask_word_tutor（`request: WordTutorRequest`：带上正在看的讲解与最近对话，AI 老师答疑，增量事件 `word-tutor-delta`，返回 `TutorReply` 正文 + 推荐追问；对话不落库） |
 | `handlers/passage.rs` | get_passage_word_candidates（`request: PassageWordSources`：单词本、学习计划都可多选，计划按取词策略 wrong / weak / recent / upcoming / mastered / learned）, get_plan_scope_counts, plan_passages（AI 内容规划：一篇或拆几篇，`feedback` 让 AI 改规划）, generate_passage（`request: GeneratePassageRequest`：必用词 + AI 按场景从来源挑 `aiPick` 个）, get_passages（按来源 book_id / plan_id、origin generated / imported 筛选）, get_passage, get_passage_words（目标词的单词资料，点词卡片用）, delete_passage, generate_question_set（`request: GenerateQuestionSetRequest`：各题型数量 + 难度）, get_question_set, delete_question_set, start_passage_attempt（set_id + reading / listening，可带 plan_id：计划里的短文任务）, submit_passage_attempt（必须全部作答；客观题代码判分，开放题 AI 评分）, regrade_passage_open, get_passage_statistics；删除短文 / 题组：没结束的计划用着时拒绝 |
 | `handlers/passage_import.rs` | read_material_file（`request: ReadMaterialRequest`：txt/md/srt/vtt/docx/pdf → 清理后的纯文本，单词本提取与短文导入共用）, prepare_passage_import（确定性清理、分句、拆篇预览，不用 AI）, import_passage（`request: ImportPassageRequest`：一次一篇，AI 只逐句翻译 / 起标题 / 估水平 / 挑重点词，原文不改）, cancel_passage_import（requestId）, get_passage_new_words, add_passage_words_to_book（拼读分析后入本，补上目标词 wordId） |
@@ -189,7 +188,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 - 原则：**确定性的工作放进代码或工具**（分词计数、格式校验、日期与复习排期），模型只做判断与生成；结构化结果一律经 `submit_*` 工具交付，Rust 侧再按输入校正（只接受请求中的词、补齐遗漏）。新增 LLM 能力一律做成 agent 任务。
 - 任务用哪个模型：命令显式传的 model_id > 「设置 → AI 助手」的任务模型（`app_settings` 表 `agent.model.<task>`，task = extract/phonics/examples/plan/explain/tutor/passage，短文的规划 / 写作 / 出题 / 评分 / 导入翻译都用 passage）> 默认模型，统一经 `services/agent_settings.rs::AgentSettingsService::model_for`；批量分析的每批词数 / 同时请求数也在这里（`agent.batch_size` / `agent.max_concurrency`），后端以设置为准。
 - 模型配置：`ai_providers.pi_provider`（映射 pi 内置提供商）/ `api`；`ai_models` 的生成参数 `ModelGenerationSettings`（最大输出、温度、思考档、额外参数 → samplingParams、上下文、推理）整体保存；sidecar 启动时由 `agent/src/config.ts` 转成 pi 的 models.json。密钥只经 `REDLARK_KEY_<id>` 环境变量传入。
-- 进度：批量分析写 `progress_manager.rs`（`get_batch_analysis_progress`），学习计划写 `planning_progress.rs`（`get_analysis_progress`，取消经 `cancel_analysis` → sidecar `abort`）；前端约 500ms 轮询。改为事件推送的方案见 `docs/design/batch-analysis-event-driven.md`。
+- 进度：耗时的工作是**后台任务**（`src-tauri/src/jobs.rs`，唯一 owner，不再另建进度管理器）：命令 `start_*` 提交后立即返回 jobId，任务在 agent（同时 2 个）/ media（同时 1 个）队列里执行，`JobCtx` 报告进度 / 阶段 / detail、检查取消，变化经 `job-updated` 事件推送；前端 `useJobs`（全局 store）/ `useJob(id)`（发起页面的内嵌进度）/ `waitForJob`，顶栏任务按钮与任务面板在 `components/Jobs/`。`detached` 任务结果由后端写库，离开页面继续（批量分析）；非 detached 的结果只给页面用，页面离开时取消（计划 AI 排序 `start_study_plan_ordering`）。任务只放内存，需要跨重启的状态由业务表自己记。
 - 真实调用回归：`cargo test agent::tasks::tests::real_ -- --ignored`（需 `REDLARK_E2E_MOONSHOT_KEY`）；提示词评测 `node agent/eval/eval-phonics.mjs` / `eval-extract.mjs`（需 `EVAL_MOONSHOT_KEY`，结果写 `agent/eval/results/`）。
 
 ## 5. 前端架构（React/TS）
@@ -230,7 +229,7 @@ export const fooService = new FooService();
 - `messages/*.md`：发给模型的用户消息模板（单词资料、答疑上下文、例句任务等）。
 - 语法：`{{x}}` 替换，**变量为空的整行删除**；`{{#x}}…{{/x}}` 非空才保留、`{{^x}}…{{/x}}` 为空才保留。新增变量必须在 `prompts::tests` 里保证所有任务 × 预设渲染后无残留 `{{`。
 - 学习者档案 `PromptProfile`（设置 → AI 助手 → 学习者与风格；`app_settings` 键 `prompt.profile`，`services/prompt_profile.rs`）：预设 小学生（默认，等同模板化前的行为）/ 中学生 / 成人。
-- 单词本场景（D22）：单词本的标题 + 描述 + 主题标签经 `messages/book_scene.md` 渲染（`prompts::book_scene`，读取在 `PromptProfileService::book_scene`），放在生成、提取、拼读分析、例句、讲解、答疑的**用户消息**最前面（不进系统提示词）；生成 / 提取时定好的释义经 `analyze_extracted_words(meanings)` → `PhonicsContext` 传给拼读分析沿用。
+- 单词本场景（D22）：单词本的标题 + 描述 + 主题标签经 `messages/book_scene.md` 渲染（`prompts::book_scene`，读取在 `PromptProfileService::book_scene`），放在生成、提取、拼读分析、例句、讲解、答疑的**用户消息**最前面（不进系统提示词）；生成 / 提取时定好的释义经 `start_word_analysis(meanings)` → `PhonicsContext` 传给拼读分析沿用。
 - **改提示词需要重新编译**；工具（参数 schema、校验）在 `agent/src/tools/*.ts`，改工具需 `npm run agent:build`。
 - 改提示词前后用 `agent/eval/` 评测对比：先 `cd src-tauri && cargo test prompts::tests::render_eval_prompts -- --ignored` 渲染到 `agent/eval/rendered/<预设>/`（不入库），`EVAL_PRESET=primary|secondary|adult` 选预设；结论写进 work item evidence。
 
@@ -272,7 +271,6 @@ export const fooService = new FooService();
 ## 8. 已知债务 / 注意事项
 
 
-- `handlers/word_analysis.rs` 的批量管线编排（含事件推送）仍在 handler 层；批量分析与学习计划规划各有一个进度管理器（`progress_manager.rs` / `planning_progress.rs`，前端轮询契约不同；改事件推送见 `docs/design/batch-analysis-event-driven.md`）。
 - 历史迁移 020 / 021 / 023 / 031 在外键开启下重建 `study_plans`，会级联清空当时已有计划的子表数据（已实测）；不要以它们为重建模板，见 `sqlx-migration-standards.md`。
 - `src/types/api.ts` 中 Health/Export/Import 类型对应的后端未实现。
 - `src-tauri/Cargo.toml` 的 `[lib] name = "redlark_app_lib"`，包名 `pindu-app`；应用数据目录随 identifier 为 `com.redlark.pindu-app`（macOS: `~/Library/Application Support/com.redlark.pindu-app/`）。**identifier 与库文件名发布后永不修改**（见 §7.1 第 5 条）；productName 可以改（只影响应用名，macOS 上旧名字的 .app 需要用户手动删除）。

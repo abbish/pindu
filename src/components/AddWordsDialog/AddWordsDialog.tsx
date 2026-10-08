@@ -19,13 +19,16 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Stepper } from '@/components/Stepper/Stepper';
 import { MaterialInput } from '@/components/MaterialInput';
 import { WordGrid, type ExtractedWord } from '@/components/WordGrid';
+import { useToast } from '@/components/Toast/ToastContainer';
+import { jobErrorText } from '@/components/Jobs';
+import { useJob } from '@/hooks/useJobs';
+import { jobService } from '@/services/jobService';
 import { wordAnalysisService } from '@/services/wordAnalysisService';
 import { wordBookService } from '@/services/wordbookService';
 import { cn } from '@/lib/utils';
 import { standardizePartOfSpeech } from '@/utils/partOfSpeech';
 import type { WordExtractionMode } from '@/types';
-import type { PhonicsWord } from '@/types/ai-model';
-import type { BatchAnalysisProgress, WordExtractionResult } from '@/types/word-analysis';
+import type { WordAnalysisOutcome, WordExtractionResult } from '@/types/word-analysis';
 import { BatchAnalysisPanel } from './BatchAnalysisPanel';
 import { InlineError } from '@/components/InlineError';
 
@@ -33,8 +36,8 @@ import { InlineError } from '@/components/InlineError';
 export type AddWordsSource = 'ai' | 'text';
 
 /**
- * 阶段：source 填来源 → fetching 生成或提取中 → select 选词 → analyzing 拼读分析 → review 有失败 / 已停止时检查后保存。
- * 全部成功时分析完直接保存，不再多一步“选择”。
+ * 阶段：source 填来源 → fetching 生成或提取中 → select 选词 → analyzing 分析并加入单词本（后台任务）→
+ * review 有没完成的词（失败 / 已停止）时显示结果，可以重新分析这些词。全部成功时直接关闭。
  */
 type Phase = 'source' | 'fetching' | 'select' | 'analyzing' | 'review';
 const STEPS = ['获取单词', '选择单词', '分析并保存'];
@@ -63,8 +66,6 @@ export interface AddWordsDialogProps {
   onSceneSaved?: (description: string) => void;
   /** 打开时选中的来源 */
   initialSource?: AddWordsSource;
-  /** 保存分析好的单词；失败时抛错（弹窗保留结果，可直接重试保存） */
-  onSaveWords: (words: ExtractedWord[]) => Promise<void>;
 }
 
 const toCandidates = (result: WordExtractionResult, existing: Set<string>): ExtractedWord[] =>
@@ -82,27 +83,6 @@ const toCandidates = (result: WordExtractionResult, existing: Set<string>): Extr
     };
   });
 
-const toAnalyzed = (word: PhonicsWord, existing: boolean): ExtractedWord => ({
-  id: `a-${word.word.toLowerCase()}`,
-  word: word.word,
-  meaning: word.chinese_translation,
-  partOfSpeech: standardizePartOfSpeech(word.pos_abbreviation) as ExtractedWord['partOfSpeech'],
-  frequency: word.frequency || 1,
-  selected: true,
-  existing,
-  phonics: {
-    ipa: word.ipa,
-    syllables: word.syllables,
-    phonics_rule: word.phonics_rule,
-    analysis_explanation: word.analysis_explanation,
-    pos_abbreviation: word.pos_abbreviation,
-    pos_english: word.pos_english,
-    pos_chinese: word.pos_chinese,
-    frequency: word.frequency,
-    examples: word.examples ?? [],
-  },
-});
-
 /** “无法 + 动作：原因” */
 /** 「无法…：原因」；原因可以是服务层的 result.error 或异常 */
 const errorText = (err: unknown, title: string) => {
@@ -114,8 +94,9 @@ const errorText = (err: unknown, title: string) => {
  * 添加单词（单词本详情页唯一入口）：
  * 1 获取单词 —— AI 按描述生成，或从我的材料（粘贴 / 文件）提取（模型按「设置 → AI 助手」）；
  * 2 选择单词 —— 已在单词本中的词标“已存在”且默认不选；
- * 3 分析并保存 —— 批量拼读分析，全部成功自动保存；有失败或中途停止时保留已完成的结果，可重试失败的词再保存。
- * 保存成功前结果一直保留；关闭时有未保存的结果会先确认。
+ * 3 分析并保存 —— 后台任务：分批拼读分析，成功的词直接加入单词本；关掉弹窗也会继续（进度在顶栏任务按钮里）。
+ *   有失败或中途停止时显示没完成的词，可以重新分析。
+ * 关闭时还有生成 / 选好但没开始分析的单词会先确认。
  */
 export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   isOpen,
@@ -125,7 +106,6 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   bookDescription = '',
   onSceneSaved,
   initialSource = 'ai',
-  onSaveWords,
 }) => {
   const [phase, setPhase] = useState<Phase>('source');
   const [source, setSource] = useState<AddWordsSource>(initialSource);
@@ -135,12 +115,13 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const [fileName, setFileName] = useState<string | null>(null);
   const [mode, setMode] = useState<WordExtractionMode>('focus');
   const [candidates, setCandidates] = useState<ExtractedWord[]>([]);
-  const [analyzed, setAnalyzed] = useState<ExtractedWord[]>([]);
-  const [failed, setFailed] = useState<string[]>([]);
+  /** 分析任务 id 与结果 */
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<WordAnalysisOutcome | null>(null);
   const [stopped, setStopped] = useState(false);
-  const [progress, setProgress] = useState<BatchAnalysisProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const job = useJob(jobId);
+  const toast = useToast();
   const [confirmClose, setConfirmClose] = useState(false);
   /** 单词本场景（描述）：弹窗内可编辑，保存后同步给页面 */
   const [scene, setScene] = useState(bookDescription.trim());
@@ -153,20 +134,15 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const runRef = useRef(0);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
-  /** 分析回调里读取最新的“已停止”状态 */
-  const stoppedRef = useRef(stopped);
-  stoppedRef.current = stopped;
 
   const reset = () => {
     runRef.current += 1;
     setPhase('source');
     setCandidates([]);
-    setAnalyzed([]);
-    setFailed([]);
+    setJobId(null);
+    setOutcome(null);
     setStopped(false);
-    setProgress(null);
     setError(null);
-    setSaving(false);
   };
 
   // 每次打开从第一步开始，来源按入口；描述与文本保留，方便改一改再试；单词本场景取打开时的描述
@@ -180,25 +156,45 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     // 只在打开时读取描述：弹窗里保存场景后页面会更新描述，不能因此重置正在进行的步骤
   }, [isOpen, initialSource]);
 
-  // 卸载时若仍在分析则通知后端停止
+  // 卸载时只丢弃迟到的生成 / 提取结果；分析是后台任务，关掉弹窗也继续
   useEffect(
     () => () => {
       runRef.current += 1;
-      if (phaseRef.current === 'analyzing') wordAnalysisService.cancelBatchAnalysis();
     },
     []
   );
 
-  const hasUnsavedWork = phase === 'fetching' || phase === 'analyzing' || phase === 'review' || (phase === 'select' && candidates.length > 0);
+  // 分析任务结束：全部成功直接关闭；有没完成的词时显示结果
+  useEffect(() => {
+    if (!job || job.status === 'queued' || job.status === 'running' || phaseRef.current !== 'analyzing') return;
+    const result = job.result as WordAnalysisOutcome | null;
+    setJobId(null);
+    if (job.status === 'failed' || !result) {
+      setPhase('select');
+      setError(job.status === 'failed' ? `无法完成拼读分析：${jobErrorText(job)}` : null);
+      return;
+    }
+    const added = result.addedCount + result.updatedCount;
+    if (added > 0) {
+      toast.showSuccess(result.updatedCount > 0 ? `已添加 ${result.addedCount} 个单词，更新 ${result.updatedCount} 个` : `已添加 ${result.addedCount} 个单词`);
+    }
+    if (result.failed.length === 0) {
+      reset();
+      onClose();
+      return;
+    }
+    setOutcome(result);
+    setPhase('review');
+  }, [job]);
+
+  const hasUnsavedWork = phase === 'fetching' || (phase === 'select' && candidates.length > 0);
 
   const close = () => {
-    if (phaseRef.current === 'analyzing') wordAnalysisService.cancelBatchAnalysis();
     reset();
     setConfirmClose(false);
     onClose();
   };
   const requestClose = () => {
-    if (saving) return;
     if (hasUnsavedWork) setConfirmClose(true);
     else close();
   };
@@ -269,79 +265,37 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     }
   };
 
-  // ── 3 分析并保存 ──
-  const save = async (words: ExtractedWord[]) => {
-    if (words.length === 0) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await onSaveWords(words);
-      reset();
-      onClose();
-    } catch (err) {
-      // 保存失败：结果保留，可以直接再点保存
-      setPhase('review');
-      setError(`${errorText(err, '无法保存单词')}。分析结果已保留，可以直接重试保存`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  /** 分析 `words`（首次或重试失败的词），结果与已有结果合并 */
+  // ── 3 分析并保存（后台任务） ──
+  /** 分析 `words`（首次或重新分析没完成的词），成功的词由后端直接加入单词本 */
   const analyze = async (words: string[]) => {
     if (words.length === 0) return;
-    const run = ++runRef.current;
-    const live = () => run === runRef.current;
-    const existingSet = new Set(candidates.filter((c) => c.existing).map((c) => c.word.toLowerCase()));
     setError(null);
-    setProgress(null);
     setStopped(false);
-    setPhase('analyzing');
-    try {
-      // 生成 / 提取时定好的释义随单词传给拼读分析，保证释义和例句沿用同一个意思
-      const meaningOf = new Map(candidates.map((c) => [c.word.toLowerCase(), c.meaning]));
-      const analysis = await wordAnalysisService.analyzeExtractedWords(
-        words,
-        { bookId, meanings: words.map((w) => meaningOf.get(w.toLowerCase()) ?? '') },
-        (p) => live() && setProgress(p)
-      );
-      if (!live()) return;
-      if (!analysis.success) {
-        setProgress(null);
-        setPhase(analyzed.length > 0 ? 'review' : 'select');
-        setError(errorText(analysis.error, '无法完成拼读分析'));
-        return;
-      }
-      const result = analysis.data;
-      const done = new Map(analyzed.map((w) => [w.word.toLowerCase(), w]));
-      for (const w of result.words) done.set(w.word.toLowerCase(), toAnalyzed(w, existingSet.has(w.word.toLowerCase())));
-      const merged = [...done.values()];
-      const missing = words.filter((w) => !done.has(w.toLowerCase()));
-      setAnalyzed(merged);
-      setFailed(missing);
-      setProgress(null);
-      if (missing.length === 0 && !stoppedRef.current) {
-        await save(merged);
-      } else {
-        setPhase('review');
-      }
-    } catch (err) {
-      if (!live()) return;
-      setProgress(null);
-      setPhase(analyzed.length > 0 ? 'review' : 'select');
-      setError(errorText(err, '无法完成拼读分析'));
+    setOutcome(null);
+    // 生成 / 提取时定好的释义随单词传给拼读分析，保证释义和例句沿用同一个意思
+    const meaningOf = new Map(candidates.map((c) => [c.word.toLowerCase(), c.meaning]));
+    const started = await wordAnalysisService.startWordAnalysis({
+      bookId,
+      words,
+      meanings: words.map((w) => meaningOf.get(w.toLowerCase()) ?? ''),
+    });
+    if (!started.success) {
+      setError(errorText(started.error, '无法开始拼读分析'));
+      return;
     }
+    setJobId(started.data);
+    setPhase('analyzing');
   };
   const selected = candidates.filter((c) => c.selected);
   const selectedExisting = selected.filter((c) => c.existing).length;
   const existingCount = candidates.filter((c) => c.existing).length;
-  const analyzedSelected = analyzed.filter((w) => w.selected);
   const busy = phase === 'fetching';
 
-  /** 停止分析：进行中的批次跑完后返回已完成的部分 */
+  /** 停止分析：进行中的批次跑完，已完成的词照样加入单词本 */
   const stopAnalysis = async () => {
+    if (!jobId) return;
     setStopped(true);
-    const result = await wordAnalysisService.cancelBatchAnalysis();
+    const result = await jobService.cancel(jobId);
     if (!result.success) {
       setStopped(false);
       setError(errorText(result.error, '无法停止分析'));
@@ -452,7 +406,6 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
         )
       );
     }
-    if (saving) return centered(`正在保存 ${phase === 'review' ? analyzedSelected.length : analyzed.length} 个单词…`);
 
     switch (phase) {
       case 'source':
@@ -576,34 +529,35 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
         );
 
       case 'analyzing':
-        return <BatchAnalysisPanel progress={progress} stopping={stopped} />;
+        return <BatchAnalysisPanel job={job} stopping={stopped} />;
 
-      case 'review':
+      case 'review': {
+        const failed = outcome?.failed ?? [];
+        const added = (outcome?.addedCount ?? 0) + (outcome?.updatedCount ?? 0);
         return (
           <div className="flex flex-col gap-3">
             <div className={cn('flex items-start gap-3 rounded-lg border p-3', failed.length > 0 ? 'border-warning/40 bg-warning-soft/50' : 'bg-muted/40')}>
               {failed.length > 0 ? <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" /> : <CircleCheck className="mt-0.5 size-5 shrink-0 text-success" />}
               <div className="min-w-0 text-sm">
                 <div className="font-medium">
-                  {stopped ? '已停止分析' : '分析完成'}：{analyzed.length} 个单词可以保存
-                  {failed.length > 0 && `，${failed.length} 个没有完成`}
+                  {added > 0 ? `已加入单词本 ${added} 个` : '没有单词加入单词本'}，{failed.length} 个没有完成
                 </div>
-                {failed.length > 0 && (
-                  <div className="mt-0.5 text-muted-foreground">
-                    {failed.slice(0, 10).join('、')}
-                    {failed.length > 10 ? ' 等' : ''}——可以重新分析，或只保存已完成的
-                  </div>
-                )}
+                <div className="mt-0.5 text-muted-foreground">可以重新分析这些词，或者直接完成</div>
               </div>
             </div>
-            <WordGrid
-              words={analyzed}
-              showFrequency={false}
-              onWordToggle={(id) => setAnalyzed((prev) => prev.map((w) => (w.id === id ? { ...w, selected: !w.selected } : w)))}
-              onSelectAll={(all) => setAnalyzed((prev) => prev.map((w) => ({ ...w, selected: all })))}
-            />
+            <ul className="divide-y rounded-lg border text-sm">
+              {failed.map((w) => (
+                <li key={w.word} className="flex items-baseline gap-3 px-3 py-2">
+                  <span className="font-medium">{w.word}</span>
+                  <span className="min-w-0 truncate text-xs text-muted-foreground" title={w.error ?? undefined}>
+                    {w.error}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         );
+      }
     }
   };
 
@@ -655,31 +609,28 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       case 'analyzing':
         return (
           <>
-            <span className="mr-auto text-xs text-muted-foreground">分析完会自动保存；停止后可以只保存已完成的</span>
-            <Button variant="outline" onClick={stopAnalysis} disabled={stopped || saving}>
+            <span className="mr-auto text-xs text-muted-foreground">可以关闭窗口，分析会在后台继续，完成后自动加入单词本</span>
+            <Button variant="outline" onClick={stopAnalysis} disabled={stopped}>
               {stopped && <Loader2 className="animate-spin" />}
               {stopped ? '正在停止…' : '停止分析'}
             </Button>
+            <Button onClick={close}>在后台继续</Button>
           </>
         );
-      case 'review':
+      case 'review': {
+        const failed = outcome?.failed ?? [];
         return (
           <>
             {failed.length > 0 && (
-              <Button variant="ghost" className="mr-auto" onClick={() => analyze(failed)} disabled={saving}>
+              <Button variant="ghost" className="mr-auto" onClick={() => analyze(failed.map((w) => w.word))}>
                 <RotateCw />
                 重新分析 {failed.length} 个
               </Button>
             )}
-            <Button variant="outline" onClick={requestClose} disabled={saving}>
-              取消
-            </Button>
-            <Button onClick={() => save(analyzedSelected)} disabled={saving || analyzedSelected.length === 0}>
-              {saving && <Loader2 className="animate-spin" />}
-              保存 {analyzedSelected.length} 个单词
-            </Button>
+            <Button onClick={close}>完成</Button>
           </>
         );
+      }
     }
   };
 
@@ -714,7 +665,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
           <AlertDialogHeader>
             <AlertDialogTitle>放弃这次添加？</AlertDialogTitle>
             <AlertDialogDescription>
-              {phase === 'analyzing' ? '正在进行的分析会停止，' : ''}已经生成或分析的单词不会保存。
+              已经生成或选好的单词不会保存。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

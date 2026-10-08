@@ -38,125 +38,95 @@ pub struct WordExtractionResult {
     pub unique_count: usize,
 }
 
-/// 批量分析进度
+/// 「分析并加入单词本」任务的请求（start_word_analysis）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BatchAnalysisProgress {
-    pub status: String,       // "extracting", "analyzing", "completed", "error"
-    pub current_step: String, // 当前步骤描述
-    pub extraction_progress: Option<ExtractionProgress>,
-    pub analysis_progress: Option<AnalysisProgress>,
-    pub word_statuses: Option<Vec<WordAnalysisStatus>>, // 单词状态列表
+pub struct StartWordAnalysisRequest {
+    pub book_id: i64,
+    pub words: Vec<String>,
+    /// 生成 / 提取时定好的释义，与 words 一一对应（空字符串表示没有）
+    pub meanings: Option<Vec<String>>,
+    pub model_id: Option<i64>,
 }
 
-/// 提取进度
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExtractionProgress {
-    pub total_words: usize,     // 总单词数
-    pub extracted_words: usize, // 已提取单词数
-    pub elapsed_seconds: f64,   // 已用时间
-}
-
-/// 分析进度（细化）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AnalysisProgress {
-    pub total_words: usize,           // 总单词数
-    pub completed_words: usize,       // 已完成单词数
-    pub failed_words: usize,          // 失败单词数
-    pub current_word: Option<String>, // 当前正在分析的单词
-    pub batch_info: BatchInfo,        // 批次信息
-    pub elapsed_seconds: f64,         // 已用时间
-}
-
-/// 批次信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BatchInfo {
-    pub total_batches: usize,     // 总批次数
-    pub completed_batches: usize, // 已完成批次数
-    pub current_batch: usize,     // 当前批次（从 0 开始）
-    pub batch_size: usize,        // 每批单词数
-}
-
-/// 单词分析状态
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// 单个单词的分析状态（任务 detail 与结果里用）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WordAnalysisStatus {
-    pub word: String,                // 单词
-    pub status: String,              // "pending", "analyzing", "completed", "failed"
-    pub error: Option<String>,       // 错误信息（如果失败）
-    pub result: Option<PhonicsWord>, // 分析结果（如果完成）
+    pub word: String,
+    /// pending / analyzing / completed / failed
+    pub status: String,
+    /// 失败原因
+    pub error: Option<String>,
 }
 
-/// 批量分析结果
+/// 任务运行中的细节（job.detail）：逐词状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BatchAnalysisResult {
-    pub words: Vec<PhonicsWord>,
-    pub total_words: usize,
-    pub completed_words: usize,
-    pub failed_words: usize,
-    pub elapsed_seconds: f64,
+pub struct WordAnalysisDetail {
+    pub words: Vec<WordAnalysisStatus>,
 }
 
-/// 批量分析配置
+/// 任务结果（job.result）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BatchAnalysisConfig {
-    pub batch_size: usize,             // 每批单词数（默认 10，范围 5-20）
-    pub max_concurrent_batches: usize, // 最大并发批次数（默认 3，范围 1-5）
-    pub retry_failed_words: bool,      // 是否重试失败的单词（默认 true）
-    pub max_retries: usize,            // 最大重试次数（默认 2）
-    pub timeout_per_batch: u64,        // 每批超时时间（默认 60 秒）
+pub struct WordAnalysisOutcome {
+    pub book_id: i64,
+    pub added_count: i32,
+    pub updated_count: i32,
+    /// 没有分析成功的词（含停止时还没轮到的），可以再提交一次
+    pub failed: Vec<WordAnalysisStatus>,
 }
 
-impl Default for BatchAnalysisConfig {
-    fn default() -> Self {
-        Self {
-            batch_size: 10,
-            max_concurrent_batches: 3,
-            retry_failed_words: true,
-            max_retries: 2,
-            timeout_per_batch: 60,
+/// AI / 用户给出的词性（noun、N.、adj 等）归一为标准缩写；无法识别时为 `n.`（同前端 utils/partOfSpeech.ts）
+pub fn standard_pos(raw: &str) -> &'static str {
+    match raw.to_lowercase().replace('.', "").trim() {
+        "v" | "verb" | "verbs" => "v.",
+        "adj" | "adjective" | "adjectives" => "adj.",
+        "adv" | "adverb" | "adverbs" => "adv.",
+        "prep" | "preposition" | "prepositions" => "prep.",
+        "conj" | "conjunction" | "conjunctions" => "conj.",
+        "int" | "interjection" | "interjections" => "int.",
+        "pron" | "pronoun" | "pronouns" => "pron.",
+        "art" | "article" | "articles" => "art.",
+        "det" | "determiner" | "determiners" => "det.",
+        "num" | "numeral" | "numerals" | "number" => "num.",
+        _ => "n.",
+    }
+}
+
+impl PhonicsWord {
+    /// 转成保存到单词本的形状（释义用分析结果；词性归一）
+    pub fn to_analyzed(&self) -> crate::types::wordbook::AnalyzedWord {
+        let pos = standard_pos(&self.pos_abbreviation).to_string();
+        crate::types::wordbook::AnalyzedWord {
+            word: self.word.clone(),
+            meaning: self.chinese_translation.clone(),
+            part_of_speech: Some(pos.clone()),
+            ipa: Some(self.ipa.clone()),
+            syllables: Some(self.syllables.clone()),
+            pos_abbreviation: Some(pos),
+            pos_english: Some(self.pos_english.clone()),
+            pos_chinese: Some(self.pos_chinese.clone()),
+            phonics_rule: Some(self.phonics_rule.clone()),
+            analysis_explanation: Some(self.analysis_explanation.clone()),
+            examples: Some(self.examples.clone()),
+            word_frequency: Some(self.frequency),
         }
     }
 }
 
-/// 批次开始事件
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BatchStartEvent {
-    pub batch_index: usize,
-    pub total_batches: usize,
-    pub words: Vec<String>,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// 单词状态更新事件
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WordStatusUpdateEvent {
-    pub word: String,
-    pub status: String,
-    pub error: Option<String>,
-}
-
-/// 批次完成事件
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BatchCompleteEvent {
-    pub batch_index: usize,
-    pub completed_words: usize,
-    pub failed_words: usize,
-}
-
-/// 分析完成事件
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AnalysisCompleteEvent {
-    pub total_words: usize,
-    pub completed_words: usize,
-    pub failed_words: usize,
-    pub elapsed_seconds: f64,
+    #[test]
+    fn standard_pos_normalizes_aliases() {
+        assert_eq!(standard_pos("Noun"), "n.");
+        assert_eq!(standard_pos("ADJ."), "adj.");
+        assert_eq!(standard_pos("verbs"), "v.");
+        assert_eq!(standard_pos("number"), "num.");
+        assert_eq!(standard_pos(""), "n.");
+        assert_eq!(standard_pos("whatever"), "n.");
+    }
 }

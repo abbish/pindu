@@ -30,15 +30,14 @@ import { WordFormDialog } from '@/components/WordFormDialog/WordFormDialog';
 import { BatchDeleteModal } from '@/components/BatchDeleteModal';
 import { AddWordsDialog, type AddWordsSource } from '@/components/AddWordsDialog/AddWordsDialog';
 import { PassageList } from '@/components/PassageList';
-import type { ExtractedWord } from '@/components/WordGrid';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { WordBookIcon } from '@/components/WordBookIcon/WordBookIcon';
 import { usePageTitle } from '@/components/AppShell/pageTitle';
 import { wordBookService } from '@/services';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { useOnJobFinished } from '@/hooks/useJobs';
 import { formatDate } from '@/utils/datetime';
-import { standardizePartOfSpeech } from '@/utils/partOfSpeech';
 import { getStatusDisplay } from '@/types/study';
 import {
   type StudyPlanWithProgress,
@@ -194,37 +193,12 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
     await Promise.all([loadWords(currentPage), loadStatistics(), loadWordBook()]);
   };
 
-  const handleSaveWords = async (selected: ExtractedWord[]) => {
-    if (!wordBook) return;
-    const analyzedWords = selected.map((word) => {
-      const pos = standardizePartOfSpeech(word.phonics?.pos_abbreviation || word.partOfSpeech || 'n.');
-      return {
-        word: word.word,
-        meaning: word.meaning,
-        part_of_speech: pos,
-        ipa: word.phonics?.ipa || '',
-        syllables: word.phonics?.syllables || '',
-        phonics_rule: word.phonics?.phonics_rule || '',
-        analysis_explanation: word.phonics?.analysis_explanation || '',
-        pos_abbreviation: pos,
-        pos_english: word.phonics?.pos_english || '',
-        pos_chinese: word.phonics?.pos_chinese || '',
-        examples: word.phonics?.examples,
-      };
-    });
-    // 批量保存：后端按单词查重并更新
-    const result = await wordBookService.createWordBookFromAnalysis({
-      title: wordBook.title,
-      description: wordBook.description || '',
-      words: analyzedWords,
-      book_id: wordBook.id,
-    });
-    // 失败抛回导入弹窗，由弹窗内联显示原因（弹窗保留分析结果，可以直接重试保存），这里不再重复提示
-    if (!result.success) throw new Error(result.error);
-    await refreshAfterWordChange();
-    const { added_count, updated_count } = result.data;
-    toast.showSuccess(updated_count > 0 ? `已添加 ${added_count} 个单词，更新 ${updated_count} 个` : `已添加 ${added_count} 个单词`);
-  };
+  // 「分析并加入单词本」是后台任务：这本单词本的任务结束时刷新（弹窗关了也一样）
+  useOnJobFinished((job) => {
+    if (job.kind === 'word_analysis' && (job.link?.params as { id?: number } | undefined)?.id === wordBook?.id) {
+      void refreshAfterWordChange();
+    }
+  });
 
   const handleEditWord = (row: WordListDetail) => {
     // 当前页已有完整单词数据
@@ -559,7 +533,6 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
         bookDescription={wordBook.description}
         onSceneSaved={(description) => setWordBook((prev) => (prev ? { ...prev, description } : prev))}
         initialSource={addWordsSource ?? 'ai'}
-        onSaveWords={handleSaveWords}
       />
       <BatchDeleteModal
         isOpen={wordsToDelete.length > 0}

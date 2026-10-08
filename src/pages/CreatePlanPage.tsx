@@ -16,9 +16,12 @@ import { wordBookService } from '@/services/wordbookService';
 import { studyService } from '@/services/studyService';
 import { passageService } from '@/services/passageService';
 import { useAsyncData } from '@/hooks/useAsyncData';
+import { useJob, waitForJob } from '@/hooks/useJobs';
+import { jobService } from '@/services/jobService';
+import { jobErrorText } from '@/components/Jobs';
 import { addLocalDays, localToday } from '@/utils/datetime';
 import { CONSOLIDATION_DAYS, DAILY_NEW_WORDS_OPTIONS, DEFAULT_DAILY_NEW_WORDS, estimatePlan } from '@/utils/planParams';
-import type { PracticeContent, StudyPlanAIResult } from '@/types';
+import type { ApiResult, PracticeContent, StudyPlanAIResult } from '@/types';
 import type { PlanPassageCandidate } from '@/types/passage';
 import {
   DEFAULT_PASSAGE_INTERVAL,
@@ -79,7 +82,10 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
   const [preview, setPreview] = useState<StudyPlanAIResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  /** 进行中的 AI 排序任务（离开页面或停止时取消） */
+  const jobRef = useRef<string | null>(null);
+  const [planJobId, setPlanJobId] = useState<string | null>(null);
+  const planJob = useJob(planJobId);
 
   const { data: rawBooks, loading: loadingBooks, error: loadError, refresh: reloadBooks } = useAsyncData(async () => {
     const result = await wordBookService.getAllWordBooks();
@@ -150,26 +156,21 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
     };
   }, [withWords, selectedBooks, dailyNewWords]);
 
-  // 离开页面时若仍在 AI 排序：前端中止 + 通知后端取消（否则 AI 会在后台继续运行、消耗额度）
+  // 离开页面时若仍在 AI 排序：取消任务（结果只给这个页面用，否则 AI 会在后台空跑、消耗额度）
   useEffect(
     () => () => {
-      const controller = abortRef.current;
-      if (controller && !controller.signal.aborted) {
-        controller.abort();
-        // 已离开页面：取消失败也无处提示，后端会在任务结束时自行清理
-        wordBookService.cancelAnalysis().then(() => wordBookService.clearAnalysisProgress());
-      }
+      if (jobRef.current) void jobService.cancel(jobRef.current);
     },
     []
   );
 
   const stopPlanning = async () => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    const cancelled = await wordBookService.cancelAnalysis();
-    if (!cancelled.success) toast.showWarning('AI 排序可能还在后台运行', cancelled.error);
-    await wordBookService.clearAnalysisProgress();
+    const id = jobRef.current;
+    jobRef.current = null;
     setPhase('idle');
+    if (!id) return;
+    const cancelled = await jobService.cancel(id);
+    if (!cancelled.success) toast.showWarning('AI 排序可能还在后台运行', cancelled.error);
   };
 
   /** 排日程（AI 或默认顺序）→ 保存为“待开始”→ 进入计划详情 */
@@ -178,7 +179,6 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
   const finish = (planId: number) => {
     toast.showSuccess(`已创建「${planName}」`, '第一次练习的那天就是第 1 天');
-    abortRef.current = null;
     onNavigate?.('plan-detail', { planId });
   };
 
@@ -212,33 +212,38 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
     if (!planName || selectedBooks.length === 0) return;
     if (withPassages && passages.length === 0) return;
     setError(null);
-    const controller = new AbortController();
-    abortRef.current = controller;
     setPhase(withAi ? 'planning' : 'saving');
     try {
-      if (withAi) await wordBookService.clearAnalysisProgress();
-      const startDate = localToday(); // 第一次练习时会再平移到那一天
-      const scheduled = await studyService.generateStudyPlanSchedule({
+      const request = {
         name: planName,
         description: description.trim(),
         dailyNewWords,
-        startDate,
+        startDate: localToday(), // 第一次练习时会再平移到那一天
         wordbookIds: selectedBooks,
         useAi: withAi,
-      });
-      if (controller.signal.aborted) return;
-      if (!scheduled.success) throw new Error(scheduled.error);
-      // 用户取消时后端返回空日程
-      if (scheduled.data.dailyPlans.length === 0) {
-        setPhase('idle');
-        return;
+      };
+      let scheduled: ApiResult<StudyPlanAIResult>;
+      if (withAi) {
+        const started = await studyService.startStudyPlanOrdering(request);
+        if (!started.success) throw new Error(started.error);
+        jobRef.current = started.data;
+        setPlanJobId(started.data);
+        const job = await waitForJob(started.data);
+        // 用户停止或已离开页面
+        if (jobRef.current !== started.data || job.status === 'cancelled') return;
+        jobRef.current = null;
+        if (job.status === 'failed') throw new Error(jobErrorText(job));
+        scheduled = { success: true, data: job.result as StudyPlanAIResult };
+      } else {
+        scheduled = await studyService.generateStudyPlanSchedule(request);
       }
+      if (!scheduled.success) throw new Error(scheduled.error);
       setPhase('saving');
       const meta = scheduled.data.planMetadata;
       const saved = await studyService.createStudyPlanWithSchedule({
         name: planName,
         description: description.trim(),
-        startDate,
+        startDate: request.startDate,
         endDate: meta.endDate,
         aiPlanData: JSON.stringify(scheduled.data),
         wordbookIds: selectedBooks,
@@ -249,8 +254,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
       if (!saved.success) throw new Error(saved.error);
       finish(saved.data);
     } catch (err) {
-      if (controller.signal.aborted) return;
-      abortRef.current = null;
+      jobRef.current = null;
       setError(messageOf(err) ?? '请再试一次');
       setPhase(withAi ? 'failed' : 'idle');
     }
@@ -502,7 +506,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
           </p>
 
           <div className="space-y-3 border-t pt-4">
-            {phase === 'planning' && <PlanningProgress isVisible onCancel={stopPlanning} />}
+            {phase === 'planning' && <PlanningProgress job={planJob} onCancel={stopPlanning} />}
             {error && (
               <InlineError
                 title={phase === 'failed' ? 'AI 排序没有完成' : '无法创建计划'}

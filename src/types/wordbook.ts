@@ -215,12 +215,3 @@ export interface WordSaveResult {
 /// 单词提取模式
 export type WordExtractionMode = 'all' | 'focus';
 
-/// 学习计划规划进度（对应 Rust `planning_progress::PlanningProgressState`）
-export interface PlanningProgressState {
-  status: string;           // "analyzing", "completed", "error"
-  current_step: string;     // 当前步骤描述
-  chunks_received: number;  // 已接收的chunk数量
-  total_chars: number;      // 已接收的总字符数
-  elapsed_seconds: number;  // 已用时间（秒）
-  error_message?: string;   // 错误信息
-}

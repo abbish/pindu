@@ -118,10 +118,9 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
     setFilling(true);
     setSubmitError(null);
     try {
-      const result = await wordAnalysisService.analyzeExtractedWords([w], { bookId, meanings: [values.meaning.trim()] });
+      const result = await wordAnalysisService.analyzeWord(w, values.meaning.trim(), bookId);
       if (!result.success) throw new Error(result.error);
-      const p = result.data.words[0];
-      if (!p) throw new Error('AI 没有返回这个单词的分析');
+      const p = result.data;
       setValues((prev) => ({
         ...prev,
         meaning: prev.meaning || p.chinese_translation,

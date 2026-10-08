@@ -212,58 +212,70 @@ pub async fn preview_study_plan(
     result
 }
 
-/// 生成学习计划AI规划
+/// 按默认顺序生成学习计划日程（不用 AI；AI 排序走 start_study_plan_ordering）
 #[tauri::command]
 pub async fn generate_study_plan_schedule(
     app: AppHandle,
     request: StudyPlanScheduleRequest,
 ) -> AppResult<StudyPlanAIResult> {
-    use crate::agent::AgentPaths;
-    use crate::services::study_plan_generation::StudyPlanGenerator;
-
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
     logger.api_request(
         "generate_study_plan_schedule",
         Some(&format!(
-            "name: {}, daily_new_words: {}, wordbooks: {:?}, use_ai: {:?}",
-            request.name, request.daily_new_words, request.wordbook_ids, request.use_ai
+            "name: {}, daily_new_words: {}, wordbooks: {:?}",
+            request.name, request.daily_new_words, request.wordbook_ids
         )),
     );
+    let result = crate::services::study_plan_generation::generate_without_ai(
+        &Arc::new(pool.inner().clone()),
+        &Arc::new(logger.inner().clone()),
+        &request,
+    )
+    .await;
+    super::finish(&logger, "generate_study_plan_schedule", result)
+}
 
+/// AI 排学习顺序并生成日程（前台任务）：立即返回任务 id，结果（StudyPlanAIResult）在任务完成时随 job-updated 送达；
+/// 新建计划页离开时取消任务
+#[tauri::command]
+pub async fn start_study_plan_ordering(
+    app: AppHandle,
+    request: StudyPlanScheduleRequest,
+) -> AppResult<String> {
+    use crate::jobs::{JobSpec, Jobs, Lane};
+    use crate::services::study_plan_generation::{validate_request, StudyPlanGenerator};
+
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "start_study_plan_ordering",
+        Some(&format!(
+            "name: {}, daily_new_words: {}, wordbooks: {:?}",
+            request.name, request.daily_new_words, request.wordbook_ids
+        )),
+    );
     let result = async {
-        if request.use_ai == Some(false) {
-            // 不用 AI：默认顺序立即排好，不需要 sidecar
-            return crate::services::study_plan_generation::generate_without_ai(
-                &Arc::new(pool.inner().clone()),
-                &Arc::new(logger.inner().clone()),
-                &request,
-            )
-            .await;
-        }
-        let app_data_dir = crate::app_paths::dirs(&app).data;
-        StudyPlanGenerator::new(
+        validate_request(&request)?;
+        let generator = StudyPlanGenerator::new(
             Arc::new(pool.inner().clone()),
             Arc::new(logger.inner().clone()),
-            AgentPaths::resolve(&app_data_dir)?,
-        )
-        .generate(&request)
-        .await
+            super::agent_paths(&app)?,
+        );
+        let spec = JobSpec {
+            kind: "plan_ordering",
+            title: format!("AI 排学习顺序 · {}", request.name.trim()),
+            lane: Lane::Agent,
+            detached: false,
+            link: None,
+        };
+        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
+            let schedule = generator.generate(&request, &ctx).await?;
+            Ok(serde_json::to_value(schedule).unwrap_or_default())
+        }))
     }
     .await;
-
-    match &result {
-        Ok(r) => logger.api_response(
-            "generate_study_plan_schedule",
-            true,
-            Some(&format!(
-                "Generated schedule with {} daily plans",
-                r.daily_plans.len()
-            )),
-        ),
-        Err(e) => logger.api_response("generate_study_plan_schedule", false, Some(&e.to_string())),
-    }
-    result
+    super::finish(&logger, "start_study_plan_ordering", result)
 }
 
 /// 创建带AI规划的学习计划

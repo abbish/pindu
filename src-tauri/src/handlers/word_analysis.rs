@@ -1,21 +1,19 @@
-//! 批量文本分析管线命令：提词 → 分批并发拼读分析；进度写入 EnhancedProgressManager 并通过事件推送单词状态
+//! 添加单词的两步：提词 / 按描述生成（直接返回）→ 分析并加入单词本（后台任务，见 services/word_analysis_job.rs）
 
 use crate::agent::tasks::PhonicsContext;
 use crate::error::{AppError, AppResult};
+use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
 use crate::logger::Logger;
-use crate::progress_manager::{get_enhanced_progress_manager, EnhancedProgressManager};
 use crate::services::agent_settings::{AgentSettingsService, AgentTaskKind};
 use crate::services::phonics_analysis::PhonicsBatchAnalyzer;
 use crate::services::prompt_profile::PromptProfileService;
+use crate::services::word_analysis_job::WordAnalysisJob;
 use crate::services::word_extraction::WordExtractionService;
-use crate::types::word_analysis::{
-    BatchAnalysisConfig, BatchAnalysisProgress, BatchAnalysisResult,
-};
+use crate::types::word_analysis::StartWordAnalysisRequest;
 use crate::types::AIModelConfig;
-use futures::stream::{self, StreamExt};
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 /// 提词服务（经 agent sidecar）
 fn word_extraction_service(app: &AppHandle) -> AppResult<WordExtractionService> {
@@ -165,105 +163,144 @@ pub async fn generate_words_from_intent(
     result
 }
 
-/// 批量分析已提取的单词（第二步）
+/// 分析单词并加入单词本（第二步，后台任务）：立即返回任务 id，进度与逐词状态经 job-updated 推送，
+/// 完成后成功的词已写进单词本（见 services/word_analysis_job.rs）
 #[tauri::command]
-pub async fn analyze_extracted_words(
+pub async fn start_word_analysis(
     app: AppHandle,
-    words: Vec<String>,
-    model_id: Option<i64>,
-    config: Option<BatchAnalysisConfig>,
-    book_id: Option<i64>,
-    meanings: Option<Vec<String>>,
-) -> AppResult<BatchAnalysisResult> {
+    request: StartWordAnalysisRequest,
+) -> AppResult<String> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
-
-    // 1. 获取 AI 服务
-    let model_config = get_model_config(AgentTaskKind::Phonics, model_id, &pool, &logger).await?;
-    let profile = PromptProfileService::load(pool.inner()).await?;
-    // 单词本场景 + 生成 / 提取时已确定的释义（与 words 一一对应，空字符串表示没有）
-    if meanings.as_ref().is_some_and(|m| m.len() != words.len()) {
-        return Err(AppError::ValidationError(
-            "释义数量应与单词数量一致".to_string(),
-        ));
-    }
-    let context = PhonicsContext {
-        scene: PromptProfileService::book_scene(
-            &Arc::new(pool.inner().clone()),
-            &Arc::new(logger.inner().clone()),
-            book_id,
-        )
-        .await?,
-        meanings: words
-            .iter()
-            .zip(meanings.unwrap_or_default())
-            .filter(|(_, m)| !m.trim().is_empty())
-            .map(|(w, m)| (w.to_lowercase(), m.trim().to_string()))
-            .collect(),
-    };
-    let analyzer = phonics_analyzer(&app, &model_config, profile, context)?;
-
-    // 2. 获取进度管理器
-    let progress_manager = get_enhanced_progress_manager();
-    progress_manager.start_batch_analysis();
-
-    // 3. 获取配置：每批词数与同时请求数以「设置 → AI 助手」为准（前端传的值不再生效）
-    let mut config = config.unwrap_or_default();
-    let agent_settings = AgentSettingsService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone()),
-    )
-    .get()
-    .await?;
-    config.batch_size = agent_settings.batch_size as usize;
-    config.max_concurrent_batches = agent_settings.max_concurrency as usize;
-
-    logger.info(
-        "WORD_ANALYSIS",
-        &format!(
-            "🚀 Starting batch analysis of {} words with config: batch_size={}, max_concurrent={}",
-            words.len(),
-            config.batch_size,
-            config.max_concurrent_batches
-        ),
-    );
-
-    // 4. 执行批量分析
-    let result = analyze_words_parallel(
-        analyzer,
-        words,
-        &logger,
-        progress_manager,
-        &config,
-        app.clone(),
-    )
-    .await?;
-
-    logger.api_response(
-        "analyze_extracted_words",
-        true,
+    logger.api_request(
+        "start_word_analysis",
         Some(&format!(
-            "Analyzed {} words in {:.2}s",
-            result.completed_words, result.elapsed_seconds
+            "book_id: {}, words: {}",
+            request.book_id,
+            request.words.len()
         )),
     );
+    let result = async {
+        let words: Vec<String> = request
+            .words
+            .iter()
+            .map(|w| w.trim().to_string())
+            .filter(|w| !w.is_empty())
+            .collect();
+        if words.is_empty() {
+            return Err(AppError::ValidationError("请至少选一个单词".to_string()));
+        }
+        if request
+            .meanings
+            .as_ref()
+            .is_some_and(|m| m.len() != request.words.len())
+        {
+            return Err(AppError::ValidationError(
+                "释义数量应与单词数量一致".to_string(),
+            ));
+        }
+        let pool_arc = Arc::new(pool.inner().clone());
+        let logger_arc = Arc::new(logger.inner().clone());
+        let book = crate::repositories::wordbook_repository::WordBookRepository::new(
+            pool_arc.clone(),
+            logger_arc.clone(),
+        )
+        .find_by_id(request.book_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("单词本不存在，可能已被删除".to_string()))?;
 
-    Ok(result)
+        let model_config =
+            get_model_config(AgentTaskKind::Phonics, request.model_id, &pool, &logger).await?;
+        let profile = PromptProfileService::load(pool.inner()).await?;
+        // 单词本场景 + 生成 / 提取时已确定的释义
+        let context = PhonicsContext {
+            scene: PromptProfileService::book_scene(&pool_arc, &logger_arc, Some(request.book_id))
+                .await?,
+            meanings: request
+                .words
+                .iter()
+                .zip(request.meanings.clone().unwrap_or_default())
+                .filter(|(_, m)| !m.trim().is_empty())
+                .map(|(w, m)| (w.to_lowercase(), m.trim().to_string()))
+                .collect(),
+        };
+        let analyzer = phonics_analyzer(&app, &model_config, profile, context)?;
+        // 每批词数与同时请求数以「设置 → AI 助手」为准
+        let settings = AgentSettingsService::new(pool_arc.clone(), logger_arc.clone())
+            .get()
+            .await?;
+
+        let job = WordAnalysisJob {
+            pool: pool_arc,
+            logger: logger_arc,
+            analyzer,
+            book_id: request.book_id,
+            book_title: book.title.clone(),
+            words,
+            batch_size: settings.batch_size as usize,
+            concurrency: settings.max_concurrency as usize,
+        };
+        let spec = JobSpec {
+            kind: "word_analysis",
+            title: format!("分析 {} 个单词 · {}", job.words.len(), book.title),
+            lane: Lane::Agent,
+            detached: true,
+            link: Some(JobLink::new(
+                "wordbook-detail",
+                serde_json::json!({ "id": request.book_id }),
+            )),
+        };
+        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
+            let outcome = job.run(ctx).await?;
+            Ok(serde_json::to_value(outcome).unwrap_or_default())
+        }))
+    }
+    .await;
+    super::finish(&logger, "start_word_analysis", result)
 }
 
-/// 获取批量分析进度（新命令）
+/// 分析一个单词，只返回结果不保存（编辑单词时的「AI 补全」，几秒内完成，不做成后台任务）
 #[tauri::command]
-pub async fn get_batch_analysis_progress(_app: AppHandle) -> AppResult<BatchAnalysisProgress> {
-    let progress_manager = get_enhanced_progress_manager();
-    Ok(progress_manager.get_full_progress())
-}
-
-/// 取消批量分析（新命令）
-#[tauri::command]
-pub async fn cancel_batch_analysis(_app: AppHandle) -> AppResult<()> {
-    let progress_manager = get_enhanced_progress_manager();
-    progress_manager.cancel_analysis();
-    Ok(())
+pub async fn analyze_word(
+    app: AppHandle,
+    word: String,
+    meaning: Option<String>,
+    book_id: Option<i64>,
+) -> AppResult<crate::types::word_analysis::PhonicsWord> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request("analyze_word", Some(&format!("word: {word}")));
+    let result = async {
+        let word = word.trim().to_string();
+        if word.is_empty() {
+            return Err(AppError::ValidationError("先填写单词".to_string()));
+        }
+        let model_config = get_model_config(AgentTaskKind::Phonics, None, &pool, &logger).await?;
+        let profile = PromptProfileService::load(pool.inner()).await?;
+        let context = PhonicsContext {
+            scene: PromptProfileService::book_scene(
+                &Arc::new(pool.inner().clone()),
+                &Arc::new(logger.inner().clone()),
+                book_id,
+            )
+            .await?,
+            meanings: meaning
+                .filter(|m| !m.trim().is_empty())
+                .map(|m| (word.to_lowercase(), m.trim().to_string()))
+                .into_iter()
+                .collect(),
+        };
+        let outcome = phonics_analyzer(&app, &model_config, profile, context)?
+            .analyze_batch(std::slice::from_ref(&word), 0, 1)
+            .await?;
+        outcome
+            .analyzed
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::ExternalServiceError("AI 没有返回这个单词的分析".to_string()))
+    }
+    .await;
+    super::finish(&logger, "analyze_word", result)
 }
 
 /// 获取模型配置：指定模型或默认模型（须启用且已配置 API Key），与生成学习计划共用同一路径
@@ -284,339 +321,4 @@ async fn get_model_config(
     );
 
     Ok(config)
-}
-
-/// 只批量分析单词（不包含提取步骤）- 并行版本
-async fn analyze_words_parallel(
-    analyzer: Arc<PhonicsBatchAnalyzer>,
-    words: Vec<String>,
-    logger: &Logger,
-    progress_manager: &EnhancedProgressManager,
-    config: &BatchAnalysisConfig,
-    app_handle: AppHandle,
-) -> Result<BatchAnalysisResult, Box<dyn std::error::Error>> {
-    let start_time = std::time::Instant::now();
-
-    logger.info(
-        "WORD_ANALYSIS",
-        &format!(
-            "📦 开始批量分析 {} 个单词 (batch_size={}, max_concurrent_batches={})",
-            words.len(),
-            config.batch_size,
-            config.max_concurrent_batches
-        ),
-    );
-
-    let total_batches = words.len().div_ceil(config.batch_size);
-
-    // 将单词分成批次
-    let batches: Vec<Vec<String>> = words
-        .chunks(config.batch_size)
-        .map(|chunk| chunk.to_vec())
-        .collect();
-
-    logger.info(
-        "WORD_ANALYSIS",
-        &format!(
-            "📊 共分为 {} 个批次，每批最多 {} 个单词",
-            batches.len(),
-            config.batch_size
-        ),
-    );
-
-    // 并行处理批次，限制并发数
-    let mut analysis_results: Vec<crate::types::word_analysis::PhonicsWord> = Vec::new();
-    let mut failed_words: Vec<String> = Vec::new();
-    let mut completed_batches = 0;
-
-    // 初始化分析进度：先登记全部单词（等待中），完成 / 失败数由进度管理器按逐词状态计算
-    let total_words_count = words.len();
-    progress_manager.register_words(&words);
-
-    progress_manager.update_analysis_progress(&crate::types::word_analysis::AnalysisProgress {
-        total_words: total_words_count,
-        completed_words: 0,
-        failed_words: 0,
-        current_word: None,
-        batch_info: crate::types::word_analysis::BatchInfo {
-            total_batches,
-            completed_batches: 0,
-            current_batch: 0,
-            batch_size: config.batch_size,
-        },
-        elapsed_seconds: start_time.elapsed().as_secs_f64(),
-    });
-
-    // 使用 futures stream 来限制并发数
-    let batches_stream = stream::iter(batches.into_iter().enumerate())
-        .map(|(batch_index, batch_words)| {
-            let analyzer = Arc::clone(&analyzer);
-            let logger = logger.clone();
-            let batch_index_clone = batch_index;
-            let batch_words_clone = batch_words.clone();
-            let app_handle = app_handle.clone();
-
-            async move {
-                // 检查是否已取消
-                if progress_manager.is_cancelled() {
-                    logger.info("WORD_ANALYSIS", "🚫 批量分析已取消");
-                    return (batch_index, None, batch_words_clone);
-                }
-
-                // 发送批次开始事件
-                if let Err(e) = app_handle.emit_to(
-                    "main",
-                    "batch-start",
-                    crate::types::word_analysis::BatchStartEvent {
-                        batch_index: batch_index_clone,
-                        total_batches,
-                        words: batch_words_clone.clone(),
-                    },
-                ) {
-                    logger.error(
-                        "WORD_ANALYSIS",
-                        &format!("Failed to emit batch-start event: {}", e),
-                        None,
-                    );
-                }
-
-                // 更新批次开始状态 - 立即更新单词状态为"analyzing"
-                for word in &batch_words_clone {
-                    progress_manager.update_word_status(
-                        &crate::types::word_analysis::WordAnalysisStatus {
-                            word: word.clone(),
-                            status: "analyzing".to_string(),
-                            error: None,
-                            result: None,
-                        },
-                    );
-
-                    // 发送单词状态更新事件
-                    if let Err(e) = app_handle.emit_to(
-                        "main",
-                        "word-status-update",
-                        crate::types::word_analysis::WordStatusUpdateEvent {
-                            word: word.clone(),
-                            status: "analyzing".to_string(),
-                            error: None,
-                        },
-                    ) {
-                        logger.error(
-                            "WORD_ANALYSIS",
-                            &format!(
-                                "Failed to emit word-status-update event for word '{}': {}",
-                                word, e
-                            ),
-                            None,
-                        );
-                    }
-                }
-
-                // 处理批次
-                match analyzer
-                    .analyze_batch(&batch_words_clone, batch_index_clone, total_batches)
-                    .await
-                {
-                    Ok(outcome) => {
-                        // 模型没有返回的单词按失败处理（不再停留在“分析中”）
-                        for word in &outcome.missing {
-                            let error = "模型没有返回该单词的分析".to_string();
-                            progress_manager.update_word_status(
-                                &crate::types::word_analysis::WordAnalysisStatus {
-                                    word: word.clone(),
-                                    status: "failed".to_string(),
-                                    error: Some(error.clone()),
-                                    result: None,
-                                },
-                            );
-                            if let Err(e) = app_handle.emit_to(
-                                "main",
-                                "word-status-update",
-                                crate::types::word_analysis::WordStatusUpdateEvent {
-                                    word: word.clone(),
-                                    status: "failed".to_string(),
-                                    error: Some(error),
-                                },
-                            ) {
-                                logger.error(
-                                    "WORD_ANALYSIS",
-                                    &format!("Failed to emit word-status-update event: {}", e),
-                                    None,
-                                );
-                            }
-                        }
-                        let missing = outcome.missing;
-                        let batch_results = outcome.analyzed;
-                        // 更新每个单词的状态为完成
-                        for word in &batch_results {
-                            progress_manager.update_word_status(
-                                &crate::types::word_analysis::WordAnalysisStatus {
-                                    word: word.word.clone(),
-                                    status: "completed".to_string(),
-                                    error: None,
-                                    result: Some(word.clone()),
-                                },
-                            );
-
-                            // 发送单词状态更新事件
-                            if let Err(e) = app_handle.emit_to(
-                                "main",
-                                "word-status-update",
-                                crate::types::word_analysis::WordStatusUpdateEvent {
-                                    word: word.word.clone(),
-                                    status: "completed".to_string(),
-                                    error: None,
-                                },
-                            ) {
-                                logger.error(
-                                    "WORD_ANALYSIS",
-                                    &format!(
-                                        "Failed to emit word-status-update event for word '{}': {}",
-                                        word.word, e
-                                    ),
-                                    None,
-                                );
-                            }
-                        }
-
-                        // 发送批次完成事件
-                        if let Err(e) = app_handle.emit_to(
-                            "main",
-                            "batch-complete",
-                            crate::types::word_analysis::BatchCompleteEvent {
-                                batch_index: batch_index_clone,
-                                completed_words: batch_results.len(),
-                                failed_words: missing.len(),
-                            },
-                        ) {
-                            logger.error(
-                                "WORD_ANALYSIS",
-                                &format!(
-                                    "Failed to emit batch-complete event for batch {}: {}",
-                                    batch_index_clone, e
-                                ),
-                                None,
-                            );
-                        }
-
-                        (batch_index, Some(batch_results), missing)
-                    }
-                    Err(e) => {
-                        // 批次失败，标记所有单词为失败
-                        for word in &batch_words_clone {
-                            progress_manager.update_word_status(
-                                &crate::types::word_analysis::WordAnalysisStatus {
-                                    word: word.clone(),
-                                    status: "failed".to_string(),
-                                    error: Some(e.to_string()),
-                                    result: None,
-                                },
-                            );
-
-                            // 发送单词状态更新事件
-                            if let Err(e) = app_handle.emit_to(
-                                "main",
-                                "word-status-update",
-                                crate::types::word_analysis::WordStatusUpdateEvent {
-                                    word: word.clone(),
-                                    status: "failed".to_string(),
-                                    error: Some(e.to_string()),
-                                },
-                            ) {
-                                logger.error(
-                                    "WORD_ANALYSIS",
-                                    &format!(
-                                        "Failed to emit word-status-update event for word '{}': {}",
-                                        word, e
-                                    ),
-                                    None,
-                                );
-                            }
-                        }
-
-                        (batch_index, None, batch_words_clone)
-                    }
-                }
-            }
-        })
-        .buffer_unordered(config.max_concurrent_batches);
-
-    // 处理所有批次
-    let mut batch_results_stream = Box::pin(batches_stream);
-
-    while let Some((batch_index, batch_result, failed_batch_words)) =
-        batch_results_stream.next().await
-    {
-        completed_batches += 1;
-
-        // 批次信息（完成 / 失败数与用时由进度管理器按逐词状态计算）
-        progress_manager.update_analysis_progress(&crate::types::word_analysis::AnalysisProgress {
-            total_words: total_words_count,
-            completed_words: 0,
-            failed_words: 0,
-            current_word: None,
-            batch_info: crate::types::word_analysis::BatchInfo {
-                total_batches,
-                completed_batches,
-                current_batch: batch_index,
-                batch_size: config.batch_size,
-            },
-            elapsed_seconds: start_time.elapsed().as_secs_f64(),
-        });
-
-        if let Some(results) = batch_result {
-            let result_len = results.len();
-            analysis_results.extend(results);
-            // 模型漏掉的单词计入失败
-            failed_words.extend(failed_batch_words);
-            logger.info(
-                "WORD_ANALYSIS",
-                &format!(
-                    "✅ 批次 {}/{} 完成，分析了 {} 个单词",
-                    batch_index + 1,
-                    total_batches,
-                    result_len
-                ),
-            );
-        } else {
-            failed_words.extend(failed_batch_words);
-            logger.error(
-                "WORD_ANALYSIS",
-                &format!("❌ 批次 {}/{} 失败", batch_index + 1, total_batches),
-                None,
-            );
-        }
-    }
-
-    logger.info("WORD_ANALYSIS", "✅ 批量分析完成");
-
-    let total_words_count = words.len();
-    let completed_words_count = analysis_results.len();
-    let failed_words_count = failed_words.len();
-
-    // 发送分析完成事件
-    if let Err(e) = app_handle.emit_to(
-        "main",
-        "analysis-complete",
-        crate::types::word_analysis::AnalysisCompleteEvent {
-            total_words: total_words_count,
-            completed_words: completed_words_count,
-            failed_words: failed_words_count,
-            elapsed_seconds: start_time.elapsed().as_secs_f64(),
-        },
-    ) {
-        logger.error(
-            "WORD_ANALYSIS",
-            &format!("Failed to emit analysis-complete event: {}", e),
-            None,
-        );
-    }
-
-    Ok(BatchAnalysisResult {
-        words: analysis_results,
-        total_words: total_words_count,
-        completed_words: completed_words_count,
-        failed_words: failed_words_count,
-        elapsed_seconds: start_time.elapsed().as_secs_f64(),
-    })
 }

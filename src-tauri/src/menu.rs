@@ -6,6 +6,10 @@ use tauri::{AppHandle, Runtime};
 
 /// 「检查更新…」菜单项：点击后向前端发 `menu-check-update` 事件（lib.rs on_menu_event）
 pub const CHECK_UPDATE_ID: &str = "check_update";
+/// 「后台任务…」菜单项：向前端发 `menu-show-jobs` 事件
+pub const SHOW_JOBS_ID: &str = "show_jobs";
+/// 「退出」：自己处理（有后台任务在跑时先请用户确认），不用系统的 quit 项
+pub const QUIT_ID: &str = "quit";
 
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let info = app.package_info();
@@ -31,7 +35,13 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &PredefinedMenuItem::hide_others(app, Some("隐藏其他"))?,
             &PredefinedMenuItem::show_all(app, Some("全部显示"))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, Some(&format!("退出{}", name)))?,
+            &MenuItem::with_id(
+                app,
+                QUIT_ID,
+                format!("退出{}", name),
+                true,
+                Some("CmdOrCtrl+Q"),
+            )?,
         ],
     )?;
     let edit_menu = Submenu::with_items(
@@ -61,6 +71,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         &[
             &PredefinedMenuItem::minimize(app, Some("最小化"))?,
             &PredefinedMenuItem::maximize(app, Some("缩放"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(
+                app,
+                SHOW_JOBS_ID,
+                "后台任务…",
+                true,
+                Some("CmdOrCtrl+Shift+T"),
+            )?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::close_window(app, Some("关闭窗口"))?,
         ],

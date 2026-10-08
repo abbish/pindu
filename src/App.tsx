@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { ErrorBoundary, ToastProvider } from './components';
 import { AppShell } from './components/AppShell/AppShell';
 import { DevTools } from './components/DevTools';
+import { JobCenter } from './components/Jobs';
 import { StartupGate } from './components/StartupGate';
 import { UpdateWatcher } from './components/UpdateBanner';
 import { HomePage } from './pages/HomePage';
@@ -113,6 +114,8 @@ function App() {
               {renderPage()}
             </AppShell>
           )}
+          {/* 后台任务：状态同步、任务面板、完成提示、退出确认 */}
+          <JobCenter onNavigate={navigate} />
           <DevTools />
         </StartupGate>
       </ToastProvider>

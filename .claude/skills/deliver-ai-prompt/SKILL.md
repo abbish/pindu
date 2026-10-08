@@ -58,4 +58,4 @@ description: "AI 能力实现（agent harness）：修改 src-tauri/src/prompts/
 
 - 提示词、工具 schema、Rust 校正与落库字段一致，sidecar 与 Rust 均已重新编译
 - 评测前后对比已记录（样本数、准确率、质量指标），无准确率回退
-- 没有新增绕过 agent 的直连调用、没有新增进度管理器
+- 没有新增绕过 agent 的直连调用、耗时任务经 `jobs.rs` 提交，没有另建进度 / 取消机制

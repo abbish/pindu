@@ -30,6 +30,7 @@ pub mod calendar;
 // 只在开发构建里注册（前端不调用，见 CLAUDE.md §4.2）
 #[cfg(debug_assertions)]
 pub mod diagnostics;
+pub mod jobs;
 pub mod passage;
 pub mod passage_import;
 pub mod plan_passage;
@@ -52,6 +53,7 @@ pub use analysis::*;
 pub use calendar::*;
 #[cfg(debug_assertions)]
 pub use diagnostics::*;
+pub use jobs::*;
 pub use passage::*;
 pub use passage_import::*;
 pub use plan_passage::*;
