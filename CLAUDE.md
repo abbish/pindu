@@ -306,7 +306,9 @@ export const fooService = new FooService();
 | 续跑、交接 | `harness-context-memory` |
 | 把失败补成测试 | `harness-regression-curation` |
 | 改本文件 / Skill / hook | `harness-governance` |
-| 构建发布（仅显式） | `/sdd-release-build` |
+| 发布新版本（仅显式） | `/sdd-release`（人看的流程：`docs/RELEASING.md`） |
+
+**从改动到发布**：每个改动在 `sdd-work` 判断发布影响；验收通过后，用户可见的改动记入 `docs/releases/UNRELEASED.md`；提交到 main 且 CI 绿才算完成；发版由用户显式 `/sdd-release`（UNRELEASED.md → `vX.Y.Z.md` → 打标签 → CI 出 Release 草稿 → 用户发布 → 应用内更新）。
 
 **原则**：任务类型只改变要保护的约束，不选择不同的阶段链；当前会话能闭环的任务不建 work item；`progress.md` 是运行状态唯一 owner；没有实际命令或可复查产物不得声称验证通过；`cargo check` 通过不证明命令已注册，`tsc` 通过不证明字段对得上（字段对账用 `check-type-sync.py`）。
 

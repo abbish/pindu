@@ -11,7 +11,15 @@
 - `sdd-analyze`：定位首个分歧点；区分因果 finding、设计 finding、待决假设。`references/redlark-diagnostic-map.md` 说明证据在哪里。
 - `sdd-implement`：执行一个批次并调度最小 `deliver-*`；实际 diff 对账 plan。
 - `sdd-verify`：三层证据（确定性 / AI 语义 / 桌面 UI），迁移和 IPC contract 变更必查。
-- `sdd-release-build`（仅显式 `/sdd-release-build`，`disable-model-invocation: true`）：版本同步、构建、安装包检查。
+- `sdd-release`（仅显式 `/sdd-release`，`disable-model-invocation: true`）：发布新版本——版本号、发布前门禁、发布说明定稿、打标签、Release 草稿与 latest.json 检查、交用户发布、发布后核对。人看的发版说明在 `docs/RELEASING.md`。
+
+### 从改动到发布
+
+```text
+sdd-work（Shape：判断发布影响）→ sdd-plan / sdd-analyze → sdd-implement → sdd-verify（发布链路必查；用户可见改动记入 docs/releases/UNRELEASED.md）
+  → 提交到 main，CI 绿
+  → 攒够后用户 /sdd-release：UNRELEASED.md → vX.Y.Z.md → 打标签 → CI 出 Release 草稿 → 用户发布 → 已安装的应用通过应用内更新升级
+```
 
 任务类型只改变 plan / analyze / verify 要保护的约束，不选择不同的阶段链。
 
@@ -62,7 +70,9 @@
 | `check-type-sync.py` | 同名类型：Rust serde 实际键 ↔ TS 接口字段 | 任何有 python3 的机器 |
 | `check-css-vars.py` | CSS `var(--x)` 引用都有定义 | 同上 |
 | `check-time.py [--list]` | 时间约定棘轮（`.time-baseline.json`） | 同上 |
-| `package.mjs` | 一键构建本机安装包（`npm run package`，见 INSTALL.md） | 有 Node 与 Rust 的机器 |
+| `package.mjs` | 本机打包（`npm run package`，见 CONTRIBUTING「本地打包」）；有更新签名私钥时额外生成签名的更新包 | 有 Node 与 Rust 的机器 |
+| `release-assets.mjs` | 发版 CI：汇总三平台产物、改英文文件名、生成 latest.json | GitHub Actions（本地可用假产物测试） |
+| `check-release-invariants.py [--update]` | 发行不变量：identifier、库文件名、更新公钥与地址不变，迁移只增并登记进 migrations.lock | 任何有 python3 的机器 |
 | `lint-ratchet.mjs [--update]` | ESLint error 必须为 0，warning 按规则只减不增（`.eslint-baseline.json`） | 有 node_modules 的机器 |
 | `test-resolve-hook.mjs` | `npm test`（`node --test`）的模块解析钩子 | 同上 |
 | `validate-skills.sh` | 本目录结构校验 | 任何机器 |

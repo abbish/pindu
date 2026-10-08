@@ -84,5 +84,5 @@ AI 输出（拼读分析、单词提取、日程规划）天然有波动。只�
 - `cargo check` 通过不证明命令已注册；`tsc` 通过不证明字段名对得上。
 - 空库迁移通过不证明老库迁移通过。
 - mock 的 AI 响应通过不证明真实模型输出可解析。
-- 一位用户一台机器走查通过不证明跨平台（Windows/Linux 构建另见 `sdd-release-build`）。
+- 一位用户一台机器走查通过不证明跨平台（Windows/Linux 构建与应用内更新见 `release-and-update-verification.md`）。
 - 没有实际命令、可复查产物或等价权威证据时，不得声称验证通过。

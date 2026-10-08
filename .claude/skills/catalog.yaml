@@ -13,7 +13,7 @@ usage:
 
 groups:
   workflow:
-    description: 选择、规划、分析、执行、验证或构建发布一个开发批次
+    description: 选择、规划、分析、执行、验证一个开发批次，以及发布新版本
   domain-capability:
     description: 在单一技术面（Rust 后端 / React 前端 / IPC contract / AI 提示词）完成已明确的实现批次
   evidence-memory:
@@ -42,10 +42,10 @@ skills:
     group: workflow
     path: .claude/skills/sdd-verify/SKILL.md
     summary: 对账 plan 与 diff，按 确定性 / AI 语义 / 桌面 UI 三层选最窄证据；迁移与 IPC contract 变更必查
-  - id: sdd-release-build
+  - id: sdd-release
     group: workflow
-    path: .claude/skills/sdd-release-build/SKILL.md
-    summary: 仅显式调用（/sdd-release-build）：版本号三处同步、迁移终态核对、平台构建与安装包产物检查
+    path: .claude/skills/sdd-release/SKILL.md
+    summary: 仅显式调用（/sdd-release）：定版本号、发布前门禁、定稿发布说明、打标签、检查 Release 草稿与 latest.json、交用户发布、发布后核对与补救
 
   - id: deliver-backend-rust
     group: domain-capability

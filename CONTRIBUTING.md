@@ -174,5 +174,6 @@ docs/           设计文档（agent-harness/ 内置 AI 助手、design/ 待实�
    ```
 
 5. 改了架构、命令或目录的，同步更新 `CLAUDE.md` 的对应章节。
+6. 用户能感知到的改动（新功能、行为变化、修复），在 `docs/releases/UNRELEASED.md` 加一行，写用户看得懂的话；发版时它会成为这一版的更新说明。
 
 提交即表示你同意你的贡献以 [MIT 许可证](./LICENSE) 发布。

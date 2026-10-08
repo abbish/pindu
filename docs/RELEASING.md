@@ -10,7 +10,7 @@
    npm version 0.2.0 --no-git-tag-version   # 同时更新 package-lock.json
    ```
    版本号只能往上走：应用内更新只会提示比当前版本高的版本。
-3. **写更新说明**：新建 `docs/releases/v0.2.0.md`，用用户看得懂的话写这一版改了什么。它会同时出现在 Release 页面和应用里「更新内容」的弹窗中。没有这个文件时，Release 页面用 GitHub 自动生成的提交列表，应用里只显示一句链接。
+3. **写更新说明**：平时每个用户能感知到的改动，都已经在 `docs/releases/UNRELEASED.md` 里记了一行。发版时把它整理成 `docs/releases/v0.2.0.md`，用用户看得懂的话写，然后清空 UNRELEASED.md、只留标题。它会同时出现在 Release 页面和应用里「更新内容」的弹窗中。没有这个文件时，Release 页面用 GitHub 自动生成的提交列表，应用里只显示一句链接。
 4. **提交并打标签**：
    ```bash
    git commit -am "release: v0.2.0"

@@ -1,6 +1,6 @@
 ---
 name: sdd-work
-description: "统一开发入口：用户要端到端推进 RedLark 的新功能、缺陷修复、重构或质量改进（feature / bugfix / refactor / improvement）时触发。收敛目标、范围、验收标准、未知项和下一步 owner，再按实际缺口进入 sdd-plan、sdd-analyze、sdd-implement 或 sdd-verify。不用于构建发布（sdd-release-build）、单纯恢复/续跑（harness-context-memory）或已经规划好的窄实现批次（sdd-implement）。Keywords: implement feature, fix bug, refactor, improve, 加功能, 修 bug, 重构, end-to-end, SDD."
+description: "统一开发入口：用户要端到端推进 RedLark 的新功能、缺陷修复、重构或质量改进（feature / bugfix / refactor / improvement）时触发。收敛目标、范围、验收标准、未知项和下一步 owner，再按实际缺口进入 sdd-plan、sdd-analyze、sdd-implement 或 sdd-verify。不用于发布新版本（sdd-release，仅显式）、单纯恢复/续跑（harness-context-memory）或已经规划好的窄实现批次（sdd-implement）。Keywords: implement feature, fix bug, refactor, improve, 加功能, 修 bug, 重构, end-to-end, SDD."
 ---
 
 # SDD Work
@@ -49,12 +49,22 @@ description: "统一开发入口：用户要端到端推进 RedLark 的新功能
 - **improvement**：核对适用条件、live owner、consumer 和当前证据，选择能独立验收的最小连贯批次。
 - **AI 提示词 / 规划质量 improvement**：使用 `deliver-ai-prompt` 判断 owner（提示词 / 解析结构 / 调用参数）与验证层；单次模型输出不能单独证明问题或修复。
 
+## 从改动到发布
+
+每个改动在 Shape 时就判断它对发布的影响，到收口时兑现，这样发版时不用再翻提交历史：
+
+- **用户可见**（新功能、行为变化、修复用户碰到的问题）：验收通过后，在 `docs/releases/UNRELEASED.md` 加一行，写用户能看懂的话（不写内部实现）；发版时它就是这一版的更新说明。纯重构、测试、文档、开发工具类改动不记。
+- **数据**：要加迁移的，遵守 `CLAUDE.md` §7.1（只增、登记 `migrations.lock`、能在上一版的真实数据上升级）；不能为了省事改已发布的迁移。
+- **升级与更新链路**：触达 identifier、数据目录、启动升级、更新配置或打包发版的，验收必须走 `../sdd-verify/references/release-and-update-verification.md`。
+- **提交与 CI**：按批次提交到 `main`（作者与署名遵循仓库约定），推送后看 CI（`gh run list --branch main`）；CI 不绿就算没完成。
+- **发版**：不在本入口发布。攒够要发的改动后，由用户显式 `/sdd-release`。
+
 ## 不负责
 
 - 编写完整技术方案或批次列表；归 `sdd-plan`
 - 直接实现领域代码；归 `sdd-implement` 和对应 `deliver-*`
 - 用流程文件数量代替决策充分性
-- 构建与发布；归 `sdd-release-build`
+- 发布新版本；归 `sdd-release`（用户显式 /sdd-release）
 
 ## 规则
 
@@ -75,6 +85,7 @@ Shape 结论按下面的块交付：一次性任务写在回复里，持续任�
 范围 / 非目标：<触达的层：前端页面 / service / IPC 命令 / handler / service / repository / 迁移 / 提示词> / <…>
 验收：<可核验条件，1–3 条>
 已确认 / 推断 / 未知：<…> / <…> / <只列会改变范围、方案或验收的项>
+发布影响：用户可见（进 UNRELEASED.md）/ 不可见；迁移 有 / 无；触达升级或更新链路 是 / 否
 下一步：plan | analyze | implement | verify | 暂停 —— 缺什么：<当前决定缺的信息>
 work item：不创建 | 续用 <work-id> | 新建 <work-id>
 ```
@@ -84,3 +95,4 @@ work item：不创建 | 续用 <work-id> | 新建 <work-id>
 - 目标、范围、验收和关键未知项足以支撑下一决策
 - 下一 owner 与动作明确，或 blocker 已明确暴露
 - 没有为流程完整制造未被消费的 artifact
+- 收口时：用户可见的改动已记入 UNRELEASED.md，提交已推送且 CI 为绿
