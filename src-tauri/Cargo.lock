@@ -3209,6 +3209,7 @@ dependencies = [
  "chrono",
  "encoding_rs",
  "futures",
+ "log",
  "pdf-extract",
  "quick-xml",
  "reqwest",
@@ -3224,6 +3225,7 @@ dependencies = [
  "tauri-plugin-updater",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
  "uuid",
  "zip 8.6.0",
 ]

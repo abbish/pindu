@@ -17,6 +17,8 @@ interface LogEntry {
   component: string;
   message: string;
   details?: string;
+  /** 结构化字段（请求编号、耗时、tracing 事件的键值等） */
+  fields?: Record<string, unknown>;
 }
 
 export interface LogViewerProps {
@@ -85,7 +87,8 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
       !keyword ||
       log.message.toLowerCase().includes(keyword) ||
       log.component.toLowerCase().includes(keyword) ||
-      (log.details ?? '').toLowerCase().includes(keyword);
+      (log.details ?? '').toLowerCase().includes(keyword) ||
+      (log.fields ? JSON.stringify(log.fields).toLowerCase().includes(keyword) : false);
     return matchesText && (levelFilter === 'all' || log.level === levelFilter);
   });
 
@@ -136,6 +139,15 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
                     <span className="font-mono text-muted-foreground">{log.component}</span>
                   </div>
                   <div className="text-sm break-words select-text">{log.message}</div>
+                  {log.fields && (
+                    <div className="flex flex-wrap gap-x-3 font-mono text-xs text-muted-foreground select-text">
+                      {Object.entries(log.fields).map(([k, v]) => (
+                        <span key={k}>
+                          {k}={typeof v === 'string' ? v : JSON.stringify(v)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {log.details && (
                     <details className="text-xs">
                       <summary className="cursor-default text-muted-foreground">详细信息</summary>

@@ -48,7 +48,7 @@ npm run clean               # 清 dist、target、vite 缓存
 ```
 
 后端测试写在 crate 内（`#[cfg(test)] mod tests`），内存库与种子数据用 `src-tauri/src/test_support.rs`；规范见 `.claude/skills/deliver-backend-rust/references/rust-test-standard.md`。
-日志：`<app_data_dir>/logs/app.log`（每行一条 JSON；超过 5MB 轮转为 app.1 … app.4.log，总量约 25MB 封顶）。分级记录：低于最低级别的不写，「设置 → 通用 → 诊断」可调（`get_log_level` / `set_log_level`，存 `app_settings` 的 `log.level`，`services/log_settings.rs`；未设置时发布版 INFO、开发版 DEBUG）。AI 助手每次运行由 `agent/run_log.rs` 记 `[任务名#编号]` 开头的执行日志（开始 / 自动重试与原因 / 工具校验退回 / 结束用量 / 模型原始错误 / 失败附 stderr；DEBUG 再记消息与工具结果，均去掉密钥）。`get_system_logs(limit)` 只读文件末尾、`open_log_folder` 在访达中打开（`handlers/system.rs`）；前端有 LogViewer / DevTools 浮层。
+日志：`<app_data_dir>/logs/app.log`（每行一条 JSON `{timestamp, level, component, message, details?, fields?}`；超过 5MB 轮转为 app.1 … app.4.log，总量约 25MB 封顶；写入队列有上限，满了丢弃并补记条数）。统一入口：`Logger`（Tauri 状态）、`tracing` 宏（拿不到 Logger 的代码直接用）、第三方库的 `log` / `tracing`（只收 WARN 以上）、前端 `write_client_log`、panic 钩子，全部经 `log_bridge.rs` / `logger.rs` 写入同一个文件；命令进出自动带请求编号与耗时。分级记录：低于最低级别的不写，「设置 → 通用 → 诊断」可调（`get_log_level` / `set_log_level`，存 `app_settings` 的 `log.level`，`services/log_settings.rs`；未设置时发布版 INFO、开发版 DEBUG）。AI 助手每次运行由 `agent/run_log.rs` 记 `[任务名#编号]` 开头的执行日志（开始 / 自动重试与原因 / 工具校验退回 / 结束用量 / 模型原始错误 / 失败附 stderr；DEBUG 再记消息与工具结果，均去掉密钥）。`get_system_logs(limit)` 只读文件末尾、`open_log_folder` 在访达中打开（`handlers/system.rs`）；前端有 LogViewer / DevTools 浮层。
 
 ## 3. 目录地图
 

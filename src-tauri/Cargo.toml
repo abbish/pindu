@@ -33,6 +33,9 @@ thiserror = "1.0"
 anyhow = "1.0"
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
+# 日志门面：拿不到 Logger 的代码与第三方库的日志经 log_bridge.rs 进应用日志
+tracing = "0.1"
+log = { version = "0.4", features = ["std"] }
 
 sha2 = "0.10"
 base64 = "0.22"

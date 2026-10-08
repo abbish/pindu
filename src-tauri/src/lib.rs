@@ -4,6 +4,7 @@ mod database;
 mod error;
 mod handlers;
 mod jobs;
+mod log_bridge;
 mod logger;
 #[cfg(target_os = "macos")]
 mod menu;
@@ -104,12 +105,13 @@ pub fn run() {
             {
                 let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
-                println!("Development mode: DevTools opened automatically");
             }
 
             // 数据目录（发布版按 identifier 定位；开发版独立目录；可用 PINDU_DATA_DIR 覆盖），见 app_paths.rs
             // 目录或日志初始化失败也不崩溃：日志退到临时目录，前端显示错误页
             let (dirs, logger, early_failure) = startup::prepare(app.handle());
+            // tracing / log / panic 都接进同一个日志（log_bridge.rs）
+            log_bridge::install(&logger);
             logger.info(
                 "APP",
                 &format!("Application starting up (v{})", app.package_info().version),

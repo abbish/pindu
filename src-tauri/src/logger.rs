@@ -1,20 +1,32 @@
-//! 应用日志：`<app_data_dir>/logs/app.log`，每行一条 JSON（timestamp / level / component / message / details）。
+//! 应用日志：`<app_data_dir>/logs/app.log`，每行一条 JSON。规范：`docs/LOGGING.md`。
 //!
-//! - 按大小轮转：超过 `MAX_FILE_BYTES` 时 app.log → app.1.log → … → app.N.log，最多保留 `KEEP_ROTATED` 个旧文件，
-//!   总量封顶约 (N+1) × 5MB；单个文件小，读取末尾与写入都不受历史量影响。
-//! - 分级：低于最低级别的不写（「设置 → 通用 → 诊断」可调，存 `app_settings` 的 `log.level`，见 `services/log_settings.rs`）；
-//!   未设置时发布版 INFO、开发版 DEBUG。发布版不输出到控制台；单条 details 超长会截断。
-//! - 写入交给后台线程：调用方只发一条消息（不阻塞、不做文件 IO），后台线程保持文件打开、按序写入并负责轮转。
-//! - 读取（设置页「系统日志」）只读文件末尾，不把整个文件读进内存。
+//! 行格式：`{timestamp, level, component, message, details?, fields?}`。timestamp 为本地时间（带时区偏移）；
+//! `fields` 是结构化字段（请求编号、耗时、tracing 事件的键值等），没有时省略。
+//!
+//! 写入入口（都进同一个 Sink，同一套分级与格式）：
+//! - `Logger`：业务代码经 Tauri 状态拿到的句柄（`info` / `warn` / `error` / `debug` / `api_request` / `api_response`）。
+//! - `tracing` 宏：拿不到 `Logger` 的代码直接写 `tracing::info!(component = "SRS", plan_id, "…")`；
+//!   第三方库（sqlx、tauri、reqwest…）经 `log` / `tracing` 发出的日志也收进来（见 `log_bridge.rs`，只收 WARN 以上）。
+//! - panic：崩溃钩子同步写入（不经后台线程），保证闪退前的原因落盘。
+//!
+//! 机制：
+//! - 分级：低于最低级别的不写；「设置 → 通用 → 诊断」可调（`services/log_settings.rs`），未设置时发布版 INFO、开发版 DEBUG。
+//! - 写入交给后台线程，通道有上限（`QUEUE_CAPACITY`）：满了丢弃并在下一条前补记“丢弃了 N 条”，不会让内存无限增长、也不阻塞业务。
+//!   后台线程不缓冲，每行直接写入文件，进程退出时最多丢失队列里尚未写出的几条。
+//! - 按大小轮转：超过 `MAX_FILE_BYTES` 时 app.log → app.1.log → … → app.N.log（`KEEP_ROTATED` 个），总量约 25MB 封顶。
+//! - 命令配对：`api_request` 分配请求编号，`api_response` 按命令先进先出配对，记下同一编号与耗时（同名命令并发时耗时可能互换）。
+//! - 读取（设置页「系统日志」）只读文件末尾。发布版不输出到控制台；单条 details 超长会截断。
 
 use chrono::Local;
-use serde_json::json;
+use serde_json::{json, Map, Value};
+use std::collections::{HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::mpsc::{channel, Sender};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use std::sync::mpsc::{channel, sync_channel, Sender, SyncSender, TrySendError};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 /// 单个日志文件上限
 const MAX_FILE_BYTES: u64 = 5 * 1024 * 1024;
@@ -22,6 +34,10 @@ const MAX_FILE_BYTES: u64 = 5 * 1024 * 1024;
 const KEEP_ROTATED: usize = 4;
 /// 单条 details 的最大字符数
 const MAX_DETAILS_CHARS: usize = 4000;
+/// 写日志队列上限（条）；满了丢弃
+const QUEUE_CAPACITY: usize = 10_000;
+/// 每个命令最多记住的未配对请求数（有分支只记 request 不记 response 时防止堆积）
+const MAX_PENDING_PER_COMMAND: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
@@ -69,6 +85,32 @@ impl LogLevel {
     }
 }
 
+/// 一条日志（写入前的结构）
+pub struct Record<'a> {
+    pub level: LogLevel,
+    pub component: &'a str,
+    pub message: &'a str,
+    pub details: Option<&'a str>,
+    /// 结构化字段；空时不写
+    pub fields: Map<String, Value>,
+}
+
+impl Record<'_> {
+    fn to_line(&self) -> String {
+        let mut entry = json!({
+            "timestamp": Local::now().to_rfc3339(),
+            "level": self.level.as_str(),
+            "component": self.component,
+            "message": self.message,
+            "details": self.details.map(truncate_details),
+        });
+        if !self.fields.is_empty() {
+            entry["fields"] = Value::Object(self.fields.clone());
+        }
+        format!("{}\n", entry)
+    }
+}
+
 /// 发给写日志线程的消息
 enum WriterMsg {
     Line(String),
@@ -76,36 +118,74 @@ enum WriterMsg {
     Flush(Sender<()>),
 }
 
+/// 所有入口共享的写入端
+struct Sink {
+    path: PathBuf,
+    /// 低于此级别的不写；设置页修改后立即生效
+    min_level: AtomicU8,
+    writer: SyncSender<WriterMsg>,
+    /// 队列满被丢弃的条数（下一条成功写入前补记）
+    dropped: AtomicU64,
+    next_request: AtomicU64,
+    /// 命令 → 未配对的（请求编号, 开始时刻）
+    pending: Mutex<HashMap<String, VecDeque<(u64, Instant)>>>,
+}
+
+impl Sink {
+    fn send(&self, line: String) {
+        let dropped = self.dropped.swap(0, Ordering::Relaxed);
+        if dropped > 0 {
+            let note = Record {
+                level: LogLevel::Warn,
+                component: "LOGGER",
+                message: &format!("日志写入太快，丢弃了 {} 条", dropped),
+                details: None,
+                fields: Map::new(),
+            };
+            if self
+                .writer
+                .try_send(WriterMsg::Line(note.to_line()))
+                .is_err()
+            {
+                self.dropped.fetch_add(dropped, Ordering::Relaxed);
+            }
+        }
+        match self.writer.try_send(WriterMsg::Line(line)) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                self.dropped.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(TrySendError::Disconnected(_)) => {}
+        }
+    }
+}
+
+/// 日志句柄：克隆很轻（共享同一个 Sink）
 #[derive(Clone)]
 pub struct Logger {
-    log_file_path: PathBuf,
-    /// 低于此级别的不写；所有克隆共享，设置页修改后立即生效
-    min_level: Arc<AtomicU8>,
-    writer: Sender<WriterMsg>,
+    sink: Arc<Sink>,
 }
 
 impl Logger {
     pub fn new(app_data_dir: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        Self::with_max_bytes(app_data_dir, MAX_FILE_BYTES)
+        Self::with_options(app_data_dir, MAX_FILE_BYTES, QUEUE_CAPACITY)
     }
 
-    fn with_max_bytes(
+    fn with_options(
         app_data_dir: &Path,
         max_bytes: u64,
+        capacity: usize,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let log_dir = app_data_dir.join("logs");
         std::fs::create_dir_all(&log_dir)?;
 
-        let log_file_path = log_dir.join("app.log");
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_file_path)?;
+        let path = log_dir.join("app.log");
+        let file = OpenOptions::new().create(true).append(true).open(&path)?;
         let size = file.metadata().map(|m| m.len()).unwrap_or(0);
 
-        let (writer, rx) = channel::<WriterMsg>();
+        let (writer, rx) = sync_channel::<WriterMsg>(capacity);
         let mut state = WriterState {
-            path: log_file_path.clone(),
+            path: path.clone(),
             max_bytes,
             file: Some(file),
             size,
@@ -113,7 +193,7 @@ impl Logger {
         std::thread::Builder::new()
             .name("redlark-logger".into())
             .spawn(move || {
-                // 所有 Logger（含克隆）都释放后通道关闭，线程退出
+                // 所有 Logger（含克隆、全局桥接）都释放后通道关闭，线程退出
                 for msg in rx {
                     match msg {
                         WriterMsg::Line(line) => state.write(&line),
@@ -128,23 +208,34 @@ impl Logger {
             })?;
 
         Ok(Logger {
-            log_file_path,
-            min_level: Arc::new(AtomicU8::new(LogLevel::DEFAULT as u8)),
-            writer,
+            sink: Arc::new(Sink {
+                path,
+                min_level: AtomicU8::new(LogLevel::DEFAULT as u8),
+                writer,
+                dropped: AtomicU64::new(0),
+                next_request: AtomicU64::new(0),
+                pending: Mutex::new(HashMap::new()),
+            }),
         })
     }
 
     /// 等写日志线程把已发出的日志都写入文件
-    fn flush(&self) {
+    pub fn flush(&self) {
         let (done, wait) = channel();
-        if self.writer.send(WriterMsg::Flush(done)).is_ok() {
+        if self.sink.writer.send(WriterMsg::Flush(done)).is_ok() {
             let _ = wait.recv_timeout(std::time::Duration::from_secs(2));
         }
     }
 
+    /// 当前日志文件（崩溃钩子同步写入用）
+    pub(crate) fn file_path(&self) -> &Path {
+        &self.sink.path
+    }
+
     /// 日志目录（「打开日志文件夹」用）
     pub fn log_dir(&self) -> PathBuf {
-        self.log_file_path
+        self.sink
+            .path
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_default()
@@ -152,12 +243,13 @@ impl Logger {
 
     /// 当前最低记录级别
     pub fn min_level(&self) -> LogLevel {
-        LogLevel::from_u8(self.min_level.load(Ordering::Relaxed))
+        LogLevel::from_u8(self.sink.min_level.load(Ordering::Relaxed))
     }
 
-    /// 修改最低记录级别（对所有克隆立即生效）
+    /// 修改最低记录级别（对所有克隆与全局桥接立即生效）
     pub fn set_min_level(&self, level: LogLevel) {
-        self.min_level.store(level as u8, Ordering::Relaxed);
+        self.sink.min_level.store(level as u8, Ordering::Relaxed);
+        crate::log_bridge::on_level_changed(level);
     }
 
     /// 该级别是否会被记录（拼装开销大的 DEBUG 明细前先判断）
@@ -165,44 +257,47 @@ impl Logger {
         level >= self.min_level()
     }
 
-    pub fn log(&self, level: LogLevel, component: &str, message: &str, details: Option<&str>) {
-        if !self.enabled(level) {
+    /// 写一条结构化日志（低于最低级别的忽略）
+    pub fn write(&self, record: Record<'_>) {
+        if !self.enabled(record.level) {
             return;
         }
-        let timestamp = Local::now();
-        let details = details.map(truncate_details);
-        let log_entry = json!({
-            "timestamp": timestamp.to_rfc3339(),
-            "level": level.as_str(),
-            "component": component,
-            "message": message,
-            "details": details
-        });
-        let log_line = format!("{}\n", log_entry);
-
-        let _ = self.writer.send(WriterMsg::Line(log_line));
-
+        let line = record.to_line();
         // 开发时同时输出到控制台
         if cfg!(debug_assertions) {
-            println!(
-                "[{}] [{}] {}: {}",
-                timestamp.format("%Y-%m-%d %H:%M:%S"),
-                level.as_str(),
-                component,
-                message
+            print!(
+                "[{}] {}: {}",
+                record.level.as_str(),
+                record.component,
+                record.message
             );
-            if let Some(details) = &details {
-                println!("  Details: {}", details);
+            if !record.fields.is_empty() {
+                print!(" {}", Value::Object(record.fields.clone()));
+            }
+            println!();
+            if let Some(details) = record.details {
+                println!("  Details: {}", truncate_details(details));
             }
         }
+        self.sink.send(line);
+    }
+
+    pub fn log(&self, level: LogLevel, component: &str, message: &str, details: Option<&str>) {
+        self.write(Record {
+            level,
+            component,
+            message,
+            details,
+            fields: Map::new(),
+        });
     }
 
     /// 最近的 `limit` 条日志（最新在前）。只读当前日志文件末尾，不足时再读上一个轮转文件。
     pub fn recent_lines(&self, limit: usize) -> std::io::Result<Vec<String>> {
         self.flush();
-        let mut lines = tail_lines(&self.log_file_path, limit)?;
+        let mut lines = tail_lines(&self.sink.path, limit)?;
         if lines.len() < limit {
-            let previous = self.log_file_path.with_file_name("app.1.log");
+            let previous = self.sink.path.with_file_name("app.1.log");
             if previous.exists() {
                 lines.extend(tail_lines(&previous, limit - lines.len())?);
             }
@@ -226,25 +321,57 @@ impl Logger {
         self.log(LogLevel::Error, component, message, details);
     }
 
-    /// 命令进入：只读查询（页面加载、轮询）记 DEBUG，改数据的操作记 INFO
+    /// 命令进入：分配请求编号（`fields.req`）。只读查询（页面加载、轮询）记 DEBUG，改数据的操作记 INFO
     pub fn api_request(&self, command: &str, args: Option<&str>) {
-        let message = format!("API Request: {}", command);
-        self.log(success_level(command), "API", &message, args);
+        let req = self.sink.next_request.fetch_add(1, Ordering::Relaxed) + 1;
+        {
+            let mut pending = self.sink.pending.lock().unwrap_or_else(|e| e.into_inner());
+            let queue = pending.entry(command.to_string()).or_default();
+            if queue.len() >= MAX_PENDING_PER_COMMAND {
+                queue.pop_front();
+            }
+            queue.push_back((req, Instant::now()));
+        }
+        let mut fields = Map::new();
+        fields.insert("req".into(), json!(req));
+        self.write(Record {
+            level: success_level(command),
+            component: "API",
+            message: &format!("API Request: {}", command),
+            details: args,
+            fields,
+        });
     }
 
-    /// 命令结束：成功同上分级；失败一律 ERROR
+    /// 命令结束：带上同一请求编号与耗时（`fields.req` / `fields.elapsed_ms`）。成功同上分级；失败一律 ERROR
     pub fn api_response(&self, command: &str, success: bool, details: Option<&str>) {
-        let level = if success {
-            success_level(command)
-        } else {
-            LogLevel::Error
+        let started = {
+            let mut pending = self.sink.pending.lock().unwrap_or_else(|e| e.into_inner());
+            pending.get_mut(command).and_then(VecDeque::pop_front)
         };
-        let message = format!(
+        let mut fields = Map::new();
+        let mut message = format!(
             "API Response: {} - {}",
             command,
             if success { "SUCCESS" } else { "FAILED" }
         );
-        self.log(level, "API", &message, details);
+        if let Some((req, at)) = started {
+            let elapsed = at.elapsed().as_millis() as u64;
+            fields.insert("req".into(), json!(req));
+            fields.insert("elapsed_ms".into(), json!(elapsed));
+            message.push_str(&format!("（{}ms）", elapsed));
+        }
+        self.write(Record {
+            level: if success {
+                success_level(command)
+            } else {
+                LogLevel::Error
+            },
+            component: "API",
+            message: &message,
+            details,
+            fields,
+        });
     }
 
     pub fn database_operation(
@@ -407,7 +534,7 @@ mod tests {
     #[test]
     fn rotates_when_file_exceeds_limit_and_keeps_bounded_history() {
         let dir = temp_dir("rotate");
-        let logger = Logger::with_max_bytes(&dir, 1000).unwrap();
+        let logger = Logger::with_options(&dir, 1000, QUEUE_CAPACITY).unwrap();
         let log_dir = dir.join("logs");
         for i in 0..100 {
             logger.info("TEST", &format!("line {}", i));
@@ -432,7 +559,7 @@ mod tests {
         let log_dir = dir.join("logs");
         std::fs::create_dir_all(&log_dir).unwrap();
         std::fs::write(log_dir.join("app.log"), vec![b'x'; 2000]).unwrap();
-        let logger = Logger::with_max_bytes(&dir, 1000).unwrap();
+        let logger = Logger::with_options(&dir, 1000, QUEUE_CAPACITY).unwrap();
         logger.info("TEST", "fresh");
         logger.flush();
         assert_eq!(
@@ -476,6 +603,67 @@ mod tests {
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert!(lines[0].contains("FAILED") && lines[0].contains("\"ERROR\""));
         assert!(lines[1].contains("start_practice_session"));
+    }
+
+    #[test]
+    fn api_request_and_response_share_request_id_and_elapsed() {
+        let logger = Logger::new(&temp_dir("pair")).unwrap();
+        logger.api_request("start_practice_session", Some("plan_id: 1"));
+        logger.api_request("start_practice_session", Some("plan_id: 2"));
+        logger.api_response("start_practice_session", true, None);
+        logger.api_response("start_practice_session", false, Some("boom"));
+        let lines: Vec<Value> = logger
+            .recent_lines(10)
+            .unwrap()
+            .iter()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        // 最新在前：失败的响应配对第二个请求
+        assert_eq!(lines[0]["fields"]["req"], lines[2]["fields"]["req"]);
+        assert_eq!(lines[1]["fields"]["req"], lines[3]["fields"]["req"]);
+        assert!(lines[0]["fields"]["elapsed_ms"].is_u64());
+        assert!(lines[0]["message"].as_str().unwrap().contains("ms）"));
+        // 没有配对的响应不带编号
+        logger.api_response("never_requested", true, None);
+        let last: Value = serde_json::from_str(&logger.recent_lines(1).unwrap()[0]).unwrap();
+        assert!(last.get("fields").is_none());
+    }
+
+    #[test]
+    fn full_queue_drops_and_reports_count() {
+        // 不启动写线程：队列容量 2，手动消费
+        let (writer, rx) = sync_channel::<WriterMsg>(2);
+        let sink = Sink {
+            path: PathBuf::new(),
+            min_level: AtomicU8::new(LogLevel::Debug as u8),
+            writer,
+            dropped: AtomicU64::new(0),
+            next_request: AtomicU64::new(0),
+            pending: Mutex::new(HashMap::new()),
+        };
+        for i in 0..5 {
+            sink.send(format!("line {i}\n"));
+        }
+        assert_eq!(sink.dropped.load(Ordering::Relaxed), 3);
+        let drained: Vec<String> = rx
+            .try_iter()
+            .filter_map(|m| match m {
+                WriterMsg::Line(l) => Some(l),
+                WriterMsg::Flush(_) => None,
+            })
+            .collect();
+        assert_eq!(drained, vec!["line 0\n", "line 1\n"]);
+        sink.send("line 5\n".into());
+        let next: Vec<String> = rx
+            .try_iter()
+            .filter_map(|m| match m {
+                WriterMsg::Line(l) => Some(l),
+                WriterMsg::Flush(_) => None,
+            })
+            .collect();
+        assert!(next[0].contains("丢弃了 3 条"), "{next:?}");
+        assert_eq!(next[1], "line 5\n");
+        assert_eq!(sink.dropped.load(Ordering::Relaxed), 0);
     }
 
     #[test]

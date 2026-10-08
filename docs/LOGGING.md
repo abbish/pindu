@@ -33,7 +33,10 @@
 
 | 场景 | 位置 | 做法 |
 |---|---|---|
-| 每个 Tauri 命令 | handler | 入口 `logger.api_request(cmd, 参数摘要)`，出口 `logger.api_response(cmd, ok, 结果摘要)`；级别由命令名自动判断 |
+| 每个 Tauri 命令 | handler | 入口 `logger.api_request(cmd, 参数摘要)`，出口 `logger.api_response(cmd, ok, 结果摘要)`；级别由命令名自动判断，两行自动带同一个请求编号 `fields.req`，结束那行带耗时 `fields.elapsed_ms` |
+| 拿不到 `Logger` 的代码（纯函数、深层业务函数、工具模块） | 就地 | 直接用 `tracing` 宏：`tracing::info!(component = "SRS", plan_id, due = n, "今日复习已同步")`；`component` 不写时用模块路径，`details = …` 进 details，其余键值进 `fields`。不要为了记日志去传 `Logger` 参数 |
+| 第三方库（sqlx、tauri、reqwest…） | 自动 | 经 `log` / `tracing` 门面收进同一个文件，只收 WARN 以上（`log_bridge.rs`） |
+| 程序崩溃（panic） | 自动 | 崩溃钩子同步写一条 `PANIC` ERROR（位置、原因、线程、调用栈） |
 | AI 任务 | `agent/run_log.rs`（`run_task_cancellable` 已统一接入） | 新任务走 `run_task` / `run_task_cancellable` 就会自动记录，不要另写开始 / 结束日志；任务自己的业务摘要（如“请求 20 词，成功 19”）记一条 INFO |
 | 后台任务 | `lib.rs::log_job`（Jobs 的 emit 钩子） | 用 `Jobs::spawn` 提交就会自动记录提交 / 完成 / 取消 / 失败 |
 | 自动发生的业务变化 | 发生的那个函数（如 `transition_conn`、`srs::sync_today`） | 记 INFO，写清前后状态和原因；如果在事务里，注明“随本次操作一起保存” |
@@ -44,6 +47,7 @@
 
 - **组件名**：大写英文单词，按功能域取，如 `API` `AGENT` `JOB` `STUDY_PLAN` `SRS` `TTS` `VIDEO` `DATABASE` `STARTUP`。前端的自动带 `UI:` 前缀。不要用 `*_DEBUG` 这类临时名字。
 - **message**：一句话写清“谁 + 发生了什么 + 结果”，带上能定位的 ID（计划 / 日程 / 会话 / 任务 ID、AI 运行编号）。中文英文都可以，同一组件内保持一致。
+- **fields**：要拿来筛选、统计的值（ID、数量、耗时）优先放结构化字段（`tracing` 宏的键值，或 `logger.write(Record { fields, .. })`），message 里可以再写一遍便于阅读。
 - **details**：放原始错误、stderr、参数摘要这类较长的内容；单条超过 4000 字会被截断。
 - **同一件事的多行要能串起来**：AI 运行用 `[任务名#编号]`，后台任务用 `[job-N]` 开头。
 - **数字带单位**：`用时 3.2s`、`有效时长 120s`、`正确率 85.0%`（先确认字段已经是百分数还是 0–1 的小数）。
@@ -56,7 +60,9 @@
 
 ## 6. 存储
 
-`<数据目录>/logs/app.log`，每行一条 JSON。超过 5MB 轮转为 `app.1.log` … `app.4.log`，总量上限约 25MB。写入由后台线程完成；读取只读文件末尾。不需要另建日志文件。
+`<数据目录>/logs/app.log`，每行一条 JSON：`{timestamp, level, component, message, details?, fields?}`（timestamp 为本地时间并带时区偏移）。超过 5MB 轮转为 `app.1.log` … `app.4.log`，总量上限约 25MB。
+
+写入由后台线程完成，队列上限 1 万条：写满时丢弃新日志，并在下一条之前补记一条“丢弃了 N 条”，所以日志刷屏不会撑爆内存，也不会阻塞业务。后台线程不缓冲，每行直接写入文件；崩溃记录同步写入。读取只读文件末尾。不需要另建日志文件。所有入口（`Logger`、`tracing`、`log`、前端、panic）写的是同一个文件，格式和分级规则都一样。
 
 ## 7. 改动前后自查
 
