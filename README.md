@@ -39,8 +39,8 @@
 应用没有做开发者签名，所以不提供现成的安装包，请在自己的电脑上一条命令构建：
 
 ```bash
-git clone https://github.com/abbish/redlark.git
-cd redlark
+git clone https://github.com/abbish/pindu.git
+cd pindu
 ./build.sh            # macOS / Linux
 build.cmd             # Windows（也可双击）
 ```
@@ -87,7 +87,7 @@ npm run verify          # 提交前的一键验证：静态检查 + 前后端测
 
 ## 参与
 
-- 发现问题或有想法：到 [Issues](https://github.com/abbish/redlark/issues) 提出。
+- 发现问题或有想法：到 [Issues](https://github.com/abbish/pindu/issues) 提出。
 - 想改代码：先看 [CONTRIBUTING.md](./CONTRIBUTING.md)，较大的改动建议先开 issue 讨论。
 - 安全问题请不要公开提 issue，按 [SECURITY.md](./SECURITY.md) 私下报告。
 

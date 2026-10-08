@@ -4,7 +4,7 @@
 
 ## 开始之前
 
-- **报告问题**：到 [Issues](https://github.com/abbish/redlark/issues) 写清系统版本、操作步骤、期望结果和实际结果；能附上「设置 → 通用 → 系统日志」里的相关几行更好（日志不含 API Key）。
+- **报告问题**：到 [Issues](https://github.com/abbish/pindu/issues) 写清系统版本、操作步骤、期望结果和实际结果；能附上「设置 → 通用 → 系统日志」里的相关几行更好（日志不含 API Key）。
 - **提新功能**：建议先开 issue 说明要解决的学习场景，讨论好方向再动手，避免白做。
 - **安全问题**：不要公开提 issue，见 [SECURITY.md](./SECURITY.md)。
 
@@ -19,8 +19,8 @@
 | bash | `npm run verify`；Windows 上用 Git Bash 或 WSL |
 
 ```bash
-git clone https://github.com/abbish/redlark.git
-cd redlark
+git clone https://github.com/abbish/pindu.git
+cd pindu
 npm install
 npm run agent:install   # 内置 AI 助手（agent sidecar）的依赖
 npm run tauri:dev       # 启动开发模式（会先编译 sidecar）

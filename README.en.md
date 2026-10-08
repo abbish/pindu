@@ -41,8 +41,8 @@ Runs on macOS, Windows and Linux. Your learning data lives in a local SQLite dat
 The app is not code-signed, so there are no prebuilt installers. Build it on your own machine with one command:
 
 ```bash
-git clone https://github.com/abbish/redlark.git
-cd redlark
+git clone https://github.com/abbish/pindu.git
+cd pindu
 ./build.sh            # macOS / Linux
 build.cmd             # Windows (or double-click it)
 ```

@@ -30,8 +30,8 @@ sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl xdotool
 ## 2. 下载源码
 
 ```bash
-git clone https://github.com/abbish/redlark.git
-cd redlark
+git clone https://github.com/abbish/pindu.git
+cd pindu
 ```
 
 也可以在 GitHub 页面点 **Code → Download ZIP** 下载后解压。
@@ -151,4 +151,4 @@ macOS 用 `--bundles app`，Linux 用 `--bundles deb`（或 `rpm`），Windows �
 **AI 功能报错或一直没有结果。** 到「设置 → AI 模型」对默认模型点「测试」，确认 API Key 和余额；
 遇到限流（429）可以在「设置 → AI 助手」调小批量分析的每批词数和并发数。更多细节在「设置 → 通用 → 系统日志」。
 
-**还是解决不了。** 到 [Issues](https://github.com/abbish/redlark/issues) 反馈，附上系统版本，以及构建命令的完整输出或系统日志（日志不会记录 API Key）。
+**还是解决不了。** 到 [Issues](https://github.com/abbish/pindu/issues) 反馈，附上系统版本，以及构建命令的完整输出或系统日志（日志不会记录 API Key）。

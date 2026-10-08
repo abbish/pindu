@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "拼读（Pindu.app）- 英语单词学习应用"
 authors = ["RedLark"]
 license = "MIT"
-repository = "https://github.com/abbish/redlark"
+repository = "https://github.com/abbish/pindu"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
