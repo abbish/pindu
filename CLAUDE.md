@@ -16,7 +16,7 @@ RedLark 是一个 Tauri 2 + React 19 的跨平台桌面单词学习应用（产�
 | AI | 内置 agent harness：pi（`@earendil-works/pi-coding-agent`，RPC sidecar `redlark-agent`，bun 单文件） |
 | 数据库 | SQLite，文件 `<app_data_dir>/vocabulary.db`，启动时自动跑 `src-tauri/migrations/` |
 | 外部服务 | OpenAI 兼容接口（AI 分析/规划；种子提供商 OpenRouter / MiniMax / 月之暗面 / DeepSeek，均可「同步模型」读取 `/models`）· 火山引擎豆包语音合成（TTS，V3 HTTP 单向流式，带 SHA256 音频缓存） |
-| 包管理 | npm（有 package-lock.json）+ Cargo。`pnpm` 仅作为 devDependency 存在，实际用 npm |
+| 包管理 | npm（有 package-lock.json）+ Cargo |
 
 **无路由库、无状态管理库**；UI 组件库唯一选择是 shadcn/ui（源码在 `src/components/ui/`，不引入其它 UI 库）。页面切换靠 `App.tsx` 里的 `currentPage` 字符串 + `pageParams`。
 
@@ -41,7 +41,7 @@ python3 scripts/schema-snapshot.py --table <t>   # 迁移终态表结构（不�
 cd src-tauri && cargo test  # 后端测试（crate 内 #[cfg(test)]，内存 SQLite）
 npm run package             # 一键构建本机安装包（= ./build.sh / build.cmd → scripts/package.mjs）：环境检查 → 依赖 → sidecar → tauri build → release/<版本>-<triple>/
 npm run package:check       # 只检查构建环境；选项 --target mac-universal|mac-arm|mac-intel|win|win-arm|linux|linux-arm、--bundles、--no-bundle、--debug、--clean
-                            # 不签名发布，用户自行构建（docs/BUILD.md）；只能构建本机系统的包，macOS 用 ad-hoc 签名
+                            # 不签名发布，用户自行构建（INSTALL.md）；只能构建本机系统的包，macOS 用 ad-hoc 签名
 npm run clean               # 清 dist、target、vite 缓存
 ```
 

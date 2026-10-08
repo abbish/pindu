@@ -1,7 +1,7 @@
 name: Build
 
 # 用一键构建脚本（scripts/package.mjs）在三个系统上各构建一次，验证用户本机构建的流程可用。
-# 产物不签名，只作为 CI 附件下载（发布方式见 docs/BUILD.md：用户在自己的机器上构建）。
+# 产物不签名，只作为 CI 附件下载（发布方式见 INSTALL.md：用户在自己的机器上构建）。
 on:
   push:
     tags:

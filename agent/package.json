@@ -2,6 +2,7 @@
   "name": "redlark-agent",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "description": "RedLark 内置 agent sidecar：pi RPC 模式 + RedLark 工具（见 docs/agent-harness/DESIGN.md）",
   "scripts": {
     "build": "node scripts/build.mjs",

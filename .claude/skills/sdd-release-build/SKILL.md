@@ -21,7 +21,7 @@ disable-model-invocation: true
 3. **基线**：`cargo clippy -- -D warnings`、`cargo test`、`npm run type-check`、`npm run lint` 全绿；任一失败不进入构建。
 4. **迁移终态**：`git diff <last-tag>..HEAD --stat src-tauri/migrations/` 只有新增；用一份真实库副本启动一次确认迁移链可从老版本升级（见 `../deliver-backend-rust/references/sqlx-migration-standards.md` Verify 节）。
 5. **敏感信息**：`rg -n "sk-|api_key\s*=\s*\"" src src-tauri/src` 无硬编码密钥；`tauri.conf.json` 的 `csp: null` 作为已知风险写入发布说明。
-6. **构建**：执行 `npm run package [-- --target <目标> --bundles <格式>]`（选项见 `CLAUDE.md` §2 与 `docs/BUILD.md`）；脚本把产物收集到 `release/<版本>-<triple>/` 并打印大小。
+6. **构建**：执行 `npm run package [-- --target <目标> --bundles <格式>]`（选项见 `CLAUDE.md` §2 与 `INSTALL.md`）；脚本把产物收集到 `release/<版本>-<triple>/` 并打印大小。
 7. **产物 smoke**：安装/运行产物，启动成功、迁移完成（`app.log` 有 `migrations completed`）、主页面可打开。
 8. 输出发布说明：版本、包含的改动（按 work item / 提交）、迁移列表、已知风险、未在本机验证的平台。
 

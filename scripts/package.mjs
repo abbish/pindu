@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 一键构建安装包（跨平台，零依赖，只用 Node 内置模块）。
 // 应用不签名发布，用户在自己的机器上构建：检查环境 → 安装依赖 → 编译 agent sidecar → tauri build → 收集产物到 release/。
-// 用法见 docs/BUILD.md，或 node scripts/package.mjs --help
+// 用法见 INSTALL.md，或 node scripts/package.mjs --help
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -312,7 +312,7 @@ function tauriBuild(triple, opts, bundles) {
     failMessage: 'Tauri 构建失败',
     hint: [
       '向上翻看第一条 error 信息。常见原因：',
-      '- 下载依赖超时：网络问题，可配置镜像后重试（见 docs/BUILD.md「网络」）',
+      '- 下载依赖超时：网络问题，可配置镜像后重试（见 INSTALL.md「常见问题」）',
       platform === 'darwin' ? '- 生成 dmg 失败：改用 --bundles app 只生成 .app' : '',
       platform === 'linux' ? '- 生成 AppImage 失败（需从 GitHub 下载工具）：改用 --bundles deb 或 rpm' : '',
       platform === 'win32' ? '- 生成 msi 失败：只用 --bundles nsis' : '',

@@ -62,7 +62,7 @@
 | `check-type-sync.py` | 同名类型：Rust serde 实际键 ↔ TS 接口字段 | 任何有 python3 的机器 |
 | `check-css-vars.py` | CSS `var(--x)` 引用都有定义 | 同上 |
 | `check-time.py [--list]` | 时间约定棘轮（`.time-baseline.json`） | 同上 |
-| `package.mjs` | 一键构建本机安装包（`npm run package`，见 docs/BUILD.md） | 有 Node 与 Rust 的机器 |
+| `package.mjs` | 一键构建本机安装包（`npm run package`，见 INSTALL.md） | 有 Node 与 Rust 的机器 |
 | `lint-ratchet.mjs [--update]` | ESLint error 必须为 0，warning 按规则只减不增（`.eslint-baseline.json`） | 有 node_modules 的机器 |
 | `test-resolve-hook.mjs` | `npm test`（`node --test`）的模块解析钩子 | 同上 |
 | `validate-skills.sh` | 本目录结构校验 | 任何机器 |

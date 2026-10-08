@@ -84,3 +84,6 @@ release/
 # 本地缓存与日志（clean:cache / clean:logs 会清理）
 .vite/
 logs/
+
+# Python 缓存（scripts/*.py）
+__pycache__/
