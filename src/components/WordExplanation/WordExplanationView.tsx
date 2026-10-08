@@ -15,10 +15,10 @@ import { cn } from '@/lib/utils';
 export interface WordExplanationViewProps {
   /** 当前单词 ID */
   wordId: number;
-  /** 所在页签是否可见：可见时才读取缓存 */
+  /** 所在页签是否可见：可见时才显示 / 生成讲解 */
   active: boolean;
   /**
-   * 没有缓存时是否自动生成：只在学生会停下来看的环节（看·说、查）为 true；
+   * 还没有讲解时是否自动生成：只在学生会停下来看的环节（看·说、查）为 true；
    * 一次答对后的短暂停留为 false，避免刚触发生成就跳到下一题。
    */
   autoGenerate: boolean;
@@ -27,10 +27,13 @@ export interface WordExplanationViewProps {
 /** 页签停留多久才自动开始生成（毫秒），快速切换不触发 */
 const AUTO_GENERATE_DELAY_MS = 1200;
 
-/** 还没开始对话时给孩子的提问建议 */
-const SUGGESTIONS = ['为什么这样拼？', '能再举一个例子吗？', '它和哪个词容易搞混？'];
+/** AI 没给出推荐追问时的固定建议 */
+const FALLBACK_SUGGESTIONS = ['为什么这样拼？', '能再举一个例子吗？', '它和哪个词容易搞混？'];
 
-type Status = 'idle' | 'loading' | 'missing' | 'generating' | 'ready' | 'error';
+/** 本次打开应用期间按单词保留生成的讲解（不落库；换词再回来不用重新生成） */
+const explanationStore = new Map<number, WordExplanation>();
+
+type Status = 'idle' | 'missing' | 'generating' | 'ready' | 'error';
 
 interface ViewState {
   wordId: number | null;
@@ -44,7 +47,8 @@ interface ViewState {
 const formatTime = (value: string): string => formatDateTime(value) || value;
 
 /**
- * 单词讲解：优先读缓存；没有缓存时由 agent 实时生成（流式显示），可重新生成。
+ * 单词讲解：由 agent 实时生成（流式显示，不落库），可重新生成；
+ * 讲解与每次答疑后显示 AI 结合上下文推荐的追问。
  */
 export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
   wordId,
@@ -90,7 +94,8 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
     requestRef.current = requestId;
     setState({ wordId: targetWordId, status: 'generating', content: '' });
     const result = await wordExplanationService.generateExplanation(targetWordId, requestId);
-    // 期间换词或重新生成：丢弃旧结果（后端已写入缓存，下次可直接加载）
+    // 期间换词：结果先存起来，换回这个词时直接显示
+    if (result.success) explanationStore.set(targetWordId, result.data);
     if (requestRef.current !== requestId) return;
     requestRef.current = null;
     setState(
@@ -100,27 +105,25 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
     );
   }, []);
 
-  const load = useCallback(async (targetWordId: number) => {
+  const load = useCallback((targetWordId: number) => {
     requestRef.current = null;
-    setState({ wordId: targetWordId, status: 'loading', content: '' });
-    const cached = await wordExplanationService.getExplanation(targetWordId);
-    if (wordRef.current !== targetWordId) return;
-    if (cached.success && cached.data) {
-      setState({ wordId: targetWordId, status: 'ready', content: cached.data.content, meta: cached.data });
-    } else {
-      // 没有缓存：是否生成由下面的停留判断决定
-      setState({ wordId: targetWordId, status: 'missing', content: '' });
-    }
+    const kept = explanationStore.get(targetWordId);
+    // 本次还没生成过：是否生成由下面的停留判断决定
+    setState(
+      kept
+        ? { wordId: targetWordId, status: 'ready', content: kept.content, meta: kept }
+        : { wordId: targetWordId, status: 'missing', content: '' }
+    );
   }, []);
 
-  // 没有缓存且处在会停下来看的环节：页签停留一会儿再自动生成
+  // 还没有讲解且处在会停下来看的环节：页签停留一会儿再自动生成
   useEffect(() => {
     if (state.status !== 'missing' || state.wordId !== wordId || !active || !autoGenerate) return;
     const timer = setTimeout(() => generate(wordId), AUTO_GENERATE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [state.status, state.wordId, wordId, active, autoGenerate, generate]);
 
-  // 页签可见且换了单词：加载缓存，没有就生成
+  // 页签可见且换了单词：显示本次已生成的讲解，没有就等待生成
   useEffect(() => {
     if (!active || loadedWordRef.current === wordId) return;
     loadedWordRef.current = wordId;
@@ -133,7 +136,11 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
     if (loadedWordRef.current !== wordId) requestRef.current = null;
   }, [wordId]);
 
-  const busy = state.status === 'loading' || state.status === 'generating';
+  const busy = state.status === 'generating';
+
+  // 推荐追问：有对话时用最近一次回答的，否则用讲解的；AI 没给时用固定建议（去掉问过的）
+  const dynamicFollowUps = chat.messages.length > 0 ? chat.followUps : state.status === 'ready' ? (state.meta?.follow_ups ?? []) : [];
+  const suggestions = dynamicFollowUps.length > 0 ? dynamicFollowUps : FALLBACK_SUGGESTIONS.filter(q => !chat.asked.includes(q));
 
   // 有新的对话内容时滚到底部
   useEffect(() => {
@@ -144,7 +151,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
 
   const ask = (text: string) => {
     if (!text.trim() || chat.busy) return;
-    chat.send(text);
+    chat.send(text, state.status === 'ready' ? state.content : undefined);
     setQuestion('');
   };
 
@@ -178,7 +185,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
           <div className="flex flex-col items-center gap-1.5 py-8 text-center">
             <Loader2 className="size-6 animate-spin text-primary" />
             <p className="font-medium">{state.status === 'generating' ? 'AI 老师正在思考怎么讲…' : '正在加载…'}</p>
-            {state.status === 'generating' && <span className="text-sm text-muted-foreground">第一次讲解需要十几秒，之后会直接打开</span>}
+            {state.status === 'generating' && <span className="text-sm text-muted-foreground">讲解需要十几秒，写好的部分会先显示出来</span>}
           </div>
         )}
 
@@ -226,9 +233,9 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
 
       {/* 提问输入框 */}
       <div className="space-y-2">
-        {chat.messages.length === 0 && chat.pendingText === null && (
+        {chat.pendingText === null && state.status !== 'generating' && suggestions.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {SUGGESTIONS.map((sug) => (
+            {suggestions.map((sug) => (
               <Button key={sug} variant="outline" size="sm" className="h-7 rounded-full text-xs" onClick={() => ask(sug)} disabled={chat.busy}>
                 {sug}
               </Button>
@@ -259,12 +266,10 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
             <span className="inline-flex items-center gap-1">
               <PenLine className="size-3.5" /> AI 老师正在写讲解…
             </span>
-          ) : state.status === 'loading' ? (
-            '正在加载讲解…'
           ) : state.status === 'ready' && state.meta ? (
             <span className="inline-flex items-center gap-1">
               <Bot className="size-3.5" />
-              {state.meta.model_name ? `${state.meta.model_name} 生成` : 'AI 生成'} · {formatTime(state.meta.updated_at)}
+              {state.meta.model_name ? `${state.meta.model_name} 生成` : 'AI 生成'} · {formatTime(state.meta.generated_at)}
             </span>
           ) : null
         }

@@ -1,11 +1,11 @@
-//! 单词讲解命令：读缓存 / 生成（流式增量经 `word-explanation-delta` 事件推送给前端）
+//! 单词讲解命令：实时生成（流式增量经 `word-explanation-delta` 事件推送给前端，不落库）与 AI 老师答疑
 
 use crate::agent::AgentPaths;
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::services::word_explanation::WordExplanationService;
 use crate::types::common::Id;
-use crate::types::wordbook::{WordExplanation, WordTutorRequest};
+use crate::types::wordbook::{TutorReply, WordExplanation, WordTutorRequest};
 use serde::Serialize;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -27,30 +27,7 @@ fn service(app: &AppHandle) -> WordExplanationService {
     )
 }
 
-/// 读取缓存的单词讲解（没有返回 null）
-#[tauri::command]
-pub async fn get_word_explanation(
-    app: AppHandle,
-    word_id: Id,
-) -> AppResult<Option<WordExplanation>> {
-    let logger = app.state::<Logger>();
-    logger.api_request(
-        "get_word_explanation",
-        Some(&format!("word_id: {}", word_id)),
-    );
-    let result = service(&app).get(word_id).await;
-    match &result {
-        Ok(found) => logger.api_response(
-            "get_word_explanation",
-            true,
-            Some(&format!("cached: {}", found.is_some())),
-        ),
-        Err(e) => logger.api_response("get_word_explanation", false, Some(&e.to_string())),
-    }
-    result
-}
-
-/// 生成（或重新生成）单词讲解；生成过程中推送 `word-explanation-delta` 事件
+/// 生成单词讲解与推荐追问；生成过程中推送 `word-explanation-delta` 事件
 #[tauri::command]
 pub async fn generate_word_explanation(
     app: AppHandle,
@@ -88,7 +65,11 @@ pub async fn generate_word_explanation(
         Ok(e) => logger.api_response(
             "generate_word_explanation",
             true,
-            Some(&format!("{} chars", e.content.chars().count())),
+            Some(&format!(
+                "{} chars, {} follow-ups",
+                e.content.chars().count(),
+                e.follow_ups.len()
+            )),
         ),
         Err(e) => logger.api_response("generate_word_explanation", false, Some(&e.to_string())),
     }
@@ -104,9 +85,9 @@ struct TutorDelta {
     delta: String,
 }
 
-/// 向 AI 老师提问；回答过程中推送 `word-tutor-delta` 事件，返回完整回答
+/// 向 AI 老师提问；回答过程中推送 `word-tutor-delta` 事件，返回完整回答与推荐追问
 #[tauri::command]
-pub async fn ask_word_tutor(app: AppHandle, request: WordTutorRequest) -> AppResult<String> {
+pub async fn ask_word_tutor(app: AppHandle, request: WordTutorRequest) -> AppResult<TutorReply> {
     use crate::services::word_tutor::WordTutorService;
     let logger = app.state::<Logger>();
     logger.api_request(
@@ -147,7 +128,11 @@ pub async fn ask_word_tutor(app: AppHandle, request: WordTutorRequest) -> AppRes
         Ok(reply) => logger.api_response(
             "ask_word_tutor",
             true,
-            Some(&format!("{} chars", reply.chars().count())),
+            Some(&format!(
+                "{} chars, {} follow-ups",
+                reply.content.chars().count(),
+                reply.follow_ups.len()
+            )),
         ),
         Err(e) => logger.api_response("ask_word_tutor", false, Some(&e.to_string())),
     }

@@ -117,7 +117,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_word_explanation,
             generate_word_explanation,
             ask_word_tutor,
             generate_word_examples,

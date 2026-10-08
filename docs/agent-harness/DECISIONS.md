@@ -272,3 +272,12 @@
 - 生词入本：`add_passage_words_to_book` 一步完成——本里已有的直接关联，其余跑拼读分析补全音标与例句后保存，再把目标词的 wordId 补上。
 - 读取命令 `read_material_file` 与单词本「从文本提取」共用；一次导入一篇、可取消（requestId），不新增进度管理器。
 - 原因：用户要求“原文一字不改”；确定性工作放进代码（CLAUDE.md §4.4），模型只做判断与生成。
+
+## D31 · 2026-10-08 · 讲解改为实时生成；讲解与答疑附带推荐追问
+
+- **背景**：讲解下方的三条提问建议是写死的，与单词和对话无关；用户希望 AI 每次讲解或回答后结合上下文推荐追问，并认为讲解应随情景实时生成、不必缓存（token 消耗可接受）。
+- **决定**：
+  1. 讲解不再缓存：每次打开（前端本次运行期间按单词在内存保留，换词再回来不重生）由 agent 实时生成；删除 `get_word_explanation`、`WordExplanationRepository`、`EXPLAIN_PROMPT_VERSION` 与讲解指纹，迁移 058 删除 `word_explanations` 表。答疑需要的讲解改由前端随 `WordTutorRequest.explanation` 带上（最多 6000 字）。
+  2. 推荐追问不额外调用模型：`word_explain.md` / `word_tutor.md` 要求在正文后另起一行写分隔行 `<<<追问>>>`，再写 2–3 个学习者口吻的追问。`agent/follow_up.rs` 拆分并校正（去列表符号 / 引号、≤30 字、去重、去掉已问过的、最多 3 个）；流式时 `StreamGate` 只转发分隔行之前的文字（末尾可能是半截分隔行的先扣住）。
+  3. 返回：`WordExplanation.follow_ups`；`ask_word_tutor` 返回 `TutorReply { content, follow_ups }`。前端有对话时显示最近一次回答的追问，否则显示讲解的追问；模型没给时退回固定三条（去掉已问过的）。
+- **原因**：追问随正文一起生成，不增加等待和调用次数；格式错误只影响追问（退回固定建议），不影响正文。

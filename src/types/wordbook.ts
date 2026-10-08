@@ -72,17 +72,29 @@ export interface WordTutorRequest {
   /** 流式增量事件用于区分请求 */
   requestId: string;
   modelId?: Id;
+  /** 学习者正在看的讲解（讲解不落库，由前端带上） */
+  explanation?: string;
 }
 
-/// 单词讲解（agent 生成的 Markdown，按单词缓存）
+/// 单词讲解（agent 实时生成的 Markdown，不落库）
 export interface WordExplanation {
   word_id: Id;
   /** Markdown 正文 */
   content: string;
+  /** 推荐追问（模型没给时为空） */
+  follow_ups: string[];
   /** 生成所用模型 */
   model_name?: string | null;
-  /** 最近生成时间 */
-  updated_at: string;
+  /** 生成时间 */
+  generated_at: string;
+}
+
+/// AI 老师的回答
+export interface TutorReply {
+  /** Markdown 正文 */
+  content: string;
+  /** 结合这次对话推荐的追问（模型没给时为空） */
+  follow_ups: string[];
 }
 
 /// 单词

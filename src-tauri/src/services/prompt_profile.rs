@@ -107,11 +107,6 @@ impl PromptProfileService {
             })
             .unwrap_or_default())
     }
-
-    /// 讲解提示词的指纹：档案或讲解模板变化后，已缓存的讲解视为过期
-    pub fn explain_fingerprint(profile: &PromptProfile) -> String {
-        prompts::fingerprint(&prompts::system_prompt(PromptTask::Explain, profile, &[]))
-    }
 }
 
 #[cfg(test)]
@@ -158,14 +153,9 @@ mod tests {
     }
 
     #[test]
-    fn preview_renders_every_task_and_fingerprint_follows_profile() {
+    fn preview_renders_every_task() {
         let previews = PromptProfileService::preview(&PromptProfile::default()).unwrap();
         assert_eq!(previews.len(), PromptTask::ALL.len());
         assert!(previews.iter().all(|p| !p.content.contains("{{")));
-        let adult = PromptProfile::preset("adult").unwrap();
-        assert_ne!(
-            PromptProfileService::explain_fingerprint(&adult),
-            PromptProfileService::explain_fingerprint(&PromptProfile::default())
-        );
     }
 }

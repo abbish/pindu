@@ -30,7 +30,7 @@ export interface WordSidePanelProps {
   explanationLocked: boolean;
   /** 「查」时提示去看讲解 */
   explanationSuggested?: boolean;
-  /** 没有讲解缓存时是否自动生成（只在会停下来看的环节） */
+  /** 还没有讲解时是否自动生成（只在会停下来看的环节） */
   explanationAutoGenerate?: boolean;
 }
 

@@ -3,6 +3,7 @@
 //! 原则（DECISIONS D05）：确定性部分由代码完成，模型只做判断与标注；结构化结果经 `submit_*` 工具交付。
 
 use super::config::{prepare_launch, AgentPaths, AgentTask, SessionMode};
+use super::follow_up;
 use super::protocol::AgentEvent;
 use super::session::AgentProcess;
 use crate::error::{AppError, AppResult};
@@ -884,15 +885,34 @@ pub fn word_tutor_message(
     )
 }
 
-/// 回答学生的问题；`on_delta` 收到流式文本增量
+/// 讲解 / 答疑的结果：正文 + 推荐追问（模型没给时为空，界面用固定建议）
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiReply {
+    pub content: String,
+    pub follow_ups: Vec<String>,
+}
+
+impl AiReply {
+    fn from_output(text: &str, asked: &[&str]) -> Self {
+        let (content, follow_ups) = follow_up::split(&clean_markdown(text), asked);
+        Self {
+            content: clean_markdown(&content),
+            follow_ups,
+        }
+    }
+}
+
+/// 回答学生的问题；`on_delta` 收到流式文本增量（追问部分不推送）；`asked` 为已问过的问题，不再推荐
 pub async fn ask_tutor(
     paths: &AgentPaths,
     model: &AIModelConfig,
     profile: &PromptProfile,
     message: &str,
     logger: &Logger,
+    asked: &[&str],
     mut on_delta: impl FnMut(&str),
-) -> AppResult<String> {
+) -> AppResult<AiReply> {
+    let mut gate = follow_up::StreamGate::default();
     let run = run_task(
         paths,
         &word_tutor_task(profile),
@@ -902,13 +922,16 @@ pub async fn ask_tutor(
         logger,
         |event| {
             if let AgentEvent::TextDelta(delta) = event {
-                on_delta(delta);
+                let visible = gate.push(delta);
+                if !visible.is_empty() {
+                    on_delta(&visible);
+                }
             }
         },
     )
     .await?;
-    let reply = clean_markdown(&run.outcome.text);
-    if reply.is_empty() {
+    let reply = AiReply::from_output(&run.outcome.text, asked);
+    if reply.content.is_empty() {
         return Err(AppError::ExternalServiceError(
             "AI 老师没有给出回答，请再问一次".to_string(),
         ));
@@ -926,7 +949,7 @@ pub fn explain_word_task(profile: &PromptProfile) -> AgentTask {
         name: "word-explain",
         system_prompt: prompts::system_prompt(PromptTask::Explain, profile, &[]),
         tools: &[],
-        // 讲解会被缓存反复查看：正确性优先于速度（low 档在易混词、读音断言上出错较多，见 D17）
+        // 正确性优先于速度（low 档在易混词、读音断言上出错较多，见 D17）
         default_thinking: "medium",
     }
 }
@@ -950,7 +973,7 @@ pub fn clean_markdown(text: &str) -> String {
     inner.unwrap_or(trimmed).trim().to_string()
 }
 
-/// 生成单词讲解；`on_delta` 收到流式文本增量（用于前端实时显示）
+/// 生成单词讲解；`on_delta` 收到流式文本增量（用于前端实时显示，追问部分不推送）
 pub async fn explain_word(
     paths: &AgentPaths,
     model: &AIModelConfig,
@@ -959,7 +982,8 @@ pub async fn explain_word(
     word: &Word,
     logger: &Logger,
     mut on_delta: impl FnMut(&str),
-) -> AppResult<String> {
+) -> AppResult<AiReply> {
+    let mut gate = follow_up::StreamGate::default();
     let run = run_task(
         paths,
         &explain_word_task(profile),
@@ -969,12 +993,16 @@ pub async fn explain_word(
         logger,
         |event| {
             if let AgentEvent::TextDelta(delta) = event {
-                on_delta(delta);
+                let visible = gate.push(delta);
+                if !visible.is_empty() {
+                    on_delta(&visible);
+                }
             }
         },
     )
     .await?;
-    let content = clean_markdown(&run.outcome.text);
+    let reply = AiReply::from_output(&run.outcome.text, &[]);
+    let content = &reply.content;
     if content.chars().count() < 50 {
         return Err(AppError::ExternalServiceError(
             "模型没有返回有效的讲解内容".to_string(),
@@ -983,13 +1011,14 @@ pub async fn explain_word(
     logger.info(
         "WORD_EXPLAIN",
         &format!(
-            "「{}」讲解已生成：{} 字，用时 {:.1}s",
+            "「{}」讲解已生成：{} 字，{} 个追问，用时 {:.1}s",
             word.word,
             content.chars().count(),
+            reply.follow_ups.len(),
             run.elapsed.as_secs_f64()
         ),
     );
-    Ok(content)
+    Ok(reply)
 }
 
 // ==================== 短文库 ====================
@@ -1812,27 +1841,53 @@ mod tests {
         };
         let logger = crate::test_support::test_logger();
         let started = Instant::now();
-        let mut deltas = 0;
-        let content = explain_word(
+        let mut streamed = String::new();
+        let reply = explain_word(
             &paths,
             &model,
             &PromptProfile::default(),
             "",
             &sample_word(),
             &logger,
-            |_| deltas += 1,
+            |d| streamed.push_str(d),
         )
         .await
         .unwrap();
         println!(
-            "{:.1}s deltas={} chars={}\n{}",
+            "{:.1}s chars={} follow_ups={:?}\n{}",
             started.elapsed().as_secs_f64(),
-            deltas,
-            content.chars().count(),
-            content
+            reply.content.chars().count(),
+            reply.follow_ups,
+            reply.content
         );
-        assert!(deltas > 1, "应收到流式增量");
-        assert!(content.contains("## "));
+        assert!(streamed.len() > 1, "应收到流式增量");
+        assert!(reply.content.contains("## "));
+        assert!(
+            !streamed.contains(follow_up::FOLLOW_UP_MARKER) && !reply.content.contains("追问>>>")
+        );
+        assert!(!reply.follow_ups.is_empty(), "应给出推荐追问");
+
+        // 答疑：带上讲解与对话，回答后推荐的追问不重复已问过的问题
+        let question = "为什么 cake 结尾的 e 不发音？";
+        let message = word_tutor_message(&sample_word(), "", Some(&reply.content), &[], question);
+        let mut tutor_streamed = String::new();
+        let answer = ask_tutor(
+            &paths,
+            &model,
+            &PromptProfile::default(),
+            &message,
+            &logger,
+            &[question],
+            |d| tutor_streamed.push_str(d),
+        )
+        .await
+        .unwrap();
+        println!(
+            "tutor: {}\nfollow_ups={:?}",
+            answer.content, answer.follow_ups
+        );
+        assert!(!tutor_streamed.contains(follow_up::FOLLOW_UP_MARKER));
+        assert!(!answer.follow_ups.is_empty(), "答疑应给出推荐追问");
         let _ = std::fs::remove_dir_all(root);
     }
 

@@ -1,18 +1,18 @@
-//! AI 老师答疑：带上单词资料、已缓存的讲解与最近对话，调用 agent 回答学生的问题（流式）。
+//! AI 老师答疑：带上单词资料、学习者正在看的讲解与最近对话，调用 agent 回答学生的问题（流式），并推荐追问。
 //! 对话不落库（前端按单词在本次练习内保留）。
 
 use crate::agent::{tasks, AgentPaths};
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
-use crate::repositories::word_explanation_repository::WordExplanationRepository;
 use crate::repositories::word_repository::WordRepository;
-use crate::services::word_explanation::EXPLAIN_PROMPT_VERSION;
-use crate::types::wordbook::{ChatTurn, WordTutorRequest};
+use crate::types::wordbook::{ChatTurn, TutorReply, WordTutorRequest};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
 /// 单个问题的长度上限（字符）
 pub const MAX_QUESTION_CHARS: usize = 300;
+/// 随问题带上的讲解最多取多少字符（讲解一般 1500 字以内）
+const MAX_EXPLANATION_CHARS: usize = 6000;
 
 /// 校验问题与对话记录
 pub fn validate(request: &WordTutorRequest) -> AppResult<()> {
@@ -53,15 +53,16 @@ impl WordTutorService {
         request: &WordTutorRequest,
         paths: &AgentPaths,
         on_delta: impl FnMut(&str),
-    ) -> AppResult<String> {
+    ) -> AppResult<TutorReply> {
         validate(request)?;
         let word = WordRepository::new(self.pool.clone(), self.logger.clone())
             .find_by_id(request.word_id)
             .await?
             .ok_or_else(|| AppError::NotFound("单词不存在，可能已被删除".to_string()))?;
-        let explanation = WordExplanationRepository::new(self.pool.clone())
-            .find(request.word_id, EXPLAIN_PROMPT_VERSION, None, true)
-            .await?;
+        let explanation: Option<String> = request
+            .explanation
+            .as_deref()
+            .map(|text| text.chars().take(MAX_EXPLANATION_CHARS).collect());
         let model = crate::services::agent_settings::AgentSettingsService::new(
             self.pool.clone(),
             self.logger.clone(),
@@ -80,13 +81,34 @@ impl WordTutorService {
         let message = tasks::word_tutor_message(
             &word,
             &scene,
-            explanation.as_ref().map(|e| e.content.as_str()),
+            explanation.as_deref(),
             &request.history,
             &request.question,
         );
         let profile =
             crate::services::prompt_profile::PromptProfileService::load(&self.pool).await?;
-        tasks::ask_tutor(paths, &model, &profile, &message, &self.logger, on_delta).await
+        // 已经问过的问题不再推荐
+        let asked: Vec<&str> = request
+            .history
+            .iter()
+            .filter(|t| t.role == "student")
+            .map(|t| t.content.as_str())
+            .chain(std::iter::once(request.question.as_str()))
+            .collect();
+        let reply = tasks::ask_tutor(
+            paths,
+            &model,
+            &profile,
+            &message,
+            &self.logger,
+            &asked,
+            on_delta,
+        )
+        .await?;
+        Ok(TutorReply {
+            content: reply.content,
+            follow_ups: reply.follow_ups,
+        })
     }
 }
 
@@ -102,6 +124,7 @@ mod tests {
             question: question.to_string(),
             request_id: "r1".to_string(),
             model_id: None,
+            explanation: None,
         }
     }
 

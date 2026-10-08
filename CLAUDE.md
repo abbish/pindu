@@ -82,7 +82,7 @@ src-tauri/
 ├── src/progress_manager.rs   EnhancedProgressManager：批量单词分析进度（前端轮询 get_batch_analysis_progress）
 ├── src/planning_progress.rs  学习计划规划进度（前端轮询 get_analysis_progress；取消标志）
 ├── src/prompts/agent/*.md    agent 任务提示词，include_str! 编译进二进制（见 §6）
-├── migrations/001..057_*.sql
+├── migrations/001..058_*.sql
 └── src/test_support.rs       #[cfg(test)] 内存库与种子数据
 
 agent/                        agent sidecar 的 TS 工程（pi RPC + RedLark 工具）；npm run agent:build → src-tauri/binaries/redlark-agent-<triple>（不入库）
@@ -130,7 +130,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 | `handlers/diagnostics.rs` | diagnose_study_plan_data, diagnose_calendar_data, diagnose_today_schedules（仅开发排查，前端不调用；只在 debug 构建编译与注册，`#[cfg(debug_assertions)]`） |
 | `handlers/ai_model.rs` | get_all_ai_providers / get_all_ai_models（列表一律返回 `AIProviderSafe`/`AIModelConfigSafe`：has_api_key + 前 4 位预览）, set_default_ai_model, create/update/delete_ai_provider（含 `piProvider` / `api`）|model（生成参数为 `generation: ModelGenerationSettings`，整体替换）, list_provider_remote_models（pi 目录 + 远端 /models）, get_agent_catalog_providers / get_agent_catalog_models（pi 内置目录）, test_ai_model |
 | `handlers/word_analysis.rs` | extract_words_from_text, generate_words_from_intent（按描述生成单词，避开本内已有词）, analyze_extracted_words（拼读 + 例句）, get_batch_analysis_progress, cancel_batch_analysis |
-| `handlers/word_explanation.rs` | get_word_explanation（缓存）, generate_word_explanation（agent 生成，流式增量经 `word-explanation-delta` 事件推送，按 requestId 过滤）, ask_word_tutor（`request: WordTutorRequest`，AI 老师答疑，增量事件 `word-tutor-delta`，对话不落库） |
+| `handlers/word_explanation.rs` | generate_word_explanation（agent 实时生成，不落库；流式增量经 `word-explanation-delta` 事件推送，按 requestId 过滤；返回正文 + 推荐追问 `follow_ups`）, ask_word_tutor（`request: WordTutorRequest`：带上正在看的讲解与最近对话，AI 老师答疑，增量事件 `word-tutor-delta`，返回 `TutorReply` 正文 + 推荐追问；对话不落库） |
 | `handlers/passage.rs` | get_passage_word_candidates（`request: PassageWordSources`：单词本、学习计划都可多选，计划按取词策略 wrong / weak / recent / upcoming / mastered / learned）, get_plan_scope_counts, plan_passages（AI 内容规划：一篇或拆几篇，`feedback` 让 AI 改规划）, generate_passage（`request: GeneratePassageRequest`：必用词 + AI 按场景从来源挑 `aiPick` 个）, get_passages（按来源 book_id / plan_id、origin generated / imported 筛选）, get_passage, get_passage_words（目标词的单词资料，点词卡片用）, delete_passage, generate_question_set（`request: GenerateQuestionSetRequest`：各题型数量 + 难度）, get_question_set, delete_question_set, start_passage_attempt（set_id + reading / listening，可带 plan_id：计划里的短文任务）, submit_passage_attempt（必须全部作答；客观题代码判分，开放题 AI 评分）, regrade_passage_open, get_passage_statistics；删除短文 / 题组：没结束的计划用着时拒绝 |
 | `handlers/passage_import.rs` | read_material_file（`request: ReadMaterialRequest`：txt/md/srt/vtt/docx/pdf → 清理后的纯文本，单词本提取与短文导入共用）, prepare_passage_import（确定性清理、分句、拆篇预览，不用 AI）, import_passage（`request: ImportPassageRequest`：一次一篇，AI 只逐句翻译 / 起标题 / 估水平 / 挑重点词，原文不改）, cancel_passage_import（requestId）, get_passage_new_words, add_passage_words_to_book（拼读分析后入本，补上目标词 wordId） |
 | `handlers/plan_passage.rs` | get_plan_passages, set_plan_passages（`request: SetPlanPassagesRequest`：练习内容 + 完整短文顺序 + 间隔天数；已完成的锁定）, get_today_passage_tasks, get_plan_passage_candidates（`request`：bookIds / planId，按相关度排序，含题组）, complete_plan_passage_reading（只朗读的任务“读完了”） |
@@ -146,8 +146,8 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 启动流程：`lib.rs` → `DatabaseManager::new("sqlite:<app_data_dir>/vocabulary.db")` → `migrate()`（`sqlx::migrate!("./migrations")`）→ `app.manage(pool)`。迁移失败会 panic，应用无法启动。
 外键是开启的（sqlx 默认 `foreign_keys = ON`），schema 中的 `ON DELETE CASCADE` 生效：删除计划/日程会连带删除单词关联、练习会话与作答记录。
 
-当前有效表（迁移 001–057 之后）：
-`word_books` · `words` · `word_examples`（单词例句，一对多，`sort_order` 0 为最简单的一句；`words.example_sentence/translation` 为 040 遗留列，041 起不再读写） · `word_explanations`（单词讲解 Markdown 缓存，一词一份；`prompt_version` 低于 `EXPLAIN_PROMPT_VERSION` 或 `prompt_fingerprint` 与当前学习者档案不符视为过期，见 §6） · `theme_tags` · `word_book_theme_tags` · `study_plans` · `study_plan_words` · `study_plan_schedules` · `study_plan_schedule_words` · `study_plan_status_history` · `study_sessions` · `study_statistics`(遗留) · `study_timer_records` · `study_pause_records` · `practice_sessions` · `word_practice_records` · `practice_pause_records` · `ai_providers` · `ai_models` · `app_settings`（键值设置：AI 任务模型、批量参数、学习者档案）· `tts_cache` · `volcengine_tts_config` · `elevenlabs_config`(遗留，035 起不再读写) · `categories`(001 遗留) · `passages`（短文，独立素材：正文 + 逐句翻译（句子带 paragraph 段落标记）+ 目标词；`origin` generated AI 写的 / imported 导入的材料，`source_label` 文件名，057）· `passage_sources`（来源：单词本 / 计划，`ref_id` 无外键，删来源不删短文）· `passage_question_sets`（阅读理解题组，一篇短文可多套）· `passage_questions`（挂题组）· `passage_attempts`（按题组作答，口径独立于单词练习）· `study_plan_passages`（计划里的短文任务：短文 + 题组（空 = 只朗读）+ reading / listening + 排期日期 + 完成时刻，056；`study_plans.practice_content` words / passages / both、`passage_interval_days`）。
+当前有效表（迁移 001–058 之后）：
+`word_books` · `words` · `word_examples`（单词例句，一对多，`sort_order` 0 为最简单的一句；`words.example_sentence/translation` 为 040 遗留列，041 起不再读写） · `theme_tags` · `word_book_theme_tags` · `study_plans` · `study_plan_words` · `study_plan_schedules` · `study_plan_schedule_words` · `study_plan_status_history` · `study_sessions` · `study_statistics`(遗留) · `study_timer_records` · `study_pause_records` · `practice_sessions` · `word_practice_records` · `practice_pause_records` · `ai_providers` · `ai_models` · `app_settings`（键值设置：AI 任务模型、批量参数、学习者档案）· `tts_cache` · `volcengine_tts_config` · `elevenlabs_config`(遗留，035 起不再读写) · `categories`(001 遗留) · `passages`（短文，独立素材：正文 + 逐句翻译（句子带 paragraph 段落标记）+ 目标词；`origin` generated AI 写的 / imported 导入的材料，`source_label` 文件名，057）· `passage_sources`（来源：单词本 / 计划，`ref_id` 无外键，删来源不删短文）· `passage_question_sets`（阅读理解题组，一篇短文可多套）· `passage_questions`（挂题组）· `passage_attempts`（按题组作答，口径独立于单词练习）· `study_plan_passages`（计划里的短文任务：短文 + 题组（空 = 只朗读）+ reading / listening + 排期日期 + 完成时刻，056；`study_plans.practice_content` words / passages / both、`passage_interval_days`）。`word_explanations`（讲解缓存）已在 058 删除：讲解每次实时生成（D31）。
 `tts_providers` / `tts_voices` 已在 030 删除；TTS 自 035 起为火山引擎豆包（单行配置 `volcengine_tts_config`，鉴权 API Key 或 AppID+Access Token，资源 ID 为空时按音色推断）。性能索引见 032；033 刷新种子模型（只改仍为种子原值的行）；036 把种子提供商收敛为 OpenRouter / MiniMax / 月之暗面 / DeepSeek（034 的火山方舟仅在未配置时移除）。
 
 **单词本生命周期**：状态只有 `normal`（正式）/ `draft`（草稿，不能用于计划）；删除为软删除（`deleted_at`），在列表“已删除”里可恢复（`restore_word_book`）。被草稿 / 待开始 / 进行中 / 已暂停的计划使用时不能删除或转草稿。列表的单词数与关联计划数在查询时实时计算。删除单词会在同一事务里把它从所有计划移除并重算日程计数（`services/word.rs::delete_word`）。
@@ -170,8 +170,8 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
   | 提词 | `extract_words.md` | `tokenize_text` + `submit_words` | `services/word_extraction.rs` |
   | 批量拼读分析 | `phonics_batch.md` | `submit_phonics`（自带校验，退回重交） | `services/phonics_analysis.rs` |
   | 学习计划排序 | `study_plan_order.md` | `submit_learning_order` | `services/study_plan_generation.rs` → 日程由 `services/study_planning.rs` 确定性计算（D13） |
-  | 单词讲解 | `word_explain.md`（medium 思考档） | 无（`-nt`，输出 Markdown 正文，流式） | `services/word_explanation.rs`（缓存 `word_explanations`，改规范时递增 `EXPLAIN_PROMPT_VERSION`） |
-  | AI 老师答疑 | `word_tutor.md` | 无（`-nt`，简短回答，流式） | `services/word_tutor.rs`（带单词资料、已缓存讲解、最近 12 条对话） |
+  | 单词讲解 | `word_explain.md`（medium 思考档） | 无（`-nt`，输出 Markdown 正文 + 末尾推荐追问，流式） | `services/word_explanation.rs`（每次实时生成，不落库；追问拆分与流式闸门在 `agent/follow_up.rs`） |
+  | AI 老师答疑 | `word_tutor.md` | 无（`-nt`，简短回答 + 末尾推荐追问，流式） | `services/word_tutor.rs`（带单词资料、前端传来的当前讲解、最近 12 条对话；已问过的问题不再推荐） |
   | 按描述生成单词 | `generate_words.md` | `submit_generated_words` | `agent::tasks::generate_words`（命令 generate_words_from_intent） |
   | 例句补充 / 重新生成 | `word_examples.md` | `submit_examples`（与拼读例句同一套校验） | `services/word_examples.rs` |
   | 短文：内容规划 | `passage_plan.md`（medium 思考档） | `submit_passage_plan`（必用词都分到、篇数上限；Rust `passage_rules::plan_from_submission` 再校验） | `services/passage.rs::plan` |
@@ -224,15 +224,15 @@ export const fooService = new FooService();
 - `fragments/<维度>/<取值>.md`：learner / level / language / explain_length / memory / tutor_style / phonics_terms / ipa / extract_mode / system（模型测试）。
 - `messages/*.md`：发给模型的用户消息模板（单词资料、答疑上下文、例句任务等）。
 - 语法：`{{x}}` 替换，**变量为空的整行删除**；`{{#x}}…{{/x}}` 非空才保留、`{{^x}}…{{/x}}` 为空才保留。新增变量必须在 `prompts::tests` 里保证所有任务 × 预设渲染后无残留 `{{`。
-- 学习者档案 `PromptProfile`（设置 → AI 助手 → 学习者与风格；`app_settings` 键 `prompt.profile`，`services/prompt_profile.rs`）：预设 小学生（默认，等同模板化前的行为）/ 中学生 / 成人。讲解缓存按渲染后讲解提示词的指纹失效（`word_explanations.prompt_fingerprint`，051）；`EXPLAIN_PROMPT_VERSION` 仍用于模板规范的实质变化。
-- 单词本场景（D22）：单词本的标题 + 描述 + 主题标签经 `messages/book_scene.md` 渲染（`prompts::book_scene`，读取在 `PromptProfileService::book_scene`），放在生成、提取、拼读分析、例句、讲解、答疑的**用户消息**最前面（不进系统提示词，不影响讲解缓存指纹）；生成 / 提取时定好的释义经 `analyze_extracted_words(meanings)` → `PhonicsContext` 传给拼读分析沿用。
+- 学习者档案 `PromptProfile`（设置 → AI 助手 → 学习者与风格；`app_settings` 键 `prompt.profile`，`services/prompt_profile.rs`）：预设 小学生（默认，等同模板化前的行为）/ 中学生 / 成人。
+- 单词本场景（D22）：单词本的标题 + 描述 + 主题标签经 `messages/book_scene.md` 渲染（`prompts::book_scene`，读取在 `PromptProfileService::book_scene`），放在生成、提取、拼读分析、例句、讲解、答疑的**用户消息**最前面（不进系统提示词）；生成 / 提取时定好的释义经 `analyze_extracted_words(meanings)` → `PhonicsContext` 传给拼读分析沿用。
 - **改提示词需要重新编译**；工具（参数 schema、校验）在 `agent/src/tools/*.ts`，改工具需 `npm run agent:build`。
 - 改提示词前后用 `agent/eval/` 评测对比：先 `cd src-tauri && cargo test prompts::tests::render_eval_prompts -- --ignored` 渲染到 `agent/eval/rendered/<预设>/`（不入库），`EVAL_PRESET=primary|secondary|adult` 选预设；结论写进 work item evidence。
 
 ## 7. 开发规范（硬性）
 
 ### 7.1 数据库迁移
-1. **只增不改**：任何表结构变更都新建 `NNN_description.sql`，序号连续（下一号 058），绝不修改已有迁移。
+1. **只增不改**：任何表结构变更都新建 `NNN_description.sql`，序号连续（下一号 059），绝不修改已有迁移。
 2. **禁止删库重建**解决问题；向前兼容现有数据（SQLite 改列需走 建新表 → 拷数据 → drop → rename 模式，参考 020/023/031）。
 3. 新增迁移后在 Repository 里补对应字段映射，并同步 `types/*.rs` 与 `src/types/*.ts`。
 4. 怎样在 SQLite + sqlx 上做到以上三条（重建表模式、兼容已有数据、空库/真实库双验证）以 `.claude/skills/deliver-backend-rust/references/sqlx-migration-standards.md` 为准。`.claude/hooks/guard-migrations.sh` 会拦截对已有迁移文件的编辑。
@@ -279,7 +279,7 @@ export const fooService = new FooService();
 1. `repositories/xxx_repository.rs` 加查询方法 → 2. `services/xxx.rs` 加业务方法 → 3. `handlers/xxx.rs` 加 `#[tauri::command]` → 4. `lib.rs` `generate_handler!` 注册 → 5. `src/types/*.ts` 补类型 → 6. `src/services/xxxService.ts` 加方法 → 7. 页面/组件调用并处理 `success === false`。
 
 **改表结构**
-`migrations/058_*.sql` → Repository 映射 → `types/*.rs` → `src/types/*.ts` → 受影响的 Service/组件。
+`migrations/059_*.sql` → Repository 映射 → `types/*.rs` → `src/types/*.ts` → 受影响的 Service/组件。
 
 **改 AI 行为**
 `src-tauri/src/prompts/agent/*.md`（提示词）/ `agent/src/tools/*.ts`（工具与校验）→ `agent::tasks` 的结果校正 → `npm run agent:build` + 重新编译 → `agent/eval/` 前后对比 + 设置页「测试」与真实 Provider 验证 → 在 DECISIONS.md 追加决策。

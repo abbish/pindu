@@ -16,7 +16,6 @@ pub mod study_plan_repository;
 pub mod study_schedule_repository;
 pub mod theme_tag_repository;
 pub mod tts_repository;
-pub mod word_explanation_repository;
 pub mod word_repository;
 pub mod wordbook_repository;
 

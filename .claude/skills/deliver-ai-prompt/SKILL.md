@@ -22,7 +22,7 @@ description: "AI 能力实现（agent harness）：修改 src-tauri/src/prompts/
 | 工具与校验 | `agent/src/tools/*.ts`（注册在 `tools/index.ts`） | TypeBox schema；校验不通过抛错 → 模型看到问题清单并重交；`terminate: true` 结束本轮。改工具需 `npm run agent:build` |
 | Rust 校正 | `agent::tasks::*_from_submission`、`services/passage_rules.rs`（短文 / 规划 / 题目 / 评分 / 导入翻译）、`services/study_planning.rs` | 只接受请求中的输入、补齐遗漏、确定性字段（词频、日期、复习排期）由代码计算 |
 | 模型参数 | `src-tauri/src/agent/config.rs`（启动参数 / 思考档）→ `agent/src/config.ts`（pi models.json） | 生成参数只来自模型配置（`ModelGenerationSettings`），调用方不得写死 |
-| 落库 / 进度 | `services/wordbook.rs`（建单词本，含 phonics_segments 生成）、`services/study_plan*.rs`、`services/passage.rs`、`services/passage_import_service.rs`、`services/word_explanation.rs`（讲解缓存）；`progress_manager.rs`（批量分析）、`planning_progress.rs`（规划） | 进度契约见 CLAUDE.md §4.4 |
+| 落库 / 进度 | `services/wordbook.rs`（建单词本，含 phonics_segments 生成）、`services/study_plan*.rs`、`services/passage.rs`、`services/passage_import_service.rs`、`services/word_explanation.rs`（讲解实时生成，不落库）；`progress_manager.rs`（批量分析）、`planning_progress.rs`（规划） | 进度契约见 CLAUDE.md §4.4 |
 | 评测 | `agent/eval/eval-*.mjs` + `fixtures/` | 准确率（参照答案 / 金标准）+ 质量指标；结果写 `agent/eval/results/`（不入库） |
 
 ## 负责什么

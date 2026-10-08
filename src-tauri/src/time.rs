@@ -78,8 +78,17 @@ pub(crate) async fn assert_instants_canonical(pool: &sqlx::SqlitePool) {
         })
         .collect();
     assert!(columns.len() > 40, "未能从 047 解析出时刻列清单");
+    // 之后的迁移删掉的表（如 058 的 word_explanations）跳过
+    let tables: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .fetch_all(pool)
+            .await
+            .unwrap();
     let mut bad = Vec::new();
     for (table, column) in columns {
+        if !tables.iter().any(|t| t == table) {
+            continue;
+        }
         let rows: Vec<String> = sqlx::query_scalar(&format!(
             "SELECT {column} FROM {table} WHERE {column} IS NOT NULL"
         ))
@@ -163,7 +172,6 @@ mod tests {
     async fn writes_produce_canonical_instants() {
         use crate::repositories::{
             ai_model_repository::AIModelRepository, tts_repository::TtsRepository,
-            word_explanation_repository::WordExplanationRepository,
         };
         use crate::types::ai_model::{AIModelUpdate, AIProviderUpdate, NewAIModel, NewAIProvider};
 
@@ -225,20 +233,6 @@ mod tests {
         })
         .await
         .unwrap();
-
-        let word_id: i64 = sqlx::query_scalar("SELECT id FROM words LIMIT 1")
-            .fetch_one(pool.as_ref())
-            .await
-            .unwrap();
-        let explanations = WordExplanationRepository::new(pool.clone());
-        explanations
-            .upsert(word_id, "# a", None, 1, "fp")
-            .await
-            .unwrap();
-        explanations
-            .upsert(word_id, "# b", None, 1, "fp")
-            .await
-            .unwrap();
 
         assert_instants_canonical(&pool).await;
     }
