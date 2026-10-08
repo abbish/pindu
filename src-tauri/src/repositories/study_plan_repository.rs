@@ -850,11 +850,17 @@ impl StudyPlanRepository {
         .execute(&mut *conn)
         .await?;
 
-        self.logger.database_operation(
-            "UPDATE",
-            "study_plans",
-            true,
-            Some(&format!("Plan {} status {} -> {}", plan_id, from, to)),
+        // INFO：自动开始 / 自动完成发生在练习、短文作答的事务里，只有这里能统一记下。
+        // 所在事务回滚时状态不会保存，那次命令会以 API ... FAILED 记一条 ERROR。
+        self.logger.info(
+            "STUDY_PLAN",
+            &format!(
+                "计划 {} 状态 {} → {}：{}（随本次操作一起保存）",
+                plan_id,
+                status_label(&from),
+                status_label(to),
+                reason
+            ),
         );
         Ok(from)
     }

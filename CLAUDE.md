@@ -95,6 +95,7 @@ docs/RELEASING.md             发版流程：改版本号 → docs/releases/vX.m
 .claude/hooks/                 PreToolUse 守卫：拦截修改历史迁移、删库、输出密钥
 scripts/validate-skills.sh     Skill 目录结构校验
 docs/NAMING_CONVENTIONS.md     前后端命名规范（本文件 §7.2 是摘要）
+docs/LOGGING.md                日志规范：级别含义、记在哪里、不能记什么、改动自查（本文件 §7.3 是摘要）
 ```
 
 ## 4. 后端架构（Rust）
@@ -255,7 +256,7 @@ export const fooService = new FooService();
 - 错误 wire 形状固定为 `{code, message}`（`AppError` 手写 Serialize），见 IPC contract §4。
 - 日志：handler 入口 `api_request`，出口 `api_response`（只读查询 `get_/list_/preview_/find_/diagnose_` 成功记 DEBUG，其余 INFO，失败一律 ERROR）；日志参数里不得出现 API Key 明文，长文本只记长度。前端禁止 `console.log/info/debug`（ESLint `no-console` + 棘轮）。
   - 级别含义：ERROR = 操作失败、需要排查；WARN = 降级 / 自动恢复 / 结果可疑但继续（重试、校验退回、读设置失败用默认）；INFO = 用户动作与业务结果（改数据的命令、练习完成摘要、后台任务提交 / 结束、AI 运行开始 / 完成、启动与升级）；DEBUG = 排查明细（只读查询、SQL、发给模型的消息与工具结果）。
-  - 组件名大写（`API` `AGENT` `JOB` `DATABASE` `STARTUP` `TTS` …）；前端经 `apiClient.log` → `write_client_log` 写入，组件名带 `UI:` 前缀（界面崩溃、未捕获异常、没进到命令里的 IPC 错误）。不要留 `*_DEBUG` 之类的临时组件；吞掉的错误（`.ok()`、`let _ =`）若影响结果，至少记一条 WARN。
+  - 组件名大写（`API` `AGENT` `JOB` `DATABASE` `STARTUP` `TTS` …）；前端经 `apiClient.log` → `write_client_log` 写入，组件名带 `UI:` 前缀（界面崩溃、未捕获异常、没进到命令里的 IPC 错误）。不要留 `*_DEBUG` 之类的临时组件；吞掉的错误（`.ok()`、`let _ =`）若影响结果，至少记一条 WARN。完整规范与改动自查清单：`docs/LOGGING.md`（新增功能时按它判断要不要记、记几级）。
 - 敏感数据：API Key 不得出现在任何返回给前端的列表类型里（用 `*Safe` 类型 + `mask_api_key`）。
 
 ### 7.4 测试与验证

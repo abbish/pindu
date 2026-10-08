@@ -39,6 +39,7 @@ description: "后端实现（Tauri 2 / Rust / sqlx / SQLite）：修改 src-taur
 - 模板：`app.state::<SqlitePool>()` / `app.state::<Logger>()` → `logger.api_request(cmd, params)` → `XxxService::new(Arc::new(pool.inner().clone()), Arc::new(logger.inner().clone()))` → `match service.xxx().await` → `api_response(cmd, ok, msg)` → `AppResult<T>`。
 - 参数只用 `String / Option<String> / i64 / Option<i64> / bool / Vec<_>` 或一个 `request: XxxRequest` 结构体；不用 `Option<Id>` 别名作顶层参数。
 - 不写 SQL、不写业务分支；日志参数里不得出现 api_key 明文。
+- 日志按 `docs/LOGGING.md`：失败留原始原因，自动发生的状态 / 调度变化记 INFO，吞掉的错误若影响结果记 WARN，高频明细只放 DEBUG；完成前过一遍其 §7 自查清单。
 - 新命令放到功能域对应的文件；不再往 `handlers/diagnostics.rs` 加非诊断命令。
 - **在 `lib.rs` `generate_handler!` 注册**；`handlers/mod.rs` 已 `pub use <domain>::*`，新文件要在 mod.rs 加 `pub mod` + `pub use`。
 

@@ -44,7 +44,7 @@ description: "前端实现（React / TypeScript / Vite / shadcn/ui + Tailwind CS
 - 所有后端调用经 `src/services/*Service.ts` 的模块级单例（继承 `BaseService`）；页面/组件不直接 `invoke`，也不 `new XxxService()`。
 - 调用结果必须判 `result.success`；失败走 Toast / 错误态，不 `try/catch` 吞掉，不把失败渲染成空列表。
 - 状态只用 React Hooks（`useState`/`useEffect`/自定义 hooks）；可复用的异步拉取用 `useAsyncData`。
-- 不用 `console.log/info/debug` 与 `any`（ESLint error，规范 §4–§5）。
+- 不用 `console.log/info/debug` 与 `any`（ESLint error，规范 §4–§5）。后端看不到的错误（自己接住的异常、降级）用 `apiClient.log` 写进应用日志，规范见 `docs/LOGGING.md`；普通操作不用记，后端已有。
 
 **类型**
 - 字段名以 Rust serde 实际输出为准（默认 snake_case；`types/tts.rs` 等有 `rename_all = "camelCase"`）；不自己“顺手”改成 camelCase。
