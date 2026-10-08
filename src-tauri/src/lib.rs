@@ -1,4 +1,5 @@
 mod agent;
+mod app_paths;
 mod database;
 mod error;
 mod handlers;
@@ -8,6 +9,7 @@ mod menu;
 mod planning_progress;
 mod repositories;
 mod services;
+mod startup;
 mod time;
 mod types;
 
@@ -17,14 +19,25 @@ mod prompts;
 #[cfg(test)]
 mod test_support;
 
-use database::DatabaseManager;
+use app_paths::AppDirs;
 use handlers::*;
 use logger::Logger;
 use tauri::Manager;
+use types::common::StartupStatus;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
+    // 发布版同一时间只运行一个实例（必须最先注册）：再次打开时把已有窗口带到前面，
+    // 避免新旧两个版本同时打开、同时升级同一个数据库。开发版不限制，便于和安装版并存
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
     // macOS 菜单栏换成中文（Windows / Linux 不显示菜单栏）
     #[cfg(target_os = "macos")]
     let builder = builder.menu(menu::build);
@@ -40,75 +53,44 @@ pub fn run() {
                 println!("Development mode: DevTools opened automatically");
             }
 
-            tauri::async_runtime::block_on(async {
-                // 获取应用数据目录
-                let app_data_dir = app
-                    .path()
-                    .app_data_dir()
-                    .expect("Failed to get app data directory");
+            // 数据目录（发布版按 identifier 定位；开发版独立目录；可用 PINDU_DATA_DIR 覆盖），见 app_paths.rs
+            let dirs = AppDirs::resolve(app.handle())?;
+            std::fs::create_dir_all(&dirs.data)?;
+            let logger = Logger::new(&dirs.data)?;
+            logger.info(
+                "APP",
+                &format!("Application starting up (v{})", app.package_info().version),
+            );
+            logger.info(
+                "APP",
+                &format!("App data directory: {}", dirs.data.display()),
+            );
+            #[cfg(debug_assertions)]
+            logger.info("APP", "Running in development mode with DevTools enabled");
 
-                // 确保目录存在
-                std::fs::create_dir_all(&app_data_dir)
-                    .expect("Failed to create app data directory");
-
-                // 初始化日志系统
-                let logger = Logger::new(&app_data_dir).expect("Failed to initialize logger");
-
-                logger.info("APP", "Application starting up");
-                logger.info(
-                    "APP",
-                    &format!("App data directory: {}", app_data_dir.display()),
-                );
-
-                #[cfg(debug_assertions)]
-                logger.info("APP", "Running in development mode with DevTools enabled");
-
-                // 构建数据库路径
-                let db_path = app_data_dir.join("vocabulary.db");
-                let db_url = format!("sqlite:{}", db_path.to_string_lossy());
-
-                logger.info("DATABASE", &format!("Database path: {}", db_path.display()));
-
-                // 初始化数据库
-                match DatabaseManager::new(&db_url).await {
-                    Ok(db_manager) => {
-                        logger.info("DATABASE", "Database connection established");
-
-                        // 运行迁移
-                        match db_manager.migrate().await {
-                            Ok(_) => {
-                                logger
-                                    .info("DATABASE", "Database migrations completed successfully");
-                            }
-                            Err(e) => {
-                                logger.error(
-                                    "DATABASE",
-                                    "Failed to run migrations",
-                                    Some(&e.to_string()),
-                                );
-                                panic!("Failed to run migrations: {}", e);
-                            }
-                        }
-
-                        let pool = db_manager.pool().clone();
-
+            // 打开并升级数据库：失败时不崩溃、不建新库，前端显示错误页（见 startup.rs）
+            let status = tauri::async_runtime::block_on(async {
+                match startup::open_database(&dirs, &logger).await {
+                    Ok(pool) => {
                         // 自适应复习：把今天到期的复习放进今天的日程，并清理过期未练的复习（失败不影响启动）
                         if let Err(e) = services::srs::sync_all_today(&pool).await {
                             logger.warn("SRS", "启动时同步今日复习失败", Some(&e.to_string()));
                         }
                         app.manage(pool);
-                        app.manage(logger);
+                        StartupStatus {
+                            ok: true,
+                            failure: None,
+                        }
                     }
-                    Err(e) => {
-                        logger.error(
-                            "DATABASE",
-                            "Failed to initialize database",
-                            Some(&e.to_string()),
-                        );
-                        panic!("Failed to initialize database: {}", e);
-                    }
+                    Err(failure) => StartupStatus {
+                        ok: false,
+                        failure: Some(failure),
+                    },
                 }
             });
+            app.manage(status);
+            app.manage(logger);
+            app.manage(dirs);
 
             // 在初始化完成后显示窗口
             let window = app.get_webview_window("main").unwrap();
@@ -158,6 +140,8 @@ pub fn run() {
             get_plan_memory_overview,
             get_system_logs,
             open_log_folder,
+            open_data_folder,
+            get_startup_status,
             create_word_book_from_analysis,
             get_all_ai_providers,
             get_all_ai_models,

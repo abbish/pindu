@@ -49,3 +49,23 @@ export interface LoadingState {
   loading: boolean;
   error?: string;
 }
+
+/** 启动失败的原因（对应 Rust `types::common::StartupFailure`，camelCase） */
+export interface StartupFailure {
+  /** connect / interrupted / newer_database / modified_migration / backup / migrate */
+  kind: string;
+  title: string;
+  /** 给用户看的说明 */
+  message: string;
+  /** 原始错误（反馈问题时附上） */
+  detail: string | null;
+  dataDir: string;
+  /** 升级前备份所在目录 */
+  backupDir: string;
+}
+
+/** 启动状态（对应 Rust `types::common::StartupStatus`） */
+export interface StartupStatus {
+  ok: boolean;
+  failure: StartupFailure | null;
+}

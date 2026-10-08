@@ -41,6 +41,10 @@ quick-xml = "0.38"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 pdf-extract = "0.12.1"
 
+# 发布版只允许运行一个实例：新旧两个版本同时打开会同时升级同一个数据库
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+
 # 发布构建：体积更小、运行更快（调试符号不随安装包分发）
 [profile.release]
 codegen-units = 1

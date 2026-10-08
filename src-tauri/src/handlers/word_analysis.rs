@@ -19,10 +19,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 /// 提词服务（经 agent sidecar）
 fn word_extraction_service(app: &AppHandle) -> AppResult<WordExtractionService> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| AppError::InternalError(format!("无法获取应用数据目录：{}", e)))?;
+    let app_data_dir = crate::app_paths::dirs(app).data;
     WordExtractionService::new(
         Arc::new(app.state::<Logger>().inner().clone()),
         &app_data_dir,
@@ -36,10 +33,7 @@ fn phonics_analyzer(
     profile: crate::prompts::PromptProfile,
     context: PhonicsContext,
 ) -> AppResult<Arc<PhonicsBatchAnalyzer>> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| AppError::InternalError(format!("无法获取应用数据目录：{}", e)))?;
+    let app_data_dir = crate::app_paths::dirs(app).data;
     Ok(Arc::new(PhonicsBatchAnalyzer::new(
         Arc::new(app.state::<Logger>().inner().clone()),
         &app_data_dir,

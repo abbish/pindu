@@ -1,35 +1,28 @@
-use crate::error::AppResult;
+use sqlx::migrate::Migrator;
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
-use std::str::FromStr;
+use std::path::Path;
 
-/// 数据库连接管理器
-pub struct DatabaseManager {
-    pool: SqlitePool,
+/// 本版本内置的全部迁移（`src-tauri/migrations/`，编译进二进制）。启动时的升级流程见 `startup.rs`。
+pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+
+/// 打开（不存在则创建）数据库文件：WAL、synchronous=Normal、外键开启（sqlx 默认）。
+/// 用文件路径而不是 `sqlite:` URL 拼接，路径里有空格、`#`、`?` 或 Windows 反斜杠也能正确打开。
+pub async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
+    let options = SqliteConnectOptions::new()
+        .filename(db_path)
+        .create_if_missing(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
+    SqlitePool::connect_with(options).await
 }
 
-impl DatabaseManager {
-    /// 创建新的数据库管理器
-    pub async fn new(database_url: &str) -> AppResult<Self> {
-        let options = SqliteConnectOptions::from_str(database_url)?
-            .create_if_missing(true)
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
-
-        let pool = SqlitePool::connect_with(options).await?;
-
-        Ok(Self { pool })
-    }
-
-    /// 获取数据库连接池
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
-    }
-
-    /// 运行数据库迁移
-    pub async fn migrate(&self) -> AppResult<()> {
-        sqlx::migrate!("./migrations").run(&self.pool).await?;
-        Ok(())
-    }
+/// 把整个数据库（含 WAL 中已提交的内容）复制成一个独立的新文件；目标文件必须不存在
+pub async fn vacuum_into(pool: &SqlitePool, target: &Path) -> Result<(), sqlx::Error> {
+    sqlx::query("VACUUM INTO ?")
+        .bind(target.to_string_lossy().to_string())
+        .execute(pool)
+        .await
+        .map(|_| ())
 }
 
 /// 种子数据迁移的行为测试：迁移在 `memory_pool()` 中已执行一次；这里把库改回“迁移前 + 用户改动”的

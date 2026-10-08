@@ -113,16 +113,10 @@ pub async fn delete_database_and_restart(app: AppHandle) -> AppResult<()> {
         "🗑️ Starting database deletion and app restart process",
     );
 
-    // 获取应用数据目录
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| AppError::InternalError(format!("无法定位应用数据目录：{}", e)))?;
-
-    // 构建数据库文件路径
-    let db_path = app_data_dir.join("vocabulary.db");
-    let wal_path = app_data_dir.join("vocabulary.db-wal");
-    let shm_path = app_data_dir.join("vocabulary.db-shm");
+    let dirs = crate::app_paths::dirs(&app);
+    let db_path = dirs.db_path();
+    let wal_path = db_path.with_extension("db-wal");
+    let shm_path = db_path.with_extension("db-shm");
 
     logger.info(
         "DATABASE",
@@ -144,8 +138,28 @@ pub async fn delete_database_and_restart(app: AppHandle) -> AppResult<()> {
         return Err(AppError::NotFound(error_msg.to_string()));
     }
 
-    // 获取数据库连接池并关闭所有连接
+    // 删除前先完整备份一份（误操作时还能找回），备份失败就不删
     let pool = app.state::<SqlitePool>();
+    let backup = dirs.backups_dir().join(format!(
+        "vocabulary-before-reset-{}.db",
+        crate::time::local_file_stamp()
+    ));
+    if let Err(e) = std::fs::create_dir_all(dirs.backups_dir()) {
+        let msg = format!("删除前无法创建备份目录：{}", e);
+        logger.api_response("delete_database_and_restart", false, Some(&msg));
+        return Err(AppError::InternalError(msg));
+    }
+    if let Err(e) = crate::database::vacuum_into(pool.inner(), &backup).await {
+        let msg = format!("删除前备份数据库失败，没有删除：{}", e);
+        logger.api_response("delete_database_and_restart", false, Some(&msg));
+        return Err(AppError::InternalError(msg));
+    }
+    logger.info(
+        "DATABASE",
+        &format!("Backed up before reset: {}", backup.display()),
+    );
+
+    // 关闭所有连接
     logger.info("DATABASE", "Closing database connections...");
 
     // 关闭连接池

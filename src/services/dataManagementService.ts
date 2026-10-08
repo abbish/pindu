@@ -1,8 +1,9 @@
 import { BaseService } from './baseService';
-import type { 
+import type {
   DatabaseOverview,
   ResetResult,
-  ApiResult 
+  ApiResult,
+  StartupStatus,
 } from '../types';
 
 /**
@@ -56,6 +57,20 @@ export class DataManagementService extends BaseService {
   async getSystemLogs(limit?: number): Promise<ApiResult<string[]>> {
     return this.executeWithLoading(async () => {
       return this.client.invoke<string[]>('get_system_logs', { limit });
+    });
+  }
+
+  /** 启动状态：数据库打开并升级成功为 ok，否则带原因（App 据此只显示错误页） */
+  async getStartupStatus(): Promise<ApiResult<StartupStatus>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<StartupStatus>('get_startup_status');
+    });
+  }
+
+  /** 在访达 / 资源管理器中打开数据文件夹（数据库、升级备份、日志） */
+  async openDataFolder(): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('open_data_folder');
     });
   }
 

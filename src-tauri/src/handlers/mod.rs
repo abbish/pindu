@@ -3,9 +3,9 @@
 //! 按功能域拆分的命令处理器集合
 
 use crate::agent::AgentPaths;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::logger::Logger;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 /// 命令出口日志：记录成功 / 失败（失败带用户可读的原因），原样返回结果
 pub(crate) fn finish<T>(logger: &Logger, cmd: &str, result: AppResult<T>) -> AppResult<T> {
@@ -19,11 +19,7 @@ pub(crate) fn finish<T>(logger: &Logger, cmd: &str, result: AppResult<T>) -> App
 
 /// agent sidecar 的程序与工作目录（在应用数据目录下）
 pub(crate) fn agent_paths(app: &AppHandle) -> AppResult<AgentPaths> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| AppError::InternalError(format!("无法获取应用数据目录：{}", e)))?;
-    AgentPaths::resolve(&dir)
+    AgentPaths::resolve(&crate::app_paths::dirs(app).data)
 }
 
 // 功能域模块

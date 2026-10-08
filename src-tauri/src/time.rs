@@ -27,6 +27,11 @@ pub fn format_instant(at: DateTime<Utc>) -> String {
     at.to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
+/// 本地时间戳，用于文件名（如 `20261008-093341`）
+pub fn local_file_stamp() -> String {
+    Local::now().format("%Y%m%d-%H%M%S").to_string()
+}
+
 /// 今天的本地日期（本机时区；桌面应用中与前端 WebView 一致）
 pub fn local_today() -> NaiveDate {
     Local::now().date_naive()

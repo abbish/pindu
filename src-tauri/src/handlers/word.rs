@@ -2,7 +2,7 @@
 //!
 //! 包含所有与单词相关的 Tauri 命令
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::logger::Logger;
 use crate::types::*;
 use sqlx::SqlitePool;
@@ -238,10 +238,7 @@ pub async fn generate_word_examples(
     );
     let result = async {
         let mode = parse_mode(&mode)?;
-        let app_data_dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| AppError::InternalError(format!("无法获取应用数据目录：{}", e)))?;
+        let app_data_dir = crate::app_paths::dirs(&app).data;
         let paths = crate::agent::AgentPaths::resolve(&app_data_dir)?;
         WordExampleService::new(
             Arc::new(pool.inner().clone()),

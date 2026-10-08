@@ -1,7 +1,8 @@
-//! 系统命令：日志查看与日志文件夹
+//! 系统命令：日志查看、日志 / 数据文件夹、启动状态
 
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::types::common::StartupStatus;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
@@ -30,4 +31,24 @@ pub async fn open_log_folder(app: AppHandle) -> AppResult<()> {
     app.opener()
         .reveal_item_in_dir(&log_file)
         .map_err(|e| AppError::InternalError(format!("无法打开日志文件夹：{}", e)))
+}
+
+/// 启动状态：数据库打开并升级成功为 ok；否则带原因（前端显示错误页，见 `startup.rs`）
+#[tauri::command]
+pub async fn get_startup_status(app: AppHandle) -> AppResult<StartupStatus> {
+    Ok(app.state::<StartupStatus>().inner().clone())
+}
+
+/// 在访达 / 资源管理器中打开数据目录（数据库、升级备份、日志都在这里）
+#[tauri::command]
+pub async fn open_data_folder(app: AppHandle) -> AppResult<()> {
+    let dirs = crate::app_paths::dirs(&app);
+    let db = dirs.db_path();
+    let result = if db.exists() {
+        app.opener().reveal_item_in_dir(&db)
+    } else {
+        app.opener()
+            .open_path(dirs.data.to_string_lossy(), None::<&str>)
+    };
+    result.map_err(|e| AppError::InternalError(format!("无法打开数据文件夹：{}", e)))
 }

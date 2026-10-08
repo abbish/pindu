@@ -41,3 +41,27 @@ impl<T> PaginatedResponse<T> {
         }
     }
 }
+
+/// 启动失败的原因（数据库打不开或升级失败）：前端只显示错误页，不调用其它命令
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupFailure {
+    /// connect / interrupted / newer_database / modified_migration / backup / migrate
+    pub kind: String,
+    pub title: String,
+    /// 给用户看的说明
+    pub message: String,
+    /// 原始错误（日志与反馈用）
+    pub detail: Option<String>,
+    pub data_dir: String,
+    /// 升级前备份所在目录
+    pub backup_dir: String,
+}
+
+/// 启动状态
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupStatus {
+    pub ok: bool,
+    pub failure: Option<StartupFailure>,
+}

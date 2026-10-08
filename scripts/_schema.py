@@ -23,5 +23,10 @@ def build_schema_db(path=None):
                 conn.executescript(fh.read())
         except sqlite3.Error as e:
             raise RuntimeError(f'迁移失败 {os.path.basename(f)}: {e}') from e
+    # sqlx 自己的迁移记录表（真实库里由 sqlx 创建；startup.rs 会读它）
+    conn.execute('''CREATE TABLE IF NOT EXISTS _sqlx_migrations (
+        version BIGINT PRIMARY KEY, description TEXT NOT NULL,
+        installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, success BOOLEAN NOT NULL,
+        checksum BLOB NOT NULL, execution_time BIGINT NOT NULL)''')
     conn.commit()
     return conn, [os.path.basename(f) for f in files]

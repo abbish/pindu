@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { ErrorBoundary, ToastProvider } from './components';
 import { AppShell } from './components/AppShell/AppShell';
 import { DevTools } from './components/DevTools';
+import { StartupGate } from './components/StartupGate';
 import { HomePage } from './pages/HomePage';
 import { StudyPlansPage } from './pages/StudyPlansPage';
 import { CreatePlanPage } from './pages/CreatePlanPage';
@@ -99,15 +100,18 @@ function App() {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        {/* 专注模式页面（单词练习）自绘整窗框架，其余页面由 AppShell 提供侧边栏与顶栏 */}
-        {FOCUS_PAGES.has(route.page) ? (
-          renderPage()
-        ) : (
-          <AppShell page={route.page} onNavigate={navigate} parent={shellParent}>
-            {renderPage()}
-          </AppShell>
-        )}
-        <DevTools />
+        {/* 数据库打开并升级成功才渲染应用，否则只显示原因（见 StartupGate） */}
+        <StartupGate>
+          {/* 专注模式页面（单词练习）自绘整窗框架，其余页面由 AppShell 提供侧边栏与顶栏 */}
+          {FOCUS_PAGES.has(route.page) ? (
+            renderPage()
+          ) : (
+            <AppShell page={route.page} onNavigate={navigate} parent={shellParent}>
+              {renderPage()}
+            </AppShell>
+          )}
+          <DevTools />
+        </StartupGate>
       </ToastProvider>
     </ErrorBoundary>
   );

@@ -1,7 +1,7 @@
 //! 单词讲解命令：实时生成（流式增量经 `word-explanation-delta` 事件推送给前端，不落库）与 AI 老师答疑
 
 use crate::agent::AgentPaths;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::logger::Logger;
 use crate::services::word_explanation::WordExplanationService;
 use crate::types::common::Id;
@@ -41,10 +41,7 @@ pub async fn generate_word_explanation(
         Some(&format!("word_id: {}, model_id: {:?}", word_id, model_id)),
     );
     let result = async {
-        let app_data_dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| AppError::InternalError(format!("无法获取应用数据目录：{}", e)))?;
+        let app_data_dir = crate::app_paths::dirs(&app).data;
         let paths = AgentPaths::resolve(&app_data_dir)?;
         let emitter = app.clone();
         service(&app)
@@ -100,10 +97,7 @@ pub async fn ask_word_tutor(app: AppHandle, request: WordTutorRequest) -> AppRes
         )),
     );
     let result = async {
-        let app_data_dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| AppError::InternalError(format!("无法获取应用数据目录：{}", e)))?;
+        let app_data_dir = crate::app_paths::dirs(&app).data;
         let paths = AgentPaths::resolve(&app_data_dir)?;
         let emitter = app.clone();
         let (request_id, word_id) = (request.request_id.clone(), request.word_id);

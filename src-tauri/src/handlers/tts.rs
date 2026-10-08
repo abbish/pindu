@@ -1,6 +1,6 @@
 //! TTS 命令：豆包语音合成、配置（脱敏返回）、默认音色、缓存清理
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::logger::Logger;
 use crate::services::tts::{volcengine_voices, SpeechStyle, TTSService};
 use crate::types::tts::*;
@@ -9,11 +9,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 fn tts_service(app: &AppHandle) -> AppResult<TTSService> {
-    let cache_dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| AppError::InternalError(format!("无法定位语音缓存目录：{}", e)))?
-        .join("tts");
+    let cache_dir = crate::app_paths::dirs(app).cache.join("tts");
     Ok(TTSService::new(
         Arc::new(app.state::<SqlitePool>().inner().clone()),
         Arc::new(app.state::<Logger>().inner().clone()),
