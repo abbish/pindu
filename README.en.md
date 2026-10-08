@@ -22,9 +22,16 @@ Each word then gets its IPA, syllables, phonics chunks and a few example sentenc
 
 Create a study plan: pick word books, choose how many new words a day, and the schedule is laid out for you.
 
-Every new word goes through three steps. First you see everything (phonics chunks, IPA, meaning, examples) and read along; then the English is hidden and you write it from memory; finally you only get the Chinese meaning and the sound and spell it from scratch. When a word won't stick, open "AI 讲解" for a memory hint and ask follow-up questions.
+Every new word goes through three steps. First you see everything (phonics chunks, IPA, meaning, examples) and read along; then the English is hidden and you write it from memory; finally you only get the Chinese meaning and the sound and spell it from scratch.
 
 ![Word practice](docs/screenshots/practice.png)
+
+When a word won't stick, open "AI 讲解" (AI explanation) on the right. It walks through the word properly: what it means, why it's spelled that way, other words that follow the same phonics pattern, how it's used, what it's easily confused with, and a few ways to remember it. Still unsure? Ask the AI tutor a follow-up, like "can you give me another example?". The tone and depth follow the learner profile, so a kid and an adult get differently written explanations.
+
+<table><tr>
+<td width="50%"><img src="docs/screenshots/explain.png" alt="AI explanation"></td>
+<td width="50%"><img src="docs/screenshots/tutor.png" alt="Asking the AI tutor"></td>
+</tr></table>
 
 Reviews take care of themselves. Each word has a memory level, and the gap between reviews grows from 1 day to 3, 7, 14 and 30 days; a correct answer pushes it further out, a miss brings it back tomorrow. Today's reviews are already in today's task list when you open the app. Need a break? Pause the plan, and the rest of the schedule shifts when you resume.
 
