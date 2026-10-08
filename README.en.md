@@ -1,8 +1,8 @@
-# RedLark (拼读)
+# Pindu.app (拼读)
 
 [中文](./README.md) · [Install](./INSTALL.md) · [Contributing](./CONTRIBUTING.md) · [Security & privacy](./SECURITY.md)
 
-An open-source desktop app for learning English vocabulary, built for kids and adult self-learners. AI breaks words down with phonics, explains them and writes example sentences; a spaced-repetition schedule decides what to review; and AI-written stories or your own reading material put the words back into context for reading and listening practice.
+Pindu.app (拼读) is an open-source desktop app by RedLark for learning English vocabulary, built for kids and adult self-learners. AI breaks words down with phonics, explains them and writes example sentences; a spaced-repetition schedule decides what to review; and AI-written stories or your own reading material put the words back into context for reading and listening practice.
 
 Runs on macOS, Windows and Linux. Your learning data lives in a local SQLite database — no account required. AI and speech use your own API keys.
 

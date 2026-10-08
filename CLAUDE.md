@@ -1,11 +1,12 @@
-# CLAUDE.md — RedLark（拼读 / pindu-app）
+# CLAUDE.md — 拼读 Pindu.app（RedLark 仓库）
 
 > 面向 AI 编码助手与新成员的工程说明。描述的是**当前代码的真实状态**（含已知债务），而非理想设计。
 > 修改架构或规范时请同步更新本文件（流程：`harness-governance` Skill）。上次重建：2026-10-03；局部更新：2026-10-06（B4/B5 分层收口）；2026-10-07（前端 UI 体系选定 shadcn/ui）。
 
 ## 1. 项目速览
 
-RedLark 是一个 Tauri 2 + React 19 的跨平台桌面单词学习应用（产品名「拼读」，bundle id `com.redlark.pindu-app`）。
+拼读（Pindu.app）是 RedLark 的产品之一：Tauri 2 + React 19 的跨平台桌面单词学习应用，bundle id `com.redlark.pindu-app`。
+**命名**：面向用户的产品名中文「拼读」、英文「Pindu.app」（窗口标题、侧边栏、安装包、README）；RedLark 是出品方（发布者、版权、仓库）。已用于标识、路径与包名的 `redlark`（`redlark-agent`、`redlark_app_lib`、`REDLARK_*` 环境变量、`com.redlark.pindu-app`）保留不改；「自然拼读」只指教学方法，不作产品名。
 核心价值：**AI 自然拼读分析** + **AI 生成学习日程** + **三步练习法**（完整信息 → 隐藏英文 → 仅中文/音节/拼读+发音）+ 本地 SQLite，数据不出本机。
 
 | 层 | 技术 |
