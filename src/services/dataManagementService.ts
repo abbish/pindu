@@ -60,6 +60,20 @@ export class DataManagementService extends BaseService {
     });
   }
 
+  /** 当前的最低日志级别：DEBUG / INFO / WARN / ERROR */
+  async getLogLevel(): Promise<ApiResult<string>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<string>('get_log_level');
+    });
+  }
+
+  /** 修改最低日志级别（低于它的不再写入），保存并立即生效；返回生效后的级别 */
+  async setLogLevel(level: string): Promise<ApiResult<string>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<string>('set_log_level', { level });
+    });
+  }
+
   /** 启动状态：数据库打开并升级成功为 ok，否则带原因（App 据此只显示错误页） */
   async getStartupStatus(): Promise<ApiResult<StartupStatus>> {
     return this.executeWithLoading(async () => {

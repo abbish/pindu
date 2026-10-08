@@ -1,7 +1,9 @@
 //! 应用日志：`<app_data_dir>/logs/app.log`，每行一条 JSON（timestamp / level / component / message / details）。
 //!
-//! - 按大小轮转：超过 `MAX_FILE_BYTES` 时 app.log → app.1.log → app.2.log，最多保留 `KEEP_ROTATED` 个旧文件。
-//! - 发布版不写 DEBUG（数据库操作明细），也不输出到控制台；单条 details 超长会截断。
+//! - 按大小轮转：超过 `MAX_FILE_BYTES` 时 app.log → app.1.log → … → app.N.log，最多保留 `KEEP_ROTATED` 个旧文件，
+//!   总量封顶约 (N+1) × 5MB；单个文件小，读取末尾与写入都不受历史量影响。
+//! - 分级：低于最低级别的不写（「设置 → 通用 → 诊断」可调，存 `app_settings` 的 `log.level`，见 `services/log_settings.rs`）；
+//!   未设置时发布版 INFO、开发版 DEBUG。发布版不输出到控制台；单条 details 超长会截断。
 //! - 写入交给后台线程：调用方只发一条消息（不阻塞、不做文件 IO），后台线程保持文件打开、按序写入并负责轮转。
 //! - 读取（设置页「系统日志」）只读文件末尾，不把整个文件读进内存。
 
@@ -10,25 +12,54 @@ use serde_json::json;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{channel, Sender};
+use std::sync::Arc;
 
 /// 单个日志文件上限
 const MAX_FILE_BYTES: u64 = 5 * 1024 * 1024;
 /// 保留的旧日志文件数（app.1.log … app.N.log）
-const KEEP_ROTATED: usize = 2;
+const KEEP_ROTATED: usize = 4;
 /// 单条 details 的最大字符数
 const MAX_DETAILS_CHARS: usize = 4000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
-    Debug,
-    Info,
-    Warn,
-    Error,
+    Debug = 0,
+    Info = 1,
+    Warn = 2,
+    Error = 3,
 }
 
 impl LogLevel {
-    fn as_str(&self) -> &'static str {
+    /// 未设置时的最低级别：开发版 DEBUG，发布版 INFO
+    pub const DEFAULT: LogLevel = if cfg!(debug_assertions) {
+        LogLevel::Debug
+    } else {
+        LogLevel::Info
+    };
+
+    /// "DEBUG" / "INFO" / "WARN" / "ERROR"（不区分大小写）
+    pub fn parse(s: &str) -> Option<LogLevel> {
+        match s.trim().to_ascii_uppercase().as_str() {
+            "DEBUG" => Some(LogLevel::Debug),
+            "INFO" => Some(LogLevel::Info),
+            "WARN" => Some(LogLevel::Warn),
+            "ERROR" => Some(LogLevel::Error),
+            _ => None,
+        }
+    }
+
+    fn from_u8(n: u8) -> LogLevel {
+        match n {
+            0 => LogLevel::Debug,
+            1 => LogLevel::Info,
+            2 => LogLevel::Warn,
+            _ => LogLevel::Error,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
         match self {
             LogLevel::Debug => "DEBUG",
             LogLevel::Info => "INFO",
@@ -48,8 +79,8 @@ enum WriterMsg {
 #[derive(Clone)]
 pub struct Logger {
     log_file_path: PathBuf,
-    /// 低于此级别的不写（发布版跳过 DEBUG）
-    min_level: LogLevel,
+    /// 低于此级别的不写；所有克隆共享，设置页修改后立即生效
+    min_level: Arc<AtomicU8>,
     writer: Sender<WriterMsg>,
 }
 
@@ -98,11 +129,7 @@ impl Logger {
 
         Ok(Logger {
             log_file_path,
-            min_level: if cfg!(debug_assertions) {
-                LogLevel::Debug
-            } else {
-                LogLevel::Info
-            },
+            min_level: Arc::new(AtomicU8::new(LogLevel::DEFAULT as u8)),
             writer,
         })
     }
@@ -123,8 +150,23 @@ impl Logger {
             .unwrap_or_default()
     }
 
+    /// 当前最低记录级别
+    pub fn min_level(&self) -> LogLevel {
+        LogLevel::from_u8(self.min_level.load(Ordering::Relaxed))
+    }
+
+    /// 修改最低记录级别（对所有克隆立即生效）
+    pub fn set_min_level(&self, level: LogLevel) {
+        self.min_level.store(level as u8, Ordering::Relaxed);
+    }
+
+    /// 该级别是否会被记录（拼装开销大的 DEBUG 明细前先判断）
+    pub fn enabled(&self, level: LogLevel) -> bool {
+        level >= self.min_level()
+    }
+
     pub fn log(&self, level: LogLevel, component: &str, message: &str, details: Option<&str>) {
-        if level < self.min_level {
+        if !self.enabled(level) {
             return;
         }
         let timestamp = Local::now();
@@ -166,6 +208,10 @@ impl Logger {
             }
         }
         Ok(lines)
+    }
+
+    pub fn debug(&self, component: &str, message: &str, details: Option<&str>) {
+        self.log(LogLevel::Debug, component, message, details);
     }
 
     pub fn info(&self, component: &str, message: &str) {
@@ -349,9 +395,12 @@ mod tests {
             logger.info("TEST", &format!("line {}", i));
         }
         logger.flush();
-        assert!(log_dir.join("app.1.log").exists());
-        assert!(log_dir.join("app.2.log").exists());
-        assert!(!log_dir.join("app.3.log").exists());
+        for n in 1..=KEEP_ROTATED {
+            assert!(log_dir.join(format!("app.{n}.log")).exists(), "app.{n}.log");
+        }
+        assert!(!log_dir
+            .join(format!("app.{}.log", KEEP_ROTATED + 1))
+            .exists());
         let current = std::fs::metadata(log_dir.join("app.log")).unwrap().len();
         assert!(current <= 1200, "{current}");
         // 最新的日志在当前文件里，读取时不足再接上一个轮转文件
@@ -375,6 +424,41 @@ mod tests {
         assert!(std::fs::read_to_string(log_dir.join("app.log"))
             .unwrap()
             .contains("fresh"));
+    }
+
+    #[test]
+    fn lines_below_min_level_are_skipped_for_all_clones() {
+        let logger = Logger::new(&temp_dir("level")).unwrap();
+        let clone = logger.clone();
+        logger.set_min_level(LogLevel::Warn);
+        clone.info("TEST", "info hidden");
+        clone.debug("TEST", "debug hidden", None);
+        clone.warn("TEST", "warn kept", None);
+        clone.error("TEST", "error kept", None);
+        assert_eq!(clone.min_level(), LogLevel::Warn);
+        assert!(!clone.enabled(LogLevel::Info));
+        let lines = logger.recent_lines(10).unwrap();
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].contains("error kept") && lines[1].contains("warn kept"));
+
+        logger.set_min_level(LogLevel::Debug);
+        clone.debug("TEST", "debug shown", None);
+        assert!(logger.recent_lines(1).unwrap()[0].contains("debug shown"));
+    }
+
+    #[test]
+    fn parses_level_names() {
+        assert_eq!(LogLevel::parse("warn"), Some(LogLevel::Warn));
+        assert_eq!(LogLevel::parse(" ERROR "), Some(LogLevel::Error));
+        assert_eq!(LogLevel::parse("verbose"), None);
+        for level in [
+            LogLevel::Debug,
+            LogLevel::Info,
+            LogLevel::Warn,
+            LogLevel::Error,
+        ] {
+            assert_eq!(LogLevel::parse(level.as_str()), Some(level));
+        }
     }
 
     #[test]

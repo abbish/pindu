@@ -48,7 +48,7 @@ npm run clean               # 清 dist、target、vite 缓存
 ```
 
 后端测试写在 crate 内（`#[cfg(test)] mod tests`），内存库与种子数据用 `src-tauri/src/test_support.rs`；规范见 `.claude/skills/deliver-backend-rust/references/rust-test-standard.md`。
-日志：`<app_data_dir>/logs/app.log`（每行一条 JSON；超过 5MB 轮转为 app.1/app.2.log；发布版不写 DEBUG），`get_system_logs(limit)` 只读文件末尾、`open_log_folder` 在访达中打开（`handlers/system.rs`）；前端有 LogViewer / DevTools 浮层。
+日志：`<app_data_dir>/logs/app.log`（每行一条 JSON；超过 5MB 轮转为 app.1 … app.4.log，总量约 25MB 封顶）。分级记录：低于最低级别的不写，「设置 → 通用 → 诊断」可调（`get_log_level` / `set_log_level`，存 `app_settings` 的 `log.level`，`services/log_settings.rs`；未设置时发布版 INFO、开发版 DEBUG）。AI 助手每次运行由 `agent/run_log.rs` 记 `[任务名#编号]` 开头的执行日志（开始 / 自动重试与原因 / 工具校验退回 / 结束用量 / 模型原始错误 / 失败附 stderr；DEBUG 再记消息与工具结果，均去掉密钥）。`get_system_logs(limit)` 只读文件末尾、`open_log_folder` 在访达中打开（`handlers/system.rs`）；前端有 LogViewer / DevTools 浮层。
 
 ## 3. 目录地图
 
@@ -139,7 +139,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 | `handlers/plan_passage.rs` | get_plan_passages, set_plan_passages（`request: SetPlanPassagesRequest`：练习内容 + 完整短文顺序 + 间隔天数；已完成的锁定）, get_today_passage_tasks, get_plan_passage_candidates（`request`：bookIds / planId，按相关度排序，含题组）, complete_plan_passage_reading（只朗读的任务“读完了”） |
 | `handlers/agent_settings.rs` | get_agent_settings / update_agent_settings（任务模型、批量分析每批词数与并发） |
 | `handlers/prompt_profile.rs` | get_prompt_profile / update_prompt_profile / apply_prompt_preset / preview_prompts（学习者档案与各任务补充要求，见 §6） |
-| `handlers/system.rs` | get_system_logs, open_log_folder, open_data_folder, get_startup_status（启动失败原因，见 §4.3） |
+| `handlers/system.rs` | get_system_logs, get_log_level / set_log_level（最低记录级别）, open_log_folder, open_data_folder, get_startup_status（启动失败原因，见 §4.3） |
 | `handlers/updater.rs` | check_for_update（读 GitHub Releases 的 latest.json；开发版可用 `PINDU_UPDATE_ENDPOINT` 覆盖地址）, install_update（`on_progress: Channel<UpdateProgress>`，内置公钥验签；有 agent 任务在跑时拒绝，开始安装后 `agent::session` 不再启动新 sidecar；失败可直接重试）, restart_app；Linux 非 AppImage 只提示不安装。前端 `UpdateWatcher`（App 级：自动检查 + 菜单）/ `UpdateBanner`（AppShell 顶栏下与启动错误页） |
 | `handlers/tts.rs` | text_to_speech（`style`: word / sentence → 固定语音指令，参与缓存键）, get_tts_voices（预置英文音色）, get_default_tts_voice（默认音色经 update_tts_config 设置，允许自定义音色 ID）, clear_tts_cache, get_tts_cache_stats, get_tts_config（返回 `TtsConfigSafe`）, update_tts_config（`request: UpdateTtsConfigRequest`） |
 

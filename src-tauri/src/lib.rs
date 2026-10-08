@@ -106,6 +106,9 @@ pub fn run() {
                         if let Err(e) = services::srs::sync_all_today(&pool).await {
                             logger.warn("SRS", "启动时同步今日复习失败", Some(&e.to_string()));
                         }
+                        // 日志级别：设置页保存的（未设置为默认）
+                        services::log_settings::LogSettingsService::apply_saved(&pool, &logger)
+                            .await;
                         app.manage(pool);
                         StartupStatus {
                             ok: true,
@@ -170,6 +173,8 @@ pub fn run() {
             delete_study_plan,
             get_plan_memory_overview,
             get_system_logs,
+            get_log_level,
+            set_log_level,
             open_log_folder,
             open_data_folder,
             get_startup_status,

@@ -1,8 +1,10 @@
-//! 系统命令：日志查看、日志 / 数据文件夹、启动状态
+//! 系统命令：日志查看与级别、日志 / 数据文件夹、启动状态
 
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::services::log_settings::LogSettingsService;
 use crate::types::common::StartupStatus;
+use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
@@ -21,6 +23,26 @@ pub async fn get_system_logs(app: AppHandle, limit: Option<i64>) -> AppResult<Ve
         .await
         .map_err(|e| AppError::InternalError(format!("读取日志失败：{}", e)))?
         .map_err(|e| AppError::InternalError(format!("读取日志失败：{}", e)))
+}
+
+/// 当前的最低日志级别（DEBUG / INFO / WARN / ERROR）
+#[tauri::command]
+pub async fn get_log_level(app: AppHandle) -> AppResult<String> {
+    Ok(app.state::<Logger>().min_level().as_str().to_string())
+}
+
+/// 修改最低日志级别：保存并立即生效，返回生效后的级别
+#[tauri::command]
+pub async fn set_log_level(app: AppHandle, level: String) -> AppResult<String> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request("set_log_level", Some(&level));
+    let result = LogSettingsService::set_level(&pool, &logger, &level).await;
+    match &result {
+        Ok(v) => logger.api_response("set_log_level", true, Some(v)),
+        Err(e) => logger.api_response("set_log_level", false, Some(&e.to_string())),
+    }
+    result
 }
 
 /// 在访达 / 资源管理器中打开日志文件夹（反馈问题时附上日志）

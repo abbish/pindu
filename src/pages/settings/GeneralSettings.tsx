@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { FolderOpen, Loader2, Monitor, Moon, RefreshCw, Sun, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -22,10 +23,27 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }
 /**
  * 设置「通用」：外观（主题）、更新（版本与自动检查）与诊断（系统日志）。
  */
+/** 日志记录级别：选中的级别及更严重的才写入日志 */
+const LOG_LEVELS = [
+  { value: 'DEBUG', label: '调试（全部）' },
+  { value: 'INFO', label: '信息' },
+  { value: 'WARN', label: '警告' },
+  { value: 'ERROR', label: '仅错误' },
+];
+
 export const GeneralSettings: React.FC = () => {
   const toast = useToast();
   const { preference, setPreference } = useTheme();
   const [showLogs, setShowLogs] = useState(false);
+  const [logLevel, setLogLevel] = useState<string | null>(null);
+  useEffect(() => {
+    dataManagementService.getLogLevel().then((r) => r.success && setLogLevel(r.data));
+  }, []);
+  const changeLogLevel = async (level: string) => {
+    const result = await dataManagementService.setLogLevel(level);
+    if (result.success) setLogLevel(result.data);
+    else toast.showError('无法修改日志级别', result.error);
+  };
   const { state: updateState, autoCheck } = useUpdater();
   const checkForUpdates = useCheckForUpdates();
   const [version, setVersion] = useState('');
@@ -71,6 +89,20 @@ export const GeneralSettings: React.FC = () => {
       </SettingsSection>
 
       <SettingsSection title="诊断">
+        <SettingsRow label="记录级别" description="只记录选中级别及更严重的日志">
+          <Select value={logLevel ?? undefined} onValueChange={changeLogLevel} disabled={logLevel === null}>
+            <SelectTrigger className="w-36" aria-label="日志记录级别">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LOG_LEVELS.map((l) => (
+                <SelectItem key={l.value} value={l.value}>
+                  {l.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
         <SettingsRow label="系统日志">
           <Button variant="outline" size="sm" onClick={async () => {
               const result = await dataManagementService.openLogFolder();

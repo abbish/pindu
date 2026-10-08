@@ -11,6 +11,7 @@ pub mod ai_model;
 pub mod calendar;
 #[cfg(debug_assertions)]
 pub mod diagnostics;
+pub mod log_settings;
 pub mod passage;
 pub mod passage_import;
 pub mod passage_import_files;

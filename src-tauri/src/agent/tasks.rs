@@ -5,6 +5,7 @@
 use super::config::{prepare_launch, AgentPaths, AgentTask, SessionMode};
 use super::follow_up;
 use super::protocol::AgentEvent;
+use super::run_log::RunLog;
 use super::session::AgentProcess;
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
@@ -164,14 +165,25 @@ pub async fn run_task_cancellable(
     timeout: Duration,
     logger: &Logger,
     cancelled: impl Fn() -> bool,
-    on_event: impl FnMut(&super::protocol::AgentEvent),
+    mut on_event: impl FnMut(&super::protocol::AgentEvent),
 ) -> AppResult<TaskRun> {
     let started = Instant::now();
-    let launch = prepare_launch(paths, task, model, SessionMode::Ephemeral)?;
-    let mut process = AgentProcess::spawn(launch).await?;
+    let log = RunLog::start(logger, task, model, message);
+    let launch = prepare_launch(paths, task, model, SessionMode::Ephemeral)
+        .inspect_err(|e| log.failed(e, ""))?;
+    let mut process = match AgentProcess::spawn(launch).await {
+        Ok(p) => p,
+        Err(e) => {
+            log.failed(&e, "");
+            return Err(e);
+        }
+    };
     let run = process
         .connection
-        .prompt_cancellable(message, timeout, cancelled, on_event)
+        .prompt_cancellable(message, timeout, cancelled, |event| {
+            log.event(event);
+            on_event(event);
+        })
         .await;
     let stats = process
         .connection
@@ -181,19 +193,8 @@ pub async fn run_task_cancellable(
     let stderr = process.stderr_tail();
     process.shutdown().await;
 
-    let outcome = run.map_err(|e| {
-        logger.error(
-            "AGENT",
-            &format!(
-                "{} 失败：{}；stderr: {}",
-                task.name,
-                e,
-                redact(&stderr, &model.provider.api_key)
-            ),
-            None,
-        );
-        e
-    })?;
+    let outcome = run.inspect_err(|e| log.failed(e, &stderr))?;
+    log.finished(&outcome, &stats);
     if let Some(error) = &outcome.error {
         return Err(AppError::ExternalServiceError(format!(
             "模型返回错误：{}",
@@ -1503,15 +1504,6 @@ pub async fn test_model(
     Ok((reply, run.stats))
 }
 
-/// 诊断输出中去掉密钥（stderr 理论上不含密钥，这里兜底）
-fn redact(text: &str, secret: &str) -> String {
-    if secret.len() >= 8 {
-        text.replace(secret, "****")
-    } else {
-        text.to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -2350,10 +2342,5 @@ mod tests {
         let task = plan_order_task(&PromptProfile::default());
         assert_eq!(task.tools, &["submit_learning_order"]);
         assert!(task.system_prompt.contains("小学生"));
-    }
-
-    #[test]
-    fn redact_hides_secret() {
-        assert_eq!(redact("key=sk-abcdefgh!", "sk-abcdefgh"), "key=****!");
     }
 }
