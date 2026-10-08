@@ -29,8 +29,12 @@
 
 这些内容按对应服务商的隐私政策处理。如果你的材料比较敏感，请选择你信任的服务商，或使用自建的 OpenAI 兼容接口。
 
+检查更新时，应用会请求 GitHub 上的 `releases/latest/download/latest.json`。请求里只有 GitHub 能看到的常规信息（IP、请求时间），不带任何学习数据。在「设置 → 通用 → 更新」关掉「自动检查更新」后，就只有你手动点「检查更新」时才会访问。
+
 应用数据目录（macOS `~/Library/Application Support/com.redlark.pindu-app/`，Windows `%APPDATA%\com.redlark.pindu-app\`，Linux `~/.local/share/com.redlark.pindu-app/`）里有明文 API Key，请不要把整个目录或 `vocabulary.db` 发给别人；需要排查问题时只提供 `logs/` 里的日志即可。
 
-## 安装包没有签名
+## 安装包与更新的签名
 
-项目不发布已签名的安装包，推荐在本机从源码构建（见 [INSTALL.md](./INSTALL.md)）。请只从本仓库获取源码；别人转发的安装包无法确认来源。
+Releases 上的安装包由本仓库的 GitHub Actions 从公开的源码构建，没有做苹果或微软的开发者签名，所以第一次打开时系统会提示，放行方法见 [INSTALL.md](./INSTALL.md#1-下载安装包)。请只从本仓库的 Releases 下载，别人转发的安装包无法确认来源。
+
+应用内更新另有一层签名：每个更新包都用项目的更新私钥签名，应用里内置了对应的公钥（`src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`），下载后先验签，签名不对就拒绝安装。私钥只保存在维护者手里和仓库的 GitHub Secrets 中。

@@ -43,7 +43,7 @@ python3 scripts/schema-snapshot.py --table <t>   # 迁移终态表结构（不�
 cd src-tauri && cargo test  # 后端测试（crate 内 #[cfg(test)]，内存 SQLite）
 npm run package             # 一键构建本机安装包（= ./build.sh / build.cmd → scripts/package.mjs）：环境检查 → 依赖 → sidecar → tauri build → release/<版本>-<triple>/
 npm run package:check       # 只检查构建环境；选项 --target mac-universal|mac-arm|mac-intel|win|win-arm|linux|linux-arm、--bundles、--no-bundle、--debug、--clean
-                            # 不签名发布，用户自行构建（INSTALL.md）；只能构建本机系统的包，macOS 用 ad-hoc 签名
+                            # 开发者本地打包工具（只能打本机系统的包，macOS ad-hoc 签名）。正式发布走 GitHub Releases：未签名安装包 + 应用内更新，CI 带 TAURI_SIGNING_PRIVATE_KEY 时额外生成签名的更新包（docs/RELEASING.md）
 npm run clean               # 清 dist、target、vite 缓存
 ```
 
@@ -60,7 +60,7 @@ src/                          前端
 ├── navigation.ts             类型化路由表 `RouteParams` / `PageKey` / `NavigateFn`（见 §5.1）
 ├── services/                 继承 BaseService，一个功能域一个文件（见 §5.2）
 ├── types/                    与 Rust types 对应的 TS 类型；index.ts 统一导出
-├── hooks/                    useAsyncData / useAudioPlayer / useSentencePlayer（短文逐句朗读）/ usePlanPractice（计划卡「继续学习」）/ useTheme（全局单一主题状态，含跟随系统）/ useToday / useImeGuard
+├── hooks/                    useAsyncData / useAudioPlayer / useSentencePlayer（短文逐句朗读）/ usePlanPractice（计划卡「继续学习」）/ useTheme（全局单一主题状态，含跟随系统）/ useUpdater（应用更新的全局状态：自动检查偏好、下载进度、跳过的版本）/ useToday / useImeGuard
 ├── utils/                    datetime（时间唯一入口）、errorHandler、schedulePick、learningHeatmap 等纯函数（多数有 node 测试）
 ├── pages/                    各页面 `XxxPage.tsx`；子目录放页面私有组件：settings/（设置面板）· plan-detail/（计划详情页签）· calendar/ · passage-detail/ · passage-import/
 ├── components/ui/            shadcn/ui 原语（`npx shadcn@latest add` 生成，kebab-case 文件）
@@ -90,6 +90,7 @@ src-tauri/
 
 agent/                        agent sidecar 的 TS 工程（pi RPC + RedLark 工具）；npm run agent:build → src-tauri/binaries/redlark-agent-<triple>（不入库）
 docs/agent-harness/           agent harness 设计（DESIGN.md）与决策记录（DECISIONS.md，追加式）
+docs/RELEASING.md             发版流程：改版本号 → docs/releases/vX.md 更新说明 → 打标签 → CI 出 Release 草稿（安装包 + 更新包 + latest.json）→ 发布；更新签名私钥管理
 .claude/skills/                SDD harness：开发 workflow 与领域能力 Skill（见 §10）
 .claude/work/<work-id>/        跨会话 work item（brief / plan / progress / evidence / analysis；只在本机，不入库）
 .claude/hooks/                 PreToolUse 守卫：拦截修改历史迁移、删库、输出密钥
@@ -139,7 +140,8 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 | `handlers/plan_passage.rs` | get_plan_passages, set_plan_passages（`request: SetPlanPassagesRequest`：练习内容 + 完整短文顺序 + 间隔天数；已完成的锁定）, get_today_passage_tasks, get_plan_passage_candidates（`request`：bookIds / planId，按相关度排序，含题组）, complete_plan_passage_reading（只朗读的任务“读完了”） |
 | `handlers/agent_settings.rs` | get_agent_settings / update_agent_settings（任务模型、批量分析每批词数与并发） |
 | `handlers/prompt_profile.rs` | get_prompt_profile / update_prompt_profile / apply_prompt_preset / preview_prompts（学习者档案与各任务补充要求，见 §6） |
-| `handlers/system.rs` | get_system_logs, open_log_folder |
+| `handlers/system.rs` | get_system_logs, open_log_folder, open_data_folder, get_startup_status（启动失败原因，见 §4.3） |
+| `handlers/updater.rs` | check_for_update（读 GitHub Releases 的 latest.json；开发版可用 `PINDU_UPDATE_ENDPOINT` 覆盖地址）, install_update（`on_progress: Channel<UpdateProgress>`，内置公钥验签；有 agent 任务在跑时拒绝，开始安装后 `agent::session` 不再启动新 sidecar；失败可直接重试）, restart_app；Linux 非 AppImage 只提示不安装。前端 `UpdateWatcher`（App 级：自动检查 + 菜单）/ `UpdateBanner`（AppShell 顶栏下与启动错误页） |
 | `handlers/tts.rs` | text_to_speech（`style`: word / sentence → 固定语音指令，参与缓存键）, get_tts_voices（预置英文音色）, get_default_tts_voice（默认音色经 update_tts_config 设置，允许自定义音色 ID）, clear_tts_cache, get_tts_cache_stats, get_tts_config（返回 `TtsConfigSafe`）, update_tts_config（`request: UpdateTtsConfigRequest`） |
 
 `handlers/mod.rs` 用 `pub use xxx::*` 全部重导出，所以 `lib.rs` 里可直接写命令名。**新增命令必须在 `lib.rs` 的 `generate_handler!` 里注册**，否则前端 invoke 报 "command not found"。
@@ -210,7 +212,7 @@ class FooService extends BaseService {
 export const fooService = new FooService();
 ```
 - `ApiResult<T> = { success: true; data: T } | { success: false; error: string; code?; detail? }`（`error` 是给用户看的话，`detail` 是原始错误），调用方必须判 `success`，**不要 try/catch 服务层**；所有服务都返回 ApiResult、不抛异常。
-- 现有服务（均为模块级单例，组件内不要 `new`，按文件路径导入）：`wordBookService` · `studyService` · `practiceService` · `calendarService` · `passageService` · `materialService`（资料文件读成文本，单词本提取与短文导入共用）· `dataManagementService` · `ttsService` · `aiModelService` · `agentSettingsService` · `promptProfileService` · `wordExplanationService` · `wordAnalysisService`。
+- 现有服务（均为模块级单例，组件内不要 `new`，按文件路径导入）：`wordBookService` · `studyService` · `practiceService` · `calendarService` · `passageService` · `materialService`（资料文件读成文本，单词本提取与短文导入共用）· `dataManagementService` · `ttsService` · `aiModelService` · `agentSettingsService` · `promptProfileService` · `wordExplanationService` · `wordAnalysisService` · `updateService`（应用内更新）。
 - 类型放 `src/types/*.ts`，字段名与 Rust struct 的序列化结果保持一致（大部分 Rust 类型是 snake_case 输出；`types/tts.rs` 等少数标了 `rename_all = "camelCase"`，改字段前先看 Rust 侧的 serde 属性）。
 
 ### 5.3 样式与主题
@@ -239,7 +241,7 @@ export const fooService = new FooService();
 2. **禁止删库重建**解决问题；向前兼容现有数据（SQLite 改列需走 建新表 → 拷数据 → drop → rename 模式，参考 020/023/031）。
 3. 新增迁移后在 Repository 里补对应字段映射，并同步 `types/*.rs` 与 `src/types/*.ts`。
 4. 怎样在 SQLite + sqlx 上做到以上三条（重建表模式、兼容已有数据、空库/真实库双验证）以 `.claude/skills/deliver-backend-rust/references/sqlx-migration-standards.md` 为准。`.claude/hooks/guard-migrations.sh` 会拦截对已有迁移文件的编辑。
-5. **升级安全（发行不变量）**：0.1.0 是第一个发行版，之后用户都是自己构建、覆盖安装升级。`tauri.conf.json` 的 identifier、`app_paths::DB_FILE` 永不修改；已提交到 main 的迁移登记在 `src-tauri/migrations.lock`（sha256），新迁移提交前用 `python3 scripts/check-release-invariants.py --update` 登记，已登记的不可修改 / 删除 / 改名（verify 与 CI 强制）。迁移须能在“上一个发行版的真实数据”上执行成功，`startup::tests` 有端到端升级用例。
+5. **升级安全（发行不变量）**：0.1.0 是第一个发行版，之后用户从 GitHub Releases 下载或经应用内更新覆盖安装升级。`tauri.conf.json` 的 identifier、`app_paths::DB_FILE` 永不修改；已提交到 main 的迁移登记在 `src-tauri/migrations.lock`（sha256），新迁移提交前用 `python3 scripts/check-release-invariants.py --update` 登记，已登记的不可修改 / 删除 / 改名（verify 与 CI 强制）。迁移须能在“上一个发行版的真实数据”上执行成功，`startup::tests` 有端到端升级用例。
 
 ### 7.2 Tauri 命令与参数
 - Rust 参数 `snake_case`，前端 invoke 传 `camelCase`，Tauri 自动转换（`bookId` ↔ `book_id`）。前端**禁止**传下划线键名。

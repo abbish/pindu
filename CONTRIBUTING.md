@@ -10,7 +10,29 @@
 
 ## 开发环境
 
-除了 [INSTALL.md](./INSTALL.md#1-准备工具只需一次) 里构建需要的工具，开发还需要：
+### 系统工具（只需一次）
+
+| 系统 | 需要安装 |
+|---|---|
+| 全部 | [Git](https://git-scm.com) · [Node.js](https://nodejs.org) 20 或更高（选 LTS）· [Rust](https://rustup.rs)（stable） |
+| macOS | Xcode 命令行工具：`xcode-select --install` |
+| Windows | [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/)，勾选「使用 C++ 的桌面开发」；WebView2（Windows 10/11 通常已自带） |
+| Linux | WebKitGTK 4.1 等系统库，见下方 |
+
+Linux 系统库：
+
+```bash
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y build-essential curl wget file pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev
+# Fedora
+sudo dnf install -y webkit2gtk4.1-devel openssl-devel curl wget file libxdo-devel librsvg2-devel pkgconf-pkg-config && sudo dnf group install -y "c-development"
+# Arch
+sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl xdotool librsvg pkgconf
+```
+
+内置 AI 助手用 [Bun](https://bun.sh) 编译成单文件，Bun 会作为 npm 依赖自动下载，不需要单独安装。
+
+另外，开发还需要：
 
 | 工具 | 用途 |
 |---|---|
@@ -27,6 +49,57 @@ npm run tauri:dev       # 启动开发模式（会先编译 sidecar）
 ```
 
 开发模式（调试构建）用单独的数据目录 `com.redlark.pindu-app-dev`，和安装版的 `com.redlark.pindu-app` 互不影响，开发中的迁移不会碰到你平时用的数据。想用一份指定的数据（测试、演示），设置环境变量 `PINDU_DATA_DIR=/某个目录` 再启动。
+
+## 本地打包
+
+想在自己电脑上编出安装包（自测打包、给自己用），一条命令就行：
+
+| 系统 | 命令 |
+|---|---|
+| macOS / Linux | `./build.sh` |
+| Windows | 双击 `build.cmd`，或在命令行运行 `build.cmd` |
+| 任意系统 | `npm run package`（`npm run package:check` 只检查环境、缺什么会列出来） |
+
+脚本会依次：检查环境 → 安装依赖 → 编译 AI 助手 → 构建应用 → 把安装包复制到 `release/<版本>-<平台>/`。第一次要编译全部 Rust 依赖，大约 5–15 分钟。只能打本机系统的包；本机打的包可以直接打开，拷到别的电脑上会被系统当成未签名应用拦一下。
+
+### 打包选项
+
+所有入口（`./build.sh`、`build.cmd`、`npm run package -- …`）参数相同：
+
+| 选项 | 作用 |
+|---|---|
+| `--target mac-universal` | 同时支持 Apple 芯片与 Intel 的 Mac 包（还有 `mac-arm` / `mac-intel` / `win-arm`） |
+| `--bundles app` | 指定安装包格式，逗号分隔：macOS `app,dmg`；Windows `nsis,msi`；Linux `deb,rpm,appimage` |
+| `--no-bundle` | 只编译可执行文件，不打安装包 |
+| `--debug` | 调试版：编译快，带开发者工具（数据放在单独的 `com.redlark.pindu-app-dev` 目录） |
+| `--clean` | 清理编译缓存后重新构建（构建出错时再用） |
+| `--skip-install` | 跳过依赖安装 |
+
+只能构建当前系统的安装包：Mac 上构建 macOS 包，Windows 上构建 Windows 包，Linux 上构建 Linux 包。
+
+本地打的包没有更新签名私钥，所以不会生成更新包，但应用照样能检查和安装官方发布的更新（安装后就换成了官方版本）。正式发版走 GitHub Actions，流程见 [docs/RELEASING.md](./docs/RELEASING.md)。
+
+### 打包出问题
+
+**网络慢或下载失败。** 构建要从 npm、crates.io 和 GitHub 下载依赖，可以换用国内镜像：
+
+```bash
+# npm
+npm config set registry https://registry.npmmirror.com
+```
+
+```toml
+# Rust：写入 ~/.cargo/config.toml（Windows 为 %USERPROFILE%\.cargo\config.toml）
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+```
+
+**生成某种安装包失败。** dmg、AppImage、Windows 安装器需要额外的工具，失败时换一种格式：
+macOS 用 `--bundles app`，Linux 用 `--bundles deb`（或 `rpm`），Windows 用 `--bundles nsis`。
+
+**编译报奇怪的错误。** 先更新 Rust：`rustup update`，再用 `--clean` 重新构建。
 
 ## 常用命令
 

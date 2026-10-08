@@ -47,22 +47,15 @@
 
 ## 安装
 
-没有现成的安装包。应用没做开发者签名，下载别人编好的安装包也不放心，所以请在自己电脑上编译，一条命令就行：
+到 [Releases 页面](https://github.com/abbish/pindu/releases) 下载对应系统的安装包：macOS 用 `.dmg`，Windows 用 `-setup.exe`，Linux 用 AppImage、deb 或 rpm。应用没有做苹果和微软的开发者签名，第一次打开时系统会拦一下，放行一次就好，具体步骤见 [INSTALL.md](./INSTALL.md#1-下载安装包)。以后出了新版本，应用会在窗口顶部提示，点一下就能更新，更新包要先校验签名才会安装。
 
-```bash
-git clone https://github.com/abbish/pindu.git
-cd pindu
-./build.sh            # macOS / Linux
-build.cmd             # Windows，双击也可以
-```
+装好之后去设置里填 API Key：AI 部分支持任何 OpenAI 兼容的接口，内置了 OpenRouter、MiniMax、月之暗面和 DeepSeek；发音用的是火山引擎的豆包语音合成。不填 Key 也能手动建单词本、练习和看统计，只是用不了 AI 和发音。
 
-编译前要先装好 Node.js 20+、Rust 和系统的编译工具。不确定装全没有，先跑一下 `npm run package:check`，缺什么它会告诉你。装好之后去设置里填 API Key：AI 部分支持任何 OpenAI 兼容的接口，内置了 OpenRouter、MiniMax、月之暗面和 DeepSeek；发音用的是火山引擎的豆包语音合成。不填 Key 也能手动建单词本、练习和看统计，只是用不了 AI 和发音。
-
-详细步骤、升级方法和常见问题都在 [INSTALL.md](./INSTALL.md)。
+详细步骤、升级方法和常见问题都在 [INSTALL.md](./INSTALL.md)。想自己编译打包，看 [CONTRIBUTING.md](./CONTRIBUTING.md#本地打包)。
 
 ## 隐私
 
-拼读没有服务器，也不收集任何使用数据。只有用到 AI 或发音时，才会把相关内容（单词、句子、你导入的材料、你写的答案）直接发给你自己配置的服务商。API Key 以明文存在本机数据库里，不会写进日志。具体见 [SECURITY.md](./SECURITY.md)。
+拼读没有服务器，也不收集任何使用数据。会联网的只有两种情况：一是用到 AI 或发音时，把相关内容（单词、句子、你导入的材料、你写的答案）直接发给你自己配置的服务商；二是检查更新时访问 GitHub，看有没有新版本，这个可以在设置里关掉。API Key 以明文存在本机数据库里，不会写进日志。具体见 [SECURITY.md](./SECURITY.md)。
 
 ## 开发
 

@@ -49,22 +49,15 @@ Target words are highlighted while you read. You can play it sentence by sentenc
 
 ## Installing
 
-There are no prebuilt installers. The app isn't code-signed, and an unsigned binary from a stranger isn't something you should have to trust, so you build it yourself with one command:
+Download the installer for your system from the [Releases page](https://github.com/abbish/pindu/releases): `.dmg` for macOS, `-setup.exe` for Windows, AppImage, deb or rpm for Linux. The app isn't signed with an Apple or Microsoft developer certificate, so your system will stop it the first time you open it; allow it once (steps in [INSTALL.md](./INSTALL.md#1-下载安装包)). After that, new versions show up as a notice at the top of the window and install with one click, and each update is checked against the app's signing key before it's installed.
 
-```bash
-git clone https://github.com/abbish/pindu.git
-cd pindu
-./build.sh            # macOS / Linux
-build.cmd             # Windows (double-clicking works too)
-```
+After installing, add your API keys in settings: AI works with any OpenAI-compatible endpoint (OpenRouter, MiniMax, Moonshot and DeepSeek are preset), and speech uses Volcengine's Doubao TTS. Without keys you can still build word books by hand, practise and see your stats; only the AI and audio parts are off.
 
-You need Node.js 20+, Rust and your platform's build tools first; `npm run package:check` tells you what's missing. After installing, add your API keys in settings: AI works with any OpenAI-compatible endpoint (OpenRouter, MiniMax, Moonshot and DeepSeek are preset), and speech uses Volcengine's Doubao TTS. Without keys you can still build word books by hand, practise and see your stats; only the AI and audio parts are off.
-
-Step-by-step instructions, upgrading and troubleshooting are in [INSTALL.md](./INSTALL.md) (Chinese).
+Step-by-step instructions, upgrading and troubleshooting are in [INSTALL.md](./INSTALL.md) (Chinese). To build installers yourself, see [CONTRIBUTING.md](./CONTRIBUTING.md#本地打包).
 
 ## Privacy
 
-There is no Pindu server and no usage tracking. Content only leaves your machine when you use AI or speech, and then it goes straight to the provider you configured: words, sentences, material you imported, answers you wrote. API keys are stored in plain text in the local database and never written to logs. See [SECURITY.md](./SECURITY.md).
+There is no Pindu server and no usage tracking. The app only goes online in two cases: when you use AI or speech, the relevant content (words, sentences, material you imported, answers you wrote) goes straight to the provider you configured; and when it checks GitHub for a new version, which you can turn off in settings. API keys are stored in plain text in the local database and never written to logs. See [SECURITY.md](./SECURITY.md).
 
 ## Development
 

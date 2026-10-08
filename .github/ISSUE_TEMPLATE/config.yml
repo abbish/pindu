@@ -3,6 +3,6 @@ contact_links:
   - name: 安全问题 / Security issue
     url: https://github.com/abbish/pindu/security/advisories/new
     about: 请不要公开提交漏洞细节，通过这里私下报告（见 SECURITY.md）。
-  - name: 安装与构建帮助 / Install help
+  - name: 安装帮助 / Install help
     url: https://github.com/abbish/pindu/blob/main/INSTALL.md
     about: 先看安装说明里的「常见问题」。
