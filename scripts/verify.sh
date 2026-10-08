@@ -46,13 +46,14 @@ skip() { NAMES+=("$1"); STATUS+=("未运行：$2"); echo -e "\n===== $1 =====\n�
 } | tee "$LOG"
 
 if command -v python3 >/dev/null; then
+  run "check-release-invariants（数据目录标识 / 库文件名 / 已发布迁移不变）" python3 scripts/check-release-invariants.py
   run "check-sql（SQL 对迁移终态 schema）" python3 scripts/check-sql.py
   run "check-ipc-contract（invoke ↔ 注册 ↔ 签名）" python3 scripts/check-ipc-contract.py
   run "check-type-sync（Rust serde 键 ↔ TS 接口字段）" python3 scripts/check-type-sync.py
   run "check-css-vars（var(--x) 引用均有定义）" python3 scripts/check-css-vars.py
   run "check-time（时间约定棘轮：后端取时 / 迁移 DEFAULT）" python3 scripts/check-time.py
 else
-  skip "check-sql" "缺少 python3"; skip "check-ipc-contract" "缺少 python3"; skip "check-type-sync" "缺少 python3" ; skip "check-css-vars" "缺少 python3"; skip "check-time" "缺少 python3"
+  skip "check-release-invariants" "缺少 python3"; skip "check-sql" "缺少 python3"; skip "check-ipc-contract" "缺少 python3"; skip "check-type-sync" "缺少 python3" ; skip "check-css-vars" "缺少 python3"; skip "check-time" "缺少 python3"
 fi
 
 if [[ -x node_modules/.bin/tsc || -f node_modules/typescript/bin/tsc ]]; then

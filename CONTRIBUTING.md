@@ -26,7 +26,7 @@ npm run agent:install   # 内置 AI 助手（agent sidecar）的依赖
 npm run tauri:dev       # 启动开发模式（会先编译 sidecar）
 ```
 
-开发模式和安装版用同一个应用数据目录（见 [INSTALL.md](./INSTALL.md#7-升级与卸载)），会读写你自己的学习数据。动到数据库的改动请先备份该目录。
+开发模式（调试构建）用单独的数据目录 `com.redlark.pindu-app-dev`，和安装版的 `com.redlark.pindu-app` 互不影响，开发中的迁移不会碰到你平时用的数据。想用一份指定的数据（测试、演示），设置环境变量 `PINDU_DATA_DIR=/某个目录` 再启动。
 
 ## 常用命令
 
@@ -58,7 +58,8 @@ docs/           设计文档（agent-harness/ 内置 AI 助手、design/ 待实�
 这些规则有脚本或 hook 检查，违反会让 `verify` 失败或在评审时被打回：
 
 **数据库**
-- 迁移只增不改：表结构变化一律新建 `src-tauri/migrations/NNN_xxx.sql`（序号连续），绝不修改已有迁移。
+- 迁移只增不改：表结构变化一律新建 `src-tauri/migrations/NNN_xxx.sql`（序号连续），绝不修改已有迁移。新迁移写好、提交前运行 `python3 scripts/check-release-invariants.py --update` 把它登记进 `src-tauri/migrations.lock`；已登记的迁移一旦改动，CI 就会失败，因为用户的库里记着每个迁移的校验和，改了会导致升级被拒绝。
+- 应用标识 `com.redlark.pindu-app` 和数据库文件名 `vocabulary.db` 永远不改：数据目录是按它们定位的，改了用户就找不到原来的数据。
 - 必须兼容已有用户数据，不能靠删库重建解决问题。SQLite 改列走“建新表 → 拷数据 → 删旧表 → 改名”。
 - 细则：`.claude/skills/deliver-backend-rust/references/sqlx-migration-standards.md`。
 

@@ -15,7 +15,7 @@
 | 桌面壳 | Tauri 2（plugins: opener, process；`withGlobalTauri: true`，开发模式自动打开 DevTools） |
 | 后端 | Rust 2021 · tokio · sqlx 0.8 (sqlite, migrate, WAL) · reqwest · thiserror |
 | AI | 内置 agent harness：pi（`@earendil-works/pi-coding-agent`，RPC sidecar `redlark-agent`，bun 单文件） |
-| 数据库 | SQLite，文件 `<app_data_dir>/vocabulary.db`，启动时自动跑 `src-tauri/migrations/` |
+| 数据库 | SQLite，文件 `<数据目录>/vocabulary.db`（数据目录见 §4.3），启动时先备份再跑 `src-tauri/migrations/` |
 | 外部服务 | OpenAI 兼容接口（AI 分析/规划；种子提供商 OpenRouter / MiniMax / 月之暗面 / DeepSeek，均可「同步模型」读取 `/models`）· 火山引擎豆包语音合成（TTS，V3 HTTP 单向流式，带 SHA256 音频缓存） |
 | 包管理 | npm（有 package-lock.json）+ Cargo |
 
@@ -38,6 +38,7 @@ python3 scripts/check-ipc-contract.py   # 前端 invoke ↔ lib.rs 注册 ↔ �
 python3 scripts/check-type-sync.py      # 同名类型：Rust serde 实际键 ↔ TS 接口字段（前端读到 undefined 的根源）
 python3 scripts/check-css-vars.py        # CSS var(--x) 引用必须有定义（未定义会让整条声明静默失效）
 python3 scripts/check-time.py            # 时间约定棘轮：time.rs 之外的取时 / 旧格式写入只减不增（--list 列出位置）
+python3 scripts/check-release-invariants.py [--update]  # 升级安全：identifier / 库文件名不变，已发布迁移不改（新迁移用 --update 登记进 migrations.lock）
 python3 scripts/schema-snapshot.py --table <t>   # 迁移终态表结构（不要凭迁移片段猜列）
 cd src-tauri && cargo test  # 后端测试（crate 内 #[cfg(test)]，内存 SQLite）
 npm run package             # 一键构建本机安装包（= ./build.sh / build.cmd → scripts/package.mjs）：环境检查 → 依赖 → sidecar → tauri build → release/<版本>-<triple>/
@@ -69,14 +70,16 @@ src/                          前端
 └── styles/app.css            唯一全局样式：Tailwind 入口 + shadcn 主题 token（`@theme inline`，dark 跟随 data-theme）
 
 src-tauri/
-├── src/lib.rs                Tauri Builder：初始化 Logger + DatabaseManager → migrate → app.manage(pool/logger)；generate_handler! 注册全部命令
+├── src/lib.rs                Tauri Builder：解析目录 → Logger → startup::open_database → app.manage(pool/logger/AppDirs/StartupStatus)；generate_handler! 注册全部命令
+├── src/app_paths.rs          数据 / 缓存目录与库文件名的唯一 owner（发布版按 identifier，开发版 `-dev` 目录，`PINDU_DATA_DIR` 覆盖）
+├── src/startup.rs            启动时打开并升级数据库：对账 → 备份 → 迁移；失败返回 StartupFailure（前端 StartupGate 显示错误页）
 ├── src/handlers/             ① 接口层：#[tauri::command]，按功能域拆分（见 §4.2）
 ├── src/services/             ② 业务层：XxxService::new(Arc<SqlitePool>, Arc<Logger>)
 ├── src/repositories/         ③ 数据访问层：所有 SQL 只应出现在这里
 ├── src/types/                serde 类型（common / wordbook / study / ai_model / tts / word_analysis / passage）
 ├── src/error.rs              AppError + AppResult<T>
 ├── src/logger.rs             文件日志，api_request / api_response / info / error
-├── src/database/mod.rs       DatabaseManager（WAL, synchronous=Normal, create_if_missing）
+├── src/database/mod.rs       MIGRATOR（内置迁移）、connect（WAL, synchronous=Normal, create_if_missing）、vacuum_into（整库备份）
 ├── src/agent/                内置 agent harness（pi sidecar）：protocol · config · session · tasks · catalog（pi 内置目录）（见 docs/agent-harness/DESIGN.md）
 ├── src/prompts.rs            提示词渲染唯一 owner（见 §6）；src/time.rs 取时与格式唯一入口（见 §7.5）；src/menu.rs macOS 中文菜单
 ├── src/progress_manager.rs   EnhancedProgressManager：批量单词分析进度（前端轮询 get_batch_analysis_progress）
@@ -143,7 +146,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 
 ### 4.3 数据库
 
-启动流程：`lib.rs` → `DatabaseManager::new("sqlite:<app_data_dir>/vocabulary.db")` → `migrate()`（`sqlx::migrate!("./migrations")`）→ `app.manage(pool)`。迁移失败会 panic，应用无法启动。
+启动流程（owner `startup.rs`）：`AppDirs::resolve`（发布版 `<系统数据目录>/com.redlark.pindu-app/`；debug 构建 `com.redlark.pindu-app-dev/`；环境变量 `PINDU_DATA_DIR` 覆盖）→ `connect(<数据目录>/vocabulary.db)` → 对账 `_sqlx_migrations`（上次升级未完成、数据库来自更新的版本、已执行迁移被改过 → 不动数据、返回 `StartupFailure`）→ 有待执行迁移时先 `VACUUM INTO` 备份到 `backups/`（保留 5 份；备份失败不升级）→ `MIGRATOR.run` → `app.manage(pool)`。任何失败都不 panic、不建新库：前端 `StartupGate` 只显示错误页。`delete_database_and_restart` 删除前也先备份。发布版用 `tauri-plugin-single-instance` 保证只运行一个实例。
 外键是开启的（sqlx 默认 `foreign_keys = ON`），schema 中的 `ON DELETE CASCADE` 生效：删除计划/日程会连带删除单词关联、练习会话与作答记录。
 
 当前有效表（迁移 001–058 之后）：
@@ -236,6 +239,7 @@ export const fooService = new FooService();
 2. **禁止删库重建**解决问题；向前兼容现有数据（SQLite 改列需走 建新表 → 拷数据 → drop → rename 模式，参考 020/023/031）。
 3. 新增迁移后在 Repository 里补对应字段映射，并同步 `types/*.rs` 与 `src/types/*.ts`。
 4. 怎样在 SQLite + sqlx 上做到以上三条（重建表模式、兼容已有数据、空库/真实库双验证）以 `.claude/skills/deliver-backend-rust/references/sqlx-migration-standards.md` 为准。`.claude/hooks/guard-migrations.sh` 会拦截对已有迁移文件的编辑。
+5. **升级安全（发行不变量）**：0.1.0 是第一个发行版，之后用户都是自己构建、覆盖安装升级。`tauri.conf.json` 的 identifier、`app_paths::DB_FILE` 永不修改；已提交到 main 的迁移登记在 `src-tauri/migrations.lock`（sha256），新迁移提交前用 `python3 scripts/check-release-invariants.py --update` 登记，已登记的不可修改 / 删除 / 改名（verify 与 CI 强制）。迁移须能在“上一个发行版的真实数据”上执行成功，`startup::tests` 有端到端升级用例。
 
 ### 7.2 Tauri 命令与参数
 - Rust 参数 `snake_case`，前端 invoke 传 `camelCase`，Tauri 自动转换（`bookId` ↔ `book_id`）。前端**禁止**传下划线键名。
@@ -269,7 +273,7 @@ export const fooService = new FooService();
 - `handlers/word_analysis.rs` 的批量管线编排（含事件推送）仍在 handler 层；批量分析与学习计划规划各有一个进度管理器（`progress_manager.rs` / `planning_progress.rs`，前端轮询契约不同；改事件推送见 `docs/design/batch-analysis-event-driven.md`）。
 - 历史迁移 020 / 021 / 023 / 031 在外键开启下重建 `study_plans`，会级联清空当时已有计划的子表数据（已实测）；不要以它们为重建模板，见 `sqlx-migration-standards.md`。
 - `src/types/api.ts` 中 Health/Export/Import 类型对应的后端未实现。
-- `src-tauri/Cargo.toml` 的 `[lib] name = "redlark_app_lib"`，包名 `pindu-app`；应用数据目录随 identifier 为 `com.redlark.pindu-app`（macOS: `~/Library/Application Support/com.redlark.pindu-app/`）。
+- `src-tauri/Cargo.toml` 的 `[lib] name = "redlark_app_lib"`，包名 `pindu-app`；应用数据目录随 identifier 为 `com.redlark.pindu-app`（macOS: `~/Library/Application Support/com.redlark.pindu-app/`）。**identifier 与库文件名发布后永不修改**（见 §7.1 第 5 条）；productName 可以改（只影响应用名，macOS 上旧名字的 .app 需要用户手动删除）。
 - `CLAUDE.md` + `.claude/skills` 是唯一的 agent 规则入口，不再引入其它工具（Augment、spec-workflow、superpowers 等）的规则文件。
 - 前端自动化测试刚起步（`node --test` 覆盖纯函数）；组件行为仍靠 `tauri:dev` 走查。
 

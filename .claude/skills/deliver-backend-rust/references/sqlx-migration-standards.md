@@ -5,7 +5,7 @@
 ## 机制事实
 
 - `lib.rs` 启动时 `sqlx::migrate!("./migrations").run(&pool)`；失败 **panic**，应用起不来。
-- sqlx 在 `_sqlx_migrations` 表记录每个文件的版本号（文件名前缀数字）和 **checksum**。已应用文件内容被修改 → 下次启动 `VersionMismatch` → panic。这就是“只增不改”在技术上的原因，`.claude/hooks/guard-migrations.sh` 会拦截编辑。
+- sqlx 在 `_sqlx_migrations` 表记录每个文件的版本号（文件名前缀数字）和 **checksum**。已应用文件内容被修改 → 下次启动时 `startup.rs` 对账发现校验和不一致，拒绝升级并显示错误页（用户无法使用应用）。这就是“只增不改”在技术上的原因：`.claude/hooks/guard-migrations.sh` 拦截编辑，`src-tauri/migrations.lock` + `scripts/check-release-invariants.py`（verify / CI）拦截已提交迁移的任何改动。新迁移完成后、提交前运行 `python3 scripts/check-release-invariants.py --update` 登记。
 - 文件名格式 `NNN_description.sql`，版本 = `NNN`；当前最大为 039，下一号 **040**。不跳号、不重复。
 - SQLite `ALTER TABLE` 只支持 `ADD COLUMN`、`RENAME TABLE`、`RENAME COLUMN`、`DROP COLUMN`（3.35+）。改列类型/约束/默认值必须走重建表。
 - 每个迁移文件默认在一个事务中执行（sqlx 默认）；SQLite DDL 可回滚，这比 MySQL 宽松，但 **不要依赖它**来掩盖半成品脚本。

@@ -1,0 +1,50 @@
+name: CI
+
+# 每次推送到 main 和每个 PR：跑与本地 `npm run verify` 相同的全套检查。
+# 其中 check-release-invariants 守护升级安全：数据目录标识、数据库文件名、已发布的迁移都不能改。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            agent/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux system libraries
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix agent ci
+
+      - name: Verify
+        run: bash scripts/verify.sh
