@@ -25,6 +25,20 @@ pub async fn vacuum_into(pool: &SqlitePool, target: &Path) -> Result<(), sqlx::E
         .map(|_| ())
 }
 
+/// 更正某个已执行迁移记录的校验和（只用于“内容相同、仅换行符不同”的情况，见 startup.rs）
+pub async fn set_migration_checksum(
+    pool: &SqlitePool,
+    version: i64,
+    checksum: &[u8],
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = ?")
+        .bind(checksum)
+        .bind(version)
+        .execute(pool)
+        .await
+        .map(|_| ())
+}
+
 /// 种子数据迁移的行为测试：迁移在 `memory_pool()` 中已执行一次；这里把库改回“迁移前 + 用户改动”的
 /// 状态后再执行一次迁移脚本（脚本设计为可重复执行），断言只动种子原值、不覆盖用户选择。
 #[cfg(test)]

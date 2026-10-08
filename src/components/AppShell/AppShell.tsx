@@ -28,6 +28,7 @@ import { PageTitleContext } from './pageTitle';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTheme } from '@/hooks/useTheme';
 import { PAGE_TITLE, TOP_LEVEL_OF, type NavigateFn, type PageKey, type TopLevelPage } from '@/navigation';
+import { UpdateBanner } from '../UpdateBanner';
 
 export interface AppShellProps {
   /** 当前页面键（决定侧边栏高亮与顶栏标题） */
@@ -200,6 +201,7 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ch
               </BreadcrumbList>
             </Breadcrumb>
           </header>
+          <UpdateBanner />
           <div className="min-h-0 flex-1 overflow-y-auto">
             <PageTitleContext.Provider value={setPageTitle}>{children}</PageTitleContext.Provider>
           </div>

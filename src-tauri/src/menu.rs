@@ -1,8 +1,11 @@
 //! macOS 菜单栏（中文）。Tauri 默认菜单是英文的（File / Edit / View / Window / Help），
 //! 这里换成中文，并在「关于」里显示版本与版权。编辑菜单必须保留：网页里的拷贝 / 粘贴快捷键靠它生效。
 
-use tauri::menu::{AboutMetadata, Menu, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Runtime};
+
+/// 「检查更新…」菜单项：点击后向前端发 `menu-check-update` 事件（lib.rs on_menu_event）
+pub const CHECK_UPDATE_ID: &str = "check_update";
 
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let info = app.package_info();
@@ -20,6 +23,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         true,
         &[
             &PredefinedMenuItem::about(app, Some(&format!("关于{}", name)), Some(about))?,
+            &MenuItem::with_id(app, CHECK_UPDATE_ID, "检查更新…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::services(app, Some("服务"))?,
             &PredefinedMenuItem::separator(app)?,

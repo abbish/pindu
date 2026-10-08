@@ -3,6 +3,7 @@ import { ErrorBoundary, ToastProvider } from './components';
 import { AppShell } from './components/AppShell/AppShell';
 import { DevTools } from './components/DevTools';
 import { StartupGate } from './components/StartupGate';
+import { UpdateWatcher } from './components/UpdateBanner';
 import { HomePage } from './pages/HomePage';
 import { StudyPlansPage } from './pages/StudyPlansPage';
 import { CreatePlanPage } from './pages/CreatePlanPage';
@@ -100,6 +101,8 @@ function App() {
   return (
     <ErrorBoundary>
       <ToastProvider>
+        {/* 自动检查更新与菜单「检查更新…」：在启动错误页也有效，数据库出问题时也能装上修复版 */}
+        <UpdateWatcher />
         {/* 数据库打开并升级成功才渲染应用，否则只显示原因（见 StartupGate） */}
         <StartupGate>
           {/* 专注模式页面（单词练习）自绘整窗框架，其余页面由 AppShell 提供侧边栏与顶栏 */}

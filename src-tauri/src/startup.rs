@@ -12,7 +12,7 @@ use crate::app_paths::AppDirs;
 use crate::database::{connect, MIGRATOR};
 use crate::logger::Logger;
 use crate::types::common::StartupFailure;
-use sqlx::migrate::{MigrateError, Migrator};
+use sqlx::migrate::{MigrateError, Migration, Migrator};
 use sqlx::{Row, SqlitePool};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,6 +21,45 @@ use std::path::{Path, PathBuf};
 const BACKUP_PREFIX: &str = "vocabulary-before-v";
 /// 保留的升级备份份数
 pub const KEEP_BACKUPS: usize = 5;
+
+/// 解析目录、创建数据目录、初始化日志。任何一步失败都不 panic：
+/// 日志退到系统临时目录，返回的失败原因由前端错误页显示（不会去打开数据库）
+pub fn prepare(app: &tauri::AppHandle) -> (AppDirs, Logger, Option<Box<StartupFailure>>) {
+    let fallback = std::env::temp_dir().join("pindu-startup");
+    let (dirs, mut failure) = match AppDirs::resolve(app) {
+        Ok(dirs) => (dirs, None),
+        Err(e) => (
+            AppDirs {
+                data: fallback.clone(),
+                cache: fallback.join("cache"),
+            },
+            Some(("无法确定数据目录", e.to_string())),
+        ),
+    };
+    if failure.is_none() {
+        if let Err(e) = std::fs::create_dir_all(&dirs.data) {
+            failure = Some(("无法创建数据目录", e.to_string()));
+        }
+    }
+    let logger = Logger::new(&dirs.data)
+        .or_else(|_| {
+            let _ = std::fs::create_dir_all(&fallback);
+            Logger::new(&fallback)
+        })
+        .expect("无法在系统临时目录初始化日志");
+    let failure = failure.map(|(title, detail)| {
+        logger.error("STARTUP", title, Some(&detail));
+        Box::new(StartupFailure {
+            kind: "data_dir".to_string(),
+            title: title.to_string(),
+            message: "数据目录不可用：可能没有读写权限，或环境变量 PINDU_DATA_DIR 指向了无效的位置。数据没有被修改。".to_string(),
+            detail: Some(detail),
+            data_dir: dirs.data.display().to_string(),
+            backup_dir: dirs.backups_dir().display().to_string(),
+        })
+    });
+    (dirs, logger, failure)
+}
 
 /// 打开并升级数据库；成功返回连接池
 pub async fn open_database(
@@ -79,18 +118,34 @@ pub async fn open_database(
                 CheckError::Newer { db, app } => fail(
                     "newer_database",
                     "数据来自更新的版本",
-                    format!("这份数据已经被更新版本的拼读升级过（数据库版本 {db}），当前应用只支持到版本 {app}。为了不损坏数据，没有打开它。请构建并安装最新版本后再打开，数据都还在。"),
+                    format!("这份数据已经被更新版本的拼读升级过（数据库版本 {db}），当前应用只支持到版本 {app}。为了不损坏数据，没有打开它。请安装最新版本后再打开，数据都还在。"),
                     None,
                 ),
                 CheckError::Modified(v) => fail(
                     "modified_migration",
                     "数据库升级脚本和记录不一致",
-                    format!("应用自带的第 {v} 号数据库升级脚本，和当初升级这份数据时用的不一样，继续可能出错，所以没有打开数据。通常是因为构建了改动过的源码，请用官方仓库的代码重新构建。"),
+                    format!("应用自带的第 {v} 号数据库升级脚本，和当初升级这份数据时用的不一样，继续可能出错，所以没有打开数据。通常是因为用的不是官方发布的版本，请换回 GitHub Releases 上的官方版本。"),
                     None,
                 ),
             });
         }
     };
+
+    for (version, checksum) in &plan.checksum_fixes {
+        if let Err(e) = crate::database::set_migration_checksum(&pool, *version, checksum).await {
+            pool.close().await;
+            return Err(fail(
+                "connect",
+                "无法更新数据库记录",
+                "数据库可能被其他程序占用，或没有写入权限。".to_string(),
+                Some(e.to_string()),
+            ));
+        }
+        logger.info(
+            "DATABASE",
+            &format!("Migration {version}: checksum differed only in line endings, corrected"),
+        );
+    }
 
     if plan.pending.is_empty() {
         logger.info(
@@ -167,6 +222,8 @@ pub struct UpgradePlan {
     pub target: i64,
     /// 待执行的版本
     pub pending: Vec<i64>,
+    /// 只是换行符不同（CRLF ↔ LF）的已执行迁移：内容没改，把记录的校验和更正为内置值
+    pub checksum_fixes: Vec<(i64, Vec<u8>)>,
 }
 
 #[derive(Debug)]
@@ -185,10 +242,10 @@ pub enum CheckError {
 
 /// 对账：已执行的迁移 ↔ 本版本内置的迁移
 pub async fn check(pool: &SqlitePool, migrator: &Migrator) -> Result<UpgradePlan, CheckError> {
-    let known: HashMap<i64, &[u8]> = migrator
+    let known: HashMap<i64, &Migration> = migrator
         .iter()
         .filter(|m| m.migration_type.is_up_migration())
-        .map(|m| (m.version, m.checksum.as_ref()))
+        .map(|m| (m.version, m))
         .collect();
     let target = known.keys().copied().max().unwrap_or(0);
 
@@ -208,6 +265,7 @@ pub async fn check(pool: &SqlitePool, migrator: &Migrator) -> Result<UpgradePlan
     };
 
     let mut applied = Vec::with_capacity(rows.len());
+    let mut checksum_fixes = Vec::new();
     let newest = rows
         .iter()
         .map(|r| r.get::<i64, _>("version"))
@@ -227,10 +285,12 @@ pub async fn check(pool: &SqlitePool, migrator: &Migrator) -> Result<UpgradePlan
                     app: target,
                 })
             }
-            Some(expected) if *expected != checksum.as_slice() => {
-                return Err(CheckError::Modified(version))
+            Some(m) if m.checksum.as_ref() == checksum.as_slice() => applied.push(version),
+            Some(m) if same_ignoring_line_endings(&m.sql, &checksum) => {
+                checksum_fixes.push((version, m.checksum.to_vec()));
+                applied.push(version);
             }
-            Some(_) => applied.push(version),
+            Some(_) => return Err(CheckError::Modified(version)),
         }
     }
 
@@ -244,16 +304,39 @@ pub async fn check(pool: &SqlitePool, migrator: &Migrator) -> Result<UpgradePlan
         applied_max: applied.iter().copied().max().unwrap_or(0),
         target,
         pending,
+        checksum_fixes,
     })
+}
+
+/// 记录的校验和是不是同一份 SQL 换了换行符（Windows 上检出成 CRLF 时构建的版本会记成 CRLF 的校验和）
+fn same_ignoring_line_endings(sql: &str, stored: &[u8]) -> bool {
+    use sha2::{Digest, Sha384};
+    let lf = sql.replace("\r\n", "\n");
+    let crlf = lf.replace('\n', "\r\n");
+    [lf, crlf]
+        .iter()
+        .any(|v| Sha384::digest(v.as_bytes()).as_slice() == stored)
 }
 
 /// 把当前库完整复制到 `backups/vocabulary-before-v<from>-to-v<to>-<本地时间>.db`
 pub async fn backup(pool: &SqlitePool, dir: &Path, from: i64, to: i64) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("无法创建备份目录：{e}"))?;
-    let path = dir.join(format!(
-        "{BACKUP_PREFIX}{from:03}-to-v{to:03}-{}.db",
-        crate::time::local_file_stamp()
-    ));
+    // 同一次升级（from → to）已经备份过（上次升级失败后重开）：沿用那份，不重复备份
+    let prefix = format!("{BACKUP_PREFIX}{from:03}-to-v{to:03}-");
+    if let Some(existing) = std::fs::read_dir(dir)
+        .map_err(|e| format!("无法读取备份目录：{e}"))?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().starts_with(&prefix))
+                .unwrap_or(false)
+                && p.extension().is_some_and(|x| x == "db")
+        })
+    {
+        return Ok(existing);
+    }
+    let path = dir.join(format!("{prefix}{}.db", crate::time::local_file_stamp()));
     crate::database::vacuum_into(pool, &path)
         .await
         .map_err(|e| e.to_string())?;
@@ -363,6 +446,47 @@ mod tests {
             check(&pool, &MIGRATOR).await,
             Err(CheckError::Modified(5))
         ));
+    }
+
+    /// Windows 上检出成 CRLF 时构建的版本，记录的是 CRLF 版本的校验和：内容没改，应更正而不是拒绝
+    #[tokio::test]
+    async fn line_ending_only_difference_is_corrected_not_refused() {
+        use sha2::{Digest, Sha384};
+        let pool = memory().await;
+        MIGRATOR.run(&pool).await.unwrap();
+        let m = MIGRATOR.iter().find(|m| m.version == 5).unwrap();
+        let crlf = m.sql.replace("\r\n", "\n").replace('\n', "\r\n");
+        sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = 5")
+            .bind(Sha384::digest(crlf.as_bytes()).to_vec())
+            .execute(&pool)
+            .await
+            .unwrap();
+        let plan = check(&pool, &MIGRATOR).await.unwrap();
+        assert_eq!(plan.checksum_fixes, vec![(5, m.checksum.to_vec())]);
+        assert!(plan.pending.is_empty());
+    }
+
+    /// 同一次升级失败后反复重开：沿用第一份备份，不重复备份
+    #[tokio::test]
+    async fn backup_is_not_repeated_for_the_same_upgrade() {
+        // 用文件库：内存库的 VACUUM INTO 写进的是内存 VFS，不会落盘
+        let dir = std::env::temp_dir().join(format!("pindu-bk-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pool = connect(&dir.join("src.db")).await.unwrap();
+        MIGRATOR.run(&pool).await.unwrap();
+        let dir = dir.join("backups");
+        let first = backup(&pool, &dir, 57, 58).await.unwrap();
+        let second = backup(&pool, &dir, 57, 58).await.unwrap();
+        assert_eq!(first, second);
+        let names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 1, "{first:?} {names:?}");
+        let other = backup(&pool, &dir, 58, 59).await.unwrap();
+        assert_ne!(first, other);
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
     }
 
     #[tokio::test]

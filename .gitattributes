@@ -1,0 +1,5 @@
+# 迁移文件的校验和按字节计算：所有系统上都用 LF 检出，否则 Windows 构建会记成 CRLF 的校验和（见 src-tauri/src/startup.rs）
+*.sql text eol=lf
+src-tauri/migrations.lock text eol=lf
+# 提示词编译进二进制，保持各平台一致
+src-tauri/src/prompts/** text eol=lf

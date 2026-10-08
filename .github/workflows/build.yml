@@ -1,7 +1,9 @@
 name: Build
 
-# 用一键构建脚本（scripts/package.mjs）在三个系统上各构建一次，验证用户本机构建的流程可用。
-# 产物不签名，只作为 CI 附件下载（发布方式见 INSTALL.md：用户在自己的机器上构建）。
+# 打 v* 标签：用一键构建脚本（scripts/package.mjs）在三个系统上构建，带更新签名私钥时同时生成签名的更新包；
+# 全部成功后汇总成 GitHub Release 草稿（安装包 + latest.json），检查无误后在网页上点「发布」。
+# 发布之后，已安装的应用才会通过 releases/latest/download/latest.json 发现这个版本（草稿不会被发现）。
+# 手动触发（workflow_dispatch）只构建、上传构建产物，不建 Release。
 on:
   push:
     tags:
@@ -16,11 +18,19 @@ jobs:
         include:
           - os: windows-latest
             name: windows
+            args: ''
           - os: macos-latest
             name: macos
+            args: --target mac-universal
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
           - os: ubuntu-22.04
             name: linux
+            args: --bundles deb,rpm,appimage
     runs-on: ${{ matrix.os }}
+    env:
+      # 应用内更新的签名私钥（仓库 Settings → Secrets）；缺少时只构建安装包、不生成更新包
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,21 +42,65 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
 
       - name: Install Linux system libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt update
-          sudo apt install -y build-essential curl wget file pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev
+          sudo apt install -y build-essential curl wget file pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev rpm
 
       - name: Check build environment
-        run: node scripts/package.mjs --check
+        run: node scripts/package.mjs --check ${{ matrix.args }}
 
       - name: Build installers
-        run: node scripts/package.mjs
+        run: node scripts/package.mjs ${{ matrix.args }}
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}-installers
-          path: release/
+          # 不上传 .app 目录（macOS 用 dmg 和 .app.tar.gz）
+          path: |
+            release/
+            !release/**/*.app/**
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches package.json version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "${GITHUB_REF_NAME}" ]; then
+            echo "标签 ${GITHUB_REF_NAME} 和 package.json 的版本 $version 不一致：先改版本号再打标签"
+            exit 1
+          fi
+
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Assemble release assets and latest.json
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            node scripts/release-assets.mjs dist upload --notes-file "$notes"
+          else
+            node scripts/release-assets.mjs dist upload
+          fi
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then notes_args=(--notes-file "$notes"); else notes_args=(--generate-notes); fi
+          gh release create "${GITHUB_REF_NAME}" upload/* --draft --title "拼读 ${GITHUB_REF_NAME}" "${notes_args[@]}"

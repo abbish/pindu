@@ -19,9 +19,7 @@ mod prompts;
 #[cfg(test)]
 mod test_support;
 
-use app_paths::AppDirs;
 use handlers::*;
-use logger::Logger;
 use tauri::Manager;
 use types::common::StartupStatus;
 
@@ -41,8 +39,17 @@ pub fn run() {
     // macOS 菜单栏换成中文（Windows / Linux 不显示菜单栏）
     #[cfg(target_os = "macos")]
     let builder = builder.menu(menu::build);
+    #[cfg(target_os = "macos")]
+    let builder = builder.on_menu_event(|app, event| {
+        if event.id() == menu::CHECK_UPDATE_ID {
+            use tauri::Emitter;
+            let _ = app.emit("menu-check-update", ());
+        }
+    });
     builder
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(handlers::PendingUpdate::default())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // 获取主窗口并打开开发者工具
@@ -54,9 +61,8 @@ pub fn run() {
             }
 
             // 数据目录（发布版按 identifier 定位；开发版独立目录；可用 PINDU_DATA_DIR 覆盖），见 app_paths.rs
-            let dirs = AppDirs::resolve(app.handle())?;
-            std::fs::create_dir_all(&dirs.data)?;
-            let logger = Logger::new(&dirs.data)?;
+            // 目录或日志初始化失败也不崩溃：日志退到临时目录，前端显示错误页
+            let (dirs, logger, early_failure) = startup::prepare(app.handle());
             logger.info(
                 "APP",
                 &format!("Application starting up (v{})", app.package_info().version),
@@ -70,6 +76,12 @@ pub fn run() {
 
             // 打开并升级数据库：失败时不崩溃、不建新库，前端显示错误页（见 startup.rs）
             let status = tauri::async_runtime::block_on(async {
+                if let Some(failure) = early_failure {
+                    return StartupStatus {
+                        ok: false,
+                        failure: Some(*failure),
+                    };
+                }
                 match startup::open_database(&dirs, &logger).await {
                     Ok(pool) => {
                         // 自适应复习：把今天到期的复习放进今天的日程，并清理过期未练的复习（失败不影响启动）
@@ -142,6 +154,9 @@ pub fn run() {
             open_log_folder,
             open_data_folder,
             get_startup_status,
+            check_for_update,
+            install_update,
+            restart_app,
             create_word_book_from_analysis,
             get_all_ai_providers,
             get_all_ai_models,

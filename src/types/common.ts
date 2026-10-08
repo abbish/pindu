@@ -69,3 +69,19 @@ export interface StartupStatus {
   ok: boolean;
   failure: StartupFailure | null;
 }
+
+/** 检查到的新版本（对应 Rust `types::common::UpdateInfo`） */
+export interface UpdateInfo {
+  version: string;
+  currentVersion: string;
+  /** 更新说明（latest.json 的 notes，来自 docs/releases/vX.md） */
+  notes: string | null;
+  /** 能否在应用内安装（Linux deb / rpm 不能，只提示去下载） */
+  canInstall: boolean;
+}
+
+/** 下载进度（对应 Rust `types::common::UpdateProgress`） */
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
+}

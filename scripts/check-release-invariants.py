@@ -5,7 +5,8 @@
 2. 数据库文件名（app_paths.rs DB_FILE）不变；
 3. 迁移文件命名规范、编号从 001 连续；
 4. 已发布的迁移内容不变：src-tauri/migrations.lock 记录每个迁移的 sha256，只允许追加新迁移。
-   用户的库里记着每个已执行迁移的校验和，改动已发布的迁移会让升级被拒绝（见 startup.rs）。
+   用户的库里记着每个已执行迁移的校验和，改动已发布的迁移会让升级被拒绝（见 startup.rs）；
+5. 应用内更新的公钥与地址不变：改了已安装的应用就再也收不到更新（换钥匙的流程见 docs/RELEASING.md，届时同步改这里）。
 
 用法：
   python3 scripts/check-release-invariants.py           # 检查
@@ -22,6 +23,8 @@ IDENTIFIER = "com.redlark.pindu-app"
 DB_FILE = "vocabulary.db"
 MIGRATIONS = ROOT / "src-tauri" / "migrations"
 LOCK = ROOT / "src-tauri" / "migrations.lock"
+UPDATER_PUBKEY = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhEMUU2MzJEMjRDRTM4M0IKUldRN09NNGtMV01lamJGK2RQZ21KNWVMWlpWSVk4Njh6bXhIcUUySEJ4MUl4Ly9NRCtnTFkrSWwK"
+UPDATER_ENDPOINTS = ["https://github.com/abbish/pindu/releases/latest/download/latest.json"]
 NAME = re.compile(r"^(\d{3})_[a-z0-9_]+\.sql$")
 
 
@@ -36,6 +39,14 @@ def main() -> int:
     conf = json.loads((ROOT / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
     if conf.get("identifier") != IDENTIFIER:
         errors.append(f"tauri.conf.json identifier 必须是 {IDENTIFIER}（现在是 {conf.get('identifier')}）：改了用户会找不到原来的数据")
+
+    updater = conf.get("plugins", {}).get("updater", {})
+    if updater.get("pubkey") != UPDATER_PUBKEY:
+        errors.append("tauri.conf.json plugins.updater.pubkey 被改了：已安装的应用会无法验证新的更新（换钥匙见 docs/RELEASING.md）")
+    if updater.get("endpoints") != UPDATER_ENDPOINTS:
+        errors.append(f"tauri.conf.json plugins.updater.endpoints 必须是 {UPDATER_ENDPOINTS}：改了已安装的应用会找不到更新")
+    if conf.get("bundle", {}).get("createUpdaterArtifacts") is not False:
+        errors.append("tauri.conf.json bundle.createUpdaterArtifacts 应为 false（发版时由 package.mjs 在有私钥时打开），否则没有私钥的本地打包会失败")
 
     paths_rs = (ROOT / "src-tauri" / "src" / "app_paths.rs").read_text(encoding="utf-8")
     if f'pub const DB_FILE: &str = "{DB_FILE}";' not in paths_rs:
@@ -80,7 +91,7 @@ def main() -> int:
         for e in errors:
             print(f"  - {e}")
         return 1
-    print(f"发行不变量 OK：identifier={IDENTIFIER}，数据库 {DB_FILE}，{len(files)} 个迁移均已登记且未改动")
+    print(f"发行不变量 OK：identifier={IDENTIFIER}，数据库 {DB_FILE}，更新公钥与地址未变，{len(files)} 个迁移均已登记且未改动")
     return 0
 
 

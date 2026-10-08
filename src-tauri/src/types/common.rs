@@ -65,3 +65,23 @@ pub struct StartupStatus {
     pub ok: bool,
     pub failure: Option<StartupFailure>,
 }
+
+/// 检查到的新版本
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInfo {
+    pub version: String,
+    pub current_version: String,
+    /// 更新说明（latest.json 的 notes，来自 docs/releases/vX.md）
+    pub notes: Option<String>,
+    /// 能否在应用内安装（Linux deb / rpm 不能，只提示去下载）
+    pub can_install: bool,
+}
+
+/// 下载进度
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProgress {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+}

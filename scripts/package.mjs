@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 一键构建安装包（跨平台，零依赖，只用 Node 内置模块）。
 // 应用不签名发布，用户在自己的机器上构建：检查环境 → 安装依赖 → 编译 agent sidecar → tauri build → 收集产物到 release/。
-// 用法见 INSTALL.md，或 node scripts/package.mjs --help
+// 开发者本地打包工具，用法见 CONTRIBUTING.md「本地打包」，或 node scripts/package.mjs --help
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -304,15 +304,23 @@ function tauriBuild(triple, opts, bundles) {
   if (opts.debug) args.push('--debug');
   if (opts.noBundle) args.push('--no-bundle');
   else args.push('--bundles', bundles);
+  const config = {};
   // 没有开发者证书：macOS 用 ad-hoc 签名，保证 Apple 芯片上能运行、拷到别的 Mac 时签名完整
   if (platform === 'darwin' && !process.env.APPLE_SIGNING_IDENTITY) {
-    args.push('--config', JSON.stringify({ bundle: { macOS: { signingIdentity: '-' } } }));
+    config.bundle = { macOS: { signingIdentity: '-' } };
   }
+  // 发布构建（CI 带更新签名私钥）：额外生成带签名的更新包（.app.tar.gz / setup.exe / AppImage + .sig）；
+  // 自己构建时没有私钥，不生成，应用照样能安装官方发布的更新
+  if (process.env.TAURI_SIGNING_PRIVATE_KEY && !opts.noBundle) {
+    config.bundle = { ...config.bundle, createUpdaterArtifacts: true };
+    console.log('  检测到更新签名私钥：同时生成签名的更新包');
+  }
+  if (Object.keys(config).length) args.push('--config', JSON.stringify(config));
   run(process.execPath, args, {
     failMessage: 'Tauri 构建失败',
     hint: [
       '向上翻看第一条 error 信息。常见原因：',
-      '- 下载依赖超时：网络问题，可配置镜像后重试（见 INSTALL.md「常见问题」）',
+      '- 下载依赖超时：网络问题，可配置镜像后重试（见 CONTRIBUTING.md「打包出问题」）',
       platform === 'darwin' ? '- 生成 dmg 失败：改用 --bundles app 只生成 .app' : '',
       platform === 'linux' ? '- 生成 AppImage 失败（需从 GitHub 下载工具）：改用 --bundles deb 或 rpm' : '',
       platform === 'win32' ? '- 生成 msi 失败：只用 --bundles nsis' : '',
@@ -354,7 +362,8 @@ function collectArtifacts(triple, opts, version) {
     for (const name of readdirSync(dir)) {
       const src = join(dir, name);
       const isApp = name.endsWith('.app');
-      const isPackage = /\.(dmg|exe|msi|deb|rpm|AppImage)$/.test(name);
+      // 安装包，以及发布构建的更新包与签名（.app.tar.gz / .sig）
+      const isPackage = /\.(dmg|exe|msi|deb|rpm|AppImage|tar\.gz|sig)$/.test(name);
       if (!isApp && !isPackage) continue;
       const dest = join(outDir, name);
       if (isApp) cpSync(src, dest, { recursive: true, verbatimSymlinks: true });

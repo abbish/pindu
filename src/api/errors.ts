@@ -71,8 +71,21 @@ const chineseHead = (message: string): string => {
 
 const truncate = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
+/** 应用内更新的错误（后端以「检查更新失败 / 安装更新失败」开头）：说成更新服务器的问题，而不是 AI 服务 */
+const describeUpdate = (message: string): string => {
+  const lower = message.toLowerCase();
+  if (/signature|签名/.test(lower)) return '更新包的签名校验没有通过，为了安全没有安装';
+  if (/\b404\b|not found|could not fetch a valid release json/.test(lower)) return '暂时获取不到更新信息，请稍后再试';
+  if (/timed? ?out|timeout|超时/.test(lower)) return '连接 GitHub（更新服务器）超时，请稍后再试';
+  if (/error sending request|connect|dns|network|unreachable|connection/.test(lower)) {
+    return '连不上 GitHub（更新服务器），请检查网络后再试';
+  }
+  return chineseHead(message);
+};
+
 /** 外部服务（AI 模型 / 语音合成）的常见失败 → 能自己处理的说法 */
 const describeExternal = (message: string): string => {
+  if (message.startsWith('检查更新失败') || message.startsWith('安装更新失败')) return describeUpdate(message);
   const tts = message.includes('语音合成');
   const service = tts ? '语音服务' : 'AI 服务';
   const settings = tts ? '「设置 → 语音合成」' : '「设置 → AI 模型」';

@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
@@ -224,6 +225,28 @@ pub struct AgentLaunch {
     pub run_dir: Option<PathBuf>,
 }
 
+/// 正在运行的 sidecar 进程数：应用内更新安装前检查（有任务在跑时不安装——Windows 上文件被占用会覆盖失败）
+static RUNNING: AtomicUsize = AtomicUsize::new(0);
+/// 应用内更新开始安装后不再启动新的 sidecar：磁盘上的已是新版本，和正在运行的旧主程序可能不兼容
+static UPDATE_INSTALLING: AtomicBool = AtomicBool::new(false);
+
+/// 开始安装更新：有 sidecar 在运行时返回其数量（不安装）；否则禁止再启动新的 sidecar
+pub fn begin_update_install() -> Result<(), usize> {
+    UPDATE_INSTALLING.store(true, Ordering::SeqCst);
+    match RUNNING.load(Ordering::SeqCst) {
+        0 => Ok(()),
+        n => {
+            UPDATE_INSTALLING.store(false, Ordering::SeqCst);
+            Err(n)
+        }
+    }
+}
+
+/// 安装更新失败：恢复启动 sidecar
+pub fn cancel_update_install() {
+    UPDATE_INSTALLING.store(false, Ordering::SeqCst);
+}
+
 /// 运行中的 sidecar 进程
 pub struct AgentProcess {
     child: Child,
@@ -236,6 +259,11 @@ const STDERR_TAIL_LIMIT: usize = 4000;
 
 impl AgentProcess {
     pub async fn spawn(launch: AgentLaunch) -> AppResult<Self> {
+        if UPDATE_INSTALLING.load(Ordering::SeqCst) {
+            return Err(AppError::ValidationError(
+                "新版本正在安装或已经装好，请重启应用后再使用 AI 功能".to_string(),
+            ));
+        }
         let mut command = Command::new(&launch.program);
         command
             .args(&launch.args)
@@ -283,6 +311,8 @@ impl AgentProcess {
             });
         }
 
+        // 与 Drop 里的减一成对：从这里起这个进程算“运行中”
+        RUNNING.fetch_add(1, Ordering::SeqCst);
         Ok(Self {
             child,
             connection: AgentConnection::new(stdout, stdin),
@@ -316,6 +346,7 @@ impl AgentProcess {
 
 impl Drop for AgentProcess {
     fn drop(&mut self) {
+        RUNNING.fetch_sub(1, Ordering::SeqCst);
         // 未调用 shutdown 时兜底清理（kill_on_drop 负责结束进程）
         if let Some(dir) = self.run_dir.take() {
             let _ = std::fs::remove_dir_all(dir);

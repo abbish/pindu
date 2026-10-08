@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
-import { FolderOpen, Monitor, Moon, Sun, type LucideIcon } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
+import { FolderOpen, Loader2, Monitor, Moon, RefreshCw, Sun, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { LogViewer } from '@/components/LogViewer';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { SettingsPanel, SettingsRow, SettingsSection } from '@/components/SettingsLayout/SettingsLayout';
 import { useTheme, type ThemePreference } from '@/hooks/useTheme';
+import { updater, useUpdater } from '@/hooks/useUpdater';
+import { useCheckForUpdates } from '@/components/UpdateBanner';
 import { dataManagementService } from '../../services/dataManagementService';
 
 const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }[] = [
@@ -16,15 +20,21 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }
 ];
 
 /**
- * 设置「通用」：外观（主题）与诊断（系统日志）。
+ * 设置「通用」：外观（主题）、更新（版本与自动检查）与诊断（系统日志）。
  */
 export const GeneralSettings: React.FC = () => {
   const toast = useToast();
   const { preference, setPreference } = useTheme();
   const [showLogs, setShowLogs] = useState(false);
+  const { state: updateState, autoCheck } = useUpdater();
+  const checkForUpdates = useCheckForUpdates();
+  const [version, setVersion] = useState('');
+  useEffect(() => {
+    getVersion().then(setVersion, () => setVersion(''));
+  }, []);
 
   return (
-    <SettingsPanel title="通用" description="应用的外观与诊断">
+    <SettingsPanel title="通用" description="应用的外观、更新与诊断">
       <SettingsSection title="外观">
         <SettingsRow label="主题" description="浅色、深色，或跟随系统自动切换；侧边栏底部也可以快速切换">
           <ToggleGroup
@@ -45,6 +55,18 @@ export const GeneralSettings: React.FC = () => {
               </Tooltip>
             ))}
           </ToggleGroup>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection title="更新">
+        <SettingsRow label={version ? `当前版本 ${version}` : '当前版本'} description="有新版本时，窗口顶部会出现提示，点一下就能下载安装">
+          <Button variant="outline" size="sm" disabled={updateState.kind === 'checking'} onClick={() => void checkForUpdates()}>
+            {updateState.kind === 'checking' ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            检查更新
+          </Button>
+        </SettingsRow>
+        <SettingsRow label="自动检查更新" description="启动后和每天检查一次 GitHub 上有没有新版本（会访问 github.com）">
+          <Switch checked={autoCheck} onCheckedChange={updater.setAutoCheck} aria-label="自动检查更新" />
         </SettingsRow>
       </SettingsSection>
 

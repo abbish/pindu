@@ -48,7 +48,9 @@
     "category": "Education",
     "shortDescription": "拼读：AI 拼读分析的英语单词学习",
     "longDescription": "拼读（Pindu.app）是一款面向小学生的英语单词学习桌面应用：AI 自然拼读分析与例句、AI 生成学习日程，按「看-说-盖-写-查」练习单词，数据保存在本机。",
-    "externalBin": ["binaries/redlark-agent"],
+    "externalBin": [
+      "binaries/redlark-agent"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -62,11 +64,26 @@
     "windows": {
       "digestAlgorithm": "sha256",
       "nsis": {
-        "languages": ["SimpChinese", "English"],
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
         "displayLanguageSelector": false
       },
       "wix": {
         "language": "zh-CN"
+      }
+    },
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhEMUU2MzJEMjRDRTM4M0IKUldRN09NNGtMV01lamJGK2RQZ21KNWVMWlpWSVk4Njh6bXhIcUUySEJ4MUl4Ly9NRCtnTFkrSWwK",
+      "endpoints": [
+        "https://github.com/abbish/pindu/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }
