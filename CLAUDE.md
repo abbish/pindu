@@ -150,7 +150,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 
 ### 4.3 数据库
 
-启动流程（owner `startup.rs`）：`AppDirs::resolve`（发布版 `<系统数据目录>/com.redlark.pindu-app/`；debug 构建 `com.redlark.pindu-app-dev/`；环境变量 `PINDU_DATA_DIR` 覆盖）→ `connect(<数据目录>/vocabulary.db)` → 对账 `_sqlx_migrations`（上次升级未完成、数据库来自更新的版本、已执行迁移被改过 → 不动数据、返回 `StartupFailure`）→ 有待执行迁移时先 `VACUUM INTO` 备份到 `backups/`（保留 5 份；备份失败不升级）→ `MIGRATOR.run` → `app.manage(pool)`。任何失败都不 panic、不建新库：前端 `StartupGate` 只显示错误页。`delete_database_and_restart` 删除前也先备份。发布版用 `tauri-plugin-single-instance` 保证只运行一个实例。
+启动流程（owner `startup.rs`）：`AppDirs::resolve`（发布版 `<系统数据目录>/com.redlark.pindu-app/`；debug 构建 `com.redlark.pindu-app-dev/`；环境变量 `PINDU_DATA_DIR` 覆盖）→ `connect(<数据目录>/vocabulary.db)` → 对账 `_sqlx_migrations`（上次升级未完成、数据库来自更新的版本、已执行迁移被改过 → 不动数据、返回 `StartupFailure`）→ 有待执行迁移时先 `VACUUM INTO` 备份到 `backups/`（保留 5 份；备份失败不升级）→ `MIGRATOR.run` → `app.manage(pool)`。任何失败都不 panic、不建新库：前端 `StartupGate` 只显示错误页；命令入口（`lib.rs` 的 invoke_handler → `startup::command_guard`）在数据库没打开时拒绝需要数据库的命令（返回 `DATABASE_ERROR`），只放行错误页、日志、更新与退出用的命令（`AVAILABLE_WITHOUT_DATABASE`）。`delete_database_and_restart` 删除前也先备份。发布版用 `tauri-plugin-single-instance` 保证只运行一个实例。
 外键是开启的（sqlx 默认 `foreign_keys = ON`），schema 中的 `ON DELETE CASCADE` 生效：删除计划/日程会连带删除单词关联、练习会话与作答记录。
 
 当前有效表（迁移 001–059 之后）：

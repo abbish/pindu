@@ -363,8 +363,71 @@ pub fn prune_backups(dir: &Path, keep: usize) -> std::io::Result<()> {
     Ok(())
 }
 
+/// 数据库没打开时仍然可用的命令：启动错误页（原因、数据 / 日志文件夹）、日志、应用内更新、退出与重启。
+/// 其余命令都要读写数据库，见 `command_guard`。
+pub const AVAILABLE_WITHOUT_DATABASE: &[&str] = &[
+    "get_startup_status",
+    "open_data_folder",
+    "open_log_folder",
+    "get_system_logs",
+    "get_log_level",
+    "write_client_log",
+    "check_for_update",
+    "install_update",
+    "restart_app",
+    "quit_app",
+];
+
+/// 命令入口的守卫（`lib.rs` 的 invoke_handler 调用）：启动时数据库没打开（升级失败、记录不一致等），
+/// 需要数据库的命令直接返回错误，而不是在 `app.state::<SqlitePool>()` 处崩溃。返回 None 表示放行。
+pub fn command_guard(app: &tauri::AppHandle, command: &str) -> Option<crate::error::AppError> {
+    use tauri::Manager;
+    let failure = app
+        .try_state::<crate::types::common::StartupStatus>()
+        .and_then(|status| status.failure.as_ref().map(|f| f.title.clone()));
+    blocked(
+        command,
+        app.try_state::<SqlitePool>().is_some(),
+        failure.as_deref(),
+    )
+}
+
+/// `command_guard` 的判断（纯函数，便于测试）
+fn blocked(
+    command: &str,
+    database_open: bool,
+    failure_title: Option<&str>,
+) -> Option<crate::error::AppError> {
+    if database_open || AVAILABLE_WITHOUT_DATABASE.contains(&command) {
+        return None;
+    }
+    Some(crate::error::AppError::DatabaseError(match failure_title {
+        Some(title) => format!("数据没有打开（{}），这个操作暂时不能用", title),
+        None => "数据还没有打开，请稍后再试".to_string(),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn commands_are_blocked_only_while_database_is_closed() {
+        assert!(super::blocked("get_study_plans", true, None).is_none());
+        let err =
+            super::blocked("get_study_plans", false, Some("数据库升级脚本和记录不一致")).unwrap();
+        assert_eq!(err.code(), "DATABASE_ERROR");
+        assert!(err.to_string().contains("数据库升级脚本和记录不一致"));
+        assert!(super::blocked("get_study_plans", false, None)
+            .unwrap()
+            .to_string()
+            .contains("还没有打开"));
+        for command in super::AVAILABLE_WITHOUT_DATABASE {
+            assert!(
+                super::blocked(command, false, Some("x")).is_none(),
+                "{command}"
+            );
+        }
+    }
+
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
 
