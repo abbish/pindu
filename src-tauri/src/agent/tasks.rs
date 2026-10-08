@@ -1069,6 +1069,8 @@ pub struct PassageSpec<'a> {
     pub required: &'a [PassageTargetWord],
     pub pool: &'a [PassageTargetWord],
     pub ai_pick: usize,
+    /// 挑词偏好（难度、常用程度；空 = 不限）
+    pub pick_prefs: &'a str,
     pub min_words: usize,
     pub max_words: usize,
 }
@@ -1096,6 +1098,7 @@ pub fn passage_message(spec: &PassageSpec) -> String {
             ("required", &join(spec.required)),
             ("pool", &pool),
             ("ai_pick", &spec.ai_pick.to_string()),
+            ("pick_prefs", spec.pick_prefs),
             ("min_words", &spec.min_words.to_string()),
             ("max_words", &spec.max_words.to_string()),
         ],
@@ -1118,6 +1121,8 @@ pub struct PlanSpec<'a> {
     pub required: &'a [PassageTargetWord],
     pub pool: &'a [PassageTargetWord],
     pub ai_pick: usize,
+    /// 挑词偏好（难度、常用程度；空 = 不限）
+    pub pick_prefs: &'a str,
     /// 用户偏好的篇幅：short / standard / long
     pub length: &'a str,
     /// 各篇幅的英文词数参考（short / standard / long）
@@ -1148,6 +1153,7 @@ pub fn passage_plan_message(spec: &PlanSpec) -> String {
             ("required", &join(spec.required)),
             ("pool", &pool),
             ("ai_pick", &spec.ai_pick.to_string()),
+            ("pick_prefs", spec.pick_prefs),
             ("length", spec.length),
             ("short", &range(spec.ranges[0])),
             ("standard", &range(spec.ranges[1])),
@@ -2018,6 +2024,7 @@ mod tests {
                 required: &required,
                 pool: &pool,
                 ai_pick: 3,
+                pick_prefs: "挑词偏好：优先日常生活中常用的高频词。",
                 min_words: 60,
                 max_words: 100,
             },

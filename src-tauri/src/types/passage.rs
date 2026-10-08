@@ -246,6 +246,8 @@ pub struct PassageWordCandidate {
     pub usage: i64,
     /// 计划里的学习情况标签：wrong / weak / recent / upcoming / mastered（单词本来源为空）
     pub tags: Vec<String>,
+    /// 挑词用的学习情况：new / learning / mastered 之一，答错过再加 wrong（单词本来源按所有计划的练习记录）
+    pub statuses: Vec<String>,
 }
 
 /// 一种取词策略能取到的词数
@@ -276,6 +278,15 @@ pub struct GeneratePassageRequest {
     /// 再让 AI 从来源里挑几个适合场景的词（0 = 不挑）
     #[serde(default)]
     pub ai_pick: i64,
+    /// AI 挑词只从这些学习情况的词里挑（new / learning / wrong / mastered，取并集；空 = 不限）
+    #[serde(default)]
+    pub pick_statuses: Vec<String>,
+    /// AI 挑词的单词难度：easy / medium / hard（空 = 不限）
+    #[serde(default)]
+    pub pick_difficulty: Option<String>,
+    /// AI 挑词的常用程度：common / advanced（空 = 不限）
+    #[serde(default)]
+    pub pick_frequency: Option<String>,
     /// 自定主题 / 场景（空 = 用所选单词本的场景）
     pub topic: Option<String>,
     /// short / standard / long（空 = standard）

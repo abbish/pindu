@@ -13,8 +13,10 @@ use std::collections::HashSet;
 pub const OPEN_MAX_SCORE: i64 = 4;
 /// 一篇短文至少要有几个目标词（必用词 + AI 挑选）；不设上限：内容质量优先，词多就把故事写丰富（D26）
 pub const MIN_TARGET_WORDS: usize = 1;
-/// AI 从来源里最多再挑几个词
-pub const MAX_AI_PICK: i64 = 12;
+/// AI 从来源里最多再挑几个词（超过一篇装得下的数量时，内容规划会拆成几篇）
+pub const MAX_AI_PICK: i64 = 20;
+/// 导入材料时最多标出几个重点词
+pub const MAX_KEY_WORDS: usize = 12;
 /// 交给 AI 挑选的候选词最多多少个
 pub const MAX_POOL: usize = 120;
 
@@ -196,6 +198,53 @@ pub fn in_plan_scopes(scopes: &[String], tags: &[String]) -> bool {
         || scopes
             .iter()
             .any(|s| s == "learned" || tags.iter().any(|t| t == s))
+}
+
+/// AI 挑词的学习情况筛选（可多选，取并集；空 = 不限）：
+/// new 没学过 / learning 学过未掌握 / wrong 常错 / mastered 已掌握
+pub const PICK_STATUSES: [&str; 4] = ["new", "learning", "wrong", "mastered"];
+/// AI 挑词的单词难度（相对学习者水平；空 = 不限）
+pub const PICK_DIFFICULTIES: [&str; 3] = ["easy", "medium", "hard"];
+/// AI 挑词的常用程度（空 = 不限）：common 日常常用 / advanced 也要书面、少见的
+pub const PICK_FREQUENCIES: [&str; 2] = ["common", "advanced"];
+
+/// 一个词的学习情况：`level` 是记忆等级（单词本里的词取它在各计划里最高的，没进过计划为 0），`wrong` 是答错次数
+pub fn learning_statuses(level: i64, wrong: i64) -> Vec<String> {
+    let mut statuses = vec![match level {
+        l if l >= 4 => "mastered",
+        l if l >= 1 => "learning",
+        _ => "new",
+    }];
+    if wrong > 0 {
+        statuses.push("wrong");
+    }
+    statuses.into_iter().map(String::from).collect()
+}
+
+/// 词的学习情况是否落在筛选内（并集；空 = 不限）
+pub fn in_pick_statuses(filter: &[String], statuses: &[String]) -> bool {
+    filter.is_empty() || filter.iter().any(|f| statuses.contains(f))
+}
+
+/// 挑词偏好（难度、常用程度）→ 给模型的一行要求；都不限时为空
+pub fn pick_preferences(difficulty: Option<&str>, frequency: Option<&str>) -> String {
+    let mut parts = Vec::new();
+    match difficulty {
+        Some("easy") => parts.push("挑对这位学习者来说偏简单的词"),
+        Some("medium") => parts.push("挑难度适中、贴合这位学习者水平的词"),
+        Some("hard") => parts.push("挑偏难、略高于这位学习者水平的词"),
+        _ => {}
+    }
+    match frequency {
+        Some("common") => parts.push("优先日常生活中常用的高频词"),
+        Some("advanced") => parts.push("也要挑一些书面、较少见的词"),
+        _ => {}
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("挑词偏好：{}。", parts.join("；"))
+    }
 }
 
 /// 手动输入的单词：单个英文单词（字母，可含连字符 / 撇号，2–30 字）
@@ -714,7 +763,7 @@ pub struct Translation {
     pub zh: Vec<String>,
     pub title: String,
     pub level: String,
-    /// （原形, 中文意思）：在原文里出现过、去重，最多 MAX_AI_PICK 个
+    /// （原形, 中文意思）：在原文里出现过、去重，最多 MAX_KEY_WORDS 个
     pub key_words: Vec<(String, String)>,
 }
 
@@ -763,7 +812,7 @@ pub fn translation_from_submission(
                     .all(|c| c.is_ascii_alphabetic() || c == '\'' || c == '-')
                 && text_uses_any_form(&full, &word)
                 && !words.iter().any(|(w, _)| w.eq_ignore_ascii_case(&word));
-            if valid && words.len() < MAX_AI_PICK as usize {
+            if valid && words.len() < MAX_KEY_WORDS {
                 words.push((word, meaning));
             }
         }
@@ -920,6 +969,23 @@ mod tests {
             ..q
         };
         assert_eq!(grade_objective(&open, "anything"), None);
+    }
+
+    #[test]
+    fn pick_statuses_and_preferences() {
+        let st = |level, wrong| learning_statuses(level, wrong);
+        assert_eq!(st(0, 0), vec!["new"]);
+        assert_eq!(st(2, 1), vec!["learning", "wrong"]);
+        assert_eq!(st(5, 0), vec!["mastered"]);
+        let filter = |f: &[&str]| f.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(in_pick_statuses(&[], &st(0, 0)));
+        assert!(in_pick_statuses(&filter(&["wrong", "new"]), &st(3, 2)));
+        assert!(!in_pick_statuses(&filter(&["learning"]), &st(4, 0)));
+        assert_eq!(pick_preferences(None, None), "");
+        assert_eq!(
+            pick_preferences(Some("easy"), Some("common")),
+            "挑词偏好：挑对这位学习者来说偏简单的词；优先日常生活中常用的高频词。"
+        );
     }
 
     #[test]

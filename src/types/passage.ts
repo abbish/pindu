@@ -222,7 +222,16 @@ export interface PassageWordCandidate {
   usage: number;
   /** 计划里的学习情况标签（单词本来源为空） */
   tags: Exclude<PlanWordScope, 'learned'>[];
+  /** 挑词用的学习情况：new / learning / mastered 之一，答错过再加 wrong（单词本来源按所有计划的练习记录） */
+  statuses: PickStatus[];
 }
+
+/** AI 挑词的学习情况：没学过 / 学过未掌握 / 常错 / 已掌握 */
+export type PickStatus = 'new' | 'learning' | 'wrong' | 'mastered';
+/** AI 挑词的单词难度（相对学习者水平） */
+export type PickDifficulty = 'easy' | 'medium' | 'hard';
+/** AI 挑词的常用程度：日常常用 / 也要书面、少见的 */
+export type PickFrequency = 'common' | 'advanced';
 
 /** 生成短文 */
 export interface GeneratePassageRequest {
@@ -236,6 +245,12 @@ export interface GeneratePassageRequest {
   extraWords: string[];
   /** 再让 AI 从来源里挑几个适合场景的词 */
   aiPick: number;
+  /** AI 只从这些学习情况的词里挑（空 = 不限） */
+  pickStatuses?: PickStatus[];
+  /** AI 挑词的单词难度（空 = 不限） */
+  pickDifficulty?: PickDifficulty | null;
+  /** AI 挑词的常用程度（空 = 不限） */
+  pickFrequency?: PickFrequency | null;
   /** 场景描述（空 = 用所选单词本的场景） */
   topic?: string | null;
   length?: PassageLength;

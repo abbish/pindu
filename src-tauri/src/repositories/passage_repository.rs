@@ -70,8 +70,10 @@ pub struct CandidateRow {
     /// 计划里的记忆等级（单词本来源为 None）
     pub srs_box: Option<i64>,
     pub srs_due: Option<String>,
-    /// 计划里答错的次数（首次作答与当轮小测）
+    /// 答错的次数（首次作答与当轮小测；计划来源只算这个计划，单词本来源算所有计划）
     pub wrong: i64,
+    /// 学习情况用的记忆等级：计划来源为这个计划里的，单词本来源为各计划里最高的（没进过计划为 0）
+    pub level: i64,
     /// 计划里第一次学这个词的时刻
     pub first_learned: Option<String>,
 }
@@ -541,11 +543,17 @@ impl PassageRepository {
         Ok(())
     }
 
-    /// 单词本里的词（最近加入在前）
+    /// 单词本里的词（最近加入在前），附它在各计划里最高的记忆等级与答错次数（判断学习情况）
     pub async fn book_candidates(&self, book_id: Id) -> AppResult<Vec<CandidateRow>> {
         let rows = sqlx::query(
-            "SELECT w.id, w.word, w.meaning, wb.title
+            "SELECT w.id, w.word, w.meaning, wb.title,
+                    COALESCE(lv.level, 0) AS level, COALESCE(er.wrong, 0) AS wrong
              FROM words w JOIN word_books wb ON wb.id = w.word_book_id
+             LEFT JOIN (SELECT word_id, MAX(srs_box) AS level FROM study_plan_words GROUP BY word_id) lv
+               ON lv.word_id = w.id
+             LEFT JOIN (SELECT word_id, COUNT(*) AS wrong FROM word_practice_records
+                        WHERE kind IN ('learn', 'review') AND is_correct = 0 GROUP BY word_id) er
+               ON er.word_id = w.id
              WHERE w.word_book_id = ? AND wb.deleted_at IS NULL
              ORDER BY w.created_at DESC, w.id DESC",
         )
@@ -562,7 +570,8 @@ impl PassageRepository {
                 book_id: Some(book_id),
                 srs_box: None,
                 srs_due: None,
-                wrong: 0,
+                wrong: r.get("wrong"),
+                level: r.get("level"),
                 first_learned: None,
             })
             .collect())
@@ -599,6 +608,7 @@ impl PassageRepository {
                 srs_box: Some(r.get("srs_box")),
                 srs_due: r.get("srs_due"),
                 wrong: r.get("wrong"),
+                level: r.get("srs_box"),
                 first_learned: r.get("first_learned"),
             })
             .collect())

@@ -280,6 +280,7 @@ impl PassageService {
             .map(|r| PassageWordCandidate {
                 usage: usage.get(&r.word_id).copied().unwrap_or(0),
                 tags: tags_of(&r, today),
+                statuses: passage_rules::learning_statuses(r.level, r.wrong),
                 word_id: r.word_id,
                 word: r.word,
                 meaning: r.meaning,
@@ -340,7 +341,10 @@ impl PassageService {
             self.candidates(&request.word_sources())
                 .await?
                 .into_iter()
-                .filter(|c| !seen.contains(&c.word.to_lowercase()))
+                .filter(|c| {
+                    !seen.contains(&c.word.to_lowercase())
+                        && passage_rules::in_pick_statuses(&request.pick_statuses, &c.statuses)
+                })
                 .take(passage_rules::MAX_POOL)
                 .map(|c| PassageTargetWord {
                     word_id: Some(c.word_id),
@@ -387,7 +391,7 @@ impl PassageService {
 
     // ==================== 写短文 ====================
 
-    /// 校验请求里的通用字段（篇幅、场景、AI 挑词数）
+    /// 校验请求里的通用字段（篇幅、场景、AI 挑词数与挑词条件）
     fn validate_request(request: &GeneratePassageRequest) -> AppResult<()> {
         let length = request.length.as_deref().unwrap_or("standard");
         if !matches!(length, "short" | "standard" | "long") {
@@ -416,7 +420,38 @@ impl PassageService {
                 passage_rules::MAX_AI_PICK
             )));
         }
+        if let Some(bad) = request
+            .pick_statuses
+            .iter()
+            .find(|s| !passage_rules::PICK_STATUSES.contains(&s.as_str()))
+        {
+            return Err(AppError::ValidationError(format!(
+                "未知的学习情况：{}",
+                bad
+            )));
+        }
+        if let Some(d) = request.pick_difficulty.as_deref() {
+            if !passage_rules::PICK_DIFFICULTIES.contains(&d) {
+                return Err(AppError::ValidationError(format!("未知的单词难度：{}", d)));
+            }
+        }
+        if let Some(f) = request.pick_frequency.as_deref() {
+            if !passage_rules::PICK_FREQUENCIES.contains(&f) {
+                return Err(AppError::ValidationError(format!("未知的常用程度：{}", f)));
+            }
+        }
         Ok(())
+    }
+
+    /// 给模型的挑词偏好（不让 AI 挑词时为空）
+    fn pick_preferences(request: &GeneratePassageRequest, ai_pick: usize) -> String {
+        if ai_pick == 0 {
+            return String::new();
+        }
+        passage_rules::pick_preferences(
+            request.pick_difficulty.as_deref(),
+            request.pick_frequency.as_deref(),
+        )
     }
 
     /// 选好的词：必用词、AI 可挑的候选池（及实际可挑数）、场景用到的单词本
@@ -432,7 +467,7 @@ impl PassageService {
         let (required, pool, word_books) = self.resolve_words(request).await?;
         if request.ai_pick > 0 && pool.is_empty() {
             return Err(AppError::ValidationError(
-                "所选来源里没有可供 AI 挑选的词：请先选择单词本或学习计划，或不让 AI 挑词".into(),
+                "所选来源里没有符合条件、可供 AI 挑选的词：换一换学习情况，或不让 AI 挑词".into(),
             ));
         }
         let ai_pick = (request.ai_pick as usize).min(pool.len());
@@ -517,6 +552,7 @@ impl PassageService {
         let profile = PromptProfileService::load(&self.pool).await?;
         let level = profile.effective_level().to_string();
         let model = self.model().await?;
+        let pick_prefs = Self::pick_preferences(request, ai_pick);
         tasks::plan_passages(
             paths,
             &model,
@@ -526,6 +562,7 @@ impl PassageService {
                 required: &required,
                 pool: &pool,
                 ai_pick,
+                pick_prefs: &pick_prefs,
                 length: request.length.as_deref().unwrap_or("standard"),
                 ranges: [
                     passage_rules::length_range(&level, "short"),
@@ -592,6 +629,7 @@ impl PassageService {
         let level = profile.effective_level().to_string();
         let (min_words, max_words) = passage_rules::length_range(&level, &length);
         let model = self.model().await?;
+        let pick_prefs = Self::pick_preferences(request, ai_pick);
         let generated = tasks::generate_passage(
             paths,
             &model,
@@ -603,6 +641,7 @@ impl PassageService {
                 required: &required,
                 pool: &pool,
                 ai_pick,
+                pick_prefs: &pick_prefs,
                 min_words,
                 max_words,
             },
@@ -1377,6 +1416,95 @@ pub(crate) mod tests {
         assert_eq!(snapshot[0].detail.as_deref(), Some("wrong,weak"));
     }
 
+    /// 单词本来源的学习情况按所有计划里的记忆等级与答错记录判断；AI 挑词的候选池按学习情况筛选
+    #[tokio::test]
+    async fn book_words_carry_learning_statuses_and_filter_the_pool() {
+        use crate::test_support::{seed_schedule, seed_session, seed_step};
+        let pool = memory_pool().await;
+        let fx = seed_schedule(&pool, 4).await;
+        // word1：等级 1、答错过；word2：等级 4；word3：等级 2；word4：没进计划
+        for (i, srs_box) in [1, 4, 2].iter().enumerate() {
+            sqlx::query("INSERT INTO study_plan_words (plan_id, word_id, srs_box, srs_due) VALUES (?, ?, ?, '2999-01-01')")
+                .bind(fx.plan_id)
+                .bind(fx.word_ids[i])
+                .bind(srs_box)
+                .execute(pool.as_ref())
+                .await
+                .unwrap();
+        }
+        seed_session(&pool, &fx, "s1", true).await;
+        let now = crate::time::now_utc();
+        seed_step(
+            &pool,
+            "s1",
+            fx.word_ids[0],
+            fx.schedule_word_ids[0],
+            1,
+            false,
+            &now,
+        )
+        .await;
+        let book_id: Id = sqlx::query_scalar("SELECT word_book_id FROM words WHERE id = ?")
+            .bind(fx.word_ids[0])
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        let service = PassageService::new(pool.clone(), test_logger());
+        let sources = PassageWordSources {
+            book_ids: vec![book_id],
+            plan_ids: vec![],
+            plan_scopes: vec![],
+        };
+        let statuses: HashMap<Id, Vec<String>> = service
+            .candidates(&sources)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|c| (c.word_id, c.statuses))
+            .collect();
+        assert_eq!(statuses[&fx.word_ids[0]], vec!["learning", "wrong"]);
+        assert_eq!(statuses[&fx.word_ids[1]], vec!["mastered"]);
+        assert_eq!(statuses[&fx.word_ids[2]], vec!["learning"]);
+        assert_eq!(statuses[&fx.word_ids[3]], vec!["new"]);
+
+        let request = |filter: &[&str]| GeneratePassageRequest {
+            book_ids: vec![book_id],
+            plan_ids: vec![],
+            plan_scopes: vec![],
+            required_word_ids: vec![fx.word_ids[0]],
+            extra_words: vec![],
+            ai_pick: 5,
+            pick_statuses: filter.iter().map(|s| s.to_string()).collect(),
+            pick_difficulty: Some("easy".into()),
+            pick_frequency: None,
+            topic: None,
+            length: None,
+            plan_item: None,
+        };
+        let pool_ids = |words: Vec<PassageTargetWord>| {
+            let mut ids: Vec<Id> = words.into_iter().filter_map(|w| w.word_id).collect();
+            ids.sort();
+            ids
+        };
+        // 必用词不进候选池；只要没学过的和常错的（word1 是必用词）
+        let (_, picked, _) = service
+            .resolve_words(&request(&["new", "wrong"]))
+            .await
+            .unwrap();
+        assert_eq!(pool_ids(picked), vec![fx.word_ids[3]]);
+        let (_, picked, _) = service.resolve_words(&request(&[])).await.unwrap();
+        assert_eq!(pool_ids(picked).len(), 3);
+        // 筛完没有可挑的词时报错；未知条件被拒绝
+        let mut empty = request(&["mastered"]);
+        empty.required_word_ids = vec![fx.word_ids[1]];
+        assert!(service.chosen_words(&empty).await.is_err());
+        let mut bad = request(&["often"]);
+        assert!(PassageService::validate_request(&bad).is_err());
+        bad.pick_statuses.clear();
+        bad.pick_frequency = Some("rare".into());
+        assert!(PassageService::validate_request(&bad).is_err());
+    }
+
     #[tokio::test]
     async fn required_words_and_pool_exclude_each_other() {
         let pool = memory_pool().await;
@@ -1389,6 +1517,9 @@ pub(crate) mod tests {
             required_word_ids: ids,
             extra_words: extra.into_iter().map(String::from).collect(),
             ai_pick,
+            pick_statuses: vec![],
+            pick_difficulty: None,
+            pick_frequency: None,
             topic: None,
             length: None,
             plan_item: None,

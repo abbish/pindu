@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, BookOpen, ListChecks, Loader2, Plus, Search, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronUp, ListChecks, Loader2, Plus, Search, Sparkles, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,7 +21,7 @@ import { studyService } from '@/services/studyService';
 import { wordBookService } from '@/services/wordbookService';
 import { getStatusDisplay } from '@/types/study';
 import { PLAN_SCOPE_LABEL, PLAN_SCOPES } from '@/utils/passage';
-import type { GeneratePassageRequest, PassageWordCandidate, PlanScopeCount, PlanWordScope } from '@/types/passage';
+import type { GeneratePassageRequest, PassageWordCandidate, PickDifficulty, PickFrequency, PickStatus, PlanScopeCount, PlanWordScope } from '@/types/passage';
 import type { StudyPlanWithProgress, UnifiedStudyPlanStatus, WordBook } from '@/types';
 import type { NavigateFn, RouteParams } from '../navigation';
 
@@ -34,7 +34,54 @@ export interface CreatePassagePageProps {
 const STEPS = ['词汇来源', '选择单词', '场景与篇幅', '内容规划'];
 const MIN_WORDS = 1;
 const SCENE_MAX = 200;
-const AI_PICK_OPTIONS = [0, 3, 5, 8, 10, 12];
+const AI_PICK_OPTIONS = [5, 8, 10, 15, 20];
+/** 来源里的词超过这个数时默认让 AI 挑 */
+const AI_MODE_THRESHOLD = 30;
+const PICK_STATUSES: { value: PickStatus; label: string }[] = [
+  { value: 'new', label: '没学过' },
+  { value: 'learning', label: '学过未掌握' },
+  { value: 'wrong', label: '常错' },
+  { value: 'mastered', label: '已掌握' },
+];
+const DIFFICULTIES: { value: PickDifficulty | 'any'; label: string }[] = [
+  { value: 'easy', label: '偏简单' },
+  { value: 'medium', label: '适中' },
+  { value: 'hard', label: '偏难' },
+  { value: 'any', label: '不限' },
+];
+const FREQUENCIES: { value: PickFrequency | 'any'; label: string }[] = [
+  { value: 'common', label: '日常常用' },
+  { value: 'advanced', label: '也要书面、少见的' },
+  { value: 'any', label: '不限' },
+];
+
+type PickMode = 'ai' | 'manual';
+/** AI 挑词的条件（记住上次的设置） */
+interface PickPrefs {
+  count: number;
+  difficulty: PickDifficulty | 'any';
+  frequency: PickFrequency | 'any';
+  statuses: PickStatus[];
+}
+const PICK_PREFS_KEY = 'create-passage-pick';
+const DEFAULT_PREFS: PickPrefs = { count: 10, difficulty: 'medium', frequency: 'common', statuses: [] };
+
+function loadPrefs(): PickPrefs {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PICK_PREFS_KEY) ?? 'null') as Partial<PickPrefs> | null;
+    if (!saved) return DEFAULT_PREFS;
+    return {
+      count: AI_PICK_OPTIONS.includes(saved.count ?? 0) ? saved.count! : DEFAULT_PREFS.count,
+      difficulty: DIFFICULTIES.some((d) => d.value === saved.difficulty) ? saved.difficulty! : DEFAULT_PREFS.difficulty,
+      frequency: FREQUENCIES.some((f) => f.value === saved.frequency) ? saved.frequency! : DEFAULT_PREFS.frequency,
+      statuses: (saved.statuses ?? []).filter((st) => PICK_STATUSES.some((p) => p.value === st)),
+    };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+
+const matchesStatuses = (filter: PickStatus[], c: PassageWordCandidate) => filter.length === 0 || filter.some((f) => c.statuses.includes(f));
 /** 候选词表格里的学习情况标签 */
 const TAG_LABEL: Record<Exclude<PlanWordScope, 'learned'>, string> = { wrong: '错词', weak: '没记牢', recent: '新学', upcoming: '快复习', mastered: '已掌握' };
 const LENGTHS = [
@@ -92,9 +139,32 @@ const SourcePicker: React.FC<{
   );
 };
 
+/** AI 挑词条件的一行：左侧标题（可带说明），右侧控件 */
+const PickRow: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({ label, hint, children }) => (
+  <div className="flex items-center gap-4">
+    <div className="w-32 shrink-0">
+      <Label>{label}</Label>
+      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+    </div>
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">{children}</div>
+  </div>
+);
+
+/** 学习情况多选（都不选 = 不限），每项带词数 */
+const StatusFilter: React.FC<{ value: PickStatus[]; onChange: (value: PickStatus[]) => void; counts: Record<PickStatus, number>; label: string }> = ({ value, onChange, counts, label }) => (
+  <ToggleGroup type="multiple" variant="outline" size="sm" value={value} onValueChange={(v) => onChange(v as PickStatus[])} aria-label={label}>
+    {PICK_STATUSES.map((st) => (
+      <ToggleGroupItem key={st.value} value={st.value} className="gap-1.5 px-3 data-[state=on]:border-primary/60 data-[state=on]:bg-accent data-[state=on]:text-accent-foreground">
+        {st.label}
+        <span className="text-xs text-muted-foreground tabular-nums">{counts[st.value]}</span>
+      </ToggleGroupItem>
+    ))}
+  </ToggleGroup>
+);
+
 /**
- * 新建短文（多步表单页）：① 词汇来源（单词本、学习计划两类并列，可多选组合）② 选择单词（勾选必须出现的词、可手动输入，
- * 另可让 AI 从来源里按场景再挑几个）③ 场景与篇幅 → AI 写短文（20–60 秒）→ 打开短文详情。
+ * 新建短文（多步表单页）：① 词汇来源（单词本、学习计划两类并列，可多选组合）② 选择单词：「AI 帮我挑」按数量、难度、
+ * 常用程度、学习情况让 AI 从来源里按场景挑（可另加一定要用的词），或「我自己选」勾选必须出现的词；都可手动输入单词 ③ 场景与篇幅 → AI 写短文（20–60 秒）→ 打开短文详情。
  */
 export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, onNavigate }) => {
   const [step, setStep] = useState(initial?.wordIds?.length ? 1 : 0);
@@ -110,7 +180,14 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   const [onlySelected, setOnlySelected] = useState(false);
   const [extraWords, setExtraWords] = useState<string[]>([]);
   const [extraDraft, setExtraDraft] = useState('');
-  const [aiPick, setAiPick] = useState(5);
+  const [prefs, setPrefs] = useState<PickPrefs>(loadPrefs);
+  /** 选词方式；用户没选过时按来源里的词数决定 */
+  const [pickMode, setPickMode] = useState<PickMode>(initial?.wordIds?.length ? 'manual' : 'ai');
+  const [modeChosen, setModeChosen] = useState(Boolean(initial?.wordIds?.length));
+  /** AI 模式下是否展开候选词列表 */
+  const [showList, setShowList] = useState(false);
+  /** 列表的学习情况筛选（只影响显示） */
+  const [tableStatuses, setTableStatuses] = useState<PickStatus[]>([]);
   const [scene, setScene] = useState('');
   const [length, setLength] = useState<'short' | 'standard' | 'long'>('standard');
   /** 正在让 AI 规划 */
@@ -144,12 +221,14 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
         return;
       }
       setCandidates(r.data);
+      if (!modeChosen) setPickMode(r.data.length > AI_MODE_THRESHOLD ? 'ai' : 'manual');
       const ids = new Set(r.data.map((c) => c.wordId));
       setRequired((prev) => new Set([...prev].filter((id) => ids.has(id))));
     });
     return () => {
       cancelled = true;
     };
+    // modeChosen 只在加载完成时读一次，切换方式不重新加载
   }, [bookIds, planIds, scopes, hasSources]);
 
   // 所选计划里每种取词策略能取到几个词
@@ -173,13 +252,54 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
   const visibleWords = useMemo(() => {
     const q = wordQuery.trim().toLowerCase();
-    return (candidates ?? []).filter((c) => (!onlySelected || required.has(c.wordId)) && (!q || c.word.toLowerCase().includes(q) || c.meaning.includes(q)));
-  }, [candidates, wordQuery, onlySelected, required]);
+    return (candidates ?? []).filter(
+      (c) => (!onlySelected || required.has(c.wordId)) && matchesStatuses(tableStatuses, c) && (!q || c.word.toLowerCase().includes(q) || c.meaning.includes(q))
+    );
+  }, [candidates, wordQuery, onlySelected, required, tableStatuses]);
+  const allVisibleSelected = visibleWords.length > 0 && visibleWords.every((c) => required.has(c.wordId));
+  const someVisibleSelected = visibleWords.some((c) => required.has(c.wordId));
+  /** 表头复选框：全选 / 取消筛选出的词 */
+  const toggleVisible = () =>
+    setRequired((prev) => {
+      const next = new Set(prev);
+      for (const c of visibleWords) {
+        if (allVisibleSelected) next.delete(c.wordId);
+        else next.add(c.wordId);
+      }
+      return next;
+    });
 
-  const poolSize = (candidates?.length ?? 0) - required.size;
-  const effectivePick = hasSources ? Math.min(aiPick, Math.max(poolSize, 0)) : 0;
+  const statusCounts = useMemo(() => {
+    const counts: Record<PickStatus, number> = { new: 0, learning: 0, wrong: 0, mastered: 0 };
+    for (const c of candidates ?? []) for (const st of c.statuses) counts[st] += 1;
+    return counts;
+  }, [candidates]);
+  const updatePrefs = (patch: Partial<PickPrefs>) =>
+    setPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      try {
+        localStorage.setItem(PICK_PREFS_KEY, JSON.stringify(next));
+      } catch {
+        // 存储不可用时只是下次不记得条件
+      }
+      return next;
+    });
+  const chooseMode = (mode: PickMode) => {
+    setPickMode(mode);
+    setModeChosen(true);
+  };
+
+  const aiMode = hasSources && pickMode === 'ai';
+  /** AI 可挑的词：符合学习情况、不含一定要用的词 */
+  const poolSize = aiMode ? (candidates ?? []).filter((c) => !required.has(c.wordId) && matchesStatuses(prefs.statuses, c)).length : 0;
+  const effectivePick = aiMode ? Math.min(prefs.count, poolSize) : 0;
+  const pickSummary = [
+    `难度${DIFFICULTIES.find((d) => d.value === prefs.difficulty)?.label}`,
+    prefs.frequency === 'any' ? '常用程度不限' : FREQUENCIES.find((f) => f.value === prefs.frequency)?.label,
+    prefs.statuses.length > 0 ? PICK_STATUSES.filter((p) => prefs.statuses.includes(p.value)).map((p) => p.label).join('、') : '学习情况不限',
+  ].join(' · ');
   const total = required.size + extraWords.length + effectivePick;
-  const totalError = total < MIN_WORDS ? '至少要有 1 个词：勾选必用词、输入单词，或让 AI 挑词' : null;
+  const totalError = total < MIN_WORDS ? (aiMode ? '至少要有 1 个词：放宽学习情况，或加几个一定要用的词' : '至少要有 1 个词：勾选必用词，或输入单词') : null;
   const sceneHint = useMemo(() => {
     const descriptions = (books ?? []).filter((b) => bookIds.includes(b.id) && b.description?.trim()).map((b) => b.description.trim());
     return descriptions.length > 0 ? `留空则按单词本场景：${descriptions.join('；')}` : '例如：在机场遇到航班延误；周末和朋友去野餐';
@@ -214,6 +334,9 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     requiredWordIds: [...required],
     extraWords,
     aiPick: effectivePick,
+    pickStatuses: effectivePick > 0 ? prefs.statuses : [],
+    pickDifficulty: effectivePick > 0 && prefs.difficulty !== 'any' ? prefs.difficulty : null,
+    pickFrequency: effectivePick > 0 && prefs.frequency !== 'any' ? prefs.frequency : null,
     topic: scene.trim() || null,
     length,
   });
@@ -329,14 +452,110 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
           {step === 1 && (
             <div className="flex flex-col gap-4">
+              {hasSources && (
+                <div className="flex items-center gap-3">
+                  <ToggleGroup type="single" value={pickMode} onValueChange={(v) => v && chooseMode(v as PickMode)} className="rounded-lg bg-muted p-0.5" aria-label="选词方式">
+                    <ToggleGroupItem value="ai" className={segmentItem}>
+                      <Sparkles />
+                      AI 帮我挑
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="manual" className={segmentItem}>
+                      <ListChecks />
+                      我自己选
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                  <p className="text-sm text-muted-foreground">
+                    {pickMode === 'ai' ? '设好条件，AI 按场景从所选来源里挑能自然写进故事的词。' : '从所选来源里勾选一定要写进短文的词。'}
+                  </p>
+                </div>
+              )}
+
+              {hasSources && pickMode === 'ai' && (
+                <Card className="gap-4 px-5 py-4">
+                  <PickRow label="挑多少个">
+                    <Select value={String(prefs.count)} onValueChange={(v) => updatePrefs({ count: Number(v) })}>
+                      <SelectTrigger className="w-28" aria-label="AI 挑选的词数">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AI_PICK_OPTIONS.map((n) => (
+                          <SelectItem key={n} value={String(n)}>
+                            {n} 个
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground">一篇写不下时，AI 会拆成几篇</span>
+                  </PickRow>
+                  <PickRow label="单词难度" hint="按「设置 → AI 助手」里的学习者水平判断">
+                    <ToggleGroup type="single" value={prefs.difficulty} onValueChange={(v) => v && updatePrefs({ difficulty: v as PickPrefs['difficulty'] })} className="rounded-lg bg-muted p-0.5" aria-label="单词难度">
+                      {DIFFICULTIES.map((d) => (
+                        <ToggleGroupItem key={d.value} value={d.value} className={segmentItem}>
+                          {d.label}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
+                  </PickRow>
+                  <PickRow label="常用程度">
+                    <ToggleGroup type="single" value={prefs.frequency} onValueChange={(v) => v && updatePrefs({ frequency: v as PickPrefs['frequency'] })} className="rounded-lg bg-muted p-0.5" aria-label="常用程度">
+                      {FREQUENCIES.map((f) => (
+                        <ToggleGroupItem key={f.value} value={f.value} className={segmentItem}>
+                          {f.label}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
+                  </PickRow>
+                  <PickRow label="学习情况" hint="可多选，不选即不限">
+                    <StatusFilter value={prefs.statuses} onChange={(statuses) => updatePrefs({ statuses })} counts={statusCounts} label="AI 挑词的学习情况" />
+                  </PickRow>
+                  <p className={cn('border-t pt-3 text-sm tabular-nums', candidates !== null && poolSize === 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                    {candidates === null
+                      ? '正在统计符合条件的词…'
+                      : poolSize === 0
+                        ? '没有符合条件的词，换一换学习情况'
+                        : `符合条件 ${poolSize} 个${required.size > 0 ? '（不含一定要用的词）' : ''} · AI 按场景从中挑 ${effectivePick} 个`}
+                  </p>
+                </Card>
+              )}
+
               <Card className="gap-3 px-5 py-4">
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
-                    <h2 className="font-semibold">必须出现的词</h2>
-                    <p className="text-sm text-muted-foreground">勾选的词一定会写进短文。</p>
+                    <h2 className="font-semibold">{pickMode === 'ai' && hasSources ? '一定要用的词（可选）' : '必须出现的词'}</h2>
+                    <p className="text-sm text-muted-foreground">{pickMode === 'ai' && hasSources ? 'AI 只补剩下的名额。' : '勾选的词一定会写进短文。'}</p>
                   </div>
-                  {hasSources && (
-                    <>
+                  {hasSources && pickMode === 'ai' && (
+                    <Button variant="outline" size="sm" onClick={() => setShowList((v) => !v)} aria-expanded={showList}>
+                      {showList ? <ChevronUp /> : <ChevronDown />}
+                      {showList ? '收起列表' : '从列表里选'}
+                    </Button>
+                  )}
+                </div>
+                {pickMode === 'ai' && hasSources && requiredWords.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(candidates ?? [])
+                      .filter((c) => required.has(c.wordId))
+                      .map((c) => (
+                        <Badge key={c.wordId} variant="secondary" className="gap-1 pr-1">
+                          {c.word}
+                          <Button variant="ghost" size="icon" className="size-4 rounded-full" aria-label={`移除 ${c.word}`} onClick={() => toggleWord(c.wordId)}>
+                            <X className="size-3" />
+                          </Button>
+                        </Badge>
+                      ))}
+                  </div>
+                )}
+                {!hasSources ? (
+                  <p className="rounded-md bg-muted/50 px-3 py-4 text-center text-sm text-muted-foreground">没有选择来源，在下面输入要用的单词</p>
+                ) : pickMode === 'ai' && !showList ? null : candidates === null ? (
+                  <Skeleton className="h-48 rounded-md" />
+                ) : candidates.length === 0 ? (
+                  <p className="rounded-md bg-muted/50 px-3 py-4 text-center text-sm text-muted-foreground">所选来源里没有符合条件的单词</p>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusFilter value={tableStatuses} onChange={setTableStatuses} counts={statusCounts} label="按学习情况筛选" />
+                      <div className="flex-1" />
                       <div className="relative w-56">
                         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
                         <Input value={wordQuery} onChange={(e) => setWordQuery(e.target.value)} placeholder="搜索单词或释义" aria-label="搜索单词" className="pl-8" />
@@ -345,52 +564,51 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                         <Checkbox checked={onlySelected} onCheckedChange={(v) => setOnlySelected(v === true)} />
                         只看已选
                       </Label>
-                    </>
-                  )}
-                </div>
-                {!hasSources ? (
-                  <p className="rounded-md bg-muted/50 px-3 py-4 text-center text-sm text-muted-foreground">没有选择来源，在下面输入要用的单词</p>
-                ) : candidates === null ? (
-                  <Skeleton className="h-48 rounded-md" />
-                ) : candidates.length === 0 ? (
-                  <p className="rounded-md bg-muted/50 px-3 py-4 text-center text-sm text-muted-foreground">所选来源里没有符合条件的单词</p>
-                ) : (
-                  <div className="max-h-80 overflow-y-auto rounded-md border">
-                    <Table>
-                      <TableHeader className="sticky top-0 bg-card">
-                        <TableRow>
-                          <TableHead className="w-10" />
-                          <TableHead>单词</TableHead>
-                          <TableHead>释义</TableHead>
-                          <TableHead>来源</TableHead>
-                          <TableHead className="text-right">短文里用过</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {visibleWords.map((c) => (
-                          <TableRow key={c.wordId} data-state={required.has(c.wordId) ? 'selected' : undefined} onClick={() => toggleWord(c.wordId)}>
-                            <TableCell>
-                              <Checkbox checked={required.has(c.wordId)} onCheckedChange={() => toggleWord(c.wordId)} onClick={(e) => e.stopPropagation()} aria-label={`必须出现：${c.word}`} />
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {c.word}
-                              {c.tags.map((t) => (
-                                <Badge key={t} variant={t === 'wrong' ? 'default' : 'secondary'} className={cn('ml-1.5 font-normal', t === 'wrong' && 'bg-warning-soft text-warning')}>
-                                  {TAG_LABEL[t]}
-                                </Badge>
-                              ))}
-                            </TableCell>
-                            <TableCell className="max-w-48 truncate text-muted-foreground">{c.meaning}</TableCell>
-                            <TableCell className="max-w-40 truncate text-muted-foreground">{c.source}</TableCell>
-                            <TableCell className="text-right text-muted-foreground tabular-nums">{c.usage > 0 ? `${c.usage} 次` : '—'}</TableCell>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto rounded-md border">
+                      <Table>
+                        <TableHeader className="sticky top-0 z-10 bg-card">
+                          <TableRow>
+                            <TableHead className="w-10">
+                              <Checkbox
+                                checked={allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false}
+                                onCheckedChange={toggleVisible}
+                                disabled={visibleWords.length === 0}
+                                aria-label={allVisibleSelected ? '取消选择筛选出的词' : '全选筛选出的词'}
+                              />
+                            </TableHead>
+                            <TableHead>单词</TableHead>
+                            <TableHead>释义</TableHead>
+                            <TableHead>来源</TableHead>
+                            <TableHead className="text-right">短文里用过</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    {visibleWords.length === 0 && <p className="px-3 py-6 text-center text-sm text-muted-foreground">没有匹配的单词</p>}
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {visibleWords.map((c) => (
+                            <TableRow key={c.wordId} data-state={required.has(c.wordId) ? 'selected' : undefined} onClick={() => toggleWord(c.wordId)}>
+                              <TableCell>
+                                <Checkbox checked={required.has(c.wordId)} onCheckedChange={() => toggleWord(c.wordId)} onClick={(e) => e.stopPropagation()} aria-label={`必须出现：${c.word}`} />
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {c.word}
+                                {c.tags.map((t) => (
+                                  <Badge key={t} variant={t === 'wrong' ? 'default' : 'secondary'} className={cn('ml-1.5 font-normal', t === 'wrong' && 'bg-warning-soft text-warning')}>
+                                    {TAG_LABEL[t]}
+                                  </Badge>
+                                ))}
+                              </TableCell>
+                              <TableCell className="max-w-48 truncate text-muted-foreground">{c.meaning}</TableCell>
+                              <TableCell className="max-w-40 truncate text-muted-foreground">{c.source}</TableCell>
+                              <TableCell className="text-right text-muted-foreground tabular-nums">{c.usage > 0 ? `${c.usage} 次` : '—'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {visibleWords.length === 0 && <p className="px-3 py-6 text-center text-sm text-muted-foreground">没有匹配的单词</p>}
+                    </div>
+                  </>
                 )}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Input
                     value={extraDraft}
                     onChange={(e) => setExtraDraft(e.target.value)}
@@ -414,32 +632,8 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                 </div>
               </Card>
 
-              <Card className="flex-row items-center gap-4 px-5 py-4">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
-                  <Sparkles className="size-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="font-semibold">让 AI 按场景再挑几个词</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {hasSources ? `AI 根据场景，从所选来源里（不含已勾选的 ${required.size} 个）挑能自然融进故事的词；合适的不够就少挑。` : '先在第一步选择单词本或学习计划，AI 才能从中挑词。'}
-                  </p>
-                </div>
-                <Select value={String(hasSources ? aiPick : 0)} onValueChange={(v) => setAiPick(Number(v))} disabled={!hasSources}>
-                  <SelectTrigger className="w-28" aria-label="AI 挑选的词数">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AI_PICK_OPTIONS.map((n) => (
-                      <SelectItem key={n} value={String(n)}>
-                        {n === 0 ? '不挑' : `${n} 个`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Card>
-
               <p className={cn('text-right text-sm tabular-nums', totalError ? 'text-destructive' : 'text-muted-foreground')}>
-                {totalError ?? `必用 ${required.size + extraWords.length} 个${effectivePick > 0 ? `，AI 最多再挑 ${effectivePick} 个` : ''}`}
+                {totalError ?? (effectivePick > 0 ? `一定要用 ${required.size + extraWords.length} 个，AI 再挑 ${effectivePick} 个` : `必用 ${required.size + extraWords.length} 个`)}
               </p>
             </div>
           )}
@@ -503,6 +697,12 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                   <span className="text-muted-foreground">AI 按场景再挑</span>
                   <span>{effectivePick > 0 ? `最多 ${effectivePick} 个` : '不挑'}</span>
                 </div>
+                {effectivePick > 0 && (
+                  <div className="flex justify-between gap-3">
+                    <span className="shrink-0 text-muted-foreground">挑词条件</span>
+                    <span className="text-right">{pickSummary}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">篇幅</span>
                   <span>{LENGTHS.find((l) => l.value === length)?.label}</span>
