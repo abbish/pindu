@@ -3,7 +3,7 @@
 // 用法：node scripts/build.mjs [target-triple ...]   （默认：rustc 的 host triple）
 //      node scripts/build.mjs universal-apple-darwin   （分别编译 arm64 / x64 后 lipo 合并）
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -48,7 +48,7 @@ for (const triple of triples.length ? triples : [hostTriple()]) {
   if (triple === 'universal-apple-darwin') {
     const parts = ['aarch64-apple-darwin', 'x86_64-apple-darwin'].map(compile);
     execFileSync('lipo', ['-create', '-output', outputPath(triple), ...parts], { stdio: 'inherit' });
-    for (const p of parts) rmSync(p);
+    // 保留两个单架构文件：tauri 打 universal 包时会分别按 aarch64 / x86_64 各编一次，每次都要找对应架构的 externalBin
   } else {
     compile(triple);
   }
