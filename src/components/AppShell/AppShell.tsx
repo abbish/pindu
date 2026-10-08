@@ -111,12 +111,18 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ch
           <SidebarHeader>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton size="lg" tooltip="拼读" onClick={() => onNavigate('home')}>
-                  <img src="/logo-maskable.png" alt="" className="size-8 shrink-0 rounded-lg" />
-                  <div className="grid flex-1 text-left leading-tight">
-                    <span className="truncate font-semibold">拼读</span>
-                    <span className="truncate text-xs text-muted-foreground">Pindu.app</span>
-                  </div>
+                <SidebarMenuButton size="lg" tooltip="拼读 Pindu.app" onClick={() => onNavigate('home')}>
+                  {/* 品牌标记：沿用图标的主色方块 + 「拼」字（完整图标带文字，缩小后与侧边栏不协调） */}
+                  <span
+                    aria-hidden
+                    className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-base leading-none font-bold text-sidebar-primary-foreground"
+                  >
+                    拼
+                  </span>
+                  <span className="flex min-w-0 flex-1 items-baseline gap-1.5 truncate">
+                    <span className="text-base font-semibold">拼读</span>
+                    <span className="text-sm text-muted-foreground">Pindu.app</span>
+                  </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
