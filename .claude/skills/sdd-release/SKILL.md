@@ -41,7 +41,12 @@ disable-model-invocation: true
 8. **发布后核对**：
    - `curl -sL https://github.com/abbish/pindu/releases/latest/download/latest.json` 能取到新版本。
    - 用上一版的已安装应用「检查更新」，能看到提示（条件不允许时在交付物里写明未验证）。
-9. **出问题时**：应用内更新不会降级。补救办法是尽快发一个版本号更高的修复版；在那之前把有问题的 Release 改回草稿，阻止还没更新的用户继续升级（见 `docs/RELEASING.md`「发错了怎么办」）。
+9. **发布后清理**（本机留下的同 identifier 旧包会被访达 / 启动台选中，用户打开的就不是刚发布的版本）：
+   - 删除本机打包产物 `release/` 和 `src-tauri/target/**/release/bundle/`（编译缓存保留），删除前用 `lsregister -u <app>` 从启动服务里注销。
+   - 推出挂载的 dmg，结束测试实例和本地 http 服务；`mdfind "kMDItemCFBundleIdentifier == 'com.redlark.*'"` 只应剩 `/Applications/拼读.app`。
+   - 不碰用户的数据目录、下载目录里的安装包和其他分支；更新端到端测试用的临时目录在 scratchpad 里，随会话清掉。
+   - 通知其他会话：版本已发布，下一个迁移序号、`UNRELEASED.md` 从空开始。
+10. **出问题时**：应用内更新不会降级。补救办法是尽快发一个版本号更高的修复版；在那之前把有问题的 Release 改回草稿，阻止还没更新的用户继续升级（见 `docs/RELEASING.md`「发错了怎么办」）。
 
 ## 规则
 
@@ -60,7 +65,7 @@ disable-model-invocation: true
 构建：mac ✓ win ✓ linux ✓ → Release 草稿 <url>
 草稿检查：附件 <n> 个 ✓；latest.json 平台 4 个、url/signature ✓
 发布：用户已发布 / 待用户发布
-发布后：latest.json 可取 ✓；旧版检查更新 ✓ / 未验证（原因）
+发布后：latest.json 可取 ✓；旧版检查更新 ✓ / 未验证（原因）；本机旧包已清理 ✓
 未验证项：<…>
 ```
 
