@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { BookOpen, CalendarDays, FileText, Home, ListChecks, Moon, Settings, Sun, SquareTerminal } from 'lucide-react';
+import { BookOpen, CalendarDays, FileText, Home, ListChecks, Moon, Settings, Sun } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/breadcrumb';
 import { PageTitleContext } from './pageTitle';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { LogViewer } from '@/components/LogViewer';
 import { useTheme } from '@/hooks/useTheme';
 import { PAGE_TITLE, TOP_LEVEL_OF, type NavigateFn, type PageKey, type TopLevelPage } from '@/navigation';
 
@@ -77,11 +76,10 @@ function readSidebarOpen(): boolean {
 /**
  * 桌面应用外壳：可折叠侧边栏（shadcn Sidebar，⌘/Ctrl+B）+ 顶栏 + 内容区。
  * 外壳铺满窗口，只有内容区滚动；侧栏折叠状态重启后保持。
- * 系统日志（原首页右下角入口）与主题切换放在侧栏底部。
+ * 主题切换与设置放在侧栏底部；系统日志在「设置 → 通用」里。
  */
 export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, children }) => {
   const [open, setOpen] = useState(readSidebarOpen);
-  const [showLogs, setShowLogs] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const active = parent?.section ?? TOP_LEVEL_OF[page];
 
@@ -151,12 +149,6 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ch
           <SidebarFooter>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton tooltip="系统日志" onClick={() => setShowLogs(true)}>
-                  <SquareTerminal />
-                  <span>系统日志</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
                 <SidebarMenuButton tooltip={theme === 'dark' ? '浅色模式' : '深色模式'} onClick={toggleTheme}>
                   {theme === 'dark' ? <Sun /> : <Moon />}
                   <span>{theme === 'dark' ? '浅色模式' : '深色模式'}</span>
@@ -214,7 +206,6 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ch
         </SidebarInset>
       </SidebarProvider>
 
-      <LogViewer isOpen={showLogs} onClose={() => setShowLogs(false)} />
     </TooltipProvider>
   );
 };
