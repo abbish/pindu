@@ -147,6 +147,16 @@ pub async fn start_video_import(
             },
             move |ctx| import.run(ctx),
         );
+        // 字幕缺中文：同时在 AI 队列里翻译整部字幕（与转码并行）；没配好 AI 时不影响导入，编辑器里可以再翻
+        if cues.iter().any(|c| c.zh.trim().is_empty()) {
+            if let Err(e) = spawn_translate(&app, video_id, &title, None).await {
+                logger.warn(
+                    "VIDEO",
+                    &format!("视频 {video_id} 没有开始翻译字幕"),
+                    Some(&e.to_string()),
+                );
+            }
+        }
         Ok(VideoImportStarted { video_id, job_id })
     }
     .await;
@@ -645,19 +655,18 @@ pub async fn set_video_subtitle_offset(
     super::finish(&logger, "set_video_subtitle_offset", result)
 }
 
-/// 翻译一段字幕（后台任务）：只翻译这段里还没有中文的，写回字幕
+/// 翻译字幕（后台任务）：只翻译还没有中文的，写回字幕；给了 start / end 时只翻译这一段
 #[tauri::command]
 pub async fn start_video_translate(
     app: AppHandle,
     video_id: i64,
-    start_ms: i64,
-    end_ms: i64,
+    start_ms: Option<i64>,
+    end_ms: Option<i64>,
 ) -> AppResult<String> {
-    let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
     logger.api_request(
         "start_video_translate",
-        Some(&format!("video_id: {video_id}, {start_ms}–{end_ms}ms")),
+        Some(&format!("video_id: {video_id}, {start_ms:?}–{end_ms:?}ms")),
     );
     let result = async {
         if running(&app, video_id, &["video_translate"]) {
@@ -665,46 +674,56 @@ pub async fn start_video_translate(
                 "正在翻译这个视频的字幕，等它完成".to_string(),
             ));
         }
-        let row = VideoRepository::get(pool.inner(), video_id)
+        let row = VideoRepository::get(app.state::<SqlitePool>().inner(), video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
-        let pool_arc = Arc::new(pool.inner().clone());
-        let logger_arc = Arc::new(logger.inner().clone());
-        let job = crate::services::video_translate::VideoTranslateJob {
-            model: crate::services::agent_settings::AgentSettingsService::new(
-                pool_arc.clone(),
-                logger_arc.clone(),
-            )
-            .model_for(
-                crate::services::agent_settings::AgentTaskKind::Passage,
-                None,
-            )
-            .await?,
-            profile: crate::services::prompt_profile::PromptProfileService::load(pool.inner())
-                .await?,
-            paths: super::agent_paths(&app)?,
-            pool: pool_arc,
-            logger: logger_arc,
-            video_id,
-            start_ms,
-            end_ms,
-        };
-        Ok(app.state::<Jobs>().spawn(
-            JobSpec {
-                kind: "video_translate",
-                title: format!("翻译字幕 · {}", row.title),
-                lane: Lane::Agent,
-                detached: true,
-                link: Some(JobLink::new(
-                    "video-editor",
-                    serde_json::json!({ "videoId": video_id }),
-                )),
-            },
-            move |ctx| job.run(ctx),
-        ))
+        spawn_translate(&app, video_id, &row.title, start_ms.zip(end_ms)).await
     }
     .await;
     super::finish(&logger, "start_video_translate", result)
+}
+
+/// 提交翻译字幕的后台任务（导入时整部、编辑器里整部或一段）
+async fn spawn_translate(
+    app: &AppHandle,
+    video_id: i64,
+    title: &str,
+    range: Option<(i64, i64)>,
+) -> AppResult<String> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    let pool_arc = Arc::new(pool.inner().clone());
+    let logger_arc = Arc::new(logger.inner().clone());
+    let job = crate::services::video_translate::VideoTranslateJob {
+        model: crate::services::agent_settings::AgentSettingsService::new(
+            pool_arc.clone(),
+            logger_arc.clone(),
+        )
+        .model_for(
+            crate::services::agent_settings::AgentTaskKind::Passage,
+            None,
+        )
+        .await?,
+        profile: crate::services::prompt_profile::PromptProfileService::load(pool.inner()).await?,
+        paths: super::agent_paths(app)?,
+        pool: pool_arc,
+        logger: logger_arc,
+        video_id,
+        range,
+    };
+    Ok(app.state::<Jobs>().spawn(
+        JobSpec {
+            kind: "video_translate",
+            title: format!("翻译字幕 · {title}"),
+            lane: Lane::Agent,
+            detached: true,
+            link: Some(JobLink::new(
+                "video-editor",
+                serde_json::json!({ "videoId": video_id }),
+            )),
+        },
+        move |ctx| job.run(ctx),
+    ))
 }
 
 #[tauri::command]

@@ -49,8 +49,8 @@ export class VideoService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<void>('set_video_subtitle_offset', { videoId, offsetMs }));
   }
 
-  /** 翻译一段字幕（后台任务）：只翻译还没有中文的，写回字幕 */
-  async startTranslate(videoId: number, startMs: number, endMs: number): Promise<ApiResult<string>> {
+  /** 翻译字幕（后台任务）：只翻译还没有中文的，写回字幕；不给起止时翻译整部 */
+  async startTranslate(videoId: number, startMs?: number, endMs?: number): Promise<ApiResult<string>> {
     return this.executeWithLoading(() => this.client.invoke<string>('start_video_translate', { videoId, startMs, endMs }));
   }
 

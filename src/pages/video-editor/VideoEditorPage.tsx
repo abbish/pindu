@@ -148,12 +148,20 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     tagService.getTags().then((r) => r.success && setTagNames(r.data.map((t) => t.name)));
   }, []);
 
+  // 翻译每写回一块就刷新字幕，中文一段段出现
+  const translatedChunks = translateJob?.current ?? 0;
+  useEffect(() => {
+    if (translatedChunks > 0) void reloadCuesRef.current();
+  }, [translatedChunks]);
+
   /** 重新读字幕与视频信息（翻译写回、改了纠偏之后） */
   const reloadCues = useCallback(async () => {
     if (!videoId) return;
     const result = await videoService.getVideo(videoId);
     if (result.success) setDetail((d) => (d ? { ...d, cues: result.data.cues, video: result.data.video } : d));
   }, [videoId]);
+  const reloadCuesRef = useRef(reloadCues);
+  reloadCuesRef.current = reloadCues;
 
   const changeOffset = async (offsetMs: number) => {
     if (!videoId) return;
@@ -170,7 +178,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     if ((job.link?.params as { videoId?: number } | undefined)?.videoId !== videoId) return;
     if (job.kind === 'video_translate') {
       if (job.status === 'failed') toast.showError('没有翻译完', jobErrorText(job));
-      else await reloadCues();
+      await reloadCues();
+      const failed = (job.result as { failed?: number } | null)?.failed ?? 0;
+      if (job.status === 'succeeded' && failed > 0) toast.showWarning(`有 ${failed} 句字幕没有翻译成`, '可以再点「翻译全部字幕」补上');
       return;
     }
     if (job.kind === 'video_process') {
@@ -200,6 +210,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
 
   const plan = live ?? history?.present ?? null;
   const cues = detail?.cues ?? [];
+  const untranslatedTotal = useMemo(() => cues.filter((c) => c.en.trim() && !c.zh.trim()).length, [cues]);
   const durationMs = detail?.video.durationMs ?? 0;
   const boundaries = useMemo(() => cueBoundaries(cues), [cues]);
   const selected = plan?.segments.find((s) => s.id === selectedId) ?? null;
@@ -479,9 +490,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   const segmentUnderPlayhead = segmentAt(plan, playhead);
   const mediaSrc = detail.video.mediaUrl ?? undefined;
   const thumbOf = (s: VideoSegment) => segmentThumb(detail.thumbs, detail.thumbIntervalMs, s);
-  const translate = async (seg: VideoSegment) => {
-    const result = await videoService.startTranslate(detail.video.id, seg.startMs, seg.endMs);
-    if (!result.success) toast.showError('无法翻译', result.error);
+  const translateAll = async () => {
+    const result = await videoService.startTranslate(detail.video.id);
+    if (!result.success) toast.showError('无法翻译字幕', result.error);
   };
 
   return (
@@ -677,12 +688,13 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
                 thumb={thumbOf(selected)}
                 issues={segmentIssues(selected, cues)}
                 cut={clipOf(selected) !== undefined}
-                translating={translateJob !== undefined}
+                translating={translateJob ? { current: translateJob.current, total: translateJob.total } : null}
+                untranslatedTotal={untranslatedTotal}
                 tagNames={tagNames}
                 onChange={updateSelected}
                 onPlay={() => playSegment(selected)}
                 onSeek={seek}
-                onTranslate={() => translate(selected)}
+                onTranslate={translateAll}
                 onSplit={split}
                 onMerge={merge}
                 onDelete={remove}
