@@ -1,0 +1,224 @@
+import React from 'react';
+import { ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote, Snail, Volume2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { WordExplanationView } from '@/components/WordExplanation';
+import { WordMaterialsList } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
+import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { parsePhonicsSegments } from '@/utils/phonics';
+import { targetOf, tokenize } from '@/utils/passage';
+import type { Word } from '@/types';
+import type { WordCard } from '@/types/material';
+
+/** 单词卡上显示的学习资料（单词本里的词与未收录词的单词卡统一成这一种） */
+export interface StudyWordInfo {
+  word: string;
+  ipa?: string;
+  meaning?: string;
+  /** 词性（中文优先） */
+  pos?: string;
+  /** 拼读分段 */
+  segments?: string[];
+  syllables?: string;
+  phonicsRule?: string;
+  /** 拼读说明 */
+  explanation?: string;
+  examples: { sentence: string; translation: string }[];
+}
+
+export const studyInfoFromWord = (w: Word): StudyWordInfo => ({
+  word: w.word,
+  ipa: w.ipa,
+  meaning: w.meaning,
+  pos: w.pos_chinese || w.part_of_speech,
+  segments: parsePhonicsSegments(w.phonics_segments),
+  syllables: w.syllables,
+  phonicsRule: w.phonics_rule,
+  explanation: w.analysis_explanation,
+  examples: w.examples ?? [],
+});
+
+export const studyInfoFromCard = (c: WordCard): StudyWordInfo => ({
+  word: c.word,
+  ipa: c.ipa || undefined,
+  meaning: c.meaning || undefined,
+  pos: c.posChinese || c.posAbbreviation || undefined,
+  syllables: c.syllables || undefined,
+  phonicsRule: c.phonicsRule || undefined,
+  explanation: c.analysisExplanation || undefined,
+  examples: c.examples,
+});
+
+/** 句子里把这个词（含变形）标出来 */
+export const Highlighted: React.FC<{ text: string; word: string }> = ({ text, word }) => (
+  <>
+    {tokenize(text).map((t, i) =>
+      t.kind === 'word' && targetOf(t.text, [word]) ? (
+        <mark key={i} className="rounded-sm bg-warning-soft px-0.5 font-semibold text-foreground">
+          {t.text}
+        </mark>
+      ) : (
+        <React.Fragment key={i}>{t.text}</React.Fragment>
+      )
+    )}
+  </>
+);
+
+/** 单词卡上的一节（拼读 / 本文中 …） */
+export const StudySection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <section className="space-y-2">
+    <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+    {children}
+  </section>
+);
+
+/** 可以点着听的一句（英文里标出这个词 + 译文） */
+export const StudySentence: React.FC<{ en: string; zh: string; word: string; onPlay: () => void }> = ({ en, zh, word, onPlay }) => (
+  <button type="button" onClick={onPlay} className="group flex items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted">
+    <Volume2 className="mt-1 size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+    <span className="min-w-0">
+      <span className="block">
+        <Highlighted text={en} word={word} />
+      </span>
+      <span className="block text-sm text-muted-foreground">{zh}</span>
+    </span>
+  </button>
+);
+
+export interface WordStudyCardProps {
+  /** 单词（资料还没加载时也能显示） */
+  word: string;
+  info?: StudyWordInfo;
+  /** 资料加载中 */
+  loading?: boolean;
+  /** 单词旁的标记（如「未收录」） */
+  badge?: React.ReactNode;
+  /** 右上角的操作（发音按钮之后，如编辑、⋯） */
+  actions?: React.ReactNode;
+  /** 拼读之前的状态（如单词卡生成进度） */
+  progress?: React.ReactNode;
+  /** 拼读之后、页签之前的附加内容（如「本文中」） */
+  children?: React.ReactNode;
+  /** 讲解 / 答疑用的 id（单词本的词为 wordId，单词卡为负数 id）；null 时不显示页签 */
+  aiWordId: number | null;
+  /** 单词本里的 id（「其他素材」按它与单词查） */
+  wordId?: number;
+  /** 「其他素材」里打开短文 / 片段 */
+  onOpenPassage?: (passageId: number, isClip: boolean) => void;
+  /** 底部切换（上一个 / 下一个） */
+  nav?: { index: number; total: number; onChange: (index: number) => void };
+}
+
+/**
+ * 单词卡（单词本、短文与视频片段的目标词共用）：单词、音标与常速 / 慢速发音、词性与释义 → 拼读分段与规则 →
+ * 附加内容（如本文中的句子）→ 例句 / AI 讲解 / 其他素材 → 上一个 / 下一个。
+ */
+export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loading, badge, actions, progress, children, aiWordId, wordId, onOpenPassage, nav }) => {
+  const audio = useAudioPlayer();
+  const speak = (text: string, style: 'word' | 'sentence', slow = false) => audio.playText(text, undefined, { style, speed: slow ? 'slow' : 'normal' }).catch(() => {});
+  const display = info?.word ?? word;
+  const segments = info?.segments ?? (info?.syllables ? [info.syllables] : undefined);
+  const hasPhonics = Boolean(segments?.length || info?.phonicsRule || info?.explanation);
+
+  return (
+    <Card className="gap-6 px-6 py-5">
+      <header className="flex items-start gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="text-3xl font-semibold tracking-tight">{display}</h2>
+            {info?.ipa && <span className="text-muted-foreground">{info.ipa}</span>}
+            {badge}
+          </div>
+          {info?.meaning && (
+            <p>
+              {info.pos && <span className="mr-1.5 text-muted-foreground">{info.pos}</span>}
+              {info.meaning}
+            </p>
+          )}
+        </div>
+        <Button variant="outline" size="icon" aria-label="发音" onClick={() => speak(display, 'word')}>
+          <Volume2 />
+        </Button>
+        <Button variant="outline" size="icon" aria-label="慢速发音" onClick={() => speak(display, 'word', true)}>
+          <Snail />
+        </Button>
+        {actions}
+      </header>
+
+      {progress}
+      {loading ? (
+        <Skeleton className="h-24" />
+      ) : (
+        hasPhonics && (
+          <StudySection title="拼读">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(segments ?? []).map((s, i) => (
+                <span key={i} className="rounded-md bg-muted px-2.5 py-1 text-lg font-medium tracking-wide">
+                  {s}
+                </span>
+              ))}
+              {info?.phonicsRule && <span className="ml-1 text-sm text-muted-foreground">{info.phonicsRule}</span>}
+            </div>
+            {info?.explanation && <p className="text-sm text-muted-foreground">{info.explanation}</p>}
+          </StudySection>
+        )
+      )}
+
+      {children}
+
+      {info && aiWordId !== null && (
+        <Tabs defaultValue="examples" className="gap-3" key={aiWordId}>
+          <TabsList>
+            <TabsTrigger value="examples">
+              <Quote />
+              例句
+            </TabsTrigger>
+            <TabsTrigger value="explanation">
+              <GraduationCap />
+              AI 讲解
+            </TabsTrigger>
+            <TabsTrigger value="materials">
+              <Clapperboard />
+              其他素材
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="examples">
+            {info.examples.length === 0 ? (
+              <p className="py-4 text-sm text-muted-foreground">还没有例句</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {info.examples.map((e, i) => (
+                  <StudySentence key={i} en={e.sentence} zh={e.translation} word={display} onPlay={() => speak(e.sentence, 'sentence')} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+          <TabsContent value="explanation">
+            <WordExplanationView wordId={aiWordId} active autoGenerate={false} />
+          </TabsContent>
+          <TabsContent value="materials" className="max-h-[60vh] overflow-y-auto">
+            <WordMaterialsList word={display} wordId={wordId} onOpenPassage={onOpenPassage} />
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {nav && nav.total > 1 && (
+        <footer className="flex items-center justify-between border-t pt-4">
+          <Button variant="ghost" size="sm" disabled={nav.index === 0} onClick={() => nav.onChange(nav.index - 1)}>
+            <ChevronLeft />
+            上一个
+          </Button>
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {nav.index + 1} / {nav.total}
+          </span>
+          <Button variant="ghost" size="sm" disabled={nav.index >= nav.total - 1} onClick={() => nav.onChange(nav.index + 1)}>
+            下一个
+            <ChevronRight />
+          </Button>
+        </footer>
+      )}
+    </Card>
+  );
+};

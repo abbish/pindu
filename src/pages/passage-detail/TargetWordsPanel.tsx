@@ -1,21 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote, Snail, Volume2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { WordExplanationView } from '@/components/WordExplanation';
-import { WordMaterialsList } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
+import { JobPanel } from '@/components/Jobs';
+import { StudySection, StudySentence, WordStudyCard, studyInfoFromCard, studyInfoFromWord } from '@/components/WordStudyCard';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { useJob, useOnJobFinished } from '@/hooks/useJobs';
-import { JobPanel } from '@/components/Jobs';
-import { cardWordId } from '@/services/wordExplanationService';
-import { isJobActive } from '@/types/job';
 import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
-import { parsePhonicsSegments } from '@/utils/phonics';
+import { cardWordId } from '@/services/wordExplanationService';
 import { targetOf, tokenize } from '@/utils/passage';
+import { isJobActive } from '@/types/job';
 import type { Word } from '@/types';
 import type { WordCard } from '@/types/material';
 import type { Passage, PassageTargetWord } from '@/types/passage';
@@ -28,32 +22,9 @@ export interface TargetWordsPanelProps {
   focusWord?: string | null;
 }
 
-/** 句子里把这个词（含变形）标出来 */
-const Highlighted: React.FC<{ text: string; word: string }> = ({ text, word }) => (
-  <>
-    {tokenize(text).map((t, i) =>
-      t.kind === 'word' && targetOf(t.text, [word]) ? (
-        <mark key={i} className="rounded-sm bg-warning-soft px-0.5 font-semibold text-foreground">
-          {t.text}
-        </mark>
-      ) : (
-        <React.Fragment key={i}>{t.text}</React.Fragment>
-      )
-    )}
-  </>
-);
-
-const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <section className="space-y-2">
-    <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
-    {children}
-  </section>
-);
-
 /**
- * 短文详情「目标词」页签：左边目标词列表（指定单词 / AI 选词或重点词，未收录的标出），右边单词卡——
- * 发音（常速 / 慢速）、词性与释义、拼读分段与规则、本文中的句子（可听）、例句 / AI 讲解 / 其他素材。
- * 通过短文学这些词；↑ ↓ 或上一个 / 下一个切换。
+ * 短文详情「目标词」页签：左边目标词列表（指定单词 / AI 选词或重点词，未收录的标出），右边单词卡（WordStudyCard，
+ * 与单词本共用）外加「本文中」的句子；未收录的词用单词卡（缺的自动补生成）。↑ ↓ 或上一个 / 下一个切换。
  */
 export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord }) => {
   const [details, setDetails] = useState<Map<string, Word> | null>(null);
@@ -96,32 +67,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
   const current: PassageTargetWord | undefined = words[Math.min(index, words.length - 1)];
   const word = current ? details?.get(current.word.toLowerCase()) : undefined;
   const card = current && current.wordId === null ? cards?.get(current.word.toLowerCase()) : undefined;
-  /** 单词卡内容：单词本里的词用单词本的资料，未收录的用单词卡 */
-  const info = word
-    ? {
-        word: word.word,
-        ipa: word.ipa,
-        meaning: word.meaning,
-        pos: word.pos_chinese || word.part_of_speech,
-        segments: parsePhonicsSegments(word.phonics_segments),
-        syllables: word.syllables,
-        phonicsRule: word.phonics_rule,
-        explanation: word.analysis_explanation,
-        examples: word.examples ?? [],
-      }
-    : card
-      ? {
-          word: card.word,
-          ipa: card.ipa,
-          meaning: card.meaning,
-          pos: card.posChinese || card.posAbbreviation,
-          segments: undefined,
-          syllables: card.syllables,
-          phonicsRule: card.phonicsRule,
-          explanation: card.analysisExplanation,
-          examples: card.examples,
-        }
-      : undefined;
+  const info = word ? studyInfoFromWord(word) : card ? studyInfoFromCard(card) : undefined;
   /** 讲解 / 答疑用的 id：单词本的词用 wordId，未收录的用单词卡 */
   const aiWordId = current ? (current.wordId ?? (card ? cardWordId(card.word) : null)) : null;
   const generatingCard = current?.wordId === null && !card && cardJob !== undefined && isJobActive(cardJob);
@@ -143,10 +89,6 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
 
   if (words.length === 0) return <p className="py-10 text-center text-sm text-muted-foreground">这篇短文没有目标词</p>;
 
-  const speak = (text: string, style: 'word' | 'sentence', slow = false) => audio.playText(text, undefined, { style, speed: slow ? 'slow' : 'normal' }).catch(() => {});
-  const segments = info?.segments;
-  const meaning = info?.meaning || current?.meaning || '';
-  const pos = info?.pos;
   const group = (required: boolean) => words.map((w, i) => ({ w, i })).filter(({ w }) => w.required === required);
 
   return (
@@ -183,129 +125,32 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
       </div>
 
       {current && (
-        <Card className="gap-6 px-6 py-5">
-          <header className="flex items-start gap-3">
-            <div className="min-w-0 flex-1 space-y-1">
-              <div className="flex items-baseline gap-3">
-                <h2 className="text-3xl font-semibold tracking-tight">{info?.word ?? current.word}</h2>
-                {info?.ipa && <span className="text-muted-foreground">{info.ipa}</span>}
-                {current.wordId === null && (
-                  <Badge variant="outline" className="border-warning/40 font-normal text-warning">
-                    未收录
-                  </Badge>
-                )}
-              </div>
-              {meaning && (
-                <p>
-                  {pos && <span className="mr-1.5 text-muted-foreground">{pos}</span>}
-                  {meaning}
-                </p>
-              )}
-            </div>
-            <Button variant="outline" size="icon" aria-label="发音" onClick={() => speak(info?.word ?? current.word, 'word')}>
-              <Volume2 />
-            </Button>
-            <Button variant="outline" size="icon" aria-label="慢速发音" onClick={() => speak(info?.word ?? current.word, 'word', true)}>
-              <Snail />
-            </Button>
-          </header>
-
-          {generatingCard && cardJob && <JobPanel job={cardJob} title="AI 正在生成单词卡" />}
-          {details === null || cards === null ? (
-            <Skeleton className="h-24" />
-          ) : (
-            (segments || info?.syllables || info?.phonicsRule || info?.explanation) && (
-              <Section title="拼读">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {(segments ?? (info?.syllables ? [info.syllables] : [])).map((s, i) => (
-                    <span key={i} className="rounded-md bg-muted px-2.5 py-1 text-lg font-medium tracking-wide">
-                      {s}
-                    </span>
-                  ))}
-                  {info?.phonicsRule && <span className="ml-1 text-sm text-muted-foreground">{info.phonicsRule}</span>}
-                </div>
-                {info?.explanation && <p className="text-sm text-muted-foreground">{info.explanation}</p>}
-              </Section>
+        <WordStudyCard
+          word={current.word}
+          info={info ?? (current.meaning ? { word: current.word, meaning: current.meaning, examples: [] } : undefined)}
+          loading={details === null || cards === null}
+          badge={
+            current.wordId === null && (
+              <Badge variant="outline" className="border-warning/40 font-normal text-warning">
+                未收录
+              </Badge>
             )
-          )}
-
+          }
+          progress={generatingCard && cardJob && <JobPanel job={cardJob} title="AI 正在生成单词卡" />}
+          aiWordId={info ? aiWordId : null}
+          wordId={current.wordId ?? undefined}
+          nav={{ index, total: words.length, onChange: setIndex }}
+        >
           {sentences.length > 0 && (
-            <Section title="本文中">
+            <StudySection title="本文中">
               <div className="flex flex-col gap-1.5">
                 {sentences.map((s, i) => (
-                  <button key={i} type="button" onClick={() => speak(s.en, 'sentence')} className="group flex items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted">
-                    <Volume2 className="mt-1 size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
-                    <span className="min-w-0">
-                      <span className="block">
-                        <Highlighted text={s.en} word={current.word} />
-                      </span>
-                      <span className="block text-sm text-muted-foreground">{s.zh}</span>
-                    </span>
-                  </button>
+                  <StudySentence key={i} en={s.en} zh={s.zh} word={current.word} onPlay={() => audio.playText(s.en, undefined, { style: 'sentence' }).catch(() => {})} />
                 ))}
               </div>
-            </Section>
+            </StudySection>
           )}
-
-          {info && aiWordId !== null && (
-            <Tabs defaultValue="examples" className="gap-3" key={aiWordId}>
-              <TabsList>
-                <TabsTrigger value="examples">
-                  <Quote />
-                  例句
-                </TabsTrigger>
-                <TabsTrigger value="explanation">
-                  <GraduationCap />
-                  AI 讲解
-                </TabsTrigger>
-                <TabsTrigger value="materials">
-                  <Clapperboard />
-                  其他素材
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="examples">
-                {(info?.examples ?? []).length === 0 ? (
-                  <p className="py-4 text-sm text-muted-foreground">还没有例句</p>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {(info?.examples ?? []).map((e, i) => (
-                      <button key={i} type="button" onClick={() => speak(e.sentence, 'sentence')} className="group flex items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted">
-                        <Volume2 className="mt-1 size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
-                        <span className="min-w-0">
-                          <span className="block">
-                            <Highlighted text={e.sentence} word={current.word} />
-                          </span>
-                          <span className="block text-sm text-muted-foreground">{e.translation}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-              <TabsContent value="explanation">
-                <WordExplanationView wordId={aiWordId} active autoGenerate={false} />
-              </TabsContent>
-              <TabsContent value="materials" className="max-h-[60vh] overflow-y-auto">
-                <WordMaterialsList word={current.word} wordId={current.wordId ?? undefined} />
-              </TabsContent>
-            </Tabs>
-          )}
-
-
-          <footer className="flex items-center justify-between border-t pt-4">
-            <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => setIndex((i) => i - 1)}>
-              <ChevronLeft />
-              上一个
-            </Button>
-            <span className="text-sm text-muted-foreground tabular-nums">
-              {index + 1} / {words.length}
-            </span>
-            <Button variant="ghost" size="sm" disabled={index >= words.length - 1} onClick={() => setIndex((i) => i + 1)}>
-              下一个
-              <ChevronRight />
-            </Button>
-          </footer>
-        </Card>
+        </WordStudyCard>
       )}
     </div>
   );

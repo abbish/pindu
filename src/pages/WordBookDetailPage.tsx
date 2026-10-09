@@ -3,7 +3,7 @@ import { WordMaterialsSheet } from '@/components/WordMaterialsSheet/WordMaterial
 import { tagService } from '@/services/tagService';
 import type { WordMaterialCount } from '@/types/material';
 import type { WordQuery } from '@/types/wordbook';
-import { ChevronDown, FileUp, ListChecks, Loader2, MoreHorizontal, Pencil, PencilLine, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ChevronDown, FileUp, ListChecks, Loader2, MoreHorizontal, PanelLeft, Pencil, PencilLine, Plus, Sparkles, Table2, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -38,6 +38,8 @@ import { SortSelect, useSortPref } from '@/components/SortSelect';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { WordBookIcon } from '@/components/WordBookIcon/WordBookIcon';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { WordCardsView } from './wordbook-detail/WordCardsView';
 import { usePageTitle } from '@/components/AppShell/pageTitle';
 import { wordBookService } from '@/services';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
@@ -123,6 +125,23 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
 
   usePageTitle(wordBook?.title);
+
+  /** 单词的显示方式：卡片（默认，逐个学）/ 表格（批量选择与操作）；记在本机 */
+  const [wordView, setWordView] = useState<'cards' | 'table'>(() => {
+    try {
+      return localStorage.getItem('pindu.wordbook.view') === 'table' ? 'table' : 'cards';
+    } catch {
+      return 'cards';
+    }
+  });
+  const changeWordView = (v: 'cards' | 'table') => {
+    setWordView(v);
+    try {
+      localStorage.setItem('pindu.wordbook.view', v);
+    } catch {
+      // 只影响下次打开
+    }
+  };
 
   // 单词排序（后端排）：记在本机；用 ref 让 loadWords 不随排序重建
   const [wordSort, setWordSortPref] = useSortPref('words', WORD_SORTS);
@@ -320,6 +339,54 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
     { label: '其他', value: typeStats.others, unit: '个' },
   ];
 
+  const sortControl = totalWords > 1 && (
+    <SortSelect
+      value={wordSort}
+      options={WORD_SORTS}
+      onChange={(v) => {
+        setWordSortPref(v);
+        wordSortRef.current = v;
+        void loadWords(1);
+      }}
+    />
+  );
+  const viewToggle = (
+    <ToggleGroup type="single" value={wordView} onValueChange={(v) => v && changeWordView(v as 'cards' | 'table')} className="rounded-lg bg-muted p-0.5" aria-label="显示方式">
+      <ToggleGroupItem value="cards" className="h-7 rounded-md px-2.5 data-[state=on]:bg-background data-[state=on]:shadow-sm" aria-label="卡片" title="卡片">
+        <PanelLeft />
+      </ToggleGroupItem>
+      <ToggleGroupItem value="table" className="h-7 rounded-md px-2.5 data-[state=on]:bg-background data-[state=on]:shadow-sm" aria-label="表格" title="表格">
+        <Table2 />
+      </ToggleGroupItem>
+    </ToggleGroup>
+  );
+  const addWordsMenu = (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button>
+                    <Plus />
+                    添加单词
+                    <ChevronDown className="opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuItem onSelect={() => setAddWordsSource('ai')}>
+                    <Sparkles />
+                    AI 生成单词…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setAddWordsSource('text')}>
+                    <FileUp />
+                    从文本提取…
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setWordForm({ word: null })}>
+                    <PencilLine />
+                    手动添加…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+  );
+
   return (
     <div className={container}>
       {/* 头部：图标 + 名称 / 状态 / 标签 / 时间 + 操作 */}
@@ -409,6 +476,29 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               </div>
             </EmptyState>
           ) : (
+          wordView === 'cards' ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex min-h-9 flex-wrap items-center gap-2">
+                <div className="flex flex-1 items-baseline gap-2">
+                  <h3 className="text-base font-semibold">单词列表</h3>
+                  <span className="text-sm text-muted-foreground tabular-nums">共 {totalWords} 个单词</span>
+                </div>
+                {sortControl}
+                {viewToggle}
+                {addWordsMenu}
+              </div>
+              <WordCardsView
+                words={words}
+                loading={wordsLoading}
+                pagination={{ current: currentPage, pageSize: PAGE_SIZE, total: totalWords, onChange: loadWords }}
+                materials={materials}
+                onEdit={(w) => setWordForm({ word: w })}
+                onDelete={(w) => setWordsToDelete([toRow(w)])}
+                onPassage={(w) => onNavigate?.('create-passage', { bookIds: [wordBook.id], wordIds: [w.id] })}
+                onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })}
+              />
+            </div>
+          ) : (
           <WordListTable
             words={words.map(toRow)}
             onPlayPronunciation={(w) => audioPlayer.playWord(w.word)}
@@ -421,48 +511,12 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             materials={materials}
             onOpenMaterials={(w) => setMaterialsOf({ id: w.id, word: w.word })}
             onBatchPassage={(picked) => onNavigate?.('create-passage', { bookIds: [wordBook.id], wordIds: picked.map((w) => w.id) })}
-            addAction={
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button>
-                    <Plus />
-                    添加单词
-                    <ChevronDown className="opacity-70" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuItem onSelect={() => setAddWordsSource('ai')}>
-                    <Sparkles />
-                    AI 生成单词…
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setAddWordsSource('text')}>
-                    <FileUp />
-                    从文本提取…
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => setWordForm({ word: null })}>
-                    <PencilLine />
-                    手动添加…
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            }
+            addAction={addWordsMenu}
             loading={wordsLoading}
             pagination={{ current: currentPage, pageSize: PAGE_SIZE, total: totalWords, onChange: loadWords }}
-            toolbarExtra={
-              totalWords > 1 && (
-                <SortSelect
-                  value={wordSort}
-                  options={WORD_SORTS}
-                  onChange={(v) => {
-                    setWordSortPref(v);
-                    wordSortRef.current = v;
-                    void loadWords(1);
-                  }}
-                />
-              )
-            }
+            toolbarExtra={<>{sortControl}{viewToggle}</>}
           />
+          )
           )}
         </TabsContent>
 
