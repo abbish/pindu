@@ -13,6 +13,7 @@ import { setCachedMaterialSettings } from '@/hooks/useMaterialSettings';
 import { tagService } from '@/services/tagService';
 import { videoService } from '@/services/videoService';
 import { DAILY_NEW_WORDS_OPTIONS } from '@/utils/planParams';
+import { PICK_DIFFICULTY_OPTIONS, PICK_FREQUENCY_OPTIONS } from '@/utils/passage';
 import type { MaterialSettings as Settings } from '@/types/material';
 import type { MediaToolsStatus } from '@/types/video';
 
@@ -29,17 +30,8 @@ const LENGTHS: Option<Settings['passageLength']>[] = [
   { value: 'long', label: '长' },
 ];
 const PICK_COUNTS: Option<number>[] = [5, 8, 10, 15, 20].map((n) => ({ value: n, label: `${n} 个` }));
-const PICK_DIFFICULTIES: Option<Settings['passagePickDifficulty']>[] = [
-  { value: 'easy', label: '偏简单' },
-  { value: 'medium', label: '适中' },
-  { value: 'hard', label: '偏难' },
-  { value: 'any', label: '不限' },
-];
-const PICK_FREQUENCIES: Option<Settings['passagePickFrequency']>[] = [
-  { value: 'common', label: '日常常用' },
-  { value: 'advanced', label: '也要书面、少见的' },
-  { value: 'any', label: '不限' },
-];
+const PICK_DIFFICULTIES = PICK_DIFFICULTY_OPTIONS as Option<Settings['passagePickDifficulty']>[];
+const PICK_FREQUENCIES = PICK_FREQUENCY_OPTIONS as Option<Settings['passagePickFrequency']>[];
 const IMPORT_LENGTHS: Option<number>[] = [
   { value: 150, label: '短（约 150 词）' },
   { value: 300, label: '标准（约 300 词）' },
@@ -150,19 +142,19 @@ export const MaterialSettings: React.FC = () => {
         <SettingsRow label="篇幅">
           <Choice label="AI 写短文的篇幅" value={s.passageLength} options={LENGTHS} onChange={(passageLength) => update({ passageLength })} />
         </SettingsRow>
-        <SettingsRow label="AI 挑词数量">
-          <Choice label="AI 挑词数量" value={s.passagePickCount} options={PICK_COUNTS} onChange={(passagePickCount) => update({ passagePickCount })} />
+        <SettingsRow label="AI 选词数量">
+          <Choice label="AI 选词数量" value={s.passagePickCount} options={PICK_COUNTS} onChange={(passagePickCount) => update({ passagePickCount })} />
         </SettingsRow>
-        <SettingsRow label="挑词难度">
-          <Choice label="挑词难度" value={s.passagePickDifficulty} options={PICK_DIFFICULTIES} onChange={(passagePickDifficulty) => update({ passagePickDifficulty })} />
+        <SettingsRow label="选词难度">
+          <Choice label="选词难度" value={s.passagePickDifficulty} options={PICK_DIFFICULTIES} onChange={(passagePickDifficulty) => update({ passagePickDifficulty })} />
         </SettingsRow>
-        <SettingsRow label="常用程度">
-          <Choice label="常用程度" value={s.passagePickFrequency} options={PICK_FREQUENCIES} onChange={(passagePickFrequency) => update({ passagePickFrequency })} />
+        <SettingsRow label="选词词频">
+          <Choice label="选词词频" value={s.passagePickFrequency} options={PICK_FREQUENCIES} onChange={(passagePickFrequency) => update({ passagePickFrequency })} />
         </SettingsRow>
-        <SettingsRow label="导入材料拆篇">
-          <Choice label="导入材料每篇长度" value={s.importTargetWords} options={IMPORT_LENGTHS} width="w-44" onChange={(importTargetWords) => update({ importTargetWords })} />
+        <SettingsRow label="导入分篇长度">
+          <Choice label="导入分篇长度" value={s.importTargetWords} options={IMPORT_LENGTHS} width="w-44" onChange={(importTargetWords) => update({ importTargetWords })} />
         </SettingsRow>
-        <SettingsRow label="导入时 AI 挑重点词" htmlFor="ms-keywords">
+        <SettingsRow label="导入时 AI 识别重点词" htmlFor="ms-keywords">
           <Switch id="ms-keywords" checked={s.importKeyWords} onCheckedChange={(importKeyWords) => update({ importKeyWords })} />
         </SettingsRow>
         <SettingsRow label="阅读理解题难度">
@@ -205,7 +197,7 @@ export const MaterialSettings: React.FC = () => {
             <div className="flex gap-2">
               {media.available && (
                 <Button variant="ghost" size="sm" onClick={resetMediaDir}>
-                  用自带的
+                  使用内置组件
                 </Button>
               )}
               <Button variant="outline" size="sm" onClick={pickMediaDir}>

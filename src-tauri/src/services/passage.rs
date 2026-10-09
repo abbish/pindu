@@ -31,6 +31,8 @@ const MAX_CANDIDATES: usize = 500;
 const OPEN_ANSWER_MAX: usize = 1000;
 /// 自定主题的最大长度（字符）
 const TOPIC_MAX: usize = 200;
+/// 按描述生成时写作要求的最大字数
+const INSTRUCTION_MAX: usize = 500;
 /// 场景里最多合并几本单词本的描述
 const MAX_SCENE_BOOKS: usize = 3;
 /// 题组名称最大长度
@@ -414,6 +416,20 @@ impl PassageService {
                 TOPIC_MAX
             )));
         }
+        if request
+            .instruction
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .chars()
+            .count()
+            > INSTRUCTION_MAX
+        {
+            return Err(AppError::ValidationError(format!(
+                "写作要求最多 {} 个字",
+                INSTRUCTION_MAX
+            )));
+        }
         if !(0..=passage_rules::MAX_AI_PICK).contains(&request.ai_pick) {
             return Err(AppError::ValidationError(format!(
                 "AI 挑选的词数应在 0–{} 之间",
@@ -472,7 +488,8 @@ impl PassageService {
         }
         let ai_pick = (request.ai_pick as usize).min(pool.len());
         let total = required.len() + ai_pick;
-        if total < passage_rules::MIN_TARGET_WORDS {
+        // 按描述生成可以不指定单词
+        if total < passage_rules::MIN_TARGET_WORDS && !request.has_instruction() {
             return Err(AppError::ValidationError(format!(
                 "至少要有 {} 个词：勾选必用词、输入单词，或让 AI 从来源里挑词（当前 {} 个）",
                 passage_rules::MIN_TARGET_WORDS,
@@ -623,7 +640,12 @@ impl PassageService {
                     )
                 }
             };
-        let (scene, scene_label) = self.scene(topic, &scene_books).await?;
+        let (scene, scene_label) = match request.instruction.as_deref().map(str::trim) {
+            Some(text) if !text.is_empty() => {
+                (crate::prompts::writing_brief(text), text.to_string())
+            }
+            _ => self.scene(topic, &scene_books).await?,
+        };
 
         let profile = PromptProfileService::load(&self.pool).await?;
         let level = profile.effective_level().to_string();
@@ -1494,6 +1516,7 @@ pub(crate) mod tests {
             pick_difficulty: Some("easy".into()),
             pick_frequency: None,
             topic: None,
+            instruction: None,
             length: None,
             plan_item: None,
         };
@@ -1514,6 +1537,16 @@ pub(crate) mod tests {
         let mut empty = request(&["mastered"]);
         empty.required_word_ids = vec![fx.word_ids[1]];
         assert!(service.chosen_words(&empty).await.is_err());
+        // 按描述生成：没有单词也可以；写作要求有长度上限
+        let mut brief = request(&[]);
+        brief.book_ids.clear();
+        brief.ai_pick = 0;
+        brief.required_word_ids.clear();
+        assert!(service.chosen_words(&brief).await.is_err());
+        brief.instruction = Some("写一篇关于第一次去海边露营的小故事".into());
+        assert!(service.chosen_words(&brief).await.is_ok());
+        brief.instruction = Some("长".repeat(INSTRUCTION_MAX + 1));
+        assert!(PassageService::validate_request(&brief).is_err());
         let mut bad = request(&["often"]);
         assert!(PassageService::validate_request(&bad).is_err());
         bad.pick_statuses.clear();
@@ -1537,6 +1570,7 @@ pub(crate) mod tests {
             pick_difficulty: None,
             pick_frequency: None,
             topic: None,
+            instruction: None,
             length: None,
             plan_item: None,
         };

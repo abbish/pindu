@@ -93,8 +93,10 @@ pub async fn start_passage_generation(
         let count = request.items.len();
         let spec = JobSpec {
             kind: "passage_generate",
-            title: if count == 1 {
+            title: if count == 1 && !request.items[0].title.trim().is_empty() {
                 format!("写短文 · {}", request.items[0].title)
+            } else if count == 1 {
+                "写短文".to_string()
             } else {
                 format!("写 {count} 篇短文")
             },

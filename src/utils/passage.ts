@@ -2,7 +2,7 @@
  * 短文库的纯函数：选词填空的空位定位、成绩与题组文案。
  * 空位按 sentenceIndex + 词定位到该句中第一个写法一致（忽略大小写）的整词。
  */
-import type { PassageAttempt, PassageAttemptBrief, PassageMode, PlanWordScope, QuestionDifficulty, QuestionSetSpec } from '../types/passage';
+import type { PassageAttempt, PassageAttemptBrief, PassageMode, PickDifficulty, PickFrequency, PickStatus, PlanWordScope, QuestionDifficulty, QuestionSetSpec } from '../types/passage';
 
 /** 练习方式文案（唯一 owner） */
 export const MODE_LABEL: Record<PassageMode, string> = { reading: '阅读', listening: '听力' };
@@ -60,12 +60,31 @@ export const LEVEL_LABEL: Record<string, string> = { a1: '入门 A1', a2: '初�
 
 /** 计划的取词策略：名称与说明（顺序即界面顺序） */
 export const PLAN_SCOPES: { value: PlanWordScope; label: string; description: string }[] = [
-  { value: 'wrong', label: '错词', description: '练习时答错过' },
-  { value: 'weak', label: '还没记牢的词', description: '记忆等级 1–2 级' },
-  { value: 'recent', label: '最近学的词', description: '最近 7 天第一次学' },
-  { value: 'upcoming', label: '快到复习的词', description: '3 天内要复习' },
-  { value: 'mastered', label: '已经掌握的词', description: '记忆等级 4 级以上' },
-  { value: 'learned', label: '全部学过的词', description: '计划里学过的全部单词' },
+  { value: 'wrong', label: '易错词', description: '练习中答错过' },
+  { value: 'weak', label: '薄弱词', description: '记忆等级 1–2 级' },
+  { value: 'recent', label: '新学词', description: '最近 7 天首次学习' },
+  { value: 'upcoming', label: '待复习词', description: '3 天内需要复习' },
+  { value: 'mastered', label: '已掌握词', description: '记忆等级 4 级及以上' },
+  { value: 'learned', label: '全部已学词', description: '计划中学过的全部单词' },
+];
+
+/** AI 选词与单词筛选的选项（新建短文与「设置 → 素材」共用） */
+export const PICK_STATUS_OPTIONS: { value: PickStatus; label: string }[] = [
+  { value: 'new', label: '未学习' },
+  { value: 'learning', label: '学习中' },
+  { value: 'wrong', label: '易错' },
+  { value: 'mastered', label: '已掌握' },
+];
+export const PICK_DIFFICULTY_OPTIONS: { value: PickDifficulty | 'any'; label: string }[] = [
+  { value: 'easy', label: '较易' },
+  { value: 'medium', label: '适中' },
+  { value: 'hard', label: '较难' },
+  { value: 'any', label: '不限' },
+];
+export const PICK_FREQUENCY_OPTIONS: { value: PickFrequency | 'any'; label: string }[] = [
+  { value: 'common', label: '高频词' },
+  { value: 'advanced', label: '含低频词' },
+  { value: 'any', label: '不限' },
 ];
 
 /** 取词策略显示名 */

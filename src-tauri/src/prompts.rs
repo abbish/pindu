@@ -486,6 +486,7 @@ pub fn extract_mode_rules(mode: &str, stopwords: &[&str]) -> String {
 pub enum MessageTemplate {
     BookScene,
     TopicScene,
+    WritingBrief,
     WordFacts,
     ExplainWord,
     WordTutor,
@@ -508,6 +509,7 @@ pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
     let text = match template {
         MessageTemplate::BookScene => include_str!("prompts/messages/book_scene.md"),
         MessageTemplate::TopicScene => include_str!("prompts/messages/topic_scene.md"),
+        MessageTemplate::WritingBrief => include_str!("prompts/messages/writing_brief.md"),
         MessageTemplate::WordFacts => include_str!("prompts/messages/word_facts.md"),
         MessageTemplate::ExplainWord => include_str!("prompts/messages/explain_word.md"),
         MessageTemplate::WordTutor => include_str!("prompts/messages/word_tutor.md"),
@@ -546,6 +548,18 @@ pub fn book_scene(title: &str, description: &str, tags: &[String]) -> String {
 }
 
 /// 用户自定的短文主题 / 场景
+/// 按描述写短文：用户的写作要求（空 = 不是这种模式）
+pub fn writing_brief(instruction: &str) -> String {
+    let instruction = instruction.trim();
+    if instruction.is_empty() {
+        return String::new();
+    }
+    message(
+        MessageTemplate::WritingBrief,
+        &[("instruction", instruction)],
+    )
+}
+
 pub fn topic_scene(topic: &str) -> String {
     let topic = topic.trim();
     if topic.is_empty() {

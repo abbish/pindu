@@ -259,6 +259,8 @@ export interface GeneratePassageRequest {
   pickFrequency?: PickFrequency | null;
   /** 场景描述（空 = 用所选单词本的场景） */
   topic?: string | null;
+  /** 按描述生成：写作要求（主题、体裁、人物等）；有它时可以不选单词 */
+  instruction?: string | null;
   length?: PassageLength;
   /** 按内容规划里的一篇来写（此时用它的词、篇幅与构思） */
   planItem?: PassagePlanItem | null;

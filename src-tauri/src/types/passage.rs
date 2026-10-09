@@ -296,6 +296,9 @@ pub struct GeneratePassageRequest {
     pub pick_frequency: Option<String>,
     /// 自定主题 / 场景（空 = 用所选单词本的场景）
     pub topic: Option<String>,
+    /// 按描述生成：用户写的要求（主题、体裁、人物等）。有它时可以不选单词，场景就是这段要求
+    #[serde(default)]
+    pub instruction: Option<String>,
     /// short / standard / long（空 = standard）
     pub length: Option<String>,
     /// 按内容规划里的一篇来写（此时用它的词、篇幅与构思，忽略 required_word_ids / extra_words / ai_pick / length）
@@ -355,6 +358,13 @@ pub struct PassagePlan {
 }
 
 impl GeneratePassageRequest {
+    /// 按描述生成（有写作要求）
+    pub fn has_instruction(&self) -> bool {
+        self.instruction
+            .as_deref()
+            .is_some_and(|t| !t.trim().is_empty())
+    }
+
     pub fn word_sources(&self) -> PassageWordSources {
         PassageWordSources {
             book_ids: self.book_ids.clone(),
