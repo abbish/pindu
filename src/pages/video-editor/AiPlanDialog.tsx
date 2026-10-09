@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,6 @@ import { InlineError } from '@/components/InlineError';
 import { videoService } from '@/services/videoService';
 
 const MAX_TEXT = 500;
-const EXAMPLES = ['只要在餐厅和商店里的对话', '适合小学生的简单场景', '每段一个完整的小故事', '去掉片头片尾和唱歌的部分'];
 
 export interface AiPlanDialogProps {
   open: boolean;
@@ -31,6 +31,35 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
   const [maxSec, setMaxSec] = useState(120);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** AI 根据字幕给的要求建议：null 生成中 */
+  const [suggestions, setSuggestions] = useState<string[] | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const loadSuggestions = async (refresh: boolean) => {
+    setSuggestions(null);
+    setSuggestError(null);
+    const r = await videoService.suggestRequirements(videoId, refresh);
+    if (r.success) setSuggestions(r.data);
+    else {
+      setSuggestions([]);
+      setSuggestError(r.error);
+    }
+  };
+
+  // 第一次打开时生成（之后存在草稿里，直接读出来）
+  useEffect(() => {
+    if (open && suggestions === null && !suggestError) void loadSuggestions(false);
+    // 只在打开时触发
+  }, [open]);
+
+  /** 点建议：输入框空时填入，否则接在后面（可以组合几条） */
+  const applySuggestion = (s: string) =>
+    setText((t) => {
+      const cur = t.trim();
+      if (!cur) return s;
+      if (cur.includes(s)) return t;
+      return `${cur.replace(/[，。；,;]$/, '')}；${s}`.slice(0, MAX_TEXT);
+    });
 
   useEffect(() => {
     if (!open) return;
@@ -87,12 +116,34 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
             <div className="space-y-1.5">
               <Label htmlFor="plan-req">要求</Label>
               <Textarea id="plan-req" rows={3} maxLength={MAX_TEXT} value={text} placeholder="例如：只要在餐厅里的对话" onChange={(e) => setText(e.target.value)} />
-              <div className="flex flex-wrap gap-1.5">
-                {EXAMPLES.map((ex) => (
-                  <Button key={ex} type="button" variant="outline" size="sm" className="h-6 rounded-full px-2 text-xs" onClick={() => setText(ex)}>
-                    {ex}
-                  </Button>
-                ))}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Sparkles className="size-3.5" />
+                  {suggestions === null ? '正在读字幕，想几个要求…' : '根据这个视频的建议，点一下填入'}
+                  {suggestions !== null && (
+                    <Button type="button" variant="ghost" size="sm" className="ml-auto h-6 px-2 text-xs" onClick={() => loadSuggestions(true)}>
+                      <RefreshCw />
+                      换一批
+                    </Button>
+                  )}
+                </div>
+                {suggestions === null ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {[96, 140, 120, 160].map((w) => (
+                      <Skeleton key={w} className="h-6 rounded-full" style={{ width: w }} />
+                    ))}
+                  </div>
+                ) : suggestError ? (
+                  <p className="text-xs text-muted-foreground">{suggestError}</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {suggestions.map((s) => (
+                      <Button key={s} type="button" variant="outline" size="sm" className="h-auto min-h-6 rounded-full px-2.5 py-0.5 text-left text-xs whitespace-normal" onClick={() => applySuggestion(s)}>
+                        {s}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

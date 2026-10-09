@@ -64,6 +64,8 @@ export interface VideoPlan {
   /** 用户写的切分要求 */
   requirements: string;
   segments: VideoSegment[];
+  /** AI 根据字幕给的要求建议（存在草稿里） */
+  suggestions?: string[];
 }
 
 export interface VideoDetail {

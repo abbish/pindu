@@ -61,3 +61,36 @@ export const submitVideoPlanTool = defineTool({
     return { content: [{ type: "text", text: "Accepted." }], details: params, terminate: true };
   },
 });
+
+// ---------- submit_plan_suggestions：给学习者的切分要求建议 ----------
+
+const PlanSuggestionsParams = Type.Object({
+  suggestions: Type.Array(Type.String(), { description: "4-6 Chinese requirement sentences (8-30 characters each), specific to this video" }),
+});
+export type PlanSuggestionsSubmission = Static<typeof PlanSuggestionsParams>;
+
+export function planSuggestionsProblems(p: PlanSuggestionsSubmission): string[] {
+  const problems: string[] = [];
+  const items = p.suggestions.map((s) => s.trim()).filter(Boolean);
+  if (items.length < 3 || items.length > 6) problems.push(`建议要 4–6 条（现在 ${items.length} 条）`);
+  items.forEach((s, i) => {
+    const n = [...s].length;
+    if (n < 4 || n > 40) problems.push(`第 ${i + 1} 条「${s}」长度不合适（8–30 个字）`);
+  });
+  if (new Set(items).size !== items.length) problems.push("有重复的建议");
+  return problems;
+}
+
+export const submitPlanSuggestionsTool = defineTool({
+  name: "submit_plan_suggestions",
+  label: "提交切分要求建议",
+  description: "Submit 4-6 Chinese segmentation requirement suggestions tailored to this video. Fix only the listed problems if rejected.",
+  parameters: PlanSuggestionsParams,
+  async execute(_toolCallId, params) {
+    const problems = planSuggestionsProblems(params);
+    if (problems.length > 0) {
+      throw new Error(`提交未通过校验（${problems.length} 处），请修正后重新提交：\n- ${problems.join("\n- ")}`);
+    }
+    return { content: [{ type: "text", text: "Accepted." }], details: params, terminate: true };
+  },
+});

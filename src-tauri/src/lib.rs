@@ -357,6 +357,7 @@ pub fn run() {
                 save_video_plan,
                 set_video_subtitle_offset,
                 get_clips,
+                suggest_video_requirements,
                 start_video_translate,
                 start_video_plan,
                 start_video_processing,

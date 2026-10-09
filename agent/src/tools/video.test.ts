@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { videoPlanProblems, type VideoPlanSubmission } from './video.ts';
+import { planSuggestionsProblems, videoPlanProblems, type VideoPlanSubmission } from './video.ts';
 
 const seg = (first: number, last: number) => ({
   first,
@@ -39,4 +39,10 @@ test('标签要 1–3 个、每个不超过 10 个字', () => {
   const long = { ...seg(1, 8), tags: ['一二三四五六七八九十一'] };
   assert.equal(videoPlanProblems(plan(none)).length, 1);
   assert.equal(videoPlanProblems(plan(long)).length, 1);
+});
+
+test('切分要求建议：条数、长度、不重复', () => {
+  assert.deepEqual(planSuggestionsProblems({ suggestions: ['只要厨房里做饭的对话', '每段围绕一次完整的问答', '挑语速慢的段落', '去掉片头和歌曲'] }), []);
+  assert.equal(planSuggestionsProblems({ suggestions: ['只要厨房里做饭的对话'] }).length, 1);
+  assert.ok(planSuggestionsProblems({ suggestions: ['好', '每段围绕一次完整的问答', '每段围绕一次完整的问答', '挑语速慢的段落'] }).length >= 2);
 });

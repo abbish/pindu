@@ -391,6 +391,7 @@ mod tests {
         assert_eq!((row.status.as_str(), row.duration_ms), ("ready", 60_000));
 
         let plan = VideoPlan {
+            suggestions: Vec::new(),
             requirements: "每段 1 分钟".into(),
             segments: vec![crate::types::video::VideoSegment {
                 id: "s1".into(),

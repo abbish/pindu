@@ -257,6 +257,7 @@ pub async fn rename_video(app: AppHandle, video_id: i64, title: String) -> AppRe
 /// 保存切分规划草稿（编辑器自动保存）
 #[tauri::command]
 pub async fn save_video_plan(app: AppHandle, video_id: i64, plan: VideoPlan) -> AppResult<()> {
+    let mut plan = plan;
     let logger = app.state::<Logger>();
     logger.api_request(
         "save_video_plan",
@@ -272,6 +273,12 @@ pub async fn save_video_plan(app: AppHandle, video_id: i64, plan: VideoPlan) -> 
             "这个视频正在处理，等它完成后再修改".to_string(),
         ))
     } else {
+        // 编辑器的草稿可能是建议生成之前读的：没带建议时保留库里的
+        if plan.suggestions.is_empty() {
+            if let Ok(Some(row)) = VideoRepository::get(pool.inner(), video_id).await {
+                plan.suggestions = row.plan().map(|p| p.suggestions).unwrap_or_default();
+            }
+        }
         match VideoRepository::save_plan(pool.inner(), video_id, &plan).await {
             Ok(true) => Ok(()),
             Ok(false) => Err(AppError::NotFound("视频不存在，可能已被删除".to_string())),
@@ -481,6 +488,64 @@ async fn passage_video(
         start_ms: clip.start_ms,
         end_ms: clip.end_ms,
     }))
+}
+
+/// 「AI 规划切分」里的要求建议：AI 读字幕给 4–6 条贴合这个视频的切分要求；存进规划草稿，下次直接用（refresh 换一批）
+#[tauri::command]
+pub async fn suggest_video_requirements(
+    app: AppHandle,
+    video_id: i64,
+    refresh: bool,
+) -> AppResult<Vec<String>> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "suggest_video_requirements",
+        Some(&format!("video_id: {video_id}, refresh: {refresh}")),
+    );
+    let result = async {
+        let row = VideoRepository::get(pool.inner(), video_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
+        let mut plan = row.plan().unwrap_or_default();
+        if !refresh && !plan.suggestions.is_empty() {
+            return Ok(plan.suggestions);
+        }
+        let cues = row.cues();
+        if cues.is_empty() {
+            return Err(AppError::ValidationError("这个视频没有字幕".to_string()));
+        }
+        let pool_arc = Arc::new(pool.inner().clone());
+        let logger_arc = Arc::new(logger.inner().clone());
+        let model =
+            crate::services::agent_settings::AgentSettingsService::new(pool_arc, logger_arc)
+                .model_for(
+                    crate::services::agent_settings::AgentTaskKind::Passage,
+                    None,
+                )
+                .await?;
+        let profile =
+            crate::services::prompt_profile::PromptProfileService::load(pool.inner()).await?;
+        let sample = crate::services::video_plan::sample_cues(&cues, 250, 10);
+        let message =
+            crate::agent::tasks::video_suggest_message(&sample, cues.len(), row.duration_ms);
+        let suggestions = crate::agent::tasks::suggest_video_requirements(
+            &super::agent_paths(&app)?,
+            &model,
+            &profile,
+            &message,
+            &logger,
+        )
+        .await?;
+        // 存进草稿；规划 / 切分进行中不写（任务会写规划），下次再生成
+        if !busy(&app, video_id) {
+            plan.suggestions = suggestions.clone();
+            VideoRepository::save_plan(pool.inner(), video_id, &plan).await?;
+        }
+        Ok(suggestions)
+    }
+    .await;
+    super::finish(&logger, "suggest_video_requirements", result)
 }
 
 /// 全部切片（视频库「片段」）：最新导入的视频在前，同一视频按段序

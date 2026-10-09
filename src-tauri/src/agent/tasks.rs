@@ -1539,6 +1539,86 @@ pub fn video_plan_message(spec: &VideoPlanSpec) -> String {
     )
 }
 
+/// 视频：切分要求的建议（4–6 条，贴合字幕内容），经 submit_plan_suggestions 交付
+pub fn video_suggest_task(profile: &PromptProfile) -> AgentTask {
+    AgentTask {
+        name: "video-suggest",
+        system_prompt: prompts::system_prompt(PromptTask::VideoSuggest, profile, &[]),
+        tools: &["submit_plan_suggestions"],
+        default_thinking: "low",
+    }
+}
+
+/// 给 AI 看的字幕（较长的视频是均匀抽取的一部分）
+pub fn video_suggest_message(
+    cues: &[&crate::services::subtitle::Cue],
+    total: usize,
+    duration_ms: i64,
+) -> String {
+    let lines: Vec<String> = cues
+        .iter()
+        .map(|c| {
+            let zh = if c.zh.is_empty() {
+                String::new()
+            } else {
+                format!(" / {}", c.zh)
+            };
+            format!("[{}] {}{}", clock(c.start_ms), c.en, zh)
+        })
+        .collect();
+    let sampled = if cues.len() < total {
+        cues.len().to_string()
+    } else {
+        String::new()
+    };
+    prompts::message(
+        MessageTemplate::VideoSuggest,
+        &[
+            ("duration", &clock(duration_ms)),
+            ("count", &total.to_string()),
+            ("sampled", &sampled),
+            ("cues", &lines.join("\n")),
+        ],
+    )
+}
+
+/// 生成切分要求的建议
+pub async fn suggest_video_requirements(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &PromptProfile,
+    message: &str,
+    logger: &Logger,
+) -> AppResult<Vec<String>> {
+    let run = run_task(
+        paths,
+        &video_suggest_task(profile),
+        model,
+        message,
+        logger,
+        |_| {},
+    )
+    .await?;
+    let submission = run
+        .outcome
+        .last_successful_call("submit_plan_suggestions")
+        .ok_or_else(|| AppError::ExternalServiceError("AI 没有给出建议，请再试一次".to_string()))?;
+    let mut out: Vec<String> = Vec::new();
+    for s in submission.details["suggestions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        if let Some(text) = s.as_str().map(str::trim).filter(|t| !t.is_empty()) {
+            if !out.iter().any(|x| x == text) {
+                out.push(text.chars().take(40).collect());
+            }
+        }
+    }
+    out.truncate(6);
+    Ok(out)
+}
+
 /// 规划切分（可取消），返回 submit_video_plan 的原始提交（由 services::video_plan 换算与校正）
 pub async fn plan_video(
     paths: &AgentPaths,

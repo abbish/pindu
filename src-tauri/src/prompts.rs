@@ -327,10 +327,11 @@ pub enum PromptTask {
     PassageGrade,
     PassageTranslate,
     VideoPlan,
+    VideoSuggest,
 }
 
 impl PromptTask {
-    pub const ALL: [PromptTask; 13] = [
+    pub const ALL: [PromptTask; 14] = [
         PromptTask::Extract,
         PromptTask::Generate,
         PromptTask::Phonics,
@@ -344,6 +345,7 @@ impl PromptTask {
         PromptTask::PassageGrade,
         PromptTask::PassageTranslate,
         PromptTask::VideoPlan,
+        PromptTask::VideoSuggest,
     ];
 
     pub fn key(self) -> &'static str {
@@ -361,6 +363,7 @@ impl PromptTask {
             PromptTask::PassageGrade => "passage_grade",
             PromptTask::PassageTranslate => "passage_translate",
             PromptTask::VideoPlan => "video_plan",
+            PromptTask::VideoSuggest => "video_suggest",
         }
     }
 
@@ -379,6 +382,7 @@ impl PromptTask {
             PromptTask::PassageGrade => "短文：开放题评分",
             PromptTask::PassageTranslate => "短文：导入材料翻译",
             PromptTask::VideoPlan => "视频：规划场景切分",
+            PromptTask::VideoSuggest => "视频：切分要求的建议",
         }
     }
 
@@ -397,6 +401,7 @@ impl PromptTask {
             PromptTask::PassageGrade => include_str!("prompts/agent/passage_grade.md"),
             PromptTask::PassageTranslate => include_str!("prompts/agent/passage_translate.md"),
             PromptTask::VideoPlan => include_str!("prompts/agent/video_plan.md"),
+            PromptTask::VideoSuggest => include_str!("prompts/agent/video_plan_suggest.md"),
         }
     }
 }
@@ -490,6 +495,7 @@ pub enum MessageTemplate {
     PassageGrade,
     PassageTranslate,
     VideoPlan,
+    VideoSuggest,
 }
 
 pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
@@ -510,6 +516,7 @@ pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
         MessageTemplate::PassageGrade => include_str!("prompts/messages/passage_grade.md"),
         MessageTemplate::PassageTranslate => include_str!("prompts/messages/passage_translate.md"),
         MessageTemplate::VideoPlan => include_str!("prompts/messages/video_plan.md"),
+        MessageTemplate::VideoSuggest => include_str!("prompts/messages/video_plan_suggest.md"),
     };
     render(text, vars)
 }
@@ -648,6 +655,7 @@ mod tests {
             (PromptTask::PassageGrade, "passage_grade.md"),
             (PromptTask::PassageTranslate, "passage_translate.md"),
             (PromptTask::VideoPlan, "video_plan.md"),
+            (PromptTask::VideoSuggest, "video_plan_suggest.md"),
         ];
         let stopwords = crate::agent::tasks::FOCUS_STOPWORDS;
         for preset in ["primary", "secondary", "adult"] {

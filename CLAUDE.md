@@ -146,7 +146,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 | `handlers/prompt_profile.rs` | get_prompt_profile / update_prompt_profile / apply_prompt_preset / preview_prompts（学习者档案与各任务补充要求，见 §6） |
 | `handlers/system.rs` | get_system_logs, get_log_level / set_log_level（最低记录级别）, open_log_folder, open_data_folder, get_startup_status（启动失败原因，见 §4.3） |
 | `handlers/updater.rs` | check_for_update（读 GitHub Releases 的 latest.json；开发版可用 `PINDU_UPDATE_ENDPOINT` 覆盖地址）, install_update（`on_progress: Channel<UpdateProgress>`，内置公钥验签；有 agent 任务在跑时拒绝，开始安装后 `agent::session` 不再启动新 sidecar；失败可直接重试）, restart_app；Linux 非 AppImage 只提示不安装。前端 `UpdateWatcher`（App 级：自动检查 + 菜单）/ `UpdateBanner`（AppShell 顶栏下与启动错误页） |
-| `handlers/video.rs` | get_media_tools_status / set_ffmpeg_dir（视频组件）, start_video_import（后台任务：复制 → 读信息 → 不能直接播放时转 720p 代理 → 波形与缩略图；字幕在命令里先解析）, get_videos, get_video（含字幕条、规划草稿、缩略图、已切出的短片）, get_video_peaks, rename_video, save_video_plan（编辑器自动保存；规划 / 切分进行中拒绝）, set_video_subtitle_offset（字幕纠偏）, start_video_translate（按需翻译一段字幕，写回 cues）, get_clips（视频库「片段」）, start_video_plan（AI 规划，后台任务）, start_video_processing（按规划精确切分并逐段存成短文，后台任务，按段可续）, get_passage_video（短文详情播放短片）, delete_video（连同短片短文，计划还在用时拒绝）, delete_video_source |
+| `handlers/video.rs` | get_media_tools_status / set_ffmpeg_dir（视频组件）, start_video_import（后台任务：复制 → 读信息 → 不能直接播放时转 720p 代理 → 波形与缩略图；字幕在命令里先解析）, get_videos, get_video（含字幕条、规划草稿、缩略图、已切出的短片）, get_video_peaks, rename_video, save_video_plan（编辑器自动保存；规划 / 切分进行中拒绝）, set_video_subtitle_offset（字幕纠偏）, start_video_translate（按需翻译一段字幕，写回 cues）, get_clips（视频库「片段」）, suggest_video_requirements（AI 读字幕给切分要求建议）, start_video_plan（AI 规划，后台任务）, start_video_processing（按规划精确切分并逐段存成短文，后台任务，按段可续）, get_passage_video（短文详情播放短片）, delete_video（连同短片短文，计划还在用时拒绝）, delete_video_source |
 | `handlers/tts.rs` | text_to_speech（`style`: word / sentence → 固定语音指令，参与缓存键）, get_tts_voices（预置英文音色）, get_default_tts_voice（默认音色经 update_tts_config 设置，允许自定义音色 ID）, clear_tts_cache, get_tts_cache_stats, get_tts_config（返回 `TtsConfigSafe`）, update_tts_config（`request: UpdateTtsConfigRequest`） |
 
 `handlers/mod.rs` 用 `pub use xxx::*` 全部重导出，所以 `lib.rs` 里可直接写命令名。**新增命令必须在 `lib.rs` 的 `generate_handler!` 里注册**，否则前端 invoke 报 "command not found"。
@@ -190,6 +190,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
   | 短文：开放题评分 | `passage_grade.md` | `submit_grade`（0–4 分 + 评语 + 改进示例） | `services/passage.rs::grade_open` |
   | 短文：导入材料翻译 | `passage_translate.md` | `submit_translation`（只收逐句译文 + 标题 + 水平 + 重点词；条数 / 编号校验；Rust `translation_from_submission` 再校验，英文以请求为准） | `services/passage_import_service.rs::import`（预处理在 `services/passage_import.rs`，docx / pdf 取文字在 `passage_import_files.rs`） |
   | 视频：规划场景切分 | `video_plan.md`（medium 思考档） | `submit_video_plan`（字幕编号范围有序不重叠、字段齐全；Rust `video_plan::segments_from_submission` 换成毫秒、留余量、重点词只留字幕里出现的） | `services/video_plan.rs`（后台任务；长字幕按约 15 分钟分块，3 块并行，`chunk_cues`）；切分处理缺中文 / 标题 / 重点词时复用 `passage_translate` |
+  | 视频：切分要求建议 | `video_plan_suggest.md`（low 思考档） | `submit_plan_suggestions`（4–6 条、长度、不重复） | 命令 suggest_video_requirements（字幕均匀取样约 250 条 `video_plan::sample_cues`；结果存进规划草稿 `VideoPlan.suggestions`，refresh 换一批） |
   | 模型测试 | `fragments/system/model_test.md` | 无（`-nt`） | `services/ai_model.rs::test_model` |
 
 - 原则：**确定性的工作放进代码或工具**（分词计数、格式校验、日期与复习排期），模型只做判断与生成；结构化结果一律经 `submit_*` 工具交付，Rust 侧再按输入校正（只接受请求中的词、补齐遗漏）。新增 LLM 能力一律做成 agent 任务。
@@ -231,7 +232,7 @@ export const fooService = new FooService();
 
 ## 6. AI 提示词
 提示词全部是 `src-tauri/src/prompts/` 下的独立文件，`include_str!` 编译进二进制，由 `src-tauri/src/prompts.rs`（唯一 owner）选片段、填变量、渲染：
-- `agent/*.md`：各任务系统提示词模板 —— `extract_words.md`（提词）· `generate_words.md`（按意图生成）· `phonics_batch.md`（批量拼读 + 规则库）· `study_plan_order.md`（学习顺序）· `word_explain.md`（单词讲解，正规记忆法 + 正确性自查）· `word_examples.md`（例句）· `word_tutor.md`（AI 老师答疑）· `passage_plan.md` / `passage_generate.md` / `passage_questions.md` / `passage_grade.md` / `passage_translate.md`（短文：内容规划 / 写短文 / 出题 / 开放题评分 / 导入材料翻译）· `video_plan.md`（视频：规划场景切分）。规则、格式、正确性约束写死在模板里；学习者、水平、语言、风格、补充要求经 `{{变量}}` 注入。
+- `agent/*.md`：各任务系统提示词模板 —— `extract_words.md`（提词）· `generate_words.md`（按意图生成）· `phonics_batch.md`（批量拼读 + 规则库）· `study_plan_order.md`（学习顺序）· `word_explain.md`（单词讲解，正规记忆法 + 正确性自查）· `word_examples.md`（例句）· `word_tutor.md`（AI 老师答疑）· `passage_plan.md` / `passage_generate.md` / `passage_questions.md` / `passage_grade.md` / `passage_translate.md`（短文：内容规划 / 写短文 / 出题 / 开放题评分 / 导入材料翻译）· `video_plan.md` / `video_plan_suggest.md`（视频：规划场景切分 / 切分要求建议）。规则、格式、正确性约束写死在模板里；学习者、水平、语言、风格、补充要求经 `{{变量}}` 注入。
 - `fragments/<维度>/<取值>.md`：learner / level / language / explain_length / memory / tutor_style / phonics_terms / ipa / extract_mode / system（模型测试）。
 - `messages/*.md`：发给模型的用户消息模板（单词资料、答疑上下文、例句任务等）。
 - 语法：`{{x}}` 替换，**变量为空的整行删除**；`{{#x}}…{{/x}}` 非空才保留、`{{^x}}…{{/x}}` 为空才保留。新增变量必须在 `prompts::tests` 里保证所有任务 × 预设渲染后无残留 `{{`。

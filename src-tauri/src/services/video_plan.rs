@@ -126,6 +126,21 @@ pub fn segments_from_submission(
         .collect())
 }
 
+/// 给「切分要求建议」看的字幕：不多于 `max` 条时全给；否则均匀取 `windows` 段连续的字幕（每段看得出上下文）
+pub fn sample_cues(cues: &[Cue], max: usize, windows: usize) -> Vec<&Cue> {
+    if cues.len() <= max || windows == 0 {
+        return cues.iter().collect();
+    }
+    let per = (max / windows).max(1);
+    let stride = cues.len() / windows;
+    (0..windows)
+        .flat_map(|w| {
+            let start = (w * stride).min(cues.len().saturating_sub(per));
+            cues[start..(start + per).min(cues.len())].iter()
+        })
+        .collect()
+}
+
 /// 合并后的片段收尾：按时间排序、编 id，余量让相邻两段重叠时取中点
 pub fn finish_segments(mut segments: Vec<VideoSegment>) -> Vec<VideoSegment> {
     segments.sort_by_key(|s| s.start_ms);
@@ -327,6 +342,8 @@ impl VideoPlanJob {
         let plan = VideoPlan {
             requirements: self.requirements.clone(),
             segments,
+            // 建议留着，下次打开「AI 规划」还能用
+            suggestions: current.suggestions.clone(),
         };
         VideoRepository::save_plan(&self.pool, self.video_id, &plan).await?;
         Ok(serde_json::json!({
@@ -538,6 +555,26 @@ mod tests {
     }
 
     #[test]
+    fn suggestion_sample_spreads_over_the_whole_video() {
+        let cues: Vec<Cue> = (0..1000)
+            .map(|i| Cue {
+                start_ms: i * 1000,
+                end_ms: i * 1000 + 900,
+                en: "x".into(),
+                zh: String::new(),
+            })
+            .collect();
+        let few = &cues[..100];
+        assert_eq!(sample_cues(few, 250, 10).len(), 100);
+        let sample = sample_cues(&cues, 250, 10);
+        assert_eq!(sample.len(), 250);
+        // 第一段从头开始，最后一段在后部，按时间顺序
+        assert_eq!(sample[0].start_ms, 0);
+        assert!(sample[249].start_ms >= 900_000);
+        assert!(sample.windows(2).all(|w| w[0].start_ms < w[1].start_ms));
+    }
+
+    #[test]
     fn clock_has_hours_for_long_videos() {
         assert_eq!(clock(65_000), "01:05");
         assert_eq!(clock(7_510_304), "2:05:10");
@@ -570,6 +607,7 @@ mod tests {
     #[test]
     fn current_plan_maps_back_to_cue_numbers() {
         let plan = VideoPlan {
+            suggestions: Vec::new(),
             requirements: String::new(),
             segments: vec![
                 VideoSegment {

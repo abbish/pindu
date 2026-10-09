@@ -529,6 +529,7 @@ mod real_tests {
             tags: vec!["点餐".into()],
         };
         let plan = crate::types::video::VideoPlan {
+            suggestions: Vec::new(),
             requirements: String::new(),
             segments: vec![
                 segment(1700, 40_000, "Restaurant"),

@@ -69,6 +69,9 @@ pub struct VideoPlan {
     pub requirements: String,
     #[serde(default)]
     pub segments: Vec<VideoSegment>,
+    /// AI 根据字幕给的切分要求建议（打开「AI 规划」时生成一次，存在草稿里）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suggestions: Vec<String>,
 }
 
 /// 规划里的一段
