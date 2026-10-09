@@ -19,10 +19,11 @@ import {
   nearestCue,
   segmentThumb,
   splitByKeyWords,
+  continuesSentence,
 } from './plan.ts';
 import type { Cue, VideoPlan } from '../../types/video';
 
-const cue = (startMs: number, endMs: number, en = 'Hi'): Cue => ({ startMs, endMs, en, zh: '' });
+const cue = (startMs: number, endMs: number, en = 'Hi.'): Cue => ({ startMs, endMs, en, zh: '' });
 const plan = (...ranges: [number, number][]): VideoPlan => ({
   requirements: '',
   segments: ranges.map(([a, b]) => emptySegment(a, b)),
@@ -145,4 +146,24 @@ test('句子里标出重点词与变形', () => {
   assert.equal(splitByKeyWords('Hello', []).length, 1);
   assert.deepEqual(splitByKeyWords('a piece of cake', ['piece of cake']).filter((p) => p.key).map((p) => p.text), ['piece of cake']);
   assert.equal(splitByKeyWords('Careful', ['car']).filter((p) => p.key).length, 0);
+});
+
+test('判断接着上一条：AI 断过句的按它，否则看标点与停顿', () => {
+  const c = (startMs: number, en: string, join?: boolean): Cue => ({ startMs, endMs: startMs + 1000, en, zh: '', join });
+  assert.equal(continuesSentence(c(0, 'The whole program was designed'), c(1000, 'to get two Americans there.')), true);
+  assert.equal(continuesSentence(c(0, 'Hello.'), c(1000, 'Bye.')), false);
+  assert.equal(continuesSentence(c(0, 'So we waited'), c(4000, 'and waited.')), false);
+  assert.equal(continuesSentence(c(0, 'Hello.'), c(1000, 'world', true)), true);
+  assert.equal(continuesSentence(c(0, 'no punctuation here'), c(1000, 'new sentence', false)), false);
+});
+
+test('按字幕自动切分不在半句中间切', () => {
+  const cues: Cue[] = [
+    { startMs: 0, endMs: 9000, en: 'The whole program was designed', zh: '' },
+    { startMs: 12_000, endMs: 14_000, en: 'to get two Americans there.', zh: '', join: true },
+    { startMs: 17_000, endMs: 20_000, en: 'Next one.', zh: '' },
+  ];
+  const segs = autoSplit(cues, 21_000, { minMs: 5000, maxMs: 60_000 });
+  assert.equal(segs.length, 2);
+  assert.ok(segs[0].endMs >= 14_000);
 });

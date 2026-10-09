@@ -147,8 +147,8 @@ pub async fn start_video_import(
             },
             move |ctx| import.run(ctx),
         );
-        // 字幕缺中文：同时在 AI 队列里翻译整部字幕（与转码并行）；没配好 AI 时不影响导入，编辑器里可以再翻
-        if cues.iter().any(|c| c.zh.trim().is_empty()) {
+        // 同时在 AI 队列里整理整部字幕（断句、补中文，与转码并行）；没配好 AI 时不影响导入，编辑器里可以再整理
+        {
             if let Err(e) = spawn_translate(&app, video_id, &title, None).await {
                 logger.warn(
                     "VIDEO",

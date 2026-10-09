@@ -18,6 +18,9 @@ pub struct Cue {
     pub en: String,
     #[serde(default)]
     pub zh: String,
+    /// 和上一条是同一句话（字幕断行把一句拆开了）；None = 还没让 AI 整理过（按标点与停顿推断）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join: Option<bool>,
 }
 
 /// 文件里的一条字幕（还没分英文 / 中文）
@@ -45,6 +48,7 @@ pub fn build_cues(primary: &str, secondary: Option<&str>) -> AppResult<Vec<Cue>>
                 end_ms: raw.end_ms,
                 en,
                 zh,
+                join: None,
             })
         })
         .collect();

@@ -39,6 +39,8 @@ export interface Cue {
   endMs: number;
   en: string;
   zh: string;
+  /** 和上一条是同一句话（AI 整理字幕时断的句）；未整理时没有 */
+  join?: boolean | null;
 }
 
 /** 规划里的一段 */

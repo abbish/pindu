@@ -136,11 +136,16 @@ export const SegmentPanel: React.FC<SegmentPanelProps> = (props) => {
                   key={c.startMs}
                   ref={isActive ? activeRef : undefined}
                   type="button"
-                  className={cn('flex w-full gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted', isActive && 'bg-accent')}
+                  className={cn(
+                    'flex w-full gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted',
+                    // 接着上一条的同一句：贴着上一条，不再单独标时间，读起来是一整句
+                    c.join && '-mt-1.5 pt-0',
+                    isActive && 'bg-accent'
+                  )}
                   onClick={() => onSeek(c.startMs)}
                 >
                   <span className="w-9 shrink-0 pt-0.5 text-right text-[11px] text-muted-foreground tabular-nums">
-                    {formatClock(Math.max(0, c.startMs - segment.startMs), false)}
+                    {!c.join && formatClock(Math.max(0, c.startMs - segment.startMs), false)}
                   </span>
                   <span className="min-w-0 flex-1 select-text">
                     <span className="block text-sm leading-snug">

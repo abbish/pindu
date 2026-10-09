@@ -1488,11 +1488,14 @@ pub fn video_plan_message(spec: &VideoPlanSpec) -> String {
             } else {
                 format!(" / {}", c.zh)
             };
+            // 「↳」：接着上一条说的同一句（字幕整理时 AI 断过句）
+            let cont = if c.join == Some(true) { "↳ " } else { "" };
             format!(
-                "{}. [{}–{}] {}{}",
+                "{}. [{}–{}] {}{}{}",
                 spec.offset + i + 1,
                 clock(c.start_ms),
                 clock(c.end_ms),
+                cont,
                 c.en,
                 zh
             )
@@ -1537,6 +1540,100 @@ pub fn video_plan_message(spec: &VideoPlanSpec) -> String {
             ("cues", &cues.join("\n")),
         ],
     )
+}
+
+/// 视频：整理字幕——判断每条是否接着上一条（断句，不依赖标点）并给缺中文的条目翻译，经 submit_subtitles 交付
+pub fn subtitle_prepare_task(profile: &PromptProfile) -> AgentTask {
+    AgentTask {
+        name: "subtitle-prepare",
+        system_prompt: prompts::system_prompt(PromptTask::SubtitlePrepare, profile, &[]),
+        tools: &["submit_subtitles"],
+        default_thinking: "low",
+    }
+}
+
+/// 一块连续的字幕；`previous` 是这块前面的一条（判断第 1 条是否接着它）
+pub fn subtitle_prepare_message(
+    cues: &[crate::services::subtitle::Cue],
+    previous: Option<&crate::services::subtitle::Cue>,
+) -> String {
+    let lines: Vec<String> = cues
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let zh = if c.zh.trim().is_empty() {
+                String::new()
+            } else {
+                format!(" / {}", c.zh.trim())
+            };
+            format!("{}. [{}] {}{}", i + 1, clock(c.start_ms), c.en.trim(), zh)
+        })
+        .collect();
+    prompts::message(
+        MessageTemplate::SubtitlePrepare,
+        &[
+            ("count", &cues.len().to_string()),
+            (
+                "previous",
+                &previous
+                    .map(|p| format!("[{}] {}", clock(p.start_ms), p.en.trim()))
+                    .unwrap_or_default(),
+            ),
+            ("cues", &lines.join("\n")),
+        ],
+    )
+}
+
+/// `submit_subtitles` → 每条（是否接着上一条, 中文）；条数或编号不对时报错（这一块重试）
+pub fn subtitles_from_submission(
+    details: &Value,
+    count: usize,
+) -> Result<Vec<(bool, String)>, String> {
+    let items = details["items"].as_array().ok_or("缺少 items")?;
+    if items.len() != count {
+        return Err(format!("条数不对：要 {count} 条，交回 {} 条", items.len()));
+    }
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, it)| {
+            if it["index"].as_u64() != Some(i as u64 + 1) {
+                return Err(format!("第 {} 项编号不对", i + 1));
+            }
+            Ok((
+                it["join"].as_bool().unwrap_or(false),
+                it["zh"].as_str().unwrap_or_default().trim().to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// 整理一块字幕（可取消）
+pub async fn prepare_subtitles(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &PromptProfile,
+    cues: &[crate::services::subtitle::Cue],
+    previous: Option<&crate::services::subtitle::Cue>,
+    logger: &Logger,
+    cancelled: impl Fn() -> bool,
+) -> AppResult<Vec<(bool, String)>> {
+    let run = run_task_cancellable(
+        paths,
+        &subtitle_prepare_task(profile),
+        model,
+        &subtitle_prepare_message(cues, previous),
+        logger,
+        cancelled,
+        |_| {},
+    )
+    .await?;
+    let submission = run
+        .outcome
+        .last_successful_call("submit_subtitles")
+        .ok_or_else(|| AppError::ExternalServiceError("AI 没有交回整理后的字幕".to_string()))?;
+    subtitles_from_submission(&submission.details, cues.len())
+        .map_err(AppError::ExternalServiceError)
 }
 
 /// 视频：切分要求的建议（4–6 条，贴合字幕内容），经 submit_plan_suggestions 交付

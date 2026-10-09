@@ -135,6 +135,14 @@ export function cuesIn(cues: Cue[], seg: Pick<VideoSegment, 'startMs' | 'endMs'>
  * 不用 AI 的自动切分：按字幕顺序累积，遇到较长的停顿（≥ gapMs）且已够 minMs，或累积到 maxMs，就切一段。
  * 片段从第一条字幕开始前 300ms 到最后一条结束后 300ms。
  */
+/** 这一条接着上一条说的同一句：AI 整理过按它的判断，否则按标点与停顿推断（与 Rust services::sentences 一致） */
+export function continuesSentence(prev: Cue, cue: Cue): boolean {
+  if (cue.join != null) return cue.join;
+  const end = prev.en.trim().replace(/["'”’)\]»]+$/, '');
+  const ended = /[.?!。？！]$/.test(end) && !/\.\.$/.test(end);
+  return !ended && cue.startMs - prev.endMs <= 1500 && !/^\s*[-–—]/.test(cue.en);
+}
+
 export function autoSplit(cues: Cue[], durationMs: number, opts: { minMs: number; maxMs: number; gapMs?: number }): VideoSegment[] {
   const gapMs = opts.gapMs ?? 2000;
   const pad = 300;
@@ -146,7 +154,9 @@ export function autoSplit(cues: Cue[], durationMs: number, opts: { minMs: number
       const last = current[current.length - 1];
       const length = last.endMs - first.startMs;
       const gap = cue.startMs - last.endMs;
-      if ((gap >= gapMs && length >= opts.minMs) || cue.endMs - first.startMs > opts.maxMs) {
+      // 不在半句话中间切（除非一句长得超出上限太多）
+      const midSentence = continuesSentence(last, cue) && cue.endMs - first.startMs <= opts.maxMs + 15_000;
+      if (!midSentence && ((gap >= gapMs && length >= opts.minMs) || cue.endMs - first.startMs > opts.maxMs)) {
         groups.push(current);
         current = [];
       }

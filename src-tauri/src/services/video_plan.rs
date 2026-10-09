@@ -75,6 +75,18 @@ pub fn segments_from_submission(
             kept.push(r);
         }
     }
+    // 片段的开头 / 结尾不落在半句话上：对齐到整句（断句见 services::sentences）
+    let aligned = align_to_sentences(
+        &kept.iter().map(|&(f, l, _)| (f, l)).collect::<Vec<_>>(),
+        cues,
+        lo,
+        hi,
+    );
+    let kept: Vec<(usize, usize, &SubmittedSegment)> = kept
+        .iter()
+        .zip(aligned)
+        .filter_map(|(&(_, _, s), r)| r.map(|(f, l)| (f, l, s)))
+        .collect();
     Ok(kept
         .iter()
         .map(|&(first, last, s)| {
@@ -137,6 +149,52 @@ pub fn sample_cues(cues: &[Cue], max: usize, windows: usize) -> Vec<&Cue> {
         .flat_map(|w| {
             let start = (w * stride).min(cues.len().saturating_sub(per));
             cues[start..(start + per).min(cues.len())].iter()
+        })
+        .collect()
+}
+
+/// 每句最多延长几条字幕去补齐（防止断句异常时片段被拉得很长）
+const MAX_ALIGN_CUES: usize = 3;
+
+/// 把片段（字幕编号范围，从 1 开始，有序不重叠）的开头与结尾对齐到整句：开头在半句话上往前补到句首，结尾在半句话上往后补到句尾
+/// （各最多 `MAX_ALIGN_CUES` 条，不超出 lo..=hi）。相邻两段在同一句中间分开时，这句归前一段；后一段因此空了就去掉（None）。
+pub fn align_to_sentences(
+    ranges: &[(usize, usize)],
+    cues: &[Cue],
+    lo: usize,
+    hi: usize,
+) -> Vec<Option<(usize, usize)>> {
+    // 每条字幕所在句子的 [首, 尾]（从 1 开始）
+    let mut sentence_of = vec![(0usize, 0usize); cues.len() + 1];
+    for g in crate::services::sentences::group_cues(cues) {
+        for i in g.clone() {
+            sentence_of[i + 1] = (g.start + 1, g.end);
+        }
+    }
+    let mut prev_last = lo.saturating_sub(1);
+    ranges
+        .iter()
+        .map(|&(first, last)| {
+            let (sentence_first, _) = sentence_of[first];
+            let f = if first - sentence_first <= MAX_ALIGN_CUES {
+                sentence_first
+            } else {
+                first
+            }
+            .max(lo)
+            .max(prev_last + 1);
+            let (_, sentence_last) = sentence_of[last];
+            let l = if sentence_last - last <= MAX_ALIGN_CUES {
+                sentence_last
+            } else {
+                last
+            }
+            .min(hi);
+            if f > l {
+                return None;
+            }
+            prev_last = l;
+            Some((f, l))
         })
         .collect()
 }
@@ -441,8 +499,9 @@ mod tests {
             .map(|i| Cue {
                 start_ms: 1000 + i * 3000,
                 end_ms: 3000 + i * 3000,
-                en: format!("Can I see the menu {i}"),
+                en: format!("Can I see the menu {i}?"),
                 zh: String::new(),
+                join: None,
             })
             .collect()
     }
@@ -509,6 +568,7 @@ mod tests {
                     end_ms: t + 2000,
                     en: "line".into(),
                     zh: String::new(),
+                    join: None,
                 };
                 t += every_ms;
                 c
@@ -555,6 +615,44 @@ mod tests {
     }
 
     #[test]
+    fn segments_snap_to_whole_sentences() {
+        let c = |start: i64, en: &str| Cue {
+            start_ms: start,
+            end_ms: start + 1000,
+            en: en.into(),
+            zh: String::new(),
+            join: None,
+        };
+        let cues = vec![
+            c(0, "The whole program was designed"),       // 1
+            c(1000, "to get two Americans there."),       // 2
+            c(2000, "The enormity of this event"),        // 3
+            c(3000, "is something only history judges."), // 4
+            c(4000, "Apollo 11 was given the mission."),  // 5
+        ];
+        // 第 1 段在半句上结束、第 2 段从半句开始：这句归第 1 段，第 2 段从下一句开始
+        assert_eq!(
+            align_to_sentences(&[(1, 3), (4, 5)], &cues, 1, 5),
+            vec![Some((1, 4)), Some((5, 5))]
+        );
+        // 一段从半句开始：往前补到句首
+        assert_eq!(
+            align_to_sentences(&[(2, 2)], &cues, 1, 5),
+            vec![Some((1, 2))]
+        );
+        // 后一段被前一段补齐后空了：去掉
+        assert_eq!(
+            align_to_sentences(&[(1, 3), (4, 4)], &cues, 1, 5),
+            vec![Some((1, 4)), None]
+        );
+        // 不超出这次规划的范围
+        assert_eq!(
+            align_to_sentences(&[(2, 3)], &cues, 2, 3),
+            vec![Some((2, 3))]
+        );
+    }
+
+    #[test]
     fn suggestion_sample_spreads_over_the_whole_video() {
         let cues: Vec<Cue> = (0..1000)
             .map(|i| Cue {
@@ -562,6 +660,7 @@ mod tests {
                 end_ms: i * 1000 + 900,
                 en: "x".into(),
                 zh: String::new(),
+                join: None,
             })
             .collect();
         let few = &cues[..100];
@@ -586,14 +685,16 @@ mod tests {
             Cue {
                 start_ms: 0,
                 end_ms: 2000,
-                en: "a".into(),
+                en: "a.".into(),
                 zh: String::new(),
+                join: None,
             },
             Cue {
                 start_ms: 2100,
                 end_ms: 4000,
-                en: "b".into(),
+                en: "b.".into(),
                 zh: String::new(),
+                join: None,
             },
         ];
         let details = json!({"segments": [seg(1, 1), seg(2, 2)]});

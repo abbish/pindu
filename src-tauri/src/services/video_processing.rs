@@ -37,20 +37,32 @@ pub struct VideoProcessJob {
     pub video_id: i64,
 }
 
-/// 片段里的字幕 → 短文句子（时间相对片段开头，夹在片段内）
+/// 片段里的字幕 → 短文句子：被断行拆开的一句合并回完整的句子（`sentences::group_cues`），
+/// 时间相对片段开头、夹在片段内
 pub fn clip_sentences(cues: &[Cue], seg: &VideoSegment) -> Vec<PassageSentence> {
-    cues.iter()
+    let inside: Vec<Cue> = cues
+        .iter()
         .filter(|c| {
             let overlap = c.end_ms.min(seg.end_ms) - c.start_ms.max(seg.start_ms);
             overlap > 0 && overlap * 2 >= c.end_ms - c.start_ms
         })
+        .cloned()
+        .collect();
+    crate::services::sentences::group_cues(&inside)
+        .into_iter()
         .enumerate()
-        .map(|(i, c)| PassageSentence {
-            en: c.en.clone(),
-            zh: c.zh.clone(),
-            paragraph: i == 0,
-            start_ms: Some((c.start_ms - seg.start_ms).max(0)),
-            end_ms: Some((c.end_ms.min(seg.end_ms) - seg.start_ms).max(0)),
+        .map(|(i, range)| {
+            let group = &inside[range];
+            let (en, zh) = crate::services::sentences::merge(group);
+            let first = &group[0];
+            let last = &group[group.len() - 1];
+            PassageSentence {
+                en,
+                zh,
+                paragraph: i == 0,
+                start_ms: Some((first.start_ms - seg.start_ms).max(0)),
+                end_ms: Some((last.end_ms.min(seg.end_ms) - seg.start_ms).max(0)),
+            }
         })
         .collect()
 }
@@ -346,6 +358,7 @@ mod tests {
             end_ms: end,
             en: en.into(),
             zh: zh.into(),
+            join: None,
         }
     }
 
@@ -362,15 +375,15 @@ mod tests {
     fn sentences_are_relative_to_the_clip() {
         let cues = vec![
             cue(500, 1500, "Before", ""),
-            cue(2000, 4000, "Hello", "你好"),
-            cue(4500, 7000, "Bye", ""),
+            cue(2000, 4000, "Hello.", "你好"),
+            cue(4500, 7000, "Bye.", ""),
         ];
         let s = clip_sentences(&cues, &seg(1800, 6000));
         // 第一条只有一小半在片段里，不算；最后一条超出的部分夹到片段结尾
         assert_eq!(s.len(), 2);
         assert_eq!(
             (s[0].en.as_str(), s[0].start_ms, s[0].end_ms),
-            ("Hello", Some(200), Some(2200))
+            ("Hello.", Some(200), Some(2200))
         );
         assert!(s[0].paragraph && !s[1].paragraph);
         assert_eq!((s[1].start_ms, s[1].end_ms), (Some(2700), Some(4200)));

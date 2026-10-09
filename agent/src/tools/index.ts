@@ -3,11 +3,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { submitExamplesTool } from "./examples.ts";
 import { submitGradeTool, submitPassagePlanTool, submitPassageTool, submitQuestionsTool, submitTranslationTool } from "./passage.ts";
 import { submitPhonicsTool } from "./phonics.ts";
-import { submitPlanSuggestionsTool, submitVideoPlanTool } from "./video.ts";
+import { submitPlanSuggestionsTool, submitSubtitlesTool, submitVideoPlanTool } from "./video.ts";
 import { submitLearningOrderTool } from "./planning.ts";
 import { submitGeneratedWordsTool, submitWordsTool, tokenizeTextTool } from "./words.ts";
 
-export const REDLARK_TOOLS = [tokenizeTextTool, submitWordsTool, submitGeneratedWordsTool, submitPhonicsTool, submitLearningOrderTool, submitExamplesTool, submitPassagePlanTool, submitPassageTool, submitQuestionsTool, submitGradeTool, submitTranslationTool, submitVideoPlanTool, submitPlanSuggestionsTool];
+export const REDLARK_TOOLS = [tokenizeTextTool, submitWordsTool, submitGeneratedWordsTool, submitPhonicsTool, submitLearningOrderTool, submitExamplesTool, submitPassagePlanTool, submitPassageTool, submitQuestionsTool, submitGradeTool, submitTranslationTool, submitVideoPlanTool, submitPlanSuggestionsTool, submitSubtitlesTool];
 
 export default function redlarkTools(pi: ExtensionAPI) {
   for (const tool of REDLARK_TOOLS) pi.registerTool(tool);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planSuggestionsProblems, videoPlanProblems, type VideoPlanSubmission } from './video.ts';
+import { planSuggestionsProblems, subtitlesProblems, videoPlanProblems, type VideoPlanSubmission } from './video.ts';
 
 const seg = (first: number, last: number) => ({
   first,
@@ -45,4 +45,11 @@ test('切分要求建议：条数、长度、不重复', () => {
   assert.deepEqual(planSuggestionsProblems({ suggestions: ['只要厨房里做饭的对话', '每段围绕一次完整的问答', '挑语速慢的段落', '去掉片头和歌曲'] }), []);
   assert.equal(planSuggestionsProblems({ suggestions: ['只要厨房里做饭的对话'] }).length, 1);
   assert.ok(planSuggestionsProblems({ suggestions: ['好', '每段围绕一次完整的问答', '每段围绕一次完整的问答', '挑语速慢的段落'] }).length >= 2);
+});
+
+test('整理字幕：条数与编号要对上', () => {
+  const item = (index: number) => ({ index, join: false, zh: '' });
+  assert.deepEqual(subtitlesProblems({ expected_count: 2, items: [item(1), item(2)] }), []);
+  assert.equal(subtitlesProblems({ expected_count: 3, items: [item(1), item(2)] }).length, 1);
+  assert.ok(subtitlesProblems({ expected_count: 2, items: [item(1), item(1)] }).length >= 2);
 });

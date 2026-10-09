@@ -217,7 +217,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
 
   const plan = live ?? history?.present ?? null;
   const cues = detail?.cues ?? [];
-  const untranslatedTotal = useMemo(() => cues.filter((c) => c.en.trim() && !c.zh.trim()).length, [cues]);
+  /** 还没整理的字幕：没断过句或没有中文 */
+  const unpreparedTotal = useMemo(() => cues.filter((c) => c.en.trim() && (c.join == null || !c.zh.trim())).length, [cues]);
   const durationMs = detail?.video.durationMs ?? 0;
   const boundaries = useMemo(() => cueBoundaries(cues), [cues]);
   const selected = plan?.segments.find((s) => s.id === selectedId) ?? null;
@@ -529,12 +530,12 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
               </>
             )}
           </span>
-          {/* 整部字幕的翻译：进行中显示进度；还有缺中文的句子时可以翻译全部 */}
+          {/* 整部字幕的整理（断句、翻译）：进行中显示进度；还有没整理的字幕时可以整理全部 */}
           {wholeTranslateJob ? (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
               <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
               <Languages className="size-3.5" />
-              翻译字幕
+              整理字幕
               {wholeTranslateJob.total > 0 ? (
                 <>
                   <Progress value={(wholeTranslateJob.current / wholeTranslateJob.total) * 100} className="h-1 w-16" />
@@ -547,11 +548,16 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
               )}
             </span>
           ) : (
-            untranslatedTotal > 0 && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => translate()}>
-                <Languages />
-                翻译全部字幕（{untranslatedTotal} 句）
-              </Button>
+            unpreparedTotal > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => translate()}>
+                    <Languages />
+                    整理字幕（{unpreparedTotal} 条）
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>AI 把断行拆开的句子连起来，并补上中文</TooltipContent>
+              </Tooltip>
             )
           )}
           <div className="ml-auto flex items-center gap-2">

@@ -94,3 +94,43 @@ export const submitPlanSuggestionsTool = defineTool({
     return { content: [{ type: "text", text: "Accepted." }], details: params, terminate: true };
   },
 });
+
+// ---------- submit_subtitles：整理字幕（断句 + 翻译） ----------
+
+const SubtitlesParams = Type.Object({
+  expected_count: Type.Integer({ description: "copy of the number of subtitle lines in the user message" }),
+  items: Type.Array(
+    Type.Object({
+      index: Type.Integer({ description: "line number from the user message" }),
+      join: Type.Boolean({ description: "true when this line continues the same sentence as the previous line" }),
+      zh: Type.String({ description: "Chinese translation of this line; empty string when the line already has Chinese" }),
+    }),
+  ),
+});
+export type SubtitlesSubmission = Static<typeof SubtitlesParams>;
+
+export function subtitlesProblems(p: SubtitlesSubmission): string[] {
+  const problems: string[] = [];
+  if (p.items.length !== p.expected_count) problems.push(`items 要有 ${p.expected_count} 项（现在 ${p.items.length} 项）`);
+  const seen = new Set<number>();
+  p.items.forEach((it, i) => {
+    if (it.index !== i + 1) problems.push(`第 ${i + 1} 项的 index 应为 ${i + 1}（现在 ${it.index}）`);
+    if (seen.has(it.index)) problems.push(`index ${it.index} 重复`);
+    seen.add(it.index);
+  });
+  return problems.slice(0, 10);
+}
+
+export const submitSubtitlesTool = defineTool({
+  name: "submit_subtitles",
+  label: "提交整理后的字幕",
+  description: "Submit sentence joins and Chinese translations for every subtitle line, in order. Fix only the listed problems if rejected.",
+  parameters: SubtitlesParams,
+  async execute(_toolCallId, params) {
+    const problems = subtitlesProblems(params);
+    if (problems.length > 0) {
+      throw new Error(`提交未通过校验（${problems.length} 处），请修正后重新提交：\n- ${problems.join("\n- ")}`);
+    }
+    return { content: [{ type: "text", text: "Accepted." }], details: params, terminate: true };
+  },
+});
