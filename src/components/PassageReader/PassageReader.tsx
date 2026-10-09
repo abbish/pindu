@@ -34,6 +34,8 @@ export interface PassageReaderProps {
   below?: (index: number) => React.ReactNode;
   /** 聚焦朗读：朗读时当前句最清晰，上下文按距离逐渐模糊变淡（悬停的句子恢复清晰） */
   focusBlur?: boolean;
+  /** 跟随当前句时只滚动这个容器（如视频旁的台词框），不带动整页；默认滚动页面 */
+  scrollContainer?: React.RefObject<HTMLElement | null>;
 }
 
 /** 聚焦朗读：与当前句相隔 1 / 2 / 3+ 句的模糊与透明度 */
@@ -111,14 +113,23 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
   hidden,
   below,
   focusBlur = false,
+  scrollContainer,
 }) => {
   const rows = useRef<(HTMLDivElement | null)[]>([]);
 
   // 朗读到的句子滚到视野中间（只在换句时滚动）
   useEffect(() => {
     if (current == null) return;
-    rows.current[current]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [current]);
+    const row = rows.current[current];
+    const box = scrollContainer?.current;
+    if (!row) return;
+    if (box) {
+      const top = row.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+      box.scrollTo({ top: top - box.clientHeight / 2 + row.clientHeight / 2, behavior: 'smooth' });
+    } else {
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, [current, scrollContainer]);
 
   return (
     <div className="flex flex-col gap-1 text-[17px] leading-relaxed select-text">

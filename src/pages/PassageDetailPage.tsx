@@ -336,7 +336,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         {clip && (
           <TabsContent value="video">
-            <ClipStudyPanel video={clip} sentences={passage.sentences} onPractice={() => setTab('sets')} />
+            <ClipStudyPanel video={clip} sentences={passage.sentences} targetWords={passage.targetWords.map((w) => w.word)} onPractice={passage.questionSets.length > 0 ? () => setTab('sets') : undefined} />
           </TabsContent>
         )}
 
