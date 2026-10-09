@@ -79,11 +79,11 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
               {status && (
                 <span className="flex shrink-0 items-center gap-1.5 text-sm">
                   {status.state === 'skipped' && <span className="text-muted-foreground">不生成</span>}
-                  {status.state === 'waiting' && <span className="text-muted-foreground">等待</span>}
+                  {status.state === 'waiting' && <span className="text-muted-foreground">等待中</span>}
                   {status.state === 'running' && (
                     <>
                       <Loader2 className="size-4 animate-spin text-primary" />
-                      正在写…
+                      正在写
                     </>
                   )}
                   {status.state === 'done' && (

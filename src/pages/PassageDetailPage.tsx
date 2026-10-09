@@ -25,7 +25,9 @@ import { ReadAloudPanel } from './passage-detail/ReadAloudPanel';
 import { ClipStudyPanel } from './passage-detail/ClipStudyPanel';
 import { videoService } from '@/services/videoService';
 import { MaterialTags } from '@/components/MaterialTags/MaterialTags';
-import { useJob, useOnJobFinished } from '@/hooks/useJobs';
+import { useJob, useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { JobPanel, activeJobFor } from '@/components/Jobs';
+import { isJobActive } from '@/types/job';
 import { jobErrorText } from '@/components/Jobs';
 import type { PassageVideo } from '@/types/video';
 import { NewWordsCard } from './passage-detail/NewWordsCard';
@@ -108,11 +110,13 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const [passage, setPassage] = useState<Passage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState('text');
-  /** 正在出题的后台任务（这个页面开着时由页面提示结果） */
+  /** 正在给这篇出题的后台任务（离开再回来也接得上；这个页面开着时由页面提示结果） */
+  const jobs = useJobs();
+  const runningQs = passageId === undefined ? undefined : activeJobFor(jobs, ['question_set'], 'passageId', passageId);
   const [qsJobId, setQsJobId] = useState<string | null>(null);
-  const qsJob = useJob(qsJobId);
+  const qsJob = useJob(qsJobId ?? runningQs?.id ?? null);
   useOnJobFinished((job) => {
-    if (job.id !== qsJobId) return;
+    if (job.kind !== 'question_set' || (job.link?.params as { passageId?: number } | null)?.passageId !== passageId) return;
     setQsJobId(null);
     if (job.status === 'succeeded') {
       const r = job.result as { name?: string; count?: number } | null;
@@ -400,11 +404,10 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         </TabsContent>
 
         <TabsContent value="sets">
-          {qsJob && (
-            <p className="mb-3 flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground" role="status">
-              <Loader2 className="size-4 animate-spin" />
-              正在出题…
-            </p>
+          {qsJob && isJobActive(qsJob) && (
+            <div className="mb-3">
+              <JobPanel job={qsJob} title="AI 正在出题" actions={{ stop: true }} />
+            </div>
           )}
           {passage.questionSets.length === 0 ? (
             <EmptyState icon={<FileQuestion />} title="还没有阅读理解题">

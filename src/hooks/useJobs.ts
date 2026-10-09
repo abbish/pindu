@@ -76,6 +76,11 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+/** 当前任务列表（事件处理里读一次，不订阅） */
+export function jobsNow(): Job[] {
+  return jobs;
+}
+
 export function useJobs(): Job[] {
   return useSyncExternalStore(subscribe, () => jobs);
 }

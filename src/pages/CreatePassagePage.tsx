@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronUp, ListChecks, Loader2, Plus, Search, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronUp, ListChecks, Plus, Search, Sparkles, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -23,6 +23,8 @@ import { studyService } from '@/services/studyService';
 import { wordBookService } from '@/services/wordbookService';
 import { toUserMessage } from '@/api/errors';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { AiWorking } from '@/components/AiWorking';
+import { JobPanel } from '@/components/Jobs';
 import { isJobActive } from '@/types/job';
 import { getStatusDisplay } from '@/types/study';
 import { PLAN_SCOPE_LABEL, PLAN_SCOPES } from '@/utils/passage';
@@ -178,6 +180,8 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   const [length, setLength] = useState<'short' | 'standard' | 'long'>('standard');
   /** 正在让 AI 规划 */
   const [planning, setPlanning] = useState(false);
+  /** 每次内容规划的序号：停止后迟到的结果丢弃 */
+  const planRun = useRef(0);
   const [planItems, setPlanItems] = useState<EditablePlanItem[]>([]);
   const [planNote, setPlanNote] = useState('');
   /** 写短文的后台任务：每次提交写哪几篇（规划里的序号）；重写失败的篇目是新的一次 */
@@ -333,9 +337,12 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
   /** 让 AI 给出内容规划（写几篇、每篇的构思与用词） */
   const makePlan = async (feedback?: string) => {
+    const run = ++planRun.current;
     setPlanning(true);
     setError(null);
     const result = await passageService.planPassages(baseRequest(), feedback);
+    // 停止后迟到的结果不再采用
+    if (run !== planRun.current) return;
     setPlanning(false);
     if (!result.success) return setError({ title: '无法生成内容规划', message: result.error });
     setPlanItems(result.data.items.map((item) => ({ ...item, include: true })));
@@ -389,6 +396,8 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   ];
   const includedCount = planItems.filter((it) => it.include).length;
   const writing = statuses !== null && statuses.some((st) => st.state === 'running' || st.state === 'waiting');
+  /** 正在写的那一批（最近提交的进行中任务） */
+  const activeRunJob = [...runs].reverse().map((r) => jobs.find((j) => j.id === r.jobId)).find((j) => j && isJobActive(j));
   const requiredWords = [...(candidates ?? []).filter((c) => required.has(c.wordId)).map((c) => c.word), ...extraWords];
 
   return (
@@ -397,11 +406,8 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
       <Stepper steps={STEPS} current={step} />
 
       {planning ? (
-        <Card className="items-center gap-3 px-6 py-12 text-center" role="status">
-          <span className="flex size-12 items-center justify-center rounded-full bg-accent">
-            <Loader2 className="size-6 animate-spin text-primary" />
-          </span>
-          <div className="font-medium">正在规划内容…</div>
+        <Card className="px-6">
+          <AiWorking title="AI 正在规划内容" />
         </Card>
       ) : (
         <>
@@ -695,6 +701,9 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
             </div>
           )}
 
+          {step === 3 && activeRunJob && (
+            <JobPanel job={activeRunJob} title="AI 正在写短文" actions={{ stop: true, onBackground: () => onNavigate?.('passages') }} />
+          )}
           {step === 3 && (
             <PassagePlanEditor
               items={planItems}
@@ -711,14 +720,25 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
       {error && <InlineError title={error.title}>{error.message}</InlineError>}
 
+      {planning && (
+        <div className="flex items-center gap-2 border-t pt-4">
+          <Button
+            variant="outline"
+            onClick={() => {
+              planRun.current += 1;
+              setPlanning(false);
+            }}
+          >
+            停止
+          </Button>
+        </div>
+      )}
       {!planning && (
         <div className="flex items-center gap-2 border-t pt-4">
-          {statuses === null ? (
+          {statuses === null && (
             <Button variant="ghost" onClick={() => onNavigate?.('passages')}>
               取消
             </Button>
-          ) : (
-            writing && <span className="text-sm text-muted-foreground">离开页面后继续</span>
           )}
           <div className="flex-1" />
           {step > 0 && statuses === null && (

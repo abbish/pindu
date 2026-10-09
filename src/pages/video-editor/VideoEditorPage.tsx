@@ -211,11 +211,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   // AI 规划结束：读回规划，替换到时间轴（进撤销栈）；切分结束：刷新已切出的短片
   useOnJobFinished(async (job) => {
     if ((job.link?.params as { videoId?: number } | undefined)?.videoId !== videoId) return;
+    // 整理字幕是内部步骤（D40）：只读回结果，没整理完的在 AI 规划 / 切分前自动补，不提示用户
     if (job.kind === 'video_translate') {
-      if (job.status === 'failed') toast.showError('没有翻译完', jobErrorText(job));
       await reloadCues();
-      const failed = (job.result as { failed?: number } | null)?.failed ?? 0;
-      if (job.status === 'succeeded' && failed > 0) toast.showWarning(`有 ${failed} 句字幕没有翻译成`, '可以再点「翻译全部字幕」补上');
       return;
     }
     if (job.kind === 'video_process') {

@@ -33,6 +33,7 @@ import { wordBookService } from '@/services/wordbookService';
 import { jobService } from '@/services/jobService';
 import { toUserMessage } from '@/api/errors';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { JobPanel } from '@/components/Jobs';
 import { isJobActive } from '@/types/job';
 import {
   lengthHint,
@@ -98,6 +99,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
   /** 导入的后台任务：每次提交导入哪几篇（预览里的序号）；重试没导入的是新的一次 */
   const [runs, setRuns] = useState<{ jobId: string; indexes: number[] }[]>([]);
   const jobs = useJobs();
+  const [startError, setStartError] = useState<string | null>(null);
 
   useEffect(() => {
     wordBookService.getAllWordBooks().then((result) => {
@@ -135,6 +137,8 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
 
   const hasMaterial = text.trim().length > 0;
   const running = statuses !== null && statuses.some((s) => s.state === 'running' || s.state === 'waiting');
+  /** 正在导入的那一批（最近提交的进行中任务） */
+  const activeRunJob = [...runs].reverse().map((r) => jobs.find((j) => j.id === r.jobId)).find((j) => j && isJobActive(j));
 
   /** ① → ②：后端清理、分句、拆篇（文件已由 MaterialInput 读成文本，sourceLabel 为文件名） */
   const prepare = async () => {
@@ -162,9 +166,10 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
       })),
     });
     if (!started.success) {
-      toast.showError('无法开始导入', started.error);
+      setStartError(started.error);
       return;
     }
+    setStartError(null);
     setRuns((prev) => [...prev, { jobId: started.data, indexes }]);
   };
 
@@ -373,8 +378,11 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
         </div>
       )}
 
-      {step === 2 && statuses && (
+      {step === 2 && (
         <div className="flex flex-col gap-4">
+          {activeRunJob && <JobPanel job={activeRunJob} title="AI 正在导入材料" actions={{ stop: cancelImport, onBackground: () => onNavigate?.('passages') }} />}
+          {startError && <InlineError title="无法开始导入">{startError}</InlineError>}
+          {statuses && (
           <Card className="gap-0 divide-y p-0">
             {items.map((item, i) => {
               const st = statuses[i];
@@ -390,9 +398,9 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                     <div className="truncate text-sm font-medium">{st.state === 'done' ? st.title : item.title || `第 ${i + 1} 篇`}</div>
                     <div className={cn('text-xs text-muted-foreground', st.state === 'failed' && 'text-destructive')}>
                       {st.state === 'waiting' && `等待中 · ${item.wordCount} 词`}
-                      {st.state === 'running' && '正在翻译、标出重点词…'}
+                      {st.state === 'running' && '正在翻译、标出重点词'}
                       {st.state === 'done' && '已导入'}
-                      {st.state === 'cancelled' && '已取消'}
+                      {st.state === 'cancelled' && '已停止'}
                       {st.state === 'failed' && st.error}
                     </div>
                   </div>
@@ -405,6 +413,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
               );
             })}
           </Card>
+          )}
 
           {!running && doneItems.length > 0 && preview && (
             <CollectWordsCard
@@ -415,11 +424,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
           )}
 
           <div className="flex justify-end gap-2">
-            {running ? (
-              <Button variant="outline" onClick={cancelImport}>
-                取消导入
-              </Button>
-            ) : (
+            {!running && (
               <>
                 {retryable.length > 0 && (
                   <Button variant="outline" onClick={() => runImport(retryable)}>

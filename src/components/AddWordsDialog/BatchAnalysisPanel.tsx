@@ -1,8 +1,8 @@
 import React from 'react';
 import { Check, Clock, Loader2, X } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { JobPanel } from '@/components/Jobs';
 import { estimateRemainingSeconds } from '@/services/wordAnalysisService';
 import { formatDuration, instantMs } from '@/utils/datetime';
 import type { Job } from '@/types/job';
@@ -27,15 +27,13 @@ const ICON_CLASS: Record<WordState, string> = {
 export interface BatchAnalysisPanelProps {
   /** 「分析并加入单词本」任务（逐词状态在 job.detail） */
   job: Job | undefined;
-  /** 已请求停止：标题改为“正在停止” */
-  stopping?: boolean;
 }
 
 /**
- * 批量拼读分析进度（只负责展示；停止 / 取消在弹窗底部操作栏）：
- * 标题与进度条 → 状态图例（计数）→ 单词状态（悬停看失败原因）。
+ * 批量拼读分析进度（只负责展示；停止 / 在后台继续在弹窗底部操作栏）：
+ * 统一的任务进度面板（已分析数、预计剩余）→ 状态图例（计数）→ 单词状态（悬停看失败原因）。
  */
-export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job, stopping = false }) => {
+export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job }) => {
   const words = (job?.detail as WordAnalysisDetail | null)?.words ?? [];
   const counts = STATE_ORDER.reduce<Record<WordState, number>>(
     (acc, s) => ({ ...acc, [s]: words.filter((w) => w.status === s).length }),
@@ -43,41 +41,17 @@ export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job, sto
   );
   const total = words.length;
   const done = counts.completed + counts.failed;
-  const percent = total > 0 ? Math.min(100, (done / total) * 100) : 0;
   const elapsed = job?.startedAt ? (Date.now() - instantMs(job.startedAt)) / 1000 : 0;
   const remaining = estimateRemainingSeconds(total, done, elapsed);
-  const starting = !job?.startedAt || words.length === 0;
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <div className="space-y-3">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 font-medium">
-              <Loader2 className="size-4 animate-spin text-primary" />
-              {stopping
-                ? '正在停止…'
-                : job?.status === 'queued'
-                  ? '排队中'
-                  : starting
-                    ? '正在准备分析…'
-                    : (job?.stage ?? '正在分析…')}
-            </div>
-            {!starting && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                已用 {formatDuration(elapsed * 1000)}
-                {remaining !== null && !stopping && ` · 预计还需 ${formatDuration(remaining * 1000)}`}
-              </p>
-            )}
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-semibold tabular-nums">
-              {done}
-              <span className="text-base font-normal text-muted-foreground"> / {total || '–'}</span>
-            </div>
-          </div>
-        </div>
-        <Progress value={percent} className="h-1.5 [&>[data-slot=progress-indicator]]:bg-brand" aria-label={`已分析 ${Math.round(percent)}%`} />
+      <JobPanel
+        job={job}
+        title="AI 正在分析单词"
+        count={total > 0 ? `${done} / ${total}` : undefined}
+        extra={remaining !== null ? `预计还需 ${formatDuration(remaining * 1000)}` : undefined}
+      >
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {STATE_ORDER.map((s) => (
             <span key={s} className="inline-flex items-center gap-1.5">
@@ -87,7 +61,7 @@ export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job, sto
             </span>
           ))}
         </div>
-      </div>
+      </JobPanel>
 
       {words.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

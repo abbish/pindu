@@ -23,7 +23,8 @@ import { WordGrid, type ExtractedWord } from '@/components/WordGrid';
 import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { jobErrorText } from '@/components/Jobs';
-import { useJob } from '@/hooks/useJobs';
+import { jobsNow, useJob } from '@/hooks/useJobs';
+import { activeJobFor } from '@/components/Jobs';
 import { jobService } from '@/services/jobService';
 import { wordAnalysisService } from '@/services/wordAnalysisService';
 import { wordBookService } from '@/services/wordbookService';
@@ -32,6 +33,7 @@ import { standardizePartOfSpeech } from '@/utils/partOfSpeech';
 import type { WordExtractionMode } from '@/types';
 import type { WordAnalysisOutcome, WordExtractionResult } from '@/types/word-analysis';
 import { BatchAnalysisPanel } from './BatchAnalysisPanel';
+import { AiWorking } from '@/components/AiWorking';
 import { InlineError } from '@/components/InlineError';
 
 /** 单词从哪来：AI 按描述生成 / 从文本或文件提取 */
@@ -159,6 +161,12 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     reset();
+    // 这本单词本还有分析在跑（之前「在后台继续」了）：直接回到进度
+    const running = activeJobFor(jobsNow(), ['word_analysis'], 'id', bookId);
+    if (running) {
+      setJobId(running.id);
+      setPhase('analyzing');
+    }
     setSource(initialSource);
     setScene(bookDescription.trim());
     setSceneDraft(null);
@@ -393,20 +401,9 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     );
   };
 
-  /** 居中的状态块（生成中 / 保存中） */
-  const centered = (title: string, detail?: React.ReactNode) => (
-    <div className="flex h-full flex-col items-center justify-center gap-3 py-10 text-center" role="status">
-      <span className="flex size-12 items-center justify-center rounded-full bg-accent">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </span>
-      <div className="font-medium">{title}</div>
-      {detail && <div className="max-w-md text-sm text-muted-foreground">{detail}</div>}
-    </div>
-  );
-
   const body = () => {
     if (phase === 'fetching') {
-      return centered(source === 'ai' ? '正在生成单词…' : '正在提取单词…');
+      return <AiWorking title={source === 'ai' ? 'AI 正在生成单词' : 'AI 正在提取单词'} />;
     }
 
     switch (phase) {
@@ -519,7 +516,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
         );
 
       case 'analyzing':
-        return <BatchAnalysisPanel job={job} stopping={stopped} />;
+        return <BatchAnalysisPanel job={job} />;
 
       case 'review': {
         const failed = outcome?.failed ?? [];
@@ -598,8 +595,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
         return (
           <>
             <Button variant="outline" className="mr-auto" onClick={stopAnalysis} disabled={stopped}>
-              {stopped && <Loader2 className="animate-spin" />}
-              {stopped ? '正在停止…' : '停止分析'}
+              停止
             </Button>
             <Button onClick={close}>在后台继续</Button>
           </>
