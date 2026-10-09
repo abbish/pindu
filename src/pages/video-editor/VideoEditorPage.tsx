@@ -934,6 +934,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
             onEdgeDrag={onEdgeDrag}
             onCreate={createFrom}
             marks={marks}
+            onMarksChange={setMarks}
             snapTo={snap ? boundaries : null}
             snapWithinMs={(SNAP_PX / zoom) * 1000}
           />

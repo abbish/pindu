@@ -32,8 +32,9 @@ export interface TimelineProps {
   onEdgeDrag: (id: string, edge: 'start' | 'end', ms: number, done: boolean, free: boolean) => void;
   /** 在片段轨的空白处拖出一段 */
   onCreate: (startMs: number, endMs: number) => void;
-  /** 入点 / 出点（工具栏或 I / O 设的），在时间轴上标出 */
+  /** 入点 / 出点（工具栏或 I / O 设的），在时间轴上标出；小旗可左右拖，两点之间的区域可整体平移 */
   marks: { in: number | null; out: number | null };
+  onMarksChange: (marks: { in: number | null; out: number | null }) => void;
   /** 吸附打开时的字幕边界；拖动时贴近就显示对齐线（与父组件的吸附规则一致） */
   snapTo: number[] | null;
   /** 吸附距离（毫秒） */
@@ -48,6 +49,8 @@ function tickStep(zoom: number): number {
 
 type Drag =
   | { kind: 'edge'; id: string; edge: 'start' | 'end' }
+  | { kind: 'mark'; which: 'in' | 'out' }
+  | { kind: 'range'; grabMs: number; inMs: number; outMs: number }
   | { kind: 'create'; fromMs: number; toMs: number }
   | { kind: 'scrub' };
 
@@ -71,6 +74,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   onEdgeDrag,
   onCreate,
   marks,
+  onMarksChange,
   snapTo,
   snapWithinMs,
 }) => {
@@ -158,7 +162,18 @@ export const Timeline: React.FC<TimelineProps> = ({
     const xOf = (e: MouseEvent) => (el ? e.clientX - el.getBoundingClientRect().left + el.scrollLeft : 0);
     const move = (e: MouseEvent) => {
       const ms = toMs(xOf(e));
+      if (drag.kind === 'range') {
+        // 整体平移：保持长度，不出界
+        const len = drag.outMs - drag.inMs;
+        const start = Math.max(0, Math.min(durationMs - len, drag.inMs + ms - drag.grabMs));
+        onMarksChange({ in: start, out: start + len });
+        return;
+      }
       if (drag.kind !== 'scrub') setGuide(snapPoint(ms, e.altKey));
+      if (drag.kind === 'mark') {
+        onMarksChange({ ...marksRef.current, [drag.which]: snapPoint(ms, e.altKey) ?? ms });
+        return;
+      }
       if (drag.kind === 'edge') onEdgeDrag(drag.id, drag.edge, ms, false, e.altKey);
       else if (drag.kind === 'create') setDrag({ ...drag, toMs: snapPoint(ms, e.altKey) ?? ms });
       else onSeek(ms);
@@ -176,7 +191,9 @@ export const Timeline: React.FC<TimelineProps> = ({
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
-  }, [drag, toMs, onEdgeDrag, onCreate, onSeek, snapPoint]);
+  }, [drag, toMs, onEdgeDrag, onCreate, onSeek, snapPoint, onMarksChange, durationMs]);
+  const marksRef = useRef(marks);
+  marksRef.current = marks;
 
   const localX = (e: React.MouseEvent) => {
     const el = scrollRef.current!;
@@ -335,11 +352,38 @@ export const Timeline: React.FC<TimelineProps> = ({
             style={{ left: toX(Math.min(marks.in, marks.out)), width: toX(Math.abs(marks.out - marks.in)) }}
           />
         )}
+        {/* 刻度行里两点之间：按住整体平移 */}
+        {marks.in !== null && marks.out !== null && (
+          <div
+            className="absolute top-0 cursor-grab active:cursor-grabbing"
+            style={{ left: toX(Math.min(marks.in, marks.out)), width: toX(Math.abs(marks.out - marks.in)), height: RULER_H }}
+            onMouseDown={(e) => {
+              if (e.button !== 0 || marks.in === null || marks.out === null) return;
+              e.stopPropagation();
+              setDrag({ kind: 'range', grabMs: toMs(localX(e)), inMs: Math.min(marks.in, marks.out), outMs: Math.max(marks.in, marks.out) });
+            }}
+          />
+        )}
         {(['in', 'out'] as const).map((k) => {
           const at = marks[k];
           return at === null ? null : (
             <div key={k} className="pointer-events-none absolute top-0 bottom-0 w-px bg-primary" style={{ left: toX(at) }}>
-              <span className={cn('absolute top-0 rounded-sm bg-primary px-1 text-[10px] leading-4 text-primary-foreground', k === 'in' ? 'left-0' : 'right-0')}>
+              {/* 小旗与刻度行里的竖线可以拖 */}
+              <span
+                role="slider"
+                aria-label={k === 'in' ? '入点' : '出点'}
+                aria-valuenow={Math.round(at / 1000)}
+                className={cn(
+                  'pointer-events-auto absolute top-0 cursor-ew-resize rounded-sm bg-primary px-1 text-[10px] leading-4 text-primary-foreground shadow-sm',
+                  k === 'in' ? 'left-0' : 'right-0'
+                )}
+                style={{ height: RULER_H, lineHeight: `${RULER_H}px` }}
+                onMouseDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.stopPropagation();
+                  setDrag({ kind: 'mark', which: k });
+                }}
+              >
                 {k === 'in' ? '入' : '出'}
               </span>
             </div>
