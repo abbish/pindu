@@ -16,8 +16,8 @@ pub struct TagService {
 
 /// AI 生成素材时给的标签最多几个
 pub const AI_TAGS_MAX: usize = 3;
-/// 发给 AI 参考的已有标签最多几个
-const KNOWN_TAGS_MAX: usize = 60;
+/// 发给 AI 参考的已有标签最多几个（全部标签，用得多的在前）
+const KNOWN_TAGS_MAX: usize = 200;
 
 fn usage_total(t: &TagUsage) -> i64 {
     t.word_books + t.passages + t.clips + t.videos
@@ -108,10 +108,11 @@ impl TagService {
         self.repository.add_conn(conn, kind, ref_id, &ids).await
     }
 
-    /// 给 AI 参考的已有标签名：用得多的在前，最多 KNOWN_TAGS_MAX 个
+    /// 给 AI 参考的已有标签名（让它先从已有的里选，不另起近义标签）：全部标签，用得多的在前，
+    /// 最多 KNOWN_TAGS_MAX 个
     pub async fn known_names(&self) -> AppResult<Vec<String>> {
         let mut tags = self.repository.find_all_with_usage().await?;
-        tags.retain(|t| usage_total(t) > 0);
+        // find_all_with_usage 已按名称排序，稳定排序后同数量的按名称
         tags.sort_by_key(|t| std::cmp::Reverse(usage_total(t)));
         Ok(tags
             .into_iter()
@@ -237,7 +238,10 @@ mod tests {
                 .unwrap();
         assert_eq!(rows.len(), 3);
         assert!(rows.contains(&("video".to_string(), a.id)));
-        assert_eq!(service.known_names().await.unwrap(), vec!["旅行", "点餐"]);
+        // 全部标签都给 AI（没用过的也给，免得另起近义的），用得多的在前
+        let known = service.known_names().await.unwrap();
+        assert_eq!(known[..2], ["旅行", "点餐"]);
+        assert!(known.len() > 2);
     }
 
     #[tokio::test]

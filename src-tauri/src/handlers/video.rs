@@ -485,11 +485,8 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
             feedback: request.feedback.clone(),
             plan_id: request.plan_id,
             tags: crate::services::tag::TagService::new(pool_arc_for_tags)
-                .get_tags()
-                .await?
-                .into_iter()
-                .map(|t| t.tag.name)
-                .collect(),
+                .known_names()
+                .await?,
         };
         Ok(app.state::<Jobs>().spawn(
             JobSpec {

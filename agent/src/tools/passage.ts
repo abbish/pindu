@@ -50,7 +50,7 @@ const PassageParams = Type.Object({
   tags: Type.Optional(
     Type.Array(Type.String(), {
       description:
-        "1-3 reusable Chinese tags for this passage (scene or topic, e.g. 出国旅行 / 点餐 / 校园生活), each at most 10 characters; reuse existing tag names from the user message when they fit",
+        "1-3 reusable Chinese tags for this passage (scene or topic, e.g. 旅行 / 点餐 / 校园生活), each at most 10 characters; pick from the existing tags listed in the user message first; create a new tag only when none fits, and never a synonym or a broader/narrower variant of an existing one (existing 旅行 → use 旅行, not 出国旅行)",
     }),
   ),
 });
@@ -313,7 +313,7 @@ const TranslationParams = Type.Object({
   tags: Type.Optional(
     Type.Array(Type.String(), {
       description:
-        "1-3 reusable Chinese tags for this passage (scene or topic, e.g. 出国旅行 / 点餐 / 校园生活), each at most 10 characters; reuse existing tag names from the user message when they fit",
+        "1-3 reusable Chinese tags for this passage (scene or topic, e.g. 旅行 / 点餐 / 校园生活), each at most 10 characters; pick from the existing tags listed in the user message first; create a new tag only when none fits, and never a synonym or a broader/narrower variant of an existing one (existing 旅行 → use 旅行, not 出国旅行)",
     }),
   ),
 });
