@@ -122,7 +122,7 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Sparkles className="size-3.5" />
-                  {suggestions === null ? '正在读字幕，想几个要求…' : '根据这个视频的建议，点一下填入'}
+                  {suggestions === null ? '正在读字幕…' : '建议'}
                   {suggestions !== null && (
                     <Button type="button" variant="ghost" size="sm" className="ml-auto h-6 px-2 text-xs" onClick={() => loadSuggestions(true)}>
                       <RefreshCw />

@@ -772,44 +772,7 @@ pub async fn set_video_subtitle_offset(
     super::finish(&logger, "set_video_subtitle_offset", result)
 }
 
-/// 翻译字幕（后台任务）：只翻译还没有中文的，写回字幕；给了 start / end 时只翻译这一段
-#[tauri::command]
-pub async fn start_video_translate(
-    app: AppHandle,
-    video_id: i64,
-    start_ms: Option<i64>,
-    end_ms: Option<i64>,
-) -> AppResult<String> {
-    let logger = app.state::<Logger>();
-    logger.api_request(
-        "start_video_translate",
-        Some(&format!("video_id: {video_id}, {start_ms:?}–{end_ms:?}ms")),
-    );
-    let result = async {
-        // 同一范围（整部或同一段）不重复翻译；整部在翻时可以先翻某一段
-        let range = start_ms.zip(end_ms);
-        let same = app.state::<Jobs>().list().iter().any(|job| {
-            job.status.is_active()
-                && job.kind == "video_translate"
-                && job.link.as_ref().is_some_and(|l| {
-                    l.params["videoId"] == video_id
-                        && l.params["startMs"].as_i64() == range.map(|r| r.0)
-                        && l.params["endMs"].as_i64() == range.map(|r| r.1)
-                })
-        });
-        if same {
-            return Err(AppError::ValidationError("正在翻译，等它完成".to_string()));
-        }
-        let row = VideoRepository::get(app.state::<SqlitePool>().inner(), video_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
-        spawn_translate(&app, video_id, &row.title, range).await
-    }
-    .await;
-    super::finish(&logger, "start_video_translate", result)
-}
-
-/// 提交翻译字幕的后台任务（导入时整部、编辑器里整部或一段）
+/// 提交整理字幕的后台任务（导入时对整部字幕：断句、补中文）
 async fn spawn_translate(
     app: &AppHandle,
     video_id: i64,

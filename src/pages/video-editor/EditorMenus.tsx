@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ChevronDown, Clapperboard, Copy, Languages, Layers, Loader2, Pencil, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { Check, ChevronDown, Clapperboard, Copy, Layers, Pencil, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,75 +16,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
-import type { Job } from '@/types/job';
 import type { VideoPlanInfo } from '@/types/video';
 
 /**
- * 剪辑编辑器顶栏按工作流程收拢的两个菜单（第三步是主按钮「开始切分」）：
- * ① 字幕：整理字幕（AI 断句、补中文），按钮上显示进度或还剩多少条；
- * ② 规划：一个视频可以按不同主题 / 意图规划多批——切换、新建、复制、改名、删除规划，
- *    以及在当前规划里 AI 规划 / 按字幕自动切分、查看切出的片段。
+ * 剪辑编辑器顶栏的「规划」菜单（旁边是主按钮「开始切分」）：一个视频可以按不同主题 / 意图规划多批——
+ * 切换、新建、复制、改名、删除规划，以及在当前规划里 AI 规划 / 按字幕自动切分、查看切出的片段。
+ * 字幕整理（断句、补中文）是内部步骤：导入时、AI 规划与切分前自动完成，不做成用户操作。
  */
-
-export const SubtitleMenu: React.FC<{
-  /** 正在整理整部字幕的任务 */
-  job: Job | undefined;
-  /** 还没整理的字幕条数 */
-  pending: number;
-  disabled?: boolean;
-  onPrepare: () => void;
-}> = ({ job, pending, disabled, onPrepare }) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger asChild>
-      <Button variant="outline" size="sm" disabled={disabled}>
-        <Languages />
-        字幕
-        {job ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : (
-          pending > 0 && (
-            <Badge variant="secondary" className="h-5 px-1.5 tabular-nums">
-              {pending}
-            </Badge>
-          )
-        )}
-        <ChevronDown className="opacity-60" />
-      </Button>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" className="w-72">
-      {job ? (
-        <div className="space-y-2 px-2 py-1.5 text-sm">
-          <div className="flex items-center gap-1.5">
-            <Loader2 className="size-3.5 animate-spin" />
-            正在整理字幕
-            {job.total > 0 && (
-              <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                {job.current} / {job.total}
-              </span>
-            )}
-          </div>
-          {job.total > 0 && <Progress value={(job.current / job.total) * 100} className="h-1" />}
-          <p className="text-xs text-muted-foreground">翻完一块显示一块，可以先去编辑</p>
-        </div>
-      ) : (
-        <>
-          <DropdownMenuItem onSelect={onPrepare} disabled={pending === 0}>
-            <Languages />
-            <span className="flex-1">整理字幕</span>
-            <span className="text-xs text-muted-foreground">{pending > 0 ? `${pending} 条` : '已整理'}</span>
-          </DropdownMenuItem>
-          <p className="px-2 pb-1.5 text-xs text-muted-foreground">AI 把断行拆开的句子连起来，并补上中文</p>
-        </>
-      )}
-    </DropdownMenuContent>
-  </DropdownMenu>
-);
 
 export interface PlanMenuProps {
   plans: VideoPlanInfo[];
@@ -138,7 +80,6 @@ export const PlanMenu: React.FC<PlanMenuProps> = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuLabel className="text-xs text-muted-foreground">规划（同一个视频可以从不同角度切）</DropdownMenuLabel>
           {plans.map((p) => (
             <DropdownMenuItem key={p.id} onSelect={() => onSwitch(p.id)}>
               <Check className={p.id === currentId ? 'opacity-100' : 'opacity-0'} />
@@ -157,7 +98,6 @@ export const PlanMenu: React.FC<PlanMenuProps> = ({
             复制当前规划
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-xs text-muted-foreground">在「{current?.name}」里</DropdownMenuLabel>
           <DropdownMenuItem onSelect={onAiPlan}>
             <Sparkles />
             AI 规划…

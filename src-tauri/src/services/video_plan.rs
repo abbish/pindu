@@ -294,6 +294,17 @@ pub struct VideoPlanJob {
 
 impl VideoPlanJob {
     pub async fn run(self, ctx: JobCtx) -> AppResult<Value> {
+        // 先把还没整理的字幕整理好（断句让片段边界落在整句上）
+        crate::services::video_translate::prepare_before(
+            &self.pool,
+            &self.logger,
+            &self.paths,
+            &self.model,
+            &self.profile,
+            self.video_id,
+            &ctx,
+        )
+        .await;
         let row = VideoRepository::get(&self.pool, self.video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;

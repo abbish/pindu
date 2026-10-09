@@ -36,7 +36,7 @@ import { JobIndicator, jobErrorText } from '@/components/Jobs';
 import type { NavigateFn } from '@/navigation';
 import type { VideoDetail, VideoPlan, VideoPlanInfo, VideoSegment } from '@/types/video';
 import { AiPlanDialog } from './AiPlanDialog';
-import { PlanMenu, SubtitleMenu } from './EditorMenus';
+import { PlanMenu } from './EditorMenus';
 import { AutoSplitDialog } from './AutoSplitDialog';
 import { EditorBusyDialog } from './EditorBusyDialog';
 import { SegmentPanel } from './SegmentPanel';
@@ -134,12 +134,10 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     jobs.find((j) => j.kind === kind && isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId);
   const planJob = activeJob('video_plan');
   const processJob = activeJob('video_process');
-  // 翻译：整部（导入时自动启动或顶栏发起）与某一段（片段面板发起）可以同时进行
+  // 导入时在后台整理字幕（断句、补中文）：进行中随进度刷新字幕
   const translateJobs = jobs.filter(
     (j) => j.kind === 'video_translate' && isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId
   );
-  const rangeOf = (j: (typeof jobs)[number]) => j.link?.params as { startMs?: number | null; endMs?: number | null } | undefined;
-  const wholeTranslateJob = translateJobs.find((j) => rangeOf(j)?.startMs == null);
   /** 规划 / 切分进行中：编辑器锁住，弹窗显示进度 */
   const busyJob = planJob ?? processJob;
   const locked = busyJob !== undefined;
@@ -212,7 +210,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     }
     if (job.kind === 'video_process') {
       const result = videoId ? await videoService.getVideo(videoId) : null;
-      if (result?.success) setDetail((d) => (d ? { ...d, clips: result.data.clips, video: result.data.video } : d));
+      if (result?.success) setDetail((d) => (d ? { ...d, clips: result.data.clips, video: result.data.video, cues: result.data.cues } : d));
       if (job.status === 'failed') toast.showError('切分没有完成', jobErrorText(job));
       else if (job.status === 'succeeded') toast.showSuccess(`已生成 ${(job.result as { created?: number } | null)?.created ?? 0} 段短片`);
       return;
@@ -227,7 +225,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     const target = (job.link?.params as { planId?: number } | undefined)?.planId;
     const planned = result.success ? result.data.plans.find((x) => x.id === target) : undefined;
     if (!result.success || !planned) return;
-    setDetail((d) => (d ? { ...d, plans: result.data.plans } : d));
+    setDetail((d) => (d ? { ...d, plans: result.data.plans, cues: result.data.cues } : d));
     if (planned.id === planIdRef.current) {
       commit(planned.plan);
     } else {
@@ -245,8 +243,6 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
 
   const plan = live ?? history?.present ?? null;
   const cues = detail?.cues ?? [];
-  /** 还没整理的字幕：没断过句或没有中文 */
-  const unpreparedTotal = useMemo(() => cues.filter((c) => c.en.trim() && (c.join == null || !c.zh.trim())).length, [cues]);
   const durationMs = detail?.video.durationMs ?? 0;
   const boundaries = useMemo(() => cueBoundaries(cues), [cues]);
   const selected = plan?.segments.find((s) => s.id === selectedId) ?? null;
@@ -555,11 +551,6 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   const segmentUnderPlayhead = segmentAt(plan, playhead);
   const mediaSrc = detail.video.mediaUrl ?? undefined;
   const thumbOf = (s: VideoSegment) => segmentThumb(detail.thumbs, detail.thumbIntervalMs, s);
-  /** 翻译字幕：不给片段时整部 */
-  const translate = async (seg?: VideoSegment) => {
-    const result = await videoService.startTranslate(detail.video.id, seg?.startMs, seg?.endMs);
-    if (!result.success) toast.showError('无法翻译字幕', result.error);
-  };
   const currentPlan = detail.plans.find((x) => x.id === planId);
   const cutCount = (p: VideoPlanInfo) => p.plan.segments.filter((sg) => clipOf(sg)).length;
   const createPlan = async (copy: boolean) => {
@@ -625,8 +616,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
           </span>
           <div className="ml-auto flex items-center gap-2">
             {onNavigate && <JobIndicator onNavigate={onNavigate} />}
-            {/* 按流程：① 字幕 → ② 规划 → ③ 开始切分 */}
-            <SubtitleMenu job={wholeTranslateJob} pending={unpreparedTotal} onPrepare={() => translate()} />
+            {/* 规划 → 开始切分 */}
             <PlanMenu
               plans={detail.plans}
               currentId={planId ?? 0}
@@ -793,13 +783,10 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
                 thumb={thumbOf(selected)}
                 issues={segmentIssues(selected, cues)}
                 cut={clipOf(selected) !== undefined}
-                translating={translateJobs.some((j) => rangeOf(j)?.startMs === selected.startMs && rangeOf(j)?.endMs === selected.endMs)}
-                wholeTranslating={wholeTranslateJob !== undefined}
                 tagNames={tagNames}
                 onChange={updateSelected}
                 onPlay={() => playSegment(selected)}
                 onSeek={seek}
-                onTranslate={() => translate(selected)}
                 onSplit={split}
                 onMerge={merge}
                 onDelete={remove}

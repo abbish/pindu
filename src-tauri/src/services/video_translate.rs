@@ -59,8 +59,44 @@ pub fn work_chunks(cues: &[Cue], range: Option<(i64, i64)>) -> Vec<std::ops::Ran
     chunks
 }
 
+/// 在 AI 规划、切分之前顺带整理还没整理的字幕（导入时的整理没做完或失败时补上）。
+/// 失败不影响主流程：没断过句的按标点推断，缺的中文切分时再补。
+pub async fn prepare_before(
+    pool: &Arc<SqlitePool>,
+    logger: &Arc<Logger>,
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &crate::prompts::PromptProfile,
+    video_id: i64,
+    ctx: &JobCtx,
+) {
+    let job = VideoTranslateJob {
+        pool: pool.clone(),
+        logger: logger.clone(),
+        paths: paths.clone(),
+        model: model.clone(),
+        profile: profile.clone(),
+        video_id,
+        range: None,
+    };
+    if let Err(e) = job.prepare(ctx, "AI 正在读字幕").await {
+        if !ctx.is_cancelled() {
+            logger.warn(
+                "VIDEO",
+                &format!("视频 {video_id} 规划 / 切分前整理字幕没有完成，继续"),
+                Some(&e.to_string()),
+            );
+        }
+    }
+}
+
 impl VideoTranslateJob {
     pub async fn run(self, ctx: JobCtx) -> AppResult<Value> {
+        self.prepare(&ctx, "AI 正在整理字幕").await
+    }
+
+    /// 整理还没整理的字幕；全部失败时返回错误，部分失败记 WARN
+    pub async fn prepare(&self, ctx: &JobCtx, stage: &str) -> AppResult<Value> {
         let row = VideoRepository::get(&self.pool, self.video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
@@ -71,12 +107,12 @@ impl VideoTranslateJob {
         }
         let total = chunks.len() as u64;
         let lines: usize = chunks.iter().map(|c| c.len()).sum();
-        ctx.stage(format!("AI 正在整理 {lines} 条字幕（断句、翻译）"));
+        ctx.stage(stage);
         ctx.progress(0, total);
 
         let mut results = stream::iter(chunks)
             .map(|chunk| {
-                let (job, ctx, raw) = (&self, &ctx, &raw);
+                let (job, raw) = (&self, &raw);
                 async move {
                     let previous = chunk.start.checked_sub(1).map(|p| &raw[p]);
                     let mut last = None;

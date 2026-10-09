@@ -88,6 +88,20 @@ impl VideoProcessJob {
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
         let before = row.status.clone();
         VideoRepository::set_status(&self.pool, self.video_id, "processing", None).await?;
+        // 先把还没整理的字幕整理好（短文按整句、有中文）
+        crate::services::video_translate::prepare_before(
+            &self.pool,
+            &self.logger,
+            &self.paths,
+            &self.model,
+            &self.profile,
+            self.video_id,
+            &ctx,
+        )
+        .await;
+        let row = VideoRepository::get(&self.pool, self.video_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
         let result = self.process(&ctx, &row).await;
         // 结束后：所有片段都切好了算完成；否则回到可以继续编辑与处理的状态
         let all_done = self.all_done(&row).await.unwrap_or(false);
