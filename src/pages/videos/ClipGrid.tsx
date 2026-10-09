@@ -120,7 +120,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
         search={query}
         onSearch={setQuery}
         searchPlaceholder="搜索标题、标签或英文词"
-        tag={{ kind: 'passage', value: tag, onChange: setTag, onTagsChanged }}
+        tag={{ kind: 'clip', value: tag, onChange: setTag, onTagsChanged }}
         activeCount={active}
         onReset={() => {
           setQuery('');

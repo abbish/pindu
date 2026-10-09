@@ -35,6 +35,8 @@ pub struct VideoProcessJob {
     pub profile: crate::prompts::PromptProfile,
     pub data_dir: PathBuf,
     pub video_id: i64,
+    /// 按哪个规划切
+    pub plan_id: i64,
 }
 
 /// 片段里的字幕 → 短文句子：被断行拆开的一句合并回完整的句子（`sentences::group_cues`），
@@ -108,12 +110,22 @@ impl VideoProcessJob {
             .iter()
             .map(|c| (c.start_ms, c.end_ms))
             .collect();
-        let segments = row.plan().unwrap_or_default().segments;
+        let _ = row;
+        let segments = self.segments().await?;
         Ok(!segments.is_empty() && pending_segments(&segments, &done).is_empty())
     }
 
+    /// 这个规划的片段
+    async fn segments(&self) -> AppResult<Vec<VideoSegment>> {
+        Ok(VideoRepository::get_plan(&self.pool, self.plan_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("这个规划已被删除".to_string()))?
+            .plan()
+            .segments)
+    }
+
     async fn process(&self, ctx: &JobCtx, row: &VideoRow) -> AppResult<Value> {
-        let segments = row.plan().unwrap_or_default().segments;
+        let segments = self.segments().await?;
         if segments.is_empty() {
             return Err(AppError::ValidationError(
                 "还没有片段，先规划切分".to_string(),
@@ -314,6 +326,7 @@ impl VideoProcessJob {
         VideoRepository::insert_clip_conn(
             &mut tx,
             self.video_id,
+            Some(self.plan_id),
             passage_id,
             seq,
             seg.start_ms,
@@ -427,9 +440,19 @@ mod tests {
         )
         .await
         .unwrap();
-        VideoRepository::insert_clip_conn(&mut tx, video, passage, 1, 0, 2000, "clips/a.mp4", None)
-            .await
-            .unwrap();
+        VideoRepository::insert_clip_conn(
+            &mut tx,
+            video,
+            None,
+            passage,
+            1,
+            0,
+            2000,
+            "clips/a.mp4",
+            None,
+        )
+        .await
+        .unwrap();
         tx.commit().await.unwrap();
         crate::time::assert_instants_canonical(&pool).await;
         let clip = VideoRepository::clip_of_passage(&pool, passage)
@@ -446,6 +469,8 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+        // 短文库（不筛来源）不含视频切片
+        assert!(repo.list(None, None, None).await.unwrap().is_empty());
         // 句子的时间存进了 JSON
         let json: String = sqlx::query_scalar("SELECT sentences FROM passages WHERE id = ?")
             .bind(passage)
@@ -542,16 +567,18 @@ mod real_tests {
             tags: vec!["点餐".into()],
         };
         let plan = crate::types::video::VideoPlan {
-            suggestions: Vec::new(),
             requirements: String::new(),
             segments: vec![
                 segment(1700, 40_000, "Restaurant"),
                 segment(45_000, 70_000, "Directions"),
             ],
         };
-        VideoRepository::save_plan(&pool, id, &plan).await.unwrap();
+        let plan_id = VideoRepository::insert_plan(&pool, id, "规划 1", &plan)
+            .await
+            .unwrap();
         let make = || {
             VideoProcessJob {
+            plan_id,
             pool: pool.clone(),
             logger: logger.clone(),
             tools: tools.clone(),

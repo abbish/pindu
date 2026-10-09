@@ -1,6 +1,6 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '../types';
-import type { ClipSummary, MediaToolsStatus, PassageVideo, StartVideoImportRequest, StartVideoPlanRequest, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
+import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, StartVideoImportRequest, StartVideoPlanRequest, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
 
 /** 视频库（handlers/video.rs）：视频组件、导入（后台任务）、列表 / 详情 / 波形、改名、规划草稿、删除 */
 export class VideoService extends BaseService {
@@ -40,8 +40,22 @@ export class VideoService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<void>('rename_video', { videoId, title }));
   }
 
-  async savePlan(videoId: number, plan: VideoPlan): Promise<ApiResult<void>> {
-    return this.executeWithLoading(() => this.client.invoke<void>('save_video_plan', { videoId, plan }));
+  async savePlan(planId: number, plan: VideoPlan): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('save_video_plan', { planId, plan }));
+  }
+
+  /** 新建规划：空白，或复制 copyFrom；名字为空时用「规划 N」 */
+  async createPlan(videoId: number, name?: string, copyFrom?: number): Promise<ApiResult<VideoPlanInfo>> {
+    return this.executeWithLoading(() => this.client.invoke<VideoPlanInfo>('create_video_plan', { videoId, name, copyFrom }));
+  }
+
+  async renamePlan(planId: number, name: string): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('rename_video_plan', { planId, name }));
+  }
+
+  /** 删除规划（切出的片段保留） */
+  async deletePlan(planId: number): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('delete_video_plan', { planId }));
   }
 
   /** 字幕时间纠偏（毫秒，正数 = 字幕延后） */
@@ -65,8 +79,8 @@ export class VideoService extends BaseService {
   }
 
   /** 按规划切出短片并生成短文（后台任务）；已切好的片段跳过 */
-  async startProcessing(videoId: number): Promise<ApiResult<string>> {
-    return this.executeWithLoading(() => this.client.invoke<string>('start_video_processing', { videoId }));
+  async startProcessing(planId: number): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_video_processing', { planId }));
   }
 
   /** 短文对应的视频短片；不是视频短片时为 null */

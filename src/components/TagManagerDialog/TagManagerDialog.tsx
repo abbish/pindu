@@ -27,7 +27,8 @@ export interface TagManagerDialogProps {
 
 /** 「单词本 3 · 短文 5 · 视频 1」 */
 const usageText = (t: TagUsage) =>
-  [t.wordBooks && `单词本 ${t.wordBooks}`, t.passages && `短文 ${t.passages}`, t.videos && `视频 ${t.videos}`].filter(Boolean).join(' · ') || '没有素材';
+  [t.wordBooks && `单词本 ${t.wordBooks}`, t.passages && `短文 ${t.passages}`, t.clips && `片段 ${t.clips}`, t.videos && `视频 ${t.videos}`].filter(Boolean).join(' · ') ||
+  '没有素材';
 
 /**
  * 管理标签：所有素材共用的标签列表（各类素材数量），改名（改成已有的名字即合并）、删除（素材不受影响）。

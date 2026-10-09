@@ -75,11 +75,26 @@ pub fn to_video(row: &VideoRow, data_dir: &Path, url: UrlOf) -> Video {
     }
 }
 
-pub fn to_detail(row: &VideoRow, data_dir: &Path, clips: &[ClipRow], url: UrlOf) -> VideoDetail {
+pub fn to_detail(
+    row: &VideoRow,
+    plans: &[crate::repositories::video_repository::PlanRow],
+    data_dir: &Path,
+    clips: &[ClipRow],
+    url: UrlOf,
+) -> VideoDetail {
     VideoDetail {
         video: to_video(row, data_dir, url),
         cues: row.cues(),
-        plan: row.plan(),
+        plans: plans
+            .iter()
+            .map(|p| crate::types::video::VideoPlanInfo {
+                id: p.id,
+                name: p.name.clone(),
+                plan: p.plan(),
+                created_at: p.created_at.clone(),
+                updated_at: p.updated_at.clone(),
+            })
+            .collect(),
         thumbs: thumbs(&video_dir(data_dir, row.id))
             .iter()
             .filter_map(|p| url(p))
@@ -89,6 +104,7 @@ pub fn to_detail(row: &VideoRow, data_dir: &Path, clips: &[ClipRow], url: UrlOf)
             .iter()
             .map(|c| VideoClip {
                 passage_id: c.passage_id,
+                plan_id: c.plan_id,
                 seq: c.seq,
                 start_ms: c.start_ms,
                 end_ms: c.end_ms,
@@ -439,6 +455,7 @@ mod tests {
         }
         let clip = ClipRow {
             video_id: 7,
+            plan_id: None,
             passage_id: 1,
             seq: 1,
             start_ms: 0,
@@ -510,7 +527,7 @@ mod real_tests {
         };
         assert!(job.error.is_none(), "{:?}", job.error);
         let row = VideoRepository::get(&pool, id).await.unwrap().unwrap();
-        let detail = to_detail(&row, &data, &[], &|p| Some(p.display().to_string()));
+        let detail = to_detail(&row, &[], &data, &[], &|p| Some(p.display().to_string()));
         eprintln!(
             "status={} duration={} media={:?} thumbs={} peaks={}",
             row.status,

@@ -184,7 +184,7 @@ export const PlanPassagePicker: React.FC<PlanPassagePickerProps> = ({ items, onC
       )}
       <Button variant="outline" size="sm" onClick={() => setAdding(true)} disabled={disabled}>
         <Plus />
-        添加短文
+        添加短文或视频片段
       </Button>
       <AddPassagesDialog
         open={adding}
@@ -240,7 +240,7 @@ const AddPassagesDialog: React.FC<{
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="sm:max-w-2xl" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>添加短文</DialogTitle>
+          <DialogTitle>添加短文或视频片段</DialogTitle>
         </DialogHeader>
         {candidates === null ? (
           <div className="space-y-2">

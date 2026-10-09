@@ -229,7 +229,20 @@ pub async fn get_video(app: AppHandle, video_id: i64) -> AppResult<VideoDetail> 
         if !busy(&app, video_id) {
             video_service::prune_clip_files(&data, video_id, &clips, &logger);
         }
-        Ok(video_service::to_detail(&row, &data, &clips, &url_of(&app)))
+        // 至少有一个规划（新导入的视频、或规划都删掉了）
+        let mut plans = VideoRepository::plans(pool.inner(), video_id).await?;
+        if plans.is_empty() {
+            VideoRepository::insert_plan(pool.inner(), video_id, "规划 1", &VideoPlan::default())
+                .await?;
+            plans = VideoRepository::plans(pool.inner(), video_id).await?;
+        }
+        Ok(video_service::to_detail(
+            &row,
+            &plans,
+            &data,
+            &clips,
+            &url_of(&app),
+        ))
     }
     .await;
     super::finish(&logger, "get_video", result)
@@ -266,36 +279,136 @@ pub async fn rename_video(app: AppHandle, video_id: i64, title: String) -> AppRe
 
 /// 保存切分规划草稿（编辑器自动保存）
 #[tauri::command]
-pub async fn save_video_plan(app: AppHandle, video_id: i64, plan: VideoPlan) -> AppResult<()> {
-    let mut plan = plan;
+pub async fn save_video_plan(app: AppHandle, plan_id: i64, plan: VideoPlan) -> AppResult<()> {
     let logger = app.state::<Logger>();
     logger.api_request(
         "save_video_plan",
         Some(&format!(
-            "video_id: {video_id}, segments: {}",
+            "plan_id: {plan_id}, segments: {}",
             plan.segments.len()
         )),
     );
     let pool = app.state::<SqlitePool>();
-    // AI 规划 / 切分进行中不能改规划：任务结束时会写入或按规划切分，中途改动会被覆盖或切出不一致的片段
-    let result = if busy(&app, video_id) {
-        Err(AppError::ValidationError(
-            "这个视频正在处理，等它完成后再修改".to_string(),
-        ))
-    } else {
-        // 编辑器的草稿可能是建议生成之前读的：没带建议时保留库里的
-        if plan.suggestions.is_empty() {
-            if let Ok(Some(row)) = VideoRepository::get(pool.inner(), video_id).await {
-                plan.suggestions = row.plan().map(|p| p.suggestions).unwrap_or_default();
-            }
+    let result = async {
+        let row = plan_row(&app, plan_id).await?;
+        // AI 规划 / 切分进行中不能改规划：任务结束时会写入或按规划切分，中途改动会被覆盖或切出不一致的片段
+        if busy(&app, row.video_id) {
+            return Err(AppError::ValidationError(
+                "这个视频正在处理，等它完成后再修改".to_string(),
+            ));
         }
-        match VideoRepository::save_plan(pool.inner(), video_id, &plan).await {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(AppError::NotFound("视频不存在，可能已被删除".to_string())),
-            Err(e) => Err(e),
-        }
-    };
+        VideoRepository::save_plan(pool.inner(), plan_id, &plan).await?;
+        Ok(())
+    }
+    .await;
     super::finish(&logger, "save_video_plan", result)
+}
+
+async fn plan_row(
+    app: &AppHandle,
+    plan_id: i64,
+) -> AppResult<crate::repositories::video_repository::PlanRow> {
+    VideoRepository::get_plan(app.state::<SqlitePool>().inner(), plan_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("这个规划不存在，可能已被删除".to_string()))
+}
+
+fn plan_info(
+    row: &crate::repositories::video_repository::PlanRow,
+) -> crate::types::video::VideoPlanInfo {
+    crate::types::video::VideoPlanInfo {
+        id: row.id,
+        name: row.name.clone(),
+        plan: row.plan(),
+        created_at: row.created_at.clone(),
+        updated_at: row.updated_at.clone(),
+    }
+}
+
+/// 新建规划：空白，或复制一个已有规划（copy_from）；名字为空时用「规划 N」
+#[tauri::command]
+pub async fn create_video_plan(
+    app: AppHandle,
+    video_id: i64,
+    name: Option<String>,
+    copy_from: Option<i64>,
+) -> AppResult<crate::types::video::VideoPlanInfo> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "create_video_plan",
+        Some(&format!("video_id: {video_id}, copy_from: {copy_from:?}")),
+    );
+    let pool = app.state::<SqlitePool>();
+    let result = async {
+        let existing = VideoRepository::plans(pool.inner(), video_id).await?;
+        let plan = match copy_from {
+            Some(id) => {
+                let source = plan_row(&app, id).await?;
+                if source.video_id != video_id {
+                    return Err(AppError::ValidationError(
+                        "只能复制这个视频的规划".to_string(),
+                    ));
+                }
+                source.plan()
+            }
+            None => VideoPlan::default(),
+        };
+        let name = name
+            .map(|n| n.trim().chars().take(30).collect::<String>())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| format!("规划 {}", existing.len() + 1));
+        let id = VideoRepository::insert_plan(pool.inner(), video_id, &name, &plan).await?;
+        Ok(plan_info(&plan_row(&app, id).await?))
+    }
+    .await;
+    super::finish(&logger, "create_video_plan", result)
+}
+
+/// 规划改名（1–30 个字）
+#[tauri::command]
+pub async fn rename_video_plan(app: AppHandle, plan_id: i64, name: String) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    logger.api_request("rename_video_plan", Some(&format!("plan_id: {plan_id}")));
+    let result = async {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 30 {
+            return Err(AppError::ValidationError(
+                "规划名称需要 1–30 个字".to_string(),
+            ));
+        }
+        if VideoRepository::rename_plan(app.state::<SqlitePool>().inner(), plan_id, name).await? {
+            Ok(())
+        } else {
+            Err(AppError::NotFound(
+                "这个规划不存在，可能已被删除".to_string(),
+            ))
+        }
+    }
+    .await;
+    super::finish(&logger, "rename_video_plan", result)
+}
+
+/// 删除规划：已经切出的片段保留（它们是素材）；处理中不能删
+#[tauri::command]
+pub async fn delete_video_plan(app: AppHandle, plan_id: i64) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    logger.api_request("delete_video_plan", Some(&format!("plan_id: {plan_id}")));
+    let result = async {
+        let row = plan_row(&app, plan_id).await?;
+        if busy(&app, row.video_id) {
+            return Err(AppError::ValidationError(
+                "这个视频正在处理，等它完成后再删除规划".to_string(),
+            ));
+        }
+        VideoRepository::delete_plan(app.state::<SqlitePool>().inner(), plan_id).await?;
+        logger.info(
+            "VIDEO",
+            &format!("删除了视频 {} 的规划「{}」", row.video_id, row.name),
+        );
+        Ok(())
+    }
+    .await;
+    super::finish(&logger, "delete_video_plan", result)
 }
 
 /// AI 规划切分（后台任务）：结果直接写进规划草稿，编辑器在任务结束时重新读取（可撤销）
@@ -343,6 +456,9 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
         if row.status != "ready" && row.status != "done" {
             return Err(AppError::ValidationError("视频还没有导入完成".to_string()));
         }
+        if plan_row(&app, request.plan_id).await?.video_id != request.video_id {
+            return Err(AppError::ValidationError("规划不属于这个视频".to_string()));
+        }
         let pool_arc = Arc::new(pool.inner().clone());
         let pool_arc_for_tags = pool_arc.clone();
         let logger_arc = Arc::new(logger.inner().clone());
@@ -366,6 +482,7 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
             min_seconds: request.min_seconds,
             max_seconds: request.max_seconds,
             feedback: request.feedback.clone(),
+            plan_id: request.plan_id,
             tags: crate::services::tag::TagService::new(pool_arc_for_tags)
                 .get_tags()
                 .await?
@@ -381,7 +498,7 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
                 detached: true,
                 link: Some(JobLink::new(
                     "video-editor",
-                    serde_json::json!({ "videoId": request.video_id }),
+                    serde_json::json!({ "videoId": request.video_id, "planId": request.plan_id }),
                 )),
             },
             move |ctx| job.run(ctx),
@@ -393,14 +510,16 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
 
 /// 按规划切出短片并生成短文（后台任务，media 队列）；已切好的片段跳过，可以中途停止后继续
 #[tauri::command]
-pub async fn start_video_processing(app: AppHandle, video_id: i64) -> AppResult<String> {
+pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<String> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
     logger.api_request(
         "start_video_processing",
-        Some(&format!("video_id: {video_id}")),
+        Some(&format!("plan_id: {plan_id}")),
     );
     let result = async {
+        let plan = plan_row(&app, plan_id).await?;
+        let video_id = plan.video_id;
         if busy(&app, video_id) {
             return Err(AppError::ValidationError(
                 "这个视频已经有任务在进行".to_string(),
@@ -409,7 +528,7 @@ pub async fn start_video_processing(app: AppHandle, video_id: i64) -> AppResult<
         let row = VideoRepository::get(pool.inner(), video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
-        if row.plan().is_none_or(|p| p.segments.is_empty()) {
+        if plan.plan().segments.is_empty() {
             return Err(AppError::ValidationError(
                 "还没有片段，先规划切分".to_string(),
             ));
@@ -434,6 +553,7 @@ pub async fn start_video_processing(app: AppHandle, video_id: i64) -> AppResult<
             pool: pool_arc,
             logger: logger_arc,
             video_id,
+            plan_id,
         };
         Ok(app.state::<Jobs>().spawn(
             JobSpec {
@@ -443,7 +563,7 @@ pub async fn start_video_processing(app: AppHandle, video_id: i64) -> AppResult<
                 detached: true,
                 link: Some(JobLink::new(
                     "video-editor",
-                    serde_json::json!({ "videoId": video_id }),
+                    serde_json::json!({ "videoId": video_id, "planId": plan_id }),
                 )),
             },
             move |ctx| job.run(ctx),
@@ -517,9 +637,9 @@ pub async fn suggest_video_requirements(
         let row = VideoRepository::get(pool.inner(), video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
-        let mut plan = row.plan().unwrap_or_default();
-        if !refresh && !plan.suggestions.is_empty() {
-            return Ok(plan.suggestions);
+        let saved = row.suggestions();
+        if !refresh && !saved.is_empty() {
+            return Ok(saved);
         }
         let cues = row.cues();
         if cues.is_empty() {
@@ -547,11 +667,8 @@ pub async fn suggest_video_requirements(
             &logger,
         )
         .await?;
-        // 存进草稿；规划 / 切分进行中不写（任务会写规划），下次再生成
-        if !busy(&app, video_id) {
-            plan.suggestions = suggestions.clone();
-            VideoRepository::save_plan(pool.inner(), video_id, &plan).await?;
-        }
+        // 存在视频上，下次打开直接用
+        VideoRepository::set_suggestions(pool.inner(), video_id, &suggestions).await?;
         Ok(suggestions)
     }
     .await;

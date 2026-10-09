@@ -20,7 +20,6 @@ const ORIGINS = [
   ['all', '全部来源'],
   ['generated', 'AI 写的'],
   ['imported', '我的材料'],
-  ['video', '视频'],
 ] as const;
 
 const percent = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)}%`);

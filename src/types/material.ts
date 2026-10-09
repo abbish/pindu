@@ -12,12 +12,19 @@ export interface Tag {
 /** 标签与各类素材的数量 */
 export interface TagUsage extends Tag {
   wordBooks: number;
+  /** 短文（不含视频切片） */
   passages: number;
+  /** 视频切片 */
+  clips: number;
+  /** 原始视频 */
   videos: number;
 }
 
-/** 素材种类 */
+/** 素材种类（存储上的；视频切片的标签存在 passage 下） */
 export type MaterialKind = 'word_book' | 'passage' | 'video';
+
+/** 列表上的素材类别（标签筛选按它计数）：切片与短文分开 */
+export type MaterialListKind = 'word_book' | 'passage' | 'clip' | 'video';
 
 /** 切片的播放信息 */
 export interface ClipBrief {

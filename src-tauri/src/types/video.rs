@@ -42,7 +42,8 @@ pub struct Video {
 pub struct VideoDetail {
     pub video: Video,
     pub cues: Vec<Cue>,
-    pub plan: Option<VideoPlan>,
+    /// 这个视频的全部切分规划（至少一个）
+    pub plans: Vec<VideoPlanInfo>,
     /// 时间轴缩略图地址（按时间顺序），第 i 张在 i * thumbIntervalMs
     pub thumbs: Vec<String>,
     pub thumb_interval_ms: i64,
@@ -55,6 +56,8 @@ pub struct VideoDetail {
 #[serde(rename_all = "camelCase")]
 pub struct VideoClip {
     pub passage_id: i64,
+    /// 从哪个规划切出来的
+    pub plan_id: Option<i64>,
     pub seq: i64,
     pub start_ms: i64,
     pub end_ms: i64,
@@ -69,9 +72,17 @@ pub struct VideoPlan {
     pub requirements: String,
     #[serde(default)]
     pub segments: Vec<VideoSegment>,
-    /// AI 根据字幕给的切分要求建议（打开「AI 规划」时生成一次，存在草稿里）
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub suggestions: Vec<String>,
+}
+
+/// 一个视频的一个切分规划（一个视频可以按不同主题 / 意图规划多批，迁移 061）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoPlanInfo {
+    pub id: i64,
+    pub name: String,
+    pub plan: VideoPlan,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// 规划里的一段
@@ -124,6 +135,8 @@ pub struct VideoImportStarted {
 #[serde(rename_all = "camelCase")]
 pub struct StartVideoPlanRequest {
     pub video_id: i64,
+    /// 规划写进哪个规划
+    pub plan_id: i64,
     /// 学习者的切分要求（可空）
     #[serde(default)]
     pub requirements: String,

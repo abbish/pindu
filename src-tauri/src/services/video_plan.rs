@@ -288,6 +288,8 @@ pub struct VideoPlanJob {
     pub feedback: Option<String>,
     /// 已有的标签名（让 AI 优先复用）
     pub tags: Vec<String>,
+    /// 写进哪个规划
+    pub plan_id: i64,
 }
 
 impl VideoPlanJob {
@@ -301,7 +303,10 @@ impl VideoPlanJob {
                 "这个视频没有字幕，AI 没法规划".to_string(),
             ));
         }
-        let current = row.plan().unwrap_or_default();
+        let current = VideoRepository::get_plan(&self.pool, self.plan_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("这个规划已被删除".to_string()))?
+            .plan();
         let feedback = self
             .feedback
             .as_deref()
@@ -400,10 +405,8 @@ impl VideoPlanJob {
         let plan = VideoPlan {
             requirements: self.requirements.clone(),
             segments,
-            // 建议留着，下次打开「AI 规划」还能用
-            suggestions: current.suggestions.clone(),
         };
-        VideoRepository::save_plan(&self.pool, self.video_id, &plan).await?;
+        VideoRepository::save_plan(&self.pool, self.plan_id, &plan).await?;
         Ok(serde_json::json!({
             "videoId": self.video_id,
             "segments": count,
@@ -708,7 +711,6 @@ mod tests {
     #[test]
     fn current_plan_maps_back_to_cue_numbers() {
         let plan = VideoPlan {
-            suggestions: Vec::new(),
             requirements: String::new(),
             segments: vec![
                 VideoSegment {
@@ -789,8 +791,12 @@ mod real_tests {
             .execute(mem.as_ref())
             .await
             .unwrap();
+        let plan_id = VideoRepository::insert_plan(&mem, id, "规划 1", &VideoPlan::default())
+            .await
+            .unwrap();
         let data = std::env::temp_dir().join(format!("pindu-real-plan-{}", std::process::id()));
         let job = VideoPlanJob {
+            plan_id,
             pool: mem.clone(),
             logger,
             paths: AgentPaths::resolve(&data).unwrap(),
@@ -821,12 +827,11 @@ mod real_tests {
         };
         assert!(done.error.is_none(), "{:?}", done.error);
         eprintln!("result: {}", done.result.unwrap());
-        let plan = VideoRepository::get(&mem, id)
+        let plan = VideoRepository::get_plan(&mem, plan_id)
             .await
             .unwrap()
             .unwrap()
-            .plan()
-            .unwrap();
+            .plan();
         for s in &plan.segments {
             eprintln!(
                 "{:>6}–{:>6} {} | {} | {} | {} | {:?}",

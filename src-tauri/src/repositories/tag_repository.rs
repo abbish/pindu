@@ -30,7 +30,10 @@ impl TagRepository {
             "SELECT t.id, t.name, t.icon,
                     (SELECT COUNT(*) FROM material_tags m JOIN word_books b ON b.id = m.ref_id
                       WHERE m.tag_id = t.id AND m.kind = 'word_book' AND b.deleted_at IS NULL) AS word_books,
-                    (SELECT COUNT(*) FROM material_tags m WHERE m.tag_id = t.id AND m.kind = 'passage') AS passages,
+                    (SELECT COUNT(*) FROM material_tags m WHERE m.tag_id = t.id AND m.kind = 'passage'
+                      AND m.ref_id NOT IN (SELECT passage_id FROM video_clips)) AS passages,
+                    (SELECT COUNT(*) FROM material_tags m WHERE m.tag_id = t.id AND m.kind = 'passage'
+                      AND m.ref_id IN (SELECT passage_id FROM video_clips)) AS clips,
                     (SELECT COUNT(*) FROM material_tags m WHERE m.tag_id = t.id AND m.kind = 'video') AS videos
              FROM tags t
              ORDER BY t.name COLLATE NOCASE",
@@ -43,6 +46,7 @@ impl TagRepository {
                 tag: row_to_tag(r),
                 word_books: r.get("word_books"),
                 passages: r.get("passages"),
+                clips: r.get("clips"),
                 videos: r.get("videos"),
             })
             .collect())
@@ -299,6 +303,27 @@ mod migration_060_tests {
                 .await
                 .unwrap();
         assert_eq!(offset, 0);
+        // 061：旧的规划草稿成了「规划 1」，已切的片段关联到它，建议挪到视频上
+        let (plan_id, name, plan): (i64, String, String) =
+            sqlx::query_as("SELECT id, name, plan FROM video_plans WHERE video_id = 900")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(name, "规划 1");
+        assert!(plan.contains("点餐"));
+        let clip_plan: Option<i64> =
+            sqlx::query_scalar("SELECT plan_id FROM video_clips WHERE video_id = 900")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(clip_plan, Some(plan_id));
+        let (old_plan, suggestions): (Option<String>, Option<String>) =
+            sqlx::query_as("SELECT plan, plan_suggestions FROM videos WHERE id = 900")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(old_plan, None);
+        assert!(suggestions.unwrap().contains("只要点餐的对话"));
         // 旧短文没有词索引：第一次查询时补齐，再查不重复补
         assert_eq!(
             PassageWordRepository::index_missing(&pool).await.unwrap(),

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { tagService } from '@/services/tagService';
 import { TagManagerDialog } from '@/components/TagManagerDialog/TagManagerDialog';
-import type { MaterialKind, TagUsage } from '@/types/material';
+import type { MaterialListKind, TagUsage } from '@/types/material';
 
 /**
  * 素材库（单词本 / 短文库 / 视频库）首页共用的工具栏：搜索 → 标签 → 各自的筛选 → 重置 → 数量。
@@ -17,7 +17,7 @@ export interface MaterialToolbarProps {
   onSearch: (value: string) => void;
   searchPlaceholder: string;
   /** 标签筛选：null 不显示；'all' 或标签 id。onTagsChanged：在「管理标签」里改名 / 合并 / 删除后刷新列表 */
-  tag?: { kind: MaterialKind; value: string; onChange: (value: string) => void; onTagsChanged?: () => void } | null;
+  tag?: { kind: MaterialListKind; value: string; onChange: (value: string) => void; onTagsChanged?: () => void } | null;
   /** 生效的筛选数（含搜索）；大于 0 时显示「重置」 */
   activeCount: number;
   onReset: () => void;
@@ -54,14 +54,15 @@ export const MaterialToolbar: React.FC<MaterialToolbarProps> = ({ search, onSear
   </div>
 );
 
-const COUNT_OF: Record<MaterialKind, (t: TagUsage) => number> = {
+const COUNT_OF: Record<MaterialListKind, (t: TagUsage) => number> = {
   word_book: (t) => t.wordBooks,
   passage: (t) => t.passages,
+  clip: (t) => t.clips,
   video: (t) => t.videos,
 };
 
 /** 标签筛选：只列这类素材用到的标签（带数量）；旁边是「管理标签」 */
-export const TagFilter: React.FC<{ kind: MaterialKind; value: string; onChange: (value: string) => void; onTagsChanged?: () => void }> = ({
+export const TagFilter: React.FC<{ kind: MaterialListKind; value: string; onChange: (value: string) => void; onTagsChanged?: () => void }> = ({
   kind,
   value,
   onChange,

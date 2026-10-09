@@ -16,6 +16,8 @@ export interface AiPlanDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   videoId: number;
+  /** 写进哪个规划 */
+  planId: number;
   /** 上次的要求 */
   requirements: string;
   /** 已经有片段：可以按意见修改 */
@@ -23,7 +25,7 @@ export interface AiPlanDialogProps {
 }
 
 /** AI 规划切分：写要求与每段时长 → 后台任务；已有片段时可以只写意见，让 AI 在当前规划上改 */
-export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, videoId, requirements, hasSegments }) => {
+export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, videoId, planId, requirements, hasSegments }) => {
   const [mode, setMode] = useState<'new' | 'revise'>('new');
   const [text, setText] = useState(requirements);
   const [feedback, setFeedback] = useState('');
@@ -76,6 +78,7 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
     setError(null);
     const result = await videoService.startPlan({
       videoId,
+      planId,
       requirements: text.trim(),
       minSeconds: minSec,
       maxSeconds: maxSec,

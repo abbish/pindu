@@ -66,14 +66,22 @@ export interface VideoPlan {
   /** 用户写的切分要求 */
   requirements: string;
   segments: VideoSegment[];
-  /** AI 根据字幕给的要求建议（存在草稿里） */
-  suggestions?: string[];
+}
+
+/** 一个视频的一个切分规划（同一个视频可以按不同主题 / 意图规划多批） */
+export interface VideoPlanInfo {
+  id: number;
+  name: string;
+  plan: VideoPlan;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface VideoDetail {
   video: Video;
   cues: Cue[];
-  plan: VideoPlan | null;
+  /** 这个视频的全部切分规划（至少一个） */
+  plans: VideoPlanInfo[];
   /** 时间轴缩略图地址，第 i 张在 i * thumbIntervalMs */
   thumbs: string[];
   thumbIntervalMs: number;
@@ -84,6 +92,8 @@ export interface VideoDetail {
 /** 已切出的短片（对应一篇短文） */
 export interface VideoClip {
   passageId: number;
+  /** 从哪个规划切出来的 */
+  planId: number | null;
   seq: number;
   startMs: number;
   endMs: number;
@@ -127,6 +137,8 @@ export interface MediaToolsStatus {
 /** AI 规划切分（后台任务） */
 export interface StartVideoPlanRequest {
   videoId: number;
+  /** 规划写进哪个规划 */
+  planId: number;
   /** 学习者的切分要求 */
   requirements: string;
   minSeconds: number;

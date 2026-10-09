@@ -1,4 +1,4 @@
-//! 视频库的数据访问（videos / video_clips，迁移 059）。文件路径在 service 层按数据目录拼出，这里只存文件名。
+//! 视频库的数据访问（videos / video_plans / video_clips，迁移 059、061）。文件路径在 service 层按数据目录拼出，这里只存文件名。
 
 use crate::error::AppResult;
 use crate::services::subtitle::Cue;
@@ -19,7 +19,8 @@ pub struct VideoRow {
     pub width: Option<i64>,
     pub height: Option<i64>,
     pub size_bytes: i64,
-    pub plan: Option<String>,
+    /// 「AI 规划」的要求建议 JSON（迁移 061）
+    pub plan_suggestions: Option<String>,
     pub status: String,
     pub error: Option<String>,
     pub created_at: String,
@@ -42,10 +43,28 @@ impl VideoRow {
         serde_json::from_str(&self.cues).unwrap_or_default()
     }
 
-    pub fn plan(&self) -> Option<VideoPlan> {
-        self.plan
+    pub fn suggestions(&self) -> Vec<String> {
+        self.plan_suggestions
             .as_deref()
             .and_then(|p| serde_json::from_str(p).ok())
+            .unwrap_or_default()
+    }
+}
+
+/// video_plans 表的一行：一个视频的一个切分规划（迁移 061）
+#[derive(Debug, Clone, FromRow)]
+pub struct PlanRow {
+    pub id: i64,
+    pub video_id: i64,
+    pub name: String,
+    pub plan: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl PlanRow {
+    pub fn plan(&self) -> VideoPlan {
+        serde_json::from_str(&self.plan).unwrap_or_default()
     }
 }
 
@@ -67,6 +86,7 @@ fn clip_with_title(r: &sqlx::sqlite::SqliteRow) -> (ClipRow, String) {
     (
         ClipRow {
             video_id: r.get("video_id"),
+            plan_id: r.get("plan_id"),
             passage_id: r.get("passage_id"),
             seq: r.get("seq"),
             start_ms: r.get("start_ms"),
@@ -82,6 +102,8 @@ fn clip_with_title(r: &sqlx::sqlite::SqliteRow) -> (ClipRow, String) {
 #[derive(Debug, Clone, FromRow)]
 pub struct ClipRow {
     pub video_id: i64,
+    /// 从哪个规划切出来的（规划删除后为空）
+    pub plan_id: Option<i64>,
     pub passage_id: i64,
     pub seq: i64,
     pub start_ms: i64,
@@ -94,12 +116,15 @@ pub struct ClipRow {
 const SELECT: &str = "SELECT v.id, v.title, v.source_name, v.source_file, v.media_file, v.subtitle_name,
         v.duration_ms, v.width, v.height, v.size_bytes, v.status, v.error, v.created_at, v.updated_at,
         (SELECT COUNT(*) FROM video_clips c WHERE c.video_id = v.id) AS clip_count, v.subtitle_offset_ms,
-        json_array_length(v.cues) AS cue_count, v.cues, v.plan
+        json_array_length(v.cues) AS cue_count, v.cues, v.plan_suggestions
      FROM videos v";
 
-/// 列表：不读字幕与规划（长视频的字幕有几百 KB，列表只要条数）
+/// 列表：不读字幕与建议（长视频的字幕有几百 KB，列表只要条数）
 fn select_list() -> String {
-    SELECT.replace("v.cues, v.plan", "'[]' AS cues, NULL AS plan")
+    SELECT.replace(
+        "v.cues, v.plan_suggestions",
+        "'[]' AS cues, NULL AS plan_suggestions",
+    )
 }
 
 pub struct VideoRepository;
@@ -203,14 +228,91 @@ impl VideoRepository {
         Ok(done.rows_affected() > 0)
     }
 
-    pub async fn save_plan(pool: &SqlitePool, id: i64, plan: &VideoPlan) -> AppResult<bool> {
-        let done = sqlx::query("UPDATE videos SET plan = ?, updated_at = ? WHERE id = ?")
+    // ==================== 切分规划（一个视频可以有多个） ====================
+
+    const PLAN_SELECT: &'static str =
+        "SELECT id, video_id, name, plan, created_at, updated_at FROM video_plans";
+
+    /// 一个视频的全部规划（按创建顺序）
+    pub async fn plans(pool: &SqlitePool, video_id: i64) -> AppResult<Vec<PlanRow>> {
+        Ok(sqlx::query_as::<_, PlanRow>(&format!(
+            "{} WHERE video_id = ? ORDER BY id",
+            Self::PLAN_SELECT
+        ))
+        .bind(video_id)
+        .fetch_all(pool)
+        .await?)
+    }
+
+    pub async fn get_plan(pool: &SqlitePool, plan_id: i64) -> AppResult<Option<PlanRow>> {
+        Ok(
+            sqlx::query_as::<_, PlanRow>(&format!("{} WHERE id = ?", Self::PLAN_SELECT))
+                .bind(plan_id)
+                .fetch_optional(pool)
+                .await?,
+        )
+    }
+
+    pub async fn insert_plan(
+        pool: &SqlitePool,
+        video_id: i64,
+        name: &str,
+        plan: &VideoPlan,
+    ) -> AppResult<i64> {
+        let now = crate::time::now_utc();
+        Ok(sqlx::query(
+            "INSERT INTO video_plans (video_id, name, plan, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(video_id)
+        .bind(name)
+        .bind(serde_json::to_string(plan).unwrap_or_else(|_| "{}".into()))
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await?
+        .last_insert_rowid())
+    }
+
+    pub async fn save_plan(pool: &SqlitePool, plan_id: i64, plan: &VideoPlan) -> AppResult<bool> {
+        let done = sqlx::query("UPDATE video_plans SET plan = ?, updated_at = ? WHERE id = ?")
             .bind(serde_json::to_string(plan).unwrap_or_default())
             .bind(crate::time::now_utc())
-            .bind(id)
+            .bind(plan_id)
             .execute(pool)
             .await?;
         Ok(done.rows_affected() > 0)
+    }
+
+    pub async fn rename_plan(pool: &SqlitePool, plan_id: i64, name: &str) -> AppResult<bool> {
+        let done = sqlx::query("UPDATE video_plans SET name = ?, updated_at = ? WHERE id = ?")
+            .bind(name)
+            .bind(crate::time::now_utc())
+            .bind(plan_id)
+            .execute(pool)
+            .await?;
+        Ok(done.rows_affected() > 0)
+    }
+
+    /// 删除规划（切出的短片保留，plan_id 置空）
+    pub async fn delete_plan(pool: &SqlitePool, plan_id: i64) -> AppResult<bool> {
+        let done = sqlx::query("DELETE FROM video_plans WHERE id = ?")
+            .bind(plan_id)
+            .execute(pool)
+            .await?;
+        Ok(done.rows_affected() > 0)
+    }
+
+    pub async fn set_suggestions(
+        pool: &SqlitePool,
+        video_id: i64,
+        suggestions: &[String],
+    ) -> AppResult<()> {
+        sqlx::query("UPDATE videos SET plan_suggestions = ? WHERE id = ?")
+            .bind(serde_json::to_string(suggestions).unwrap_or_else(|_| "[]".into()))
+            .bind(video_id)
+            .execute(pool)
+            .await?;
+        Ok(())
     }
 
     /// 字幕时间纠偏
@@ -257,7 +359,7 @@ impl VideoRepository {
     /// 已切出的短片（按序号）
     pub async fn clips(pool: &SqlitePool, video_id: i64) -> AppResult<Vec<ClipRow>> {
         Ok(sqlx::query_as::<_, ClipRow>(
-            "SELECT video_id, passage_id, seq, start_ms, end_ms, file, poster_file
+            "SELECT video_id, plan_id, passage_id, seq, start_ms, end_ms, file, poster_file
              FROM video_clips WHERE video_id = ? ORDER BY seq, id",
         )
         .bind(video_id)
@@ -268,7 +370,7 @@ impl VideoRepository {
     /// 全部短片与所属视频的标题（切片列表、单词 ↔ 素材关联用），按视频导入顺序与段序
     pub async fn all_clips(pool: &SqlitePool) -> AppResult<Vec<(ClipRow, String)>> {
         let rows = sqlx::query(
-            "SELECT c.video_id, c.passage_id, c.seq, c.start_ms, c.end_ms, c.file, c.poster_file, v.title
+            "SELECT c.video_id, c.plan_id, c.passage_id, c.seq, c.start_ms, c.end_ms, c.file, c.poster_file, v.title
              FROM video_clips c JOIN videos v ON v.id = c.video_id
              ORDER BY v.created_at DESC, c.video_id, c.seq, c.id",
         )
@@ -283,7 +385,7 @@ impl VideoRepository {
         passage_ids: &[i64],
     ) -> AppResult<Vec<(ClipRow, String)>> {
         let rows = sqlx::query(
-            "SELECT c.video_id, c.passage_id, c.seq, c.start_ms, c.end_ms, c.file, c.poster_file, v.title
+            "SELECT c.video_id, c.plan_id, c.passage_id, c.seq, c.start_ms, c.end_ms, c.file, c.poster_file, v.title
              FROM video_clips c JOIN videos v ON v.id = c.video_id
              WHERE c.passage_id IN (SELECT value FROM json_each(?))",
         )
@@ -296,7 +398,7 @@ impl VideoRepository {
     /// 短文对应的短片（短文详情页播放用）
     pub async fn clip_of_passage(pool: &SqlitePool, passage_id: i64) -> AppResult<Option<ClipRow>> {
         Ok(sqlx::query_as::<_, ClipRow>(
-            "SELECT video_id, passage_id, seq, start_ms, end_ms, file, poster_file
+            "SELECT video_id, plan_id, passage_id, seq, start_ms, end_ms, file, poster_file
              FROM video_clips WHERE passage_id = ?",
         )
         .bind(passage_id)
@@ -309,6 +411,7 @@ impl VideoRepository {
     pub async fn insert_clip_conn(
         conn: &mut sqlx::SqliteConnection,
         video_id: i64,
+        plan_id: Option<i64>,
         passage_id: i64,
         seq: i64,
         start_ms: i64,
@@ -317,10 +420,11 @@ impl VideoRepository {
         poster_file: Option<&str>,
     ) -> AppResult<i64> {
         Ok(sqlx::query(
-            "INSERT INTO video_clips (video_id, passage_id, seq, start_ms, end_ms, file, poster_file, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO video_clips (video_id, plan_id, passage_id, seq, start_ms, end_ms, file, poster_file, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(video_id)
+        .bind(plan_id)
         .bind(passage_id)
         .bind(seq)
         .bind(start_ms)
@@ -392,7 +496,6 @@ mod tests {
         assert_eq!((row.status.as_str(), row.duration_ms), ("ready", 60_000));
 
         let plan = VideoPlan {
-            suggestions: Vec::new(),
             requirements: "每段 1 分钟".into(),
             segments: vec![crate::types::video::VideoSegment {
                 id: "s1".into(),
@@ -402,14 +505,24 @@ mod tests {
                 ..Default::default()
             }],
         };
-        assert!(VideoRepository::save_plan(&pool, id, &plan).await.unwrap());
+        let plan_id = VideoRepository::insert_plan(&pool, id, "规划 1", &VideoPlan::default())
+            .await
+            .unwrap();
+        assert!(VideoRepository::save_plan(&pool, plan_id, &plan)
+            .await
+            .unwrap());
+        let plans = VideoRepository::plans(&pool, id).await.unwrap();
+        assert_eq!((plans.len(), plans[0].plan()), (1, plan));
+        assert!(VideoRepository::rename_plan(&pool, plan_id, "点餐")
+            .await
+            .unwrap());
         assert_eq!(
-            VideoRepository::get(&pool, id)
+            VideoRepository::get_plan(&pool, plan_id)
                 .await
                 .unwrap()
                 .unwrap()
-                .plan(),
-            Some(plan)
+                .name,
+            "点餐"
         );
 
         VideoRepository::clear_source(&pool, id).await.unwrap();

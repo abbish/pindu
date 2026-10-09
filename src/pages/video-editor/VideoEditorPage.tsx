@@ -4,8 +4,6 @@ import {
   ArrowLeft,
   Check,
   CircleAlert,
-  Clapperboard,
-  Languages,
   Loader2,
   Magnet,
   Merge,
@@ -15,17 +13,14 @@ import {
   Repeat,
   Scissors,
   SkipBack,
-  Sparkles,
   SkipForward,
   Trash2,
   Undo2,
-  Wand2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Toggle } from '@/components/ui/toggle';
@@ -39,8 +34,9 @@ import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { isJobActive } from '@/types/job';
 import { JobIndicator, jobErrorText } from '@/components/Jobs';
 import type { NavigateFn } from '@/navigation';
-import type { VideoDetail, VideoPlan, VideoSegment } from '@/types/video';
+import type { VideoDetail, VideoPlan, VideoPlanInfo, VideoSegment } from '@/types/video';
 import { AiPlanDialog } from './AiPlanDialog';
+import { PlanMenu, SubtitleMenu } from './EditorMenus';
 import { AutoSplitDialog } from './AutoSplitDialog';
 import { EditorBusyDialog } from './EditorBusyDialog';
 import { SegmentPanel } from './SegmentPanel';
@@ -76,6 +72,23 @@ const MAX_ZOOM = 200;
 /** 逐帧移动的步长（按 25fps 估） */
 const FRAME_MS = 40;
 const AUTOSAVE_MS = 800;
+
+/** 每个视频上次在编辑的规划（本机） */
+const LAST_PLAN_KEY = (videoId?: number) => `videoEditor.plan.${videoId}`;
+const readLastPlan = (videoId?: number) => {
+  try {
+    return localStorage.getItem(LAST_PLAN_KEY(videoId));
+  } catch {
+    return null;
+  }
+};
+const writeLastPlan = (videoId: number | undefined, planId: number) => {
+  try {
+    localStorage.setItem(LAST_PLAN_KEY(videoId), String(planId));
+  } catch {
+    // 存不了只是下次从第一个规划开始
+  }
+};
 /** 吸附距离：屏幕上 8px 对应的时长 */
 const SNAP_PX = 8;
 
@@ -99,6 +112,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   const [loadError, setLoadError] = useState<string | null>(null);
   const [peaks, setPeaks] = useState<number[]>([]);
   const [history, setHistory] = useState<History | null>(null);
+  /** 正在编辑的规划（一个视频可以有多个） */
+  const [planId, setPlanId] = useState<number | null>(null);
   /** 拖动边界时的实时规划（松开后进撤销栈） */
   const [live, setLive] = useState<VideoPlan | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -142,7 +157,12 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     }
     setDetail(d.data);
     setPeaks(p.success ? p.data : []);
-    setHistory({ past: [], present: d.data.plan ?? { requirements: '', segments: [] }, future: [] });
+    // 上次在编辑的规划，没有就第一个
+    const remembered = Number(readLastPlan(videoId));
+    const current = d.data.plans.find((x) => x.id === remembered) ?? d.data.plans[0];
+    setPlanId(current.id);
+    loaded.current = false;
+    setHistory({ past: [], present: current.plan, future: [] });
     // 整段大约铺满两屏
     setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(2400 / Math.max(1, d.data.video.durationMs / 1000)))));
   }, [videoId]);
@@ -204,14 +224,22 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     }
     if (job.status !== 'succeeded' || !videoId) return;
     const result = await videoService.getVideo(videoId);
-    if (!result.success || !result.data.plan) return;
-    commit(result.data.plan);
-    setSelectedId(result.data.plan.segments[0]?.id ?? null);
+    const target = (job.link?.params as { planId?: number } | undefined)?.planId;
+    const planned = result.success ? result.data.plans.find((x) => x.id === target) : undefined;
+    if (!result.success || !planned) return;
+    setDetail((d) => (d ? { ...d, plans: result.data.plans } : d));
+    if (planned.id === planIdRef.current) {
+      commit(planned.plan);
+    } else {
+      switchTo(planned.id, result.data.plans);
+    }
+    setSelectedId(planned.plan.segments[0]?.id ?? null);
+    const count = planned.plan.segments.length;
     const failedParts = (job.result as { failedParts?: string[] } | null)?.failedParts ?? [];
     if (failedParts.length > 0) {
-      toast.showWarning(`已规划 ${result.data.plan.segments.length} 段，有部分没有完成`, `${failedParts.join('、')} 保留了原来的片段，可以再规划一次`);
+      toast.showWarning(`「${planned.name}」规划了 ${count} 段，有部分没有完成`, `${failedParts.join('、')} 保留了原来的片段，可以再规划一次`);
     } else {
-      toast.showSuccess(`已规划 ${result.data.plan.segments.length} 段`, '不满意可以撤销');
+      toast.showSuccess(`「${planned.name}」规划了 ${count} 段`, '不满意可以撤销');
     }
   });
 
@@ -226,18 +254,46 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
 
   // 自动保存（加载后的第一次不存）
   useEffect(() => {
-    if (!history || !videoId || locked) return;
+    if (!history || !planId || locked) return;
     if (!loaded.current) {
       loaded.current = true;
       return;
     }
     setSaveState('saving');
+    const present = history.present;
     const timer = window.setTimeout(async () => {
-      const result = await videoService.savePlan(videoId, history.present);
+      const result = await videoService.savePlan(planId, present);
       setSaveState(result.success ? 'saved' : 'error');
+      // 本地的规划列表也更新，切换回来是最新的
+      if (result.success) setDetail((d) => (d ? { ...d, plans: d.plans.map((x) => (x.id === planId ? { ...x, plan: present } : x)) } : d));
     }, AUTOSAVE_MS);
     return () => window.clearTimeout(timer);
-  }, [history?.present, videoId, locked]);
+  }, [history?.present, planId, locked]);
+
+  const planIdRef = useRef(planId);
+  planIdRef.current = planId;
+
+  /** 切换到另一个规划：先把当前的改动存好，撤销记录按规划分开 */
+  const switchTo = useCallback(
+    (id: number, plans?: VideoPlanInfo[]) => {
+      const list = plans ?? detail?.plans ?? [];
+      const target = list.find((x) => x.id === id);
+      if (!target) return;
+      const currentId = planIdRef.current;
+      if (history && currentId && currentId !== id && !locked) {
+        void videoService.savePlan(currentId, history.present);
+        setDetail((d) => (d ? { ...d, plans: d.plans.map((x) => (x.id === currentId ? { ...x, plan: history.present } : x)) } : d));
+      }
+      setPlanId(id);
+      writeLastPlan(videoId, id);
+      loaded.current = false;
+      setLive(null);
+      setSelectedId(null);
+      setSaveState('saved');
+      setHistory({ past: [], present: target.plan, future: [] });
+    },
+    [detail?.plans, history, locked, videoId]
+  );
 
   /** 改规划；editKey 相同的连续编辑合并成一次撤销 */
   const commit = useCallback((next: VideoPlan, editKey: string | null = null) => {
@@ -484,12 +540,13 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
 
   const startProcessing = async () => {
     // 先把最新的规划存好，任务按库里的规划切
-    const saved = await videoService.savePlan(detail.video.id, plan);
+    if (!planId) return;
+    const saved = await videoService.savePlan(planId, plan);
     if (!saved.success) {
       toast.showError('无法开始切分', saved.error);
       return;
     }
-    const started = await videoService.startProcessing(detail.video.id);
+    const started = await videoService.startProcessing(planId);
     if (!started.success) toast.showError('无法开始切分', started.error);
   };
   const allIssues = segments.map((s) => segmentIssues(s, cues));
@@ -502,6 +559,42 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   const translate = async (seg?: VideoSegment) => {
     const result = await videoService.startTranslate(detail.video.id, seg?.startMs, seg?.endMs);
     if (!result.success) toast.showError('无法翻译字幕', result.error);
+  };
+  const currentPlan = detail.plans.find((x) => x.id === planId);
+  const cutCount = (p: VideoPlanInfo) => p.plan.segments.filter((sg) => clipOf(sg)).length;
+  const createPlan = async (copy: boolean) => {
+    if (planId && copy) await videoService.savePlan(planId, plan);
+    const r = await videoService.createPlan(detail.video.id, copy && currentPlan ? `${currentPlan.name} 副本` : undefined, copy ? (planId ?? undefined) : undefined);
+    if (!r.success) {
+      toast.showError('无法新建规划', r.error);
+      return;
+    }
+    const plans = [...detail.plans.map((x) => (x.id === planId ? { ...x, plan } : x)), r.data];
+    setDetail({ ...detail, plans });
+    switchTo(r.data.id, plans);
+  };
+  const renamePlan = async (name: string) => {
+    if (!planId) return false;
+    const r = await videoService.renamePlan(planId, name);
+    if (!r.success) {
+      toast.showError('无法改名', r.error);
+      return false;
+    }
+    setDetail({ ...detail, plans: detail.plans.map((x) => (x.id === planId ? { ...x, name } : x)) });
+    return true;
+  };
+  const deletePlan = async () => {
+    if (!planId) return;
+    const r = await videoService.deletePlan(planId);
+    if (!r.success) {
+      toast.showError('无法删除规划', r.error);
+      return;
+    }
+    const plans = detail.plans.filter((x) => x.id !== planId);
+    setDetail({ ...detail, plans });
+    loaded.current = false;
+    planIdRef.current = null;
+    switchTo(plans[0].id, plans);
   };
 
   return (
@@ -530,52 +623,24 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
               </>
             )}
           </span>
-          {/* 整部字幕的整理（断句、翻译）：进行中显示进度；还有没整理的字幕时可以整理全部 */}
-          {wholeTranslateJob ? (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
-              <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
-              <Languages className="size-3.5" />
-              整理字幕
-              {wholeTranslateJob.total > 0 ? (
-                <>
-                  <Progress value={(wholeTranslateJob.current / wholeTranslateJob.total) * 100} className="h-1 w-16" />
-                  <span className="tabular-nums">
-                    {wholeTranslateJob.current}/{wholeTranslateJob.total}
-                  </span>
-                </>
-              ) : (
-                <Loader2 className="size-3 animate-spin" />
-              )}
-            </span>
-          ) : (
-            unpreparedTotal > 0 && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => translate()}>
-                    <Languages />
-                    整理字幕（{unpreparedTotal} 条）
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>AI 把断行拆开的句子连起来，并补上中文</TooltipContent>
-              </Tooltip>
-            )
-          )}
           <div className="ml-auto flex items-center gap-2">
             {onNavigate && <JobIndicator onNavigate={onNavigate} />}
-            <Button variant="outline" size="sm" onClick={() => setAiPlanOpen(true)} disabled={locked}>
-              <Sparkles />
-              AI 规划…
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setAutoSplitOpen(true)} disabled={locked}>
-              <Wand2 />
-              按字幕自动切分…
-            </Button>
-            {detail.clips.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={() => onNavigate?.('videos', { tab: 'clips', videoId: detail.video.id })} disabled={locked}>
-                <Clapperboard />
-                查看片段（{detail.clips.length}）
-              </Button>
-            )}
+            {/* 按流程：① 字幕 → ② 规划 → ③ 开始切分 */}
+            <SubtitleMenu job={wholeTranslateJob} pending={unpreparedTotal} onPrepare={() => translate()} />
+            <PlanMenu
+              plans={detail.plans}
+              currentId={planId ?? 0}
+              cutCount={cutCount}
+              clipCount={detail.clips.length}
+              disabled={locked}
+              onSwitch={(id) => switchTo(id)}
+              onCreate={createPlan}
+              onRename={renamePlan}
+              onDelete={deletePlan}
+              onAiPlan={() => setAiPlanOpen(true)}
+              onAutoSplit={() => setAutoSplitOpen(true)}
+              onViewClips={() => onNavigate?.('videos', { tab: 'clips', videoId: detail.video.id })}
+            />
             <Button size="sm" onClick={startProcessing} disabled={locked || pendingCount === 0 || saveState === 'saving'}>
               <Scissors />
               {pendingCount === 0 && segments.length > 0 ? '已全部切分' : `开始切分（${pendingCount} 段）`}
@@ -586,8 +651,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
         {/* 主区：片段列表 · 播放器 · 片段属性 */}
         <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_360px]">
           <aside className="flex min-h-0 flex-col border-r">
-            <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
-              <span>
+            <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs text-muted-foreground">
+              <span className="min-w-0 truncate">
+                {detail.plans.length > 1 && <span className="font-medium text-foreground">{currentPlan?.name} · </span>}
                 {segments.length} 段 · 共 {formatClock(totalMs, false)}
               </span>
               {problemCount > 0 && (
@@ -828,6 +894,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
         open={aiPlanOpen}
         onOpenChange={setAiPlanOpen}
         videoId={detail.video.id}
+        planId={planId ?? 0}
         requirements={plan.requirements}
         hasSegments={segments.length > 0}
       />

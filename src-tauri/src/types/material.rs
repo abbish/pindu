@@ -18,7 +18,11 @@ pub struct TagUsage {
     #[serde(flatten)]
     pub tag: Tag,
     pub word_books: i64,
+    /// 短文（不含视频切片）
     pub passages: i64,
+    /// 视频切片
+    pub clips: i64,
+    /// 原始视频
     pub videos: i64,
 }
 

@@ -284,7 +284,8 @@ impl PassageRepository {
         Ok(raw.map(|r| parse(Some(r))))
     }
 
-    /// 列表（可按来源单词本 / 计划筛选，最新在前），附题组数、完成次数与最近一次成绩
+    /// 列表（可按来源单词本 / 计划筛选，最新在前），附题组数、完成次数与最近一次成绩。
+    /// 视频切片不算短文（它们在视频库里），只有 origin = video 时才列切片
     pub async fn list(
         &self,
         book_id: Option<Id>,
@@ -309,7 +310,7 @@ impl PassageRepository {
                         WHERE s.passage_id = p.id AND s.kind = 'book' AND s.ref_id = ?1))
                AND (?2 IS NULL OR EXISTS (SELECT 1 FROM passage_sources s
                         WHERE s.passage_id = p.id AND s.kind = 'plan' AND s.ref_id = ?2))
-               AND (?3 IS NULL OR (?3 = 'video') = EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id))
+               AND COALESCE(?3 = 'video', 0) = EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id)
                AND (?3 IS NULL OR ?3 = 'video' OR p.origin = ?3)
              ORDER BY p.created_at DESC, p.id DESC",
         )
@@ -830,11 +831,12 @@ impl PassageRepository {
 
     // ==================== 统计 ====================
 
-    /// 短文练习统计（可按计划筛选：只算这个计划里的作答）；阅读、听力分开
+    /// 短文练习统计（可按计划筛选：只算这个计划里的作答）；阅读、听力分开。短文库的统计不含视频切片
     pub async fn statistics(&self, plan_id: Option<Id>) -> AppResult<PassageStatistics> {
         let passages: i64 = sqlx::query_scalar(
             "SELECT COUNT(DISTINCT passage_id) FROM passage_attempts
-             WHERE status = 'completed' AND (?1 IS NULL OR plan_id = ?1)",
+             WHERE status = 'completed' AND (?1 IS NULL OR plan_id = ?1)
+               AND (?1 IS NOT NULL OR passage_id NOT IN (SELECT passage_id FROM video_clips))",
         )
         .bind(plan_id)
         .fetch_one(self.pool.as_ref())
@@ -847,6 +849,7 @@ impl PassageRepository {
                     SUM(active_time) AS time
              FROM passage_attempts
              WHERE status = 'completed' AND (?1 IS NULL OR plan_id = ?1)
+               AND (?1 IS NOT NULL OR passage_id NOT IN (SELECT passage_id FROM video_clips))
              GROUP BY mode",
         )
         .bind(plan_id)
@@ -856,7 +859,8 @@ impl PassageRepository {
             "SELECT COUNT(*),
                     COALESCE(SUM((SELECT COUNT(*) FROM passage_question_sets qs WHERE qs.passage_id = p.id)), 0)
              FROM passages p
-             WHERE ?1 IS NULL OR EXISTS (SELECT 1 FROM passage_sources s
+             WHERE (?1 IS NULL AND NOT EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id))
+                OR EXISTS (SELECT 1 FROM passage_sources s
                        WHERE s.passage_id = p.id AND s.kind = 'plan' AND s.ref_id = ?1)",
         )
         .bind(plan_id)
