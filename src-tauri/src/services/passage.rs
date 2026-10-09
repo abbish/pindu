@@ -33,6 +33,8 @@ const OPEN_ANSWER_MAX: usize = 1000;
 const TOPIC_MAX: usize = 200;
 /// 按描述生成时写作要求的最大字数
 const INSTRUCTION_MAX: usize = 500;
+/// 按描述生成时 AI 为整份规划选目标词的上限
+const FREE_PLAN_WORDS: usize = 32;
 /// 场景里最多合并几本单词本的描述
 const MAX_SCENE_BOOKS: usize = 3;
 /// 题组名称最大长度
@@ -567,12 +569,17 @@ impl PassageService {
         self.source_snapshots(&request.word_sources()).await?;
         let (required, pool, ai_pick, scene_books) = self.chosen_words(request).await?;
         let topic = request.topic.as_deref().unwrap_or("").trim();
-        let (scene, _) = self.scene(topic, &scene_books).await?;
+        // 按描述生成且没有给定单词：AI 按要求自己为各篇选目标词
+        let free = request.has_instruction() && required.is_empty() && pool.is_empty();
+        let scene = match request.instruction.as_deref().map(str::trim) {
+            Some(text) if !text.is_empty() => crate::prompts::writing_brief(text),
+            _ => self.scene(topic, &scene_books).await?.0,
+        };
         let profile = PromptProfileService::load(&self.pool).await?;
         let level = profile.effective_level().to_string();
         let model = self.model().await?;
         let pick_prefs = Self::pick_preferences(request, ai_pick);
-        tasks::plan_passages(
+        let mut plan = tasks::plan_passages(
             paths,
             &model,
             &profile,
@@ -589,10 +596,34 @@ impl PassageService {
                     passage_rules::length_range(&level, "long"),
                 ],
                 feedback: feedback.trim(),
+                free_words: if free { FREE_PLAN_WORDS } else { 0 },
             },
             &self.logger,
         )
-        .await
+        .await?;
+        if free {
+            self.link_existing_words(&mut plan).await?;
+        }
+        Ok(plan)
+    }
+
+    /// AI 自己选的目标词：已在单词本里的关联上 wordId（不算未收录词）
+    async fn link_existing_words(
+        &self,
+        plan: &mut crate::types::passage::PassagePlan,
+    ) -> AppResult<()> {
+        let texts: Vec<String> = plan
+            .items
+            .iter()
+            .flat_map(|i| i.words.iter().map(|w| w.word.clone()))
+            .collect();
+        let known = self.repository.word_ids_by_text(&texts).await?;
+        for word in plan.items.iter_mut().flat_map(|i| i.words.iter_mut()) {
+            if word.word_id.is_none() {
+                word.word_id = known.get(&word.word.to_lowercase()).copied();
+            }
+        }
+        Ok(())
     }
 
     /// 生成一篇短文（独立素材，记录来源）。带 `plan_item` 时按规划里这一篇的构思、用词与篇幅来写

@@ -40,13 +40,15 @@ export interface CreatePassagePageProps {
 }
 
 const STEPS = ['生成方式', '选择单词', '场景与篇幅', '内容规划'];
+/** 按描述生成：AI 按要求定主题、选目标词并规划，之后与基于单词的流程一样确认规划、逐篇生成 */
+const BRIEF_STEPS = ['写作要求', '内容规划'];
 /** 写作要求最多几个字（与后端 INSTRUCTION_MAX 一致） */
 const INSTRUCTION_MAX = 500;
 
 /** 生成方式：按描述直接生成，或基于单词本 / 学习计划里的单词（三者并列，选一种） */
 type SourceMode = 'brief' | 'books' | 'plans';
 const SOURCE_MODES: { value: SourceMode; label: string; description: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { value: 'brief', label: '按描述生成', description: '写下主题和要求，直接生成', icon: PenLine },
+  { value: 'brief', label: '按描述生成', description: '写下主题和要求，由 AI 规划与选词', icon: PenLine },
   { value: 'books', label: '基于单词本', description: '从单词本中选词', icon: BookOpen },
   { value: 'plans', label: '基于学习计划', description: '按学习进度选词', icon: ListChecks },
 ];
@@ -349,7 +351,8 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     pickStatuses: effectivePick > 0 ? prefs.statuses : [],
     pickDifficulty: effectivePick > 0 && prefs.difficulty !== 'any' ? prefs.difficulty : null,
     pickFrequency: effectivePick > 0 && prefs.frequency !== 'any' ? prefs.frequency : null,
-    topic: scene.trim() || null,
+    topic: sourceMode === 'brief' ? null : scene.trim() || null,
+    instruction: sourceMode === 'brief' ? instruction.trim() : null,
     length,
   });
 
@@ -381,22 +384,6 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     setRuns((prev) => [...prev, { jobId: started.data, indexes }]);
   };
   const generateAll = () => write(planItems.map((it, i) => (it.include ? i : -1)).filter((i) => i >= 0));
-
-  /** 按描述生成：不选单词、不做内容规划，直接写一篇（写好后打开） */
-  const writeBrief = async () => {
-    setError(null);
-    const item = { title: '', idea: '', words: [], length };
-    setPlanItems([{ ...item, include: true }]);
-    const started = await passageService.startGeneration({
-      base: { bookIds: [], planIds: [], planScopes: [], requiredWordIds: [], extraWords: [], aiPick: 0, pickStatuses: [], topic: null, instruction: instruction.trim(), length },
-      items: [item],
-    });
-    if (!started.success) return setError({ title: '无法开始生成短文', message: started.error });
-    setRuns([{ jobId: started.data, indexes: [0] }]);
-  };
-  /** 按描述生成的任务（进行中或刚结束） */
-  const briefJob = sourceMode === 'brief' && runs.length > 0 ? jobs.find((j) => j.id === runs[runs.length - 1].jobId) : undefined;
-  const briefRunning = briefJob !== undefined && isJobActive(briefJob);
 
   /** 换生成方式：只保留这种方式的来源 */
   const chooseSource = (mode: SourceMode) => {
@@ -446,7 +433,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-7">
       <PageHeader title="新建短文" />
-      {sourceMode !== 'brief' && <Stepper steps={STEPS} current={step} />}
+      {sourceMode === 'brief' ? <Stepper steps={BRIEF_STEPS} current={step === 3 ? 1 : 0} /> : <Stepper steps={STEPS} current={step} />}
 
       {planning ? (
         <Card className="px-6">
@@ -456,7 +443,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
         <>
           {step === 0 && (
             <div className="flex flex-col gap-4">
-              <RadioGroup value={sourceMode} onValueChange={(v) => chooseSource(v as SourceMode)} className="grid grid-cols-3 gap-3" aria-label="生成方式" disabled={briefRunning}>
+              <RadioGroup value={sourceMode} onValueChange={(v) => chooseSource(v as SourceMode)} className="grid grid-cols-3 gap-3" aria-label="生成方式">
                 {SOURCE_MODES.map(({ value, label, description, icon: Icon }) => (
                   <Label
                     key={value}
@@ -484,12 +471,11 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                       onChange={(e) => setInstruction(e.target.value)}
                       placeholder="例如：一篇关于在机场转机的小故事，包含问路和办理登机的对话"
                       className="min-h-32 resize-none"
-                      disabled={briefRunning}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <Label>篇幅</Label>
-                    <ToggleGroup type="single" value={length} onValueChange={(v) => v && setLength(v as typeof length)} className="rounded-lg bg-muted p-0.5" aria-label="篇幅" disabled={briefRunning}>
+                    <ToggleGroup type="single" value={length} onValueChange={(v) => v && setLength(v as typeof length)} className="rounded-lg bg-muted p-0.5" aria-label="篇幅">
                       {LENGTHS.map((l) => (
                         <ToggleGroupItem key={l.value} value={l.value} className={segmentItem}>
                           {l.label}
@@ -498,9 +484,6 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                     </ToggleGroup>
                   </div>
                 </Card>
-              )}
-              {sourceMode === 'brief' && briefJob && (
-                <JobPanel job={briefJob} title="AI 正在生成短文" actions={{ stop: true, onBackground: () => onNavigate?.('passages') }} />
               )}
 
               {sourceMode === 'books' && (
@@ -830,15 +813,15 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
           </Button>
         </div>
       )}
-      {sourceMode === 'brief' && step === 0 && (
+      {!planning && sourceMode === 'brief' && step === 0 && (
         <div className="flex items-center gap-2 border-t pt-4">
           <Button variant="ghost" onClick={() => onNavigate?.('passages')}>
             取消
           </Button>
           <div className="flex-1" />
-          <Button onClick={writeBrief} disabled={!instruction.trim() || briefRunning}>
+          <Button onClick={() => makePlan()} disabled={!instruction.trim()}>
             <Sparkles />
-            {briefJob && !briefRunning ? '重新生成' : '生成短文'}
+            生成内容规划
           </Button>
         </div>
       )}
@@ -851,7 +834,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
           )}
           <div className="flex-1" />
           {step > 0 && statuses === null && (
-            <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
+            <Button variant="outline" onClick={() => setStep((s) => (sourceMode === 'brief' ? 0 : s - 1))}>
               <ArrowLeft />
               上一步
             </Button>

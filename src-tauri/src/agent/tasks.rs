@@ -1112,6 +1112,8 @@ pub struct PlanSpec<'a> {
     pub ranges: [(usize, usize); 3],
     /// 对上一版规划的调整意见
     pub feedback: &'a str,
+    /// 按描述生成：没有给定单词，AI 自己为各篇选目标词，最多这么多个（0 = 不是这种模式）
+    pub free_words: usize,
 }
 
 pub fn passage_plan_message(spec: &PlanSpec) -> String {
@@ -1142,6 +1144,14 @@ pub fn passage_plan_message(spec: &PlanSpec) -> String {
             ("standard", &range(spec.ranges[1])),
             ("long", &range(spec.ranges[2])),
             ("feedback", spec.feedback),
+            (
+                "free_words",
+                &if spec.free_words > 0 {
+                    spec.free_words.to_string()
+                } else {
+                    String::new()
+                },
+            ),
         ],
     )
 }
@@ -1171,7 +1181,12 @@ pub async fn plan_passages(
         &submission.details,
         spec.required,
         spec.pool,
-        spec.ai_pick,
+        if spec.free_words > 0 {
+            spec.free_words
+        } else {
+            spec.ai_pick
+        },
+        spec.free_words > 0,
     )
     .map_err(|e| AppError::ExternalServiceError(format!("内容规划不合格：{}，请再试一次", e)))?;
     logger.info(

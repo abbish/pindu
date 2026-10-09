@@ -388,11 +388,14 @@ const OUTLINE_PARTS: [(&str, &str); 4] = [
 
 /// `submit_passage_plan` 的参数 → 内容规划。
 /// 词只接受必用词与候选池里的词（AI 挑的合计不超过 `ai_pick`），每个词只归一篇；漏掉的必用词补进词最少的那篇；没有词的篇目丢弃
+///
+/// `free`：按描述生成，没有候选池，AI 自己选的英文单词（合法的单词形式）也接受，最多 `ai_pick` 个
 pub fn plan_from_submission(
     details: &Value,
     required: &[PassageTargetWord],
     pool: &[PassageTargetWord],
     ai_pick: usize,
+    free: bool,
 ) -> Result<PassagePlan, String> {
     let mut used: HashSet<String> = HashSet::new();
     let mut picked = 0;
@@ -432,6 +435,15 @@ pub fn plan_from_submission(
                     words.push(PassageTargetWord {
                         required: false,
                         ..c.clone()
+                    });
+                } else if free && valid_extra_word(&w) {
+                    used.insert(key);
+                    picked += 1;
+                    words.push(PassageTargetWord {
+                        word_id: None,
+                        word: w.trim().to_string(),
+                        required: false,
+                        meaning: None,
                     });
                 }
             }
@@ -1160,7 +1172,7 @@ mod tests {
                 {"title": "Empty", "outline": {"goal": "x"}, "words": []}
             ]
         });
-        let plan = plan_from_submission(&details, &required, &pool, 2).unwrap();
+        let plan = plan_from_submission(&details, &required, &pool, 2, false).unwrap();
         assert_eq!(plan.note, "两个场景，拆成两篇更自然");
         assert_eq!(plan.items.len(), 2);
         let words = |i: usize| {
@@ -1181,7 +1193,22 @@ mod tests {
         assert!(plan.items[0]
             .idea
             .starts_with("主角与目标：Tom 去机场\n麻烦或意外：护照找不到"));
-        assert!(plan_from_submission(&json!({"passages": []}), &required, &pool, 0).is_err());
+        assert!(
+            plan_from_submission(&json!({"passages": []}), &required, &pool, 0, false).is_err()
+        );
+        // 按描述生成：没有候选池，接受 AI 自己选的合法单词（不合法的、超出上限的丢掉）
+        let free = json!({"passages": [{"title": "Dinosaurs", "outline": {"goal": "a", "problem": "b", "turn": "c", "ending": "d"},
+            "words": ["fossil", "Jurassic", "两个字", "fossil", "predator"], "length": "standard"}]});
+        let plan = plan_from_submission(&free, &[], &[], 2, true).unwrap();
+        assert_eq!(
+            plan.items[0]
+                .words
+                .iter()
+                .map(|w| w.word.as_str())
+                .collect::<Vec<_>>(),
+            vec!["fossil", "Jurassic"]
+        );
+        assert!(plan_from_submission(&free, &[], &[], 2, false).is_err());
     }
 
     #[test]

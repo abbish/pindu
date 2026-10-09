@@ -112,7 +112,7 @@ const PlanParams = Type.Object({
     Type.Object({
       title: Type.String({ description: "English title" }),
       outline: Outline,
-      words: Type.Array(Type.String(), { description: "required words + chosen candidate words used in THIS passage" }),
+      words: Type.Array(Type.String(), { description: "required words + chosen candidate words used in THIS passage; when the user message gives no words, the target words you choose for this passage (English base forms)" }),
       length: Type.String({ description: "short / standard / long" }),
     }),
     { description: "1-4 passages" },
