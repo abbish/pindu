@@ -14,7 +14,7 @@ export interface WordMaterialsSheetProps {
   word: { id: number; word: string } | null;
   onClose: () => void;
   /** 打开短文 / 切片详情 */
-  onOpenPassage: (passageId: number) => void;
+  onOpenPassage: (passageId: number, isClip: boolean) => void;
 }
 
 /**
@@ -42,7 +42,7 @@ export interface WordMaterialsListProps {
   word: string;
   wordId?: number;
   /** 打开短文 / 切片详情；不传则不显示（如练习中） */
-  onOpenPassage?: (passageId: number) => void;
+  onOpenPassage?: (passageId: number, isClip: boolean) => void;
   /** 只列视频片段（练习右栏「场景」） */
   clipsOnly?: boolean;
   onLoaded?: (clips: number, passages: number) => void;
@@ -98,7 +98,7 @@ export const WordMaterialsList: React.FC<WordMaterialsListProps> = ({ word, word
             </h3>
           )}
           {clips.map((m) => (
-            <ClipItem key={m.passageId} item={m} word={word} playing={playing === m.passageId} onPlay={() => setPlaying(m.passageId)} onOpen={onOpenPassage && (() => onOpenPassage(m.passageId))} />
+            <ClipItem key={m.passageId} item={m} word={word} playing={playing === m.passageId} onPlay={() => setPlaying(m.passageId)} onOpen={onOpenPassage && (() => onOpenPassage(m.passageId, true))} />
           ))}
         </section>
       )}
@@ -109,7 +109,7 @@ export const WordMaterialsList: React.FC<WordMaterialsListProps> = ({ word, word
             短文
           </h3>
           {passages.map((m) => (
-            <button key={m.passageId} type="button" className="block w-full rounded-lg border p-3 text-left hover:bg-muted disabled:pointer-events-none" onClick={() => onOpenPassage?.(m.passageId)} disabled={!onOpenPassage}>
+            <button key={m.passageId} type="button" className="block w-full rounded-lg border p-3 text-left hover:bg-muted disabled:pointer-events-none" onClick={() => onOpenPassage?.(m.passageId, false)} disabled={!onOpenPassage}>
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.title}</span>
                 {m.key && <Badge variant="secondary">重点</Badge>}

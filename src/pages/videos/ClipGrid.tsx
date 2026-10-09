@@ -1,5 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Clapperboard, ListVideo, Play, SearchX } from 'lucide-react';
+import { Clapperboard, ListVideo, Play, Scissors, SearchX, Trash2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { passageService } from '@/services/passageService';
+import {
+  BatchDeleteButton,
+  BatchDeleteDialog,
+  BatchTagButton,
+  CardMenu,
+  CardMenuButton,
+  SelectCheckbox,
+  SelectionBar,
+  useSelection,
+  type CardAction,
+  type Selection,
+} from '@/components/MaterialSelection/MaterialSelection';
 import { Button } from '@/components/ui/button';
 import { ClipPlaylistDialog } from './ClipPlaylistDialog';
 import { Card } from '@/components/ui/card';
@@ -20,8 +34,10 @@ export interface ClipGridProps {
   onOpen: (clip: ClipSummary) => void;
   /** 没有片段时去「原始视频」 */
   onGoSources: () => void;
-  /** 管理标签后刷新 */
+  /** 管理标签、批量改标签、删除之后刷新 */
   onTagsChanged?: () => void;
+  /** 在剪辑编辑器里打开来源视频 */
+  onOpenEditor?: (videoId: number) => void;
 }
 
 const LEVELS = ['a1', 'a2', 'b1', 'b2'];
@@ -32,7 +48,7 @@ const ENGLISH = /^[a-z][a-z' -]*$/i;
  * 视频库「片段」：切出来的短片是主要素材。可按标签、来源视频、难度筛选；搜索除了标题、重点词与标签，
  * 输入英文词时还会找字幕里出现过它的片段（跨视频看同一个词的真实场景），卡片上显示出现的那句。
  */
-export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOpen, onGoSources, onTagsChanged }) => {
+export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOpen, onGoSources, onTagsChanged, onOpenEditor }) => {
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState('all');
   const [video, setVideo] = useState(videoId ? String(videoId) : 'all');
@@ -40,6 +56,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
   /** 字幕里出现了搜索词的片段：passageId → 那一句 */
   const [subtitleHits, setSubtitleHits] = useState<Map<number, string>>(new Map());
   const [playlist, setPlaylist] = useState<ClipSummary[] | null>(null);
+  const [toDelete, setToDelete] = useState<ClipSummary[] | null>(null);
 
   useEffect(() => {
     const q = query.trim();
@@ -70,6 +87,8 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
     );
   }, [clips, query, tag, video, level, subtitleHits]);
 
+  const selection = useSelection(useMemo(() => (visible ?? []).map((c) => c.id), [visible]));
+  const pickedClips = (visible ?? []).filter((c) => selection.selected.has(c.id));
   const sourceVideos = videos.filter((v) => v.clipCount > 0);
   const active = (query ? 1 : 0) + (tag !== 'all' ? 1 : 0) + (video !== 'all' ? 1 : 0) + (level !== 'all' ? 1 : 0);
 
@@ -87,6 +106,16 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
 
   return (
     <div className="flex flex-col gap-4">
+      {selection.selecting ? (
+        <SelectionBar selection={selection} unit="段">
+          <Button variant="ghost" size="sm" onClick={() => setPlaylist(pickedClips)}>
+            <ListVideo />
+            连续播放
+          </Button>
+          <BatchTagButton kind="passage" ids={selection.ids} onDone={() => onTagsChanged?.()} />
+          <BatchDeleteButton count={selection.selected.size} onClick={() => setToDelete(pickedClips)} />
+        </SelectionBar>
+      ) : (
       <MaterialToolbar
         search={query}
         onSearch={setQuery}
@@ -136,6 +165,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
           </SelectContent>
         </Select>
       </MaterialToolbar>
+      )}
 
       {visible === null ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
@@ -148,65 +178,101 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
           {visible.map((c) => (
-            <ClipCard key={c.id} clip={c} subtitle={subtitleHits.get(c.id)} onOpen={() => onOpen(c)} />
+            <ClipCard
+              key={c.id}
+              clip={c}
+              subtitle={subtitleHits.get(c.id)}
+              selection={selection}
+              onOpen={() => onOpen(c)}
+              actions={[
+                { label: '打开学习', icon: <Play />, onSelect: () => onOpen(c) },
+                { label: '播放', icon: <ListVideo />, onSelect: () => setPlaylist([c]) },
+                ...(onOpenEditor ? [{ label: '在剪辑编辑器里查看', icon: <Scissors />, onSelect: () => onOpenEditor(c.videoId) }] : []),
+                { label: '删除片段…', icon: <Trash2 />, onSelect: () => setToDelete([c]), destructive: true, separator: true },
+              ]}
+            />
           ))}
         </div>
       )}
       <ClipPlaylistDialog clips={playlist} onClose={() => setPlaylist(null)} onOpen={onOpen} />
+      <BatchDeleteDialog
+        items={toDelete}
+        onClose={() => setToDelete(null)}
+        unit="段片段"
+        description="片段的视频、短文与练习记录都会删除，不能恢复；原始视频不受影响，可以重新切出来。计划里还在用的片段不会删除。"
+        nameOf={(c) => c.title}
+        remove={(c) => passageService.deletePassage(c.id)}
+        onDone={() => {
+          selection.clear();
+          onTagsChanged?.();
+        }}
+      />
     </div>
   );
 };
 
-/** 片段卡片：预览图（时长）→ 标题 → 来源视频 · 段序 · 难度 → 标签 → 重点词（或搜索命中的那句字幕） */
-const ClipCard: React.FC<{ clip: ClipSummary; subtitle?: string; onOpen: () => void }> = ({ clip: c, subtitle, onOpen }) => (
-  <Card className="group cursor-default gap-0 overflow-hidden p-0 transition-colors select-none hover:border-ring/60" onClick={onOpen}>
-    <div className="relative aspect-video w-full bg-muted">
-      {c.posterUrl ? (
-        <img src={c.posterUrl} alt="" className="size-full object-cover" loading="lazy" />
-      ) : (
-        <div className="flex size-full items-center justify-center text-muted-foreground">
-          <Clapperboard className="size-8" />
+/** 片段卡片：预览图（时长）→ 标题 → 来源视频 · 段序 · 难度 → 标签 → 重点词（或搜索命中的那句字幕）；⋯ 与右键同一组操作，悬停左上角可勾选 */
+const ClipCard: React.FC<{ clip: ClipSummary; subtitle?: string; selection: Selection; actions: CardAction[]; onOpen: () => void }> = ({
+  clip: c,
+  subtitle,
+  selection,
+  actions,
+  onOpen,
+}) => {
+  const checked = selection.selected.has(c.id);
+  return (
+    <CardMenu actions={actions}>
+      <Card
+        className={cn('group relative cursor-default gap-0 overflow-hidden p-0 transition-colors select-none hover:border-ring/60', checked && 'border-primary ring-2 ring-primary/30')}
+        onClick={() => (selection.selecting ? selection.toggle(c.id) : onOpen())}
+      >
+        <SelectCheckbox checked={checked} selecting={selection.selecting} onToggle={() => selection.toggle(c.id)} label={`选择「${c.title}」`} />
+        <div className="relative aspect-video w-full bg-muted">
+          {c.posterUrl ? (
+            <img src={c.posterUrl} alt="" className="size-full object-cover" loading="lazy" />
+          ) : (
+            <div className="flex size-full items-center justify-center text-muted-foreground">
+              <Clapperboard className="size-8" />
+            </div>
+          )}
+          {!selection.selecting && (
+            <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white opacity-0 transition-opacity group-hover:opacity-100">
+              <Play className="size-8" />
+            </span>
+          )}
+          <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white tabular-nums">
+            {formatDuration(c.endMs - c.startMs, 'clock')}
+          </span>
         </div>
-      )}
-      <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white opacity-0 transition-opacity group-hover:opacity-100">
-        <Play className="size-8" />
-      </span>
-      <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white tabular-nums">
-        {formatDuration(c.endMs - c.startMs, 'clock')}
-      </span>
-    </div>
-    <div className="flex flex-col gap-2 p-3">
-      <div className="min-w-0">
-        <button
-          type="button"
-          className="block max-w-full truncate text-left font-medium outline-none focus-visible:underline"
-          title={c.title}
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpen();
-          }}
-        >
-          {c.title}
-        </button>
-        <div className="truncate text-xs text-muted-foreground">
-          {c.videoTitle} · 第 {c.seq} 段 · {c.level.toUpperCase()}
-          {c.completedAttempts > 0 && ` · 练过 ${c.completedAttempts} 次`}
-        </div>
-      </div>
-      <TagChips tags={c.tags} limit={3} />
-      {subtitle ? (
-        <p className="line-clamp-2 rounded bg-muted px-2 py-1 text-xs">{subtitle}</p>
-      ) : (
-        c.targetWords.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {c.targetWords.slice(0, 6).map((w) => (
-              <span key={w.word} className="rounded-full bg-muted px-2 py-0.5 text-xs">
-                {w.word}
-              </span>
-            ))}
+        <div className="flex flex-col gap-2 p-3">
+          <div className="flex items-start gap-1">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium" title={c.title}>
+                {c.title}
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                {c.videoTitle} · 第 {c.seq} 段 · {c.level.toUpperCase()}
+                {c.completedAttempts > 0 && ` · 练过 ${c.completedAttempts} 次`}
+              </div>
+            </div>
+            <CardMenuButton actions={actions} />
           </div>
-        )
-      )}
-    </div>
-  </Card>
-);
+          <TagChips tags={c.tags} limit={3} />
+          {subtitle ? (
+            <p className="line-clamp-2 rounded bg-muted px-2 py-1 text-xs">{subtitle}</p>
+          ) : (
+            c.targetWords.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {c.targetWords.slice(0, 6).map((w) => (
+                  <span key={w.word} className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                    {w.word}
+                  </span>
+                ))}
+              </div>
+            )
+          )}
+        </div>
+      </Card>
+    </CardMenu>
+  );
+};

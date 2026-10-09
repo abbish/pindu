@@ -24,6 +24,11 @@ class TagService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<void>('delete_tag', { tagId }));
   }
 
+  /** 批量给多个素材加 / 去标签；返回改了几个 */
+  async updateMaterialTags(kind: MaterialKind, refIds: number[], addTagIds: number[], removeTagIds: number[]): Promise<ApiResult<number>> {
+    return this.executeWithLoading(() => this.client.invoke<number>('update_material_tags', { kind, refIds, addTagIds, removeTagIds }));
+  }
+
   /** 整体设置一个素材的标签 */
   async setMaterialTags(kind: MaterialKind, refId: number, tagIds: number[]): Promise<ApiResult<Tag[]>> {
     return this.executeWithLoading(() => this.client.invoke<Tag[]>('set_material_tags', { kind, refId, tagIds }));

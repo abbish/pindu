@@ -101,6 +101,32 @@ impl TagService {
         Ok(())
     }
 
+    /// 批量给多个素材加 / 去标签（一个事务）；不存在的素材跳过
+    pub async fn update_material_tags(
+        &self,
+        kind: MaterialKind,
+        ref_ids: &[Id],
+        add: &[Id],
+        remove: &[Id],
+    ) -> AppResult<usize> {
+        // 先挑出存在的素材，再开事务写（事务里不再走连接池读）
+        let mut existing = Vec::new();
+        for &ref_id in ref_ids {
+            if self.repository.material_exists(kind, ref_id).await? {
+                existing.push(ref_id);
+            }
+        }
+        let mut tx = self.repository.begin().await?;
+        for &ref_id in &existing {
+            self.repository.add_conn(&mut tx, kind, ref_id, add).await?;
+            self.repository
+                .remove_conn(&mut tx, kind, ref_id, remove)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(existing.len())
+    }
+
     /// 整体设置一个素材的标签
     pub async fn set_material_tags(
         &self,
@@ -238,5 +264,34 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(left, 0);
+    }
+
+    #[tokio::test]
+    async fn batch_adds_and_removes_tags_skipping_missing_materials() {
+        let pool = memory_pool().await;
+        crate::test_support::seed_schedule(pool.as_ref(), 1).await;
+        let service = TagService::new(pool.clone());
+        let book: Id = sqlx::query_scalar("SELECT id FROM word_books ORDER BY id LIMIT 1")
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        let a = service.create_tag("点餐", None).await.unwrap();
+        let b = service.create_tag("旅行学习", None).await.unwrap();
+        let n = service
+            .update_material_tags(MaterialKind::WordBook, &[book, 99_999], &[a.id, b.id], &[])
+            .await
+            .unwrap();
+        assert_eq!(n, 1);
+        service
+            .update_material_tags(MaterialKind::WordBook, &[book], &[], &[a.id])
+            .await
+            .unwrap();
+        let ids: Vec<Id> = sqlx::query_scalar("SELECT tag_id FROM material_tags WHERE ref_id = ?")
+            .bind(book)
+            .fetch_all(pool.as_ref())
+            .await
+            .unwrap();
+        assert_eq!(ids, vec![b.id]);
+        crate::time::assert_instants_canonical(&pool).await;
     }
 }

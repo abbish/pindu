@@ -219,7 +219,32 @@ pub async fn delete_passage(app: AppHandle, passage_id: i64) -> AppResult<()> {
         "delete_passage",
         Some(&format!("passage_id: {}", passage_id)),
     );
-    let result = service(&app).delete(passage_id).await;
+    let result = async {
+        // 视频切片：记下短片文件，短文删掉后一起删（记录随短文级联删除）
+        let pool = app.state::<SqlitePool>();
+        let clip = crate::repositories::video_repository::VideoRepository::clip_of_passage(
+            pool.inner(),
+            passage_id,
+        )
+        .await?;
+        service(&app).delete(passage_id).await?;
+        if let Some(clip) = clip {
+            let data = crate::app_paths::dirs(&app).data;
+            for file in std::iter::once(&clip.file).chain(clip.poster_file.as_ref()) {
+                let path = crate::services::video_processing::clip_path(&data, clip.video_id, file);
+                if let Err(e) = std::fs::remove_file(&path) {
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        tracing::warn!(
+                            component = "VIDEO",
+                            "删除短片文件失败（打开剪辑编辑器时会再清理）：{e}"
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    .await;
     finish(&logger, "delete_passage", result)
 }
 

@@ -370,7 +370,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
     if (returnTo === 'plan-detail' && planId) return onNavigate?.('plan-detail', { planId, tab: 'passages' });
     if (returnTo === 'home') return onNavigate?.('home');
     if (returnTo === 'calendar') return onNavigate?.('calendar');
-    return passage ? onNavigate?.('passage-detail', { passageId: passage.id }) : onNavigate?.('passages');
+    return passage ? onNavigate?.('passage-detail', { passageId: passage.id, clip: passage.origin === 'video' || undefined }) : onNavigate?.('passages');
   };
   /** back() 去向的按钮文案 */
   const backLabel =

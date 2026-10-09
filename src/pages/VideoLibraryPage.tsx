@@ -1,11 +1,23 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Clapperboard, Film, Loader2, MoreHorizontal, Pencil, Plus, Scissors, Tags, Target, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Clapperboard, Film, Loader2, Pencil, Plus, Scissors, SearchX, Tags, Target, Trash2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
+import {
+  BatchDeleteButton,
+  BatchDeleteDialog,
+  BatchTagButton,
+  CardMenu,
+  CardMenuButton,
+  SelectCheckbox,
+  SelectionBar,
+  useSelection,
+  type CardAction,
+} from '@/components/MaterialSelection/MaterialSelection';
 import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -13,7 +25,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -68,7 +79,9 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
   const [importing, setImporting] = useState(false);
   const [renaming, setRenaming] = useState<Video | null>(null);
   const [renameText, setRenameText] = useState('');
-  const [deleting, setDeleting] = useState<Video | null>(null);
+  const [toDelete, setToDelete] = useState<Video[] | null>(null);
+  const [sourceQuery, setSourceQuery] = useState('');
+  const [sourceTag, setSourceTag] = useState('all');
   const jobs = useJobs();
   const toast = useToast();
 
@@ -108,17 +121,15 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
     load();
   };
 
-  const remove = async () => {
-    if (!deleting) return;
-    const result = await videoService.delete(deleting.id);
-    setDeleting(null);
-    if (!result.success) {
-      toast.showError('无法删除视频', result.error);
-      return;
-    }
-    toast.showSuccess(`已删除「${deleting.title}」`);
-    load();
-  };
+  const shownVideos = useMemo(() => {
+    const q = sourceQuery.trim().toLowerCase();
+    return (videos ?? []).filter(
+      (v) =>
+        (sourceTag === 'all' || v.tags.some((t) => String(t.id) === sourceTag)) &&
+        (!q || v.title.toLowerCase().includes(q) || v.sourceName.toLowerCase().includes(q) || v.tags.some((t) => t.name.toLowerCase().includes(q)))
+    );
+  }, [videos, sourceQuery, sourceTag]);
+  const selection = useSelection(useMemo(() => shownVideos.map((v) => v.id), [shownVideos]));
 
   const header = (
     <PageHeader
@@ -168,7 +179,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
       {loadError ? (
         <PageError title="无法加载视频库" message={loadError} onRetry={load} />
       ) : tab === 'clips' ? (
-        <ClipGrid clips={clips} videos={videos ?? []} videoId={videoId} onOpen={(c) => onNavigate?.('passage-detail', { passageId: c.id })} onGoSources={() => setTab('sources')} onTagsChanged={load} />
+        <ClipGrid clips={clips} videos={videos ?? []} videoId={videoId} onOpen={(c) => onNavigate?.('passage-detail', { passageId: c.id, clip: true })} onGoSources={() => setTab('sources')} onTagsChanged={load} onOpenEditor={(id) => onNavigate?.('video-editor', { videoId: id })} />
       ) : videos === null ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {[0, 1, 2].map((i) => (
@@ -185,18 +196,59 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
           onAction={() => setImporting(true)}
         />
       ) : (
+        <>
+        {selection.selecting ? (
+          <SelectionBar selection={selection} unit="个视频">
+            <BatchTagButton kind="video" ids={selection.ids} onDone={load} />
+            <BatchDeleteButton count={selection.selected.size} onClick={() => setToDelete(shownVideos.filter((v) => selection.selected.has(v.id)))} />
+          </SelectionBar>
+        ) : (
+          <MaterialToolbar
+            search={sourceQuery}
+            onSearch={setSourceQuery}
+            searchPlaceholder="搜索视频"
+            tag={{ kind: 'video', value: sourceTag, onChange: setSourceTag, onTagsChanged: load }}
+            activeCount={(sourceQuery ? 1 : 0) + (sourceTag !== 'all' ? 1 : 0)}
+            onReset={() => {
+              setSourceQuery('');
+              setSourceTag('all');
+            }}
+            countText={`共 ${shownVideos.length} 个`}
+          />
+        )}
+        {shownVideos.length === 0 && <EmptyState icon={<SearchX />} title="没有匹配的视频" />}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-          {videos.map((video) => {
+          {shownVideos.map((video) => {
             const job = jobOf(jobs, video.id);
             const interrupted = !job && (video.status === 'importing' || video.status === 'processing');
             const clickable = !job && video.mediaUrl !== null && (video.status === 'ready' || video.status === 'done' || video.status === 'processing');
+            const checked = selection.selected.has(video.id);
+            const actions: CardAction[] = [
+              { label: '在剪辑编辑器里打开', icon: <Scissors />, onSelect: () => open(video), disabled: !clickable },
+              ...(video.clipCount > 0 ? [{ label: '查看切出的片段', icon: <Clapperboard />, onSelect: () => onNavigate?.('videos', { tab: 'clips', videoId: video.id }) }] : []),
+              {
+                label: '改名…',
+                icon: <Pencil />,
+                onSelect: () => {
+                  setRenameText(video.title);
+                  setRenaming(video);
+                },
+              },
+              { label: '删除…', icon: <Trash2 />, onSelect: () => setToDelete([video]), destructive: true, separator: true, disabled: Boolean(job) },
+            ];
             return (
-              <Card key={video.id} className="group gap-0 overflow-hidden p-0">
+              <CardMenu key={video.id} actions={actions}>
+              <Card className={cn('group relative gap-0 overflow-hidden p-0', checked && 'border-primary ring-2 ring-primary/30')} onClick={() => selection.selecting && selection.toggle(video.id)}>
+                <SelectCheckbox checked={checked} selecting={selection.selecting} onToggle={() => selection.toggle(video.id)} label={`选择「${video.title}」`} />
                 <button
                   type="button"
                   className="relative block aspect-video w-full bg-muted text-left disabled:cursor-default"
-                  onClick={() => open(video)}
-                  disabled={!clickable}
+                  onClick={(e) => {
+                    if (selection.selecting) return;
+                    e.stopPropagation();
+                    open(video);
+                  }}
+                  disabled={!clickable && !selection.selecting}
                   aria-label={`打开「${video.title}」`}
                 >
                   {video.coverUrl ? (
@@ -222,29 +274,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
                         {video.cueCount} 条字幕 · {formatBytes(video.sizeBytes)} · {formatRelative(video.createdAt)}
                       </div>
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-7" aria-label="更多操作">
-                          <MoreHorizontal />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            setRenameText(video.title);
-                            setRenaming(video);
-                          }}
-                        >
-                          <Pencil />
-                          改名
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(video)} disabled={Boolean(job)}>
-                          <Trash2 />
-                          删除
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <CardMenuButton actions={actions} />
                   </div>
                   {job ? (
                     <div className="space-y-1">
@@ -282,9 +312,11 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
                   {interrupted && video.status === 'importing' && <p className="text-xs text-muted-foreground">删除后重新导入</p>}
                 </div>
               </Card>
+              </CardMenu>
             );
           })}
         </div>
+        </>
       )}
 
       <ImportVideoDialog
@@ -311,20 +343,18 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除「{deleting?.title}」？</AlertDialogTitle>
-            <AlertDialogDescription>视频文件、字幕和切分规划都会删除，不能恢复。你电脑上原来的视频文件不受影响。</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={remove}>
-              删除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <BatchDeleteDialog
+        items={toDelete}
+        onClose={() => setToDelete(null)}
+        unit="个视频"
+        description="视频文件、字幕、切分规划以及切出的片段都会删除，不能恢复；计划里还在用片段的视频不会删除。你电脑上原来的视频文件不受影响。"
+        nameOf={(v) => v.title}
+        remove={(v) => videoService.delete(v.id)}
+        onDone={() => {
+          selection.clear();
+          load();
+        }}
+      />
     </div>
   );
 };

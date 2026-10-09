@@ -1,26 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, FileText, Clapperboard, FileUp, ListChecks, MoreHorizontal, Sparkles, Trash2 } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { BookOpen, FileText, Clapperboard, FileUp, ListChecks, SearchX, Sparkles, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { PageError } from '@/components/PageError';
-import { useToast } from '@/components/Toast/ToastContainer';
 import { cn } from '@/lib/utils';
 import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
+import {
+  BatchDeleteButton,
+  BatchDeleteDialog,
+  BatchTagButton,
+  CardMenu,
+  CardMenuButton,
+  SelectCheckbox,
+  SelectionBar,
+  useSelection,
+  type CardAction,
+  type Selection,
+} from '@/components/MaterialSelection/MaterialSelection';
 import { passageService } from '@/services/passageService';
 import { formatRelative } from '@/utils/datetime';
 import { LEVEL_LABEL, MODE_LABEL, scopeDetailLabel, scoreSummary } from '@/utils/passage';
@@ -35,6 +34,8 @@ export interface PassageListProps {
   origin?: PassageOrigin;
   /** 只看带这个标签的 */
   tagId?: number;
+  /** 列表上方的工具栏；勾选短文后换成选择栏（与其它素材页一致） */
+  toolbar?: React.ReactNode;
   /** 导入我的材料（空状态的次要操作） */
   onImport?: () => void;
   /** 打开短文详情 */
@@ -56,44 +57,28 @@ export const SourceBadge: React.FC<{ source: PassageSource }> = ({ source }) => 
   </Badge>
 );
 
-/** 短文卡片：整张可点进入详情；⋯ 菜单与右键菜单是同一组操作 */
-const PassageCard: React.FC<{ passage: PassageSummary; onOpen: () => void; onDelete: () => void }> = ({ passage: p, onOpen, onDelete }) => {
-  const menu = (Item: typeof DropdownMenuItem | typeof ContextMenuItem, Separator: typeof DropdownMenuSeparator | typeof ContextMenuSeparator) => (
-    <>
-      <Item onSelect={onOpen}>
-        <FileText />
-        打开
-      </Item>
-      <Separator />
-      <Item variant="destructive" onSelect={onDelete}>
-        <Trash2 />
-        删除短文…
-      </Item>
-    </>
-  );
+/** 短文卡片：整张可点进入详情（选择状态下点击即勾选）；⋯ 菜单与右键菜单是同一组操作，悬停左上角可勾选 */
+const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onOpen: () => void; onDelete: () => void }> = ({ passage: p, selection, onOpen, onDelete }) => {
+  const checked = selection.selected.has(p.id);
+  const actions: CardAction[] = [
+    { label: '打开', icon: <FileText />, onSelect: onOpen },
+    { label: '删除短文…', icon: <Trash2 />, onSelect: onDelete, destructive: true, separator: true },
+  ];
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <Card className="cursor-default gap-3 px-5 py-4 transition-colors select-none hover:border-ring/60" onClick={onOpen}>
+    <CardMenu actions={actions}>
+        <Card
+          className={cn('group relative cursor-default gap-3 px-5 py-4 transition-colors select-none hover:border-ring/60', checked && 'border-primary ring-2 ring-primary/30')}
+          onClick={() => (selection.selecting ? selection.toggle(p.id) : onOpen())}
+        >
+          <SelectCheckbox checked={checked} selecting={selection.selecting} onToggle={() => selection.toggle(p.id)} label={`选择「${p.title}」`} className="top-1.5 left-1.5" />
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
-              <button type="button" className="block max-w-full truncate text-left text-[15px] font-semibold outline-none focus-visible:underline" onClick={(e) => { e.stopPropagation(); onOpen(); }}>
-                {p.title}
-              </button>
+              <div className="truncate text-[15px] font-semibold">{p.title}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">
                 {LEVEL_LABEL[p.level] ?? p.level} · {p.wordCount} 词 · {formatRelative(p.createdAt)}
               </div>
             </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8" aria-label="更多操作" onClick={(e) => e.stopPropagation()}>
-                  <MoreHorizontal />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                {menu(DropdownMenuItem, DropdownMenuSeparator)}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <CardMenuButton actions={actions} className="size-8" />
           </div>
           {p.origin !== 'generated' ? (
             <div className="flex flex-wrap gap-1">
@@ -128,18 +113,15 @@ const PassageCard: React.FC<{ passage: PassageSummary; onOpen: () => void; onDel
             {p.lastAttempt && ` · 最近一次${MODE_LABEL[p.lastAttempt.mode]}：${scoreSummary(p.lastAttempt)}`}
           </div>
         </Card>
-      </ContextMenuTrigger>
-      <ContextMenuContent>{menu(ContextMenuItem, ContextMenuSeparator)}</ContextMenuContent>
-    </ContextMenu>
+    </CardMenu>
   );
 };
 
 /** 短文卡片网格（短文库、单词本「短文」页签共用）：加载 / 空 / 错误三态，删除确认 */
-export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', origin, tagId, onOpen, onCreate, onImport, onCountChange, emptyDescription }) => {
-  const toast = useToast();
+export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', origin, tagId, toolbar, onOpen, onCreate, onImport, onCountChange, emptyDescription }) => {
   const [passages, setPassages] = useState<PassageSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [toDelete, setToDelete] = useState<PassageSummary | null>(null);
+  const [toDelete, setToDelete] = useState<PassageSummary[] | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -167,26 +149,27 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
     );
   }, [passages, query, origin, tagId]);
 
-  const remove = async () => {
-    if (!toDelete) return;
-    const result = await passageService.deletePassage(toDelete.id);
-    setToDelete(null);
-    if (result.success) {
-      toast.showSuccess('已删除短文');
-      load();
-    } else {
-      toast.showError('无法删除短文', result.error);
-    }
-  };
+  const selection = useSelection(useMemo(() => (visible ?? []).map((p) => p.id), [visible]));
+  const bar = selection.selecting ? (
+    <SelectionBar selection={selection} unit="篇短文">
+      <BatchTagButton kind="passage" ids={selection.ids} onDone={load} />
+      <BatchDeleteButton count={selection.selected.size} onClick={() => setToDelete((visible ?? []).filter((p) => selection.selected.has(p.id)))} />
+    </SelectionBar>
+  ) : (
+    toolbar
+  );
 
   if (error) return <PageError title="无法加载短文" message={error} onRetry={load} />;
   if (visible === null) {
     return (
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-40 rounded-xl" />
-        ))}
-      </div>
+      <>
+        {toolbar}
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-40 rounded-xl" />
+          ))}
+        </div>
+      </>
     );
   }
   if (passages?.length === 0) {
@@ -212,40 +195,47 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   if (visible.length === 0) {
     if (!query.trim() && tagId === undefined && origin === 'imported') {
       return (
-        <EmptyState icon={<FileUp />} title="还没有导入的材料">
-          {onImport && (
-            <Button onClick={onImport}>
-              <FileUp />
-              从我的材料导入
-            </Button>
-          )}
-        </EmptyState>
+        <>
+          {toolbar}
+          <EmptyState icon={<FileUp />} title="还没有导入的材料">
+            {onImport && (
+              <Button onClick={onImport}>
+                <FileUp />
+                从我的材料导入
+              </Button>
+            )}
+          </EmptyState>
+        </>
       );
     }
-    return <p className="py-10 text-center text-sm text-muted-foreground">{query.trim() ? `没有匹配「${query.trim()}」的短文` : '没有这类短文'}</p>;
+    return (
+      <>
+        {toolbar}
+        <EmptyState icon={<SearchX />} title={query.trim() ? `没有匹配「${query.trim()}」的短文` : '没有这类短文'} />
+      </>
+    );
   }
 
   return (
     <>
+      {bar}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
         {visible.map((p) => (
-          <PassageCard key={p.id} passage={p} onOpen={() => onOpen(p.id)} onDelete={() => setToDelete(p)} />
+          <PassageCard key={p.id} passage={p} selection={selection} onOpen={() => onOpen(p.id)} onDelete={() => setToDelete([p])} />
         ))}
       </div>
-      <AlertDialog open={toDelete !== null} onOpenChange={(open) => !open && setToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除短文「{toDelete?.title}」？</AlertDialogTitle>
-            <AlertDialogDescription>短文、它的 {toDelete?.questionSets ?? 0} 套阅读理解题和练习记录都会删除，单词本和学习计划不受影响。</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={remove}>
-              删除短文
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <BatchDeleteDialog
+        items={toDelete}
+        onClose={() => setToDelete(null)}
+        unit="篇短文"
+        description="短文、它的阅读理解题和练习记录都会删除；视频片段的视频也会删除，原始视频不受影响。没结束的计划还在用的短文不会删除。"
+        nameOf={(p) => p.title}
+        remove={(p) => passageService.deletePassage(p.id)}
+        onDone={() => {
+          selection.clear();
+          load();
+        }}
+      />
     </>
   );
 };

@@ -555,7 +555,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
         deleting={batchDeleteLoading}
         error={batchDeleteError}
       />
-      <WordMaterialsSheet word={materialsOf} onClose={() => setMaterialsOf(null)} onOpenPassage={(passageId) => onNavigate?.('passage-detail', { passageId })} />
+      <WordMaterialsSheet word={materialsOf} onClose={() => setMaterialsOf(null)} onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })} />
     </div>
   );
 };

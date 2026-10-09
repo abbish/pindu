@@ -95,34 +95,38 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
         ))}
       </section>
 
-      <MaterialToolbar
-        search={query}
-        onSearch={setQuery}
-        searchPlaceholder="搜索标题或单词"
-        tag={{ kind: 'passage', value: tag, onChange: setTag, onTagsChanged: () => setListVersion((v) => v + 1) }}
-        activeCount={(query ? 1 : 0) + (tag !== 'all' ? 1 : 0) + (origin !== 'all' ? 1 : 0)}
-        onReset={() => {
-          setQuery('');
-          setTag('all');
-          setOrigin('all');
-        }}
-      >
-        <Select value={origin} onValueChange={(v) => setOrigin(v as PassageOrigin | 'all')}>
-          <SelectTrigger className="w-32" aria-label="来源">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ORIGINS.map(([v, label]) => (
-              <SelectItem key={v} value={v}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </MaterialToolbar>
 
       {/* 列表数量变化（删除短文）时刷新统计 */}
-      <PassageList key={listVersion} query={query} origin={origin === 'all' ? undefined : origin} tagId={tag === 'all' ? undefined : Number(tag)} onCreate={create} onImport={() => onNavigate?.('import-passage')} onCountChange={loadStats} onOpen={(passageId) => onNavigate?.('passage-detail', { passageId })} />
+      <PassageList
+        key={listVersion}
+        toolbar={
+        <MaterialToolbar
+          search={query}
+          onSearch={setQuery}
+          searchPlaceholder="搜索标题或单词"
+          tag={{ kind: 'passage', value: tag, onChange: setTag, onTagsChanged: () => setListVersion((v) => v + 1) }}
+          activeCount={(query ? 1 : 0) + (tag !== 'all' ? 1 : 0) + (origin !== 'all' ? 1 : 0)}
+          onReset={() => {
+            setQuery('');
+            setTag('all');
+            setOrigin('all');
+          }}
+        >
+          <Select value={origin} onValueChange={(v) => setOrigin(v as PassageOrigin | 'all')}>
+            <SelectTrigger className="w-32" aria-label="来源">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ORIGINS.map(([v, label]) => (
+                <SelectItem key={v} value={v}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </MaterialToolbar>
+        }
+        query={query} origin={origin === 'all' ? undefined : origin} tagId={tag === 'all' ? undefined : Number(tag)} onCreate={create} onImport={() => onNavigate?.('import-passage')} onCountChange={loadStats} onOpen={(passageId) => onNavigate?.('passage-detail', { passageId })} />
     </div>
   );
 };

@@ -49,6 +49,34 @@ pub async fn delete_tag(app: AppHandle, tag_id: i64) -> AppResult<()> {
     super::finish(&logger, "delete_tag", result)
 }
 
+/// 批量给多个素材加 / 去标签；返回改了几个
+#[tauri::command]
+pub async fn update_material_tags(
+    app: AppHandle,
+    kind: String,
+    ref_ids: Vec<i64>,
+    add_tag_ids: Vec<i64>,
+    remove_tag_ids: Vec<i64>,
+) -> AppResult<usize> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "update_material_tags",
+        Some(&format!(
+            "{kind} ×{}: +{add_tag_ids:?} -{remove_tag_ids:?}",
+            ref_ids.len()
+        )),
+    );
+    let result = async {
+        let kind = MaterialKind::parse(&kind)
+            .ok_or_else(|| AppError::ValidationError(format!("未知的素材种类：{kind}")))?;
+        service(&app)
+            .update_material_tags(kind, &ref_ids, &add_tag_ids, &remove_tag_ids)
+            .await
+    }
+    .await;
+    super::finish(&logger, "update_material_tags", result)
+}
+
 /// 整体设置一个素材的标签；kind = word_book / passage / video
 #[tauri::command]
 pub async fn set_material_tags(

@@ -46,6 +46,8 @@ export interface PassageDetailPageProps {
   fromPlan?: PlanContext;
   /** 读完 / 返回回到哪里（默认这个计划的短文页签） */
   returnTo?: PassagePracticeReturn;
+  /** 从视频库打开的片段（加载前就按片段显示返回与删除） */
+  clip?: boolean;
   onNavigate?: NavigateFn;
 }
 
@@ -101,7 +103,7 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: (mode: Passag
  * 短文详情：「原文」页签自由阅读（显示翻译、标出目标词、全文 / 逐句朗读）+ 侧栏（目标词、来源、场景）；
  * 「阅读理解」页签管理题组（生成、删除、阅读 / 听力练习）。
  */
-export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId, fromPlan, returnTo, onNavigate }) => {
+export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId, fromPlan, returnTo, clip: openedAsClip, onNavigate }) => {
   const toast = useToast();
   const [passage, setPassage] = useState<Passage | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +124,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   });
   /** 视频短片：有就默认打开「视频」页签 */
   const [clip, setClip] = useState<PassageVideo | null>(null);
+  /** 视频片段：返回、删除都按片段说，删完回视频库 */
+  const isClip = Boolean(openedAsClip) || passage?.origin === 'video';
   const [showGenerate, setShowGenerate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [setToDelete, setSetToDelete] = useState<QuestionSetSummary | null>(null);
@@ -199,11 +203,12 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     const result = await passageService.deletePassage(passage.id);
     setConfirmDelete(false);
     if (result.success) {
-      toast.showSuccess('已删除短文');
+      toast.showSuccess(isClip ? '已删除片段' : '已删除短文');
       if (fromPlan) backToPlan();
+      else if (isClip) onNavigate?.('videos', { tab: 'clips' });
       else onNavigate?.('passages');
     } else {
-      toast.showError('无法删除短文', result.error);
+      toast.showError(isClip ? '无法删除片段' : '无法删除短文', result.error);
     }
   };
 
@@ -222,7 +227,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   if (error) {
     return (
       <div className={container}>
-        <PageError title="无法打开短文" message={error} onRetry={load} back={fromPlan ? { label: returnTo === 'home' ? '返回首页' : returnTo === 'calendar' ? '返回日历' : '返回计划', onClick: backToPlan } : { label: '返回短文库', onClick: () => onNavigate?.('passages') }} />
+        <PageError title="无法打开短文" message={error} onRetry={load} back={fromPlan ? { label: returnTo === 'home' ? '返回首页' : returnTo === 'calendar' ? '返回日历' : '返回计划', onClick: backToPlan } : openedAsClip ? { label: '返回视频库', onClick: () => onNavigate?.('videos', { tab: 'clips' }) } : { label: '返回短文库', onClick: () => onNavigate?.('passages') }} />
       </div>
     );
   }
@@ -276,7 +281,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             <DropdownMenuContent align="end">
               <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
                 <Trash2 />
-                删除短文…
+                {isClip ? '删除片段…' : '删除短文…'}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -433,13 +438,19 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除短文「{passage.title}」？</AlertDialogTitle>
-            <AlertDialogDescription>短文、它的 {passage.questionSets.length} 套阅读理解题和练习记录都会删除，单词本和学习计划不受影响。</AlertDialogDescription>
+            <AlertDialogTitle>
+              {isClip ? '删除片段' : '删除短文'}「{passage.title}」？
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {isClip
+                ? `片段的视频、${passage.questionSets.length} 套阅读理解题和练习记录都会删除；原始视频不受影响，可以重新切出来。`
+                : `短文、它的 ${passage.questionSets.length} 套阅读理解题和练习记录都会删除，单词本和学习计划不受影响。`}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={removePassage}>
-              删除短文
+              {isClip ? '删除片段' : '删除短文'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

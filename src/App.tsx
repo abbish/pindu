@@ -68,7 +68,7 @@ function App() {
       case 'import-passage':
         return <ImportPassagePage onNavigate={navigate} />;
       case 'passage-detail':
-        return <PassageDetailPage key={route.params?.passageId} passageId={route.params?.passageId} fromPlan={route.params?.fromPlan} returnTo={route.params?.returnTo} onNavigate={navigate} />;
+        return <PassageDetailPage key={route.params?.passageId} passageId={route.params?.passageId} fromPlan={route.params?.fromPlan} returnTo={route.params?.returnTo} clip={route.params?.clip} onNavigate={navigate} />;
       case 'passage-practice':
         return (
           // key：切换题组 / 模式时重新挂载
@@ -98,12 +98,16 @@ function App() {
 
   // 从计划打开的短文：面包屑「计划 › 计划名 › 短文」，侧边栏高亮「计划」
   const fromPlan = route.page === 'passage-detail' ? route.params?.fromPlan : undefined;
+  // 视频片段：面包屑「视频库 › 片段」，侧边栏高亮「视频库」
+  const fromClips = route.page === 'passage-detail' && route.params?.clip;
   const shellParent = fromPlan
     ? {
         section: 'plans' as const,
         trail: [{ label: fromPlan.planName, onClick: () => navigate('plan-detail', { planId: fromPlan.planId, tab: 'passages' }) }],
       }
-    : undefined;
+    : fromClips
+      ? { section: 'videos' as const, trail: [] }
+      : undefined;
 
   return (
     <ErrorBoundary>

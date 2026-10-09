@@ -271,6 +271,14 @@ impl VideoProcessJob {
             })
             .collect();
         let word_count = english_word_count(&sentences);
+        // 原视频的标签（事务外先读）
+        let video_tags: Vec<i64> =
+            crate::repositories::tag_repository::TagRepository::new(self.pool.clone())
+                .tags_of(crate::types::material::MaterialKind::Video, self.video_id)
+                .await?
+                .into_iter()
+                .map(|t| t.id)
+                .collect();
         let mut tx = self.pool.begin().await?;
         let passage_id = PassageRepository::insert_passage_conn(
             &mut tx,
@@ -306,12 +314,7 @@ impl VideoProcessJob {
         let tags = crate::services::tag::TagService::new(self.pool.clone());
         let mut tag_ids = tags.ensure_names_conn(&mut tx, &seg.tags).await?;
         let repo = crate::repositories::tag_repository::TagRepository::new(self.pool.clone());
-        tag_ids.extend(
-            repo.tags_of(crate::types::material::MaterialKind::Video, self.video_id)
-                .await?
-                .into_iter()
-                .map(|t| t.id),
-        );
+        tag_ids.extend(video_tags);
         repo.add_conn(
             &mut tx,
             crate::types::material::MaterialKind::Passage,

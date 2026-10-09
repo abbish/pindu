@@ -25,7 +25,8 @@ export interface RouteParams {
   'import-passage': undefined;
   /** fromPlan：从计划的短文任务打开（面包屑与返回都回到这个计划） */
   /** fromPlan：从计划的短文任务打开；returnTo：读完 / 返回回到哪里（默认这个计划的短文页签） */
-  'passage-detail': { passageId: number; fromPlan?: PlanContext; returnTo?: PassagePracticeReturn };
+  /** clip：视频片段（面包屑与侧边栏在「视频库」下） */
+  'passage-detail': { passageId: number; fromPlan?: PlanContext; returnTo?: PassagePracticeReturn; clip?: boolean };
   /**
    * 按题组练习（阅读 / 听力）。planId：从计划里的短文任务进入（完成后计入计划）；
    * returnTo：练完 / 退出回到哪里（默认短文详情）

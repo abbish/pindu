@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Library, Plus, SearchX } from 'lucide-react';
+import { BookOpen, Library, Pencil, Plus, SearchX, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,6 +13,7 @@ import { wordBookService } from '@/services/wordbookService';
 import { instantMs } from '@/utils/datetime';
 import type { WordBook as DbWordBook } from '@/types';
 import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
+import { BatchDeleteButton, BatchDeleteDialog, BatchTagButton, SelectionBar, useSelection } from '@/components/MaterialSelection/MaterialSelection';
 import type { NavigateFn } from '@/navigation';
 import { PageError } from '@/components/PageError';
 import { messageOf } from '@/utils/errorHandler';
@@ -63,6 +64,8 @@ interface PageData {
 export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
   const toast = useToast();
   const [creatingBook, setCreatingBook] = useState(false);
+  const [editingBook, setEditingBook] = useState<DbWordBook | null>(null);
+  const [toDelete, setToDelete] = useState<DbWordBook[] | null>(null);
   const [data, setData] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +143,8 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
     }
     return books;
   }, [data, filters]);
+  // 已删除的单词本只能恢复，不参与勾选
+  const selection = useSelection(useMemo(() => filteredBooks.filter((b) => !b.deleted_at).map((b) => b.id), [filteredBooks]));
 
   const activeFilterCount =
     (filters.searchTerm ? 1 : 0) + (filters.tag !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0) + (filters.sortBy !== 'default' ? 1 : 0);
@@ -181,6 +186,12 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
         ))}
       </section>
 
+      {selection.selecting ? (
+        <SelectionBar selection={selection} unit="本">
+          <BatchTagButton kind="word_book" ids={selection.ids} onDone={() => loadWordBookData(filters.status)} />
+          <BatchDeleteButton count={selection.selected.size} onClick={() => setToDelete(filteredBooks.filter((b) => selection.selected.has(b.id)))} />
+        </SelectionBar>
+      ) : (
       <MaterialToolbar
         search={filters.searchTerm}
         onSearch={(v) => setFilter('searchTerm', v)}
@@ -211,6 +222,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
           </SelectContent>
         </Select>
       </MaterialToolbar>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-3 gap-3">
@@ -249,10 +261,38 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
                 if (!book.deleted_at) onNavigate?.('wordbook-detail', { id: book.id });
               }}
               onRestore={book.deleted_at ? () => handleRestore(book.id) : undefined}
+              actions={
+                book.deleted_at
+                  ? undefined
+                  : [
+                      { label: '打开', icon: <BookOpen />, onSelect: () => onNavigate?.('wordbook-detail', { id: book.id }) },
+                      { label: '编辑…', icon: <Pencil />, onSelect: () => setEditingBook(book) },
+                      { label: '删除…', icon: <Trash2 />, onSelect: () => setToDelete([book]), destructive: true, separator: true },
+                    ]
+              }
+              select={book.deleted_at ? undefined : { checked: selection.selected.has(book.id), selecting: selection.selecting, onToggle: () => selection.toggle(book.id) }}
             />
           ))}
         </div>
       )}
+      <WordBookFormDialog
+        isOpen={editingBook !== null}
+        wordBook={editingBook}
+        onClose={() => setEditingBook(null)}
+        onSaved={() => loadWordBookData(filters.status)}
+      />
+      <BatchDeleteDialog
+        items={toDelete}
+        onClose={() => setToDelete(null)}
+        unit="本单词本"
+        description="删除后可以在「已删除」里恢复。被计划使用中的单词本不会删除。"
+        nameOf={(b) => b.title}
+        remove={(b) => wordBookService.deleteWordBook(b.id)}
+        onDone={() => {
+          selection.clear();
+          loadWordBookData(filters.status);
+        }}
+      />
       <WordBookFormDialog isOpen={creatingBook} onClose={() => setCreatingBook(false)} onSaved={(id) => onNavigate?.('wordbook-detail', { id })} />
     </div>
   );

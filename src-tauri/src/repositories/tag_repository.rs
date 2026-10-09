@@ -128,6 +128,26 @@ impl TagRepository {
         self.add_conn(conn, kind, ref_id, tag_ids).await
     }
 
+    /// 去掉素材的这些标签
+    pub async fn remove_conn(
+        &self,
+        conn: &mut SqliteConnection,
+        kind: MaterialKind,
+        ref_id: Id,
+        tag_ids: &[Id],
+    ) -> AppResult<()> {
+        sqlx::query(
+            "DELETE FROM material_tags WHERE kind = ? AND ref_id = ?
+               AND tag_id IN (SELECT value FROM json_each(?))",
+        )
+        .bind(kind.as_str())
+        .bind(ref_id)
+        .bind(serde_json::to_string(tag_ids).unwrap_or_else(|_| "[]".into()))
+        .execute(&mut *conn)
+        .await?;
+        Ok(())
+    }
+
     /// 给素材加标签（已有的忽略；不存在的标签 id 忽略）
     pub async fn add_conn(
         &self,

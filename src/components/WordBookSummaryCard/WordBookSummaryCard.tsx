@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { formatRelativeDay, sameMinute } from '@/utils/datetime';
 import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import type { Tag } from '@/types/material';
+import { CardMenu, CardMenuButton, SelectCheckbox, type CardAction } from '@/components/MaterialSelection/MaterialSelection';
 
 export interface WordBookSummaryCardProps {
   /** 单词本名称 */
@@ -37,6 +38,10 @@ export interface WordBookSummaryCardProps {
   onRestore?: () => void;
   /** 标签 */
   tags?: Tag[];
+  /** ⋯ 菜单与右键菜单（同一组操作） */
+  actions?: CardAction[];
+  /** 多选：勾选状态；不传则不能勾选（如已删除的） */
+  select?: { checked: boolean; selecting: boolean; onToggle: () => void };
 }
 
 const SEGMENTS = [
@@ -64,13 +69,19 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
   tags = [],
   onOpen,
   onRestore,
+  actions,
+  select,
 }) => {
   const typedTotal = SEGMENTS.reduce((sum, s) => sum + wordTypes[s.key], 0);
   const neverUsed = !lastUsed || sameMinute(lastUsed, createdAt);
   const timeLabel = neverUsed ? `创建于 ${formatRelativeDay(createdAt)}` : `最近使用 ${formatRelativeDay(lastUsed)}`;
 
-  return (
-    <Card className={cn('gap-4 p-4 transition-colors hover:border-ring/60', status === 'deleted' && 'opacity-70')} onClick={onOpen}>
+  const card = (
+    <Card
+      className={cn('group relative gap-4 p-4 transition-colors hover:border-ring/60', status === 'deleted' && 'opacity-70', select?.checked && 'border-primary ring-2 ring-primary/30')}
+      onClick={() => (select?.selecting ? select.onToggle() : onOpen())}
+    >
+      {select && <SelectCheckbox checked={select.checked} selecting={select.selecting} onToggle={select.onToggle} label={`选择「${title}」`} className="top-1.5 left-1.5" />}
       <div className="flex items-start gap-3">
         <WordBookIcon icon={icon} color={iconColor} />
         <div className="min-w-0 flex-1">
@@ -100,6 +111,7 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
                 恢复
               </Button>
             )}
+            {actions && status !== 'deleted' && <CardMenuButton actions={actions} className="ml-auto shrink-0" />}
           </div>
           <p className={cn('truncate text-sm', description ? 'text-muted-foreground' : 'text-muted-foreground/60')}>
             {description || '暂无描述'}
@@ -156,4 +168,5 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
       <div className="border-t pt-3 text-xs text-muted-foreground">{timeLabel}</div>
     </Card>
   );
+  return actions ? <CardMenu actions={actions}>{card}</CardMenu> : card;
 };
