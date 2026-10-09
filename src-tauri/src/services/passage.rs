@@ -505,10 +505,12 @@ impl PassageService {
         Ok((required, pool, ai_pick, scene_books))
     }
 
-    /// 内容规划里一篇的词：有 id 的必须是真实存在的词，手动词必须是英文单词；返回词与它们所在的单词本
+    /// 内容规划里一篇的词：有 id 的必须是真实存在的词，手动词必须是英文单词；返回词与它们所在的单词本。
+    /// `allow_empty`：按描述生成时这一篇可以不指定单词
     async fn plan_item_words(
         &self,
         item: &crate::types::passage::PassagePlanItem,
+        allow_empty: bool,
     ) -> AppResult<(Vec<PassageTargetWord>, Vec<Id>)> {
         let ids: Vec<Id> = item.words.iter().filter_map(|w| w.word_id).collect();
         let found: HashMap<Id, (String, Option<Id>)> = self
@@ -542,7 +544,7 @@ impl PassageService {
                 });
             }
         }
-        if words.is_empty() {
+        if words.is_empty() && !allow_empty {
             return Err(AppError::ValidationError("这一篇没有可用的词".into()));
         }
         Ok((words, books))
@@ -605,7 +607,9 @@ impl PassageService {
         let (required, pool, ai_pick, scene_books, length, outline, title) =
             match &request.plan_item {
                 Some(item) => {
-                    let (words, books) = self.plan_item_words(item).await?;
+                    let (words, books) = self
+                        .plan_item_words(item, request.has_instruction())
+                        .await?;
                     let mut scene_books = request.book_ids.clone();
                     for id in books {
                         if !scene_books.contains(&id) {
@@ -1640,7 +1644,7 @@ pub(crate) mod tests {
             ],
             length: "short".into(),
         };
-        let (words, books) = service.plan_item_words(&item).await.unwrap();
+        let (words, books) = service.plan_item_words(&item, false).await.unwrap();
         // 有 id 的词以数据库为准；不存在的 id 与非法手动词丢弃
         assert_eq!(
             words
@@ -1654,7 +1658,10 @@ pub(crate) mod tests {
             words: vec![w(Some(404), "ghost", true)],
             ..item
         };
-        assert!(service.plan_item_words(&empty).await.is_err());
+        assert!(service.plan_item_words(&empty, false).await.is_err());
+        // 按描述生成：这一篇可以没有单词
+        let (none, _) = service.plan_item_words(&empty, true).await.unwrap();
+        assert!(none.is_empty());
     }
 
     #[tokio::test]
