@@ -87,3 +87,16 @@ export interface MaterialSettings {
   planPassageIntervalDays: number;
   planAiOrder: boolean;
 }
+
+/** 单词卡：不在单词本里的目标词的学习资料（对应 Rust WordCard） */
+export interface WordCard {
+  word: string;
+  meaning: string;
+  posAbbreviation: string;
+  posChinese: string;
+  ipa: string;
+  syllables: string;
+  phonicsRule: string;
+  analysisExplanation: string;
+  examples: { sentence: string; translation: string }[];
+}

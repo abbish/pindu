@@ -67,6 +67,8 @@ export interface WordTutorRequest {
   modelId?: Id;
   /** 学习者正在看的讲解（讲解不落库，由前端带上） */
   explanation?: string;
+  /** 不在单词本的目标词：按单词卡答疑（此时 wordId 为 0） */
+  cardWord?: string | null;
 }
 
 /// 单词讲解（agent 实时生成的 Markdown，不落库）

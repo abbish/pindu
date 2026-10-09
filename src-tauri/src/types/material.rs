@@ -93,3 +93,18 @@ pub struct WordMaterialCount {
     /// 出现过的视频切片
     pub clips: i64,
 }
+
+/// 单词卡：不在单词本里的目标词的学习资料（word_cards，063）
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WordCard {
+    pub word: String,
+    pub meaning: String,
+    pub pos_abbreviation: String,
+    pub pos_chinese: String,
+    pub ipa: String,
+    pub syllables: String,
+    pub phonics_rule: String,
+    pub analysis_explanation: String,
+    pub examples: Vec<crate::types::wordbook::WordExample>,
+}

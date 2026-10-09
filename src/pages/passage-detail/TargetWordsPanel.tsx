@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote, Snail, Volume2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote, Snail, Volume2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,11 +8,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WordExplanationView } from '@/components/WordExplanation';
 import { WordMaterialsList } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { useJob, useOnJobFinished } from '@/hooks/useJobs';
+import { JobPanel } from '@/components/Jobs';
+import { cardWordId } from '@/services/wordExplanationService';
+import { isJobActive } from '@/types/job';
 import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
 import { parsePhonicsSegments } from '@/utils/phonics';
 import { targetOf, tokenize } from '@/utils/passage';
 import type { Word } from '@/types';
+import type { WordCard } from '@/types/material';
 import type { Passage, PassageTargetWord } from '@/types/passage';
 
 export interface TargetWordsPanelProps {
@@ -52,13 +57,29 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
  */
 export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord }) => {
   const [details, setDetails] = useState<Map<string, Word> | null>(null);
+  /** 不在单词本的目标词的单词卡（小写单词 → 卡片） */
+  const [cards, setCards] = useState<Map<string, WordCard> | null>(null);
+  /** 补生成单词卡的后台任务 */
+  const [cardJobId, setCardJobId] = useState<string | null>(null);
+  const cardJob = useJob(cardJobId);
   const [index, setIndex] = useState(0);
   const audio = useAudioPlayer();
   const imported = passage.origin !== 'generated';
 
+  const loadCards = () =>
+    passageService.getWordCards(passage.id).then((r) => setCards(new Map((r.success ? r.data : []).map((c) => [c.word.toLowerCase(), c]))));
   useEffect(() => {
     passageService.getPassageWords(passage.id).then((r) => setDetails(new Map((r.success ? r.data : []).map((w) => [w.word.toLowerCase(), w]))));
+    void loadCards();
+    // 未收录的词还没有单词卡：自动补生成（已有在跑的同类任务时接上它）
+    if (passage.targetWords.some((w) => w.wordId === null)) {
+      passageService.startWordCards(passage.id).then((r) => r.success && setCardJobId(r.data));
+    }
+    // loadCards 只依赖 passage.id
   }, [passage.id, passage.targetWords]);
+  useOnJobFinished((job) => {
+    if (job.id === cardJobId) void loadCards();
+  });
 
   /** 指定单词在前，其后是 AI 选词 / 重点词 */
   const words = useMemo(() => [...passage.targetWords.filter((w) => w.required), ...passage.targetWords.filter((w) => !w.required)], [passage.targetWords]);
@@ -68,7 +89,37 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
     if (i >= 0) setIndex(i);
   }, [focusWord, words]);
   const current: PassageTargetWord | undefined = words[Math.min(index, words.length - 1)];
-  const info = current ? details?.get(current.word.toLowerCase()) : undefined;
+  const word = current ? details?.get(current.word.toLowerCase()) : undefined;
+  const card = current && current.wordId === null ? cards?.get(current.word.toLowerCase()) : undefined;
+  /** 单词卡内容：单词本里的词用单词本的资料，未收录的用单词卡 */
+  const info = word
+    ? {
+        word: word.word,
+        ipa: word.ipa,
+        meaning: word.meaning,
+        pos: word.pos_chinese || word.part_of_speech,
+        segments: parsePhonicsSegments(word.phonics_segments),
+        syllables: word.syllables,
+        phonicsRule: word.phonics_rule,
+        explanation: word.analysis_explanation,
+        examples: word.examples ?? [],
+      }
+    : card
+      ? {
+          word: card.word,
+          ipa: card.ipa,
+          meaning: card.meaning,
+          pos: card.posChinese || card.posAbbreviation,
+          segments: undefined,
+          syllables: card.syllables,
+          phonicsRule: card.phonicsRule,
+          explanation: card.analysisExplanation,
+          examples: card.examples,
+        }
+      : undefined;
+  /** 讲解 / 答疑用的 id：单词本的词用 wordId，未收录的用单词卡 */
+  const aiWordId = current ? (current.wordId ?? (card ? cardWordId(card.word) : null)) : null;
+  const generatingCard = current?.wordId === null && !card && cardJob !== undefined && isJobActive(cardJob);
 
   // ↑ ↓ 切换单词（输入框里不拦截）
   useEffect(() => {
@@ -88,9 +139,9 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
   if (words.length === 0) return <p className="py-10 text-center text-sm text-muted-foreground">这篇短文没有目标词</p>;
 
   const speak = (text: string, style: 'word' | 'sentence', slow = false) => audio.playText(text, undefined, { style, speed: slow ? 'slow' : 'normal' }).catch(() => {});
-  const segments = parsePhonicsSegments(info?.phonics_segments);
+  const segments = info?.segments;
   const meaning = info?.meaning || current?.meaning || '';
-  const pos = info?.pos_chinese || info?.part_of_speech;
+  const pos = info?.pos;
   const group = (required: boolean) => words.map((w, i) => ({ w, i })).filter(({ w }) => w.required === required);
 
   return (
@@ -104,7 +155,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
               <div key={String(required)} className="py-1">
                 <div className="px-2 pb-1 text-xs text-muted-foreground">{required ? '指定单词' : imported ? '重点词' : 'AI 选词'}</div>
                 {items.map(({ w, i }) => {
-                  const m = details?.get(w.word.toLowerCase())?.meaning || w.meaning;
+                  const m = details?.get(w.word.toLowerCase())?.meaning || cards?.get(w.word.toLowerCase())?.meaning || w.meaning;
                   return (
                     <button
                       key={w.word}
@@ -154,10 +205,11 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
             </Button>
           </header>
 
-          {details === null ? (
+          {generatingCard && cardJob && <JobPanel job={cardJob} title="AI 正在生成单词卡" />}
+          {details === null || cards === null ? (
             <Skeleton className="h-24" />
           ) : (
-            (segments || info?.syllables || info?.phonics_rule || info?.analysis_explanation) && (
+            (segments || info?.syllables || info?.phonicsRule || info?.explanation) && (
               <Section title="拼读">
                 <div className="flex flex-wrap items-center gap-1.5">
                   {(segments ?? (info?.syllables ? [info.syllables] : [])).map((s, i) => (
@@ -165,9 +217,9 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
                       {s}
                     </span>
                   ))}
-                  {info?.phonics_rule && <span className="ml-1 text-sm text-muted-foreground">{info.phonics_rule}</span>}
+                  {info?.phonicsRule && <span className="ml-1 text-sm text-muted-foreground">{info.phonicsRule}</span>}
                 </div>
-                {info?.analysis_explanation && <p className="text-sm text-muted-foreground">{info.analysis_explanation}</p>}
+                {info?.explanation && <p className="text-sm text-muted-foreground">{info.explanation}</p>}
               </Section>
             )
           )}
@@ -190,8 +242,8 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
             </Section>
           )}
 
-          {current.wordId !== null && (
-            <Tabs defaultValue="examples" className="gap-3" key={current.wordId}>
+          {info && aiWordId !== null && (
+            <Tabs defaultValue="examples" className="gap-3" key={aiWordId}>
               <TabsList>
                 <TabsTrigger value="examples">
                   <Quote />
@@ -226,19 +278,14 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
                 )}
               </TabsContent>
               <TabsContent value="explanation">
-                <WordExplanationView wordId={current.wordId} active autoGenerate={false} />
+                <WordExplanationView wordId={aiWordId} active autoGenerate={false} />
               </TabsContent>
               <TabsContent value="materials" className="max-h-[60vh] overflow-y-auto">
-                <WordMaterialsList word={current.word} wordId={current.wordId} />
+                <WordMaterialsList word={current.word} wordId={current.wordId ?? undefined} />
               </TabsContent>
             </Tabs>
           )}
-          {current.wordId === null && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <BookOpen className="size-4" />
-              加入单词本后可以查看拼读、例句和 AI 讲解，并在学习计划中练习
-            </p>
-          )}
+
 
           <footer className="flex items-center justify-between border-t pt-4">
             <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => setIndex((i) => i - 1)}>

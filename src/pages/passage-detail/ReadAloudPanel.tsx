@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { PassageReader, type TranslationMode } from '@/components/PassageReader';
 import { TargetWord } from '@/components/PassageReader/WordCard';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { SelectionAction } from '@/components/SelectionAction';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
@@ -83,7 +84,11 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ la
  * 朗读全文 / 单句，逐词高亮并在读到目标词时放大提示；点目标词看单词卡片；
  * 设置：慢速、每句读几遍、句间停顿（跟读）、翻译显示（不显示 / 当前句 / 全部）、听后回忆、标出目标词；盲听（先听再看原文）。
  */
-export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
+/** 选中的文字是一个英文单词（可以加成目标词） */
+const SELECTABLE_WORD = /^[A-Za-z][A-Za-z'’-]{1,29}$/;
+
+/** onAddTarget：读的时候选中原文里的一个词，加成这篇的目标词 */
+export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: string) => void }> = ({ passage, onAddTarget }) => {
   const [prefs, setPrefs] = useState<ReadAloudPrefs>(readPrefs);
   const [blind, setBlind] = useState(false);
   const [blindDone, setBlindDone] = useState(false);
@@ -353,6 +358,11 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
 
       {blindDone && !blind && <p className="-mt-1 rounded-md bg-accent/50 px-3 py-1.5 text-xs text-accent-foreground select-none">盲听结束，已显示原文</p>}
 
+      <SelectionAction
+        label="加入目标词"
+        accept={(text) => Boolean(onAddTarget) && SELECTABLE_WORD.test(text) && !targetOf(text, targets)}
+        onAction={(text) => onAddTarget?.(text)}
+      >
       <PassageReader
         sentences={passage.sentences}
         translation={prefs.translation}
@@ -373,6 +383,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
           <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} onSpeak={(w, slow) => wordAudio.playText(w, undefined, { style: 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {})} />
         )}
       />
+      </SelectionAction>
     </Card>
   );
 };

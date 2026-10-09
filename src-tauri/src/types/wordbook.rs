@@ -80,6 +80,9 @@ pub struct WordTutorRequest {
     /// 学习者正在看的讲解（讲解不落库，由前端带上）
     #[serde(default)]
     pub explanation: Option<String>,
+    /// 不在单词本的目标词：按单词卡答疑（此时 word_id 为 0）
+    #[serde(default)]
+    pub card_word: Option<String>,
 }
 
 /// 单词讲解（agent 实时生成的 Markdown，不落库）

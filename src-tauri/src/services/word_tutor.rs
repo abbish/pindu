@@ -4,7 +4,6 @@
 use crate::agent::{tasks, AgentPaths};
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
-use crate::repositories::word_repository::WordRepository;
 use crate::types::wordbook::{ChatTurn, TutorReply, WordTutorRequest};
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -55,10 +54,13 @@ impl WordTutorService {
         on_delta: impl FnMut(&str),
     ) -> AppResult<TutorReply> {
         validate(request)?;
-        let word = WordRepository::new(self.pool.clone(), self.logger.clone())
-            .find_by_id(request.word_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("单词不存在，可能已被删除".to_string()))?;
+        let word = crate::services::word_cards::learning_word(
+            &self.pool,
+            &self.logger,
+            request.word_id,
+            request.card_word.as_deref(),
+        )
+        .await?;
         let explanation: Option<String> = request
             .explanation
             .as_deref()
@@ -125,6 +127,7 @@ mod tests {
             request_id: "r1".to_string(),
             model_id: None,
             explanation: None,
+            card_word: None,
         }
     }
 

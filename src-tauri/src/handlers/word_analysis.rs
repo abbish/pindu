@@ -36,7 +36,7 @@ async fn known_tags(pool: &SqlitePool) -> Vec<String> {
 }
 
 /// 批量拼读分析器（经 agent sidecar）
-fn phonics_analyzer(
+pub(crate) fn phonics_analyzer(
     app: &AppHandle,
     model: &AIModelConfig,
     profile: crate::prompts::PromptProfile,

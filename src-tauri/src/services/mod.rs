@@ -38,6 +38,7 @@ pub mod video_processing;
 pub mod video_translate;
 pub mod word;
 pub mod word_analysis_job;
+pub mod word_cards;
 pub mod word_examples;
 pub mod word_explanation;
 pub mod word_extraction;

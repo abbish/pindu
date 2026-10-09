@@ -32,6 +32,7 @@ fn service(app: &AppHandle) -> WordExplanationService {
 pub async fn generate_word_explanation(
     app: AppHandle,
     word_id: Id,
+    card_word: Option<String>,
     model_id: Option<Id>,
     request_id: String,
 ) -> AppResult<WordExplanation> {
@@ -45,7 +46,7 @@ pub async fn generate_word_explanation(
         let paths = AgentPaths::resolve(&app_data_dir)?;
         let emitter = app.clone();
         service(&app)
-            .generate(word_id, model_id, &paths, |delta| {
+            .generate(word_id, card_word.as_deref(), model_id, &paths, |delta| {
                 let _ = emitter.emit(
                     "word-explanation-delta",
                     ExplanationDelta {

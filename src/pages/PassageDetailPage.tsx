@@ -257,6 +257,17 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const picked = passage.targetWords.filter((w) => !w.required);
   /** 有还没收录进单词本的目标词 */
   const hasNewWords = passage.targetWords.some((w) => w.wordId === null);
+  /** 读原文时选中的词加成目标词，然后到「目标词」页签看它的单词卡（没收录的会自动生成） */
+  const addTarget = async (word: string) => {
+    const result = await passageService.addTargetWord(passage.id, word);
+    if (!result.success) {
+      toast.showError('无法加入目标词', result.error);
+      return;
+    }
+    setPassage(result.data);
+    toast.showSuccess(`已加入目标词「${result.data.targetWords[result.data.targetWords.length - 1]?.word ?? word}」`);
+    openWord(result.data.targetWords[result.data.targetWords.length - 1]?.word ?? word);
+  };
   /** 侧栏点目标词：到「目标词」页签看这个词的单词卡 */
   const openWord = (word: string) => {
     setFocusWord(word);
@@ -365,7 +376,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         <TabsContent value="text">
           <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6">
-            <ReadAloudPanel passage={passage} />
+            <ReadAloudPanel passage={passage} onAddTarget={addTarget} />
 
             <aside className="flex flex-col gap-4">
               <Card className="gap-3 px-5 py-4">

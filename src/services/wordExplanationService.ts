@@ -10,6 +10,20 @@ export interface WordExplanationDelta {
 }
 
 /**
+ * 不在单词本的目标词（单词卡）在讲解 / 答疑里用一个负数 id 代表（讲解与对话的缓存按 id 记），
+ * 调用后端时换成 wordId 0 + cardWord。
+ */
+const cardWords = new Map<number, string>();
+export function cardWordId(word: string): number {
+  let hash = 0;
+  for (const ch of word.toLowerCase()) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+  const id = -(Math.abs(hash) + 1);
+  cardWords.set(id, word);
+  return id;
+}
+const target = (wordId: number) => (wordId < 0 ? { wordId: 0, cardWord: cardWords.get(wordId) ?? null } : { wordId, cardWord: null });
+
+/**
  * 单词讲解：由 agent 实时生成（Markdown，可流式显示，不落库）与 AI 老师答疑
  */
 export class WordExplanationService extends BaseService {
@@ -20,7 +34,7 @@ export class WordExplanationService extends BaseService {
     modelId?: number
   ): Promise<ApiResult<WordExplanation>> {
     return this.executeWithLoading(() =>
-      this.client.invoke<WordExplanation>('generate_word_explanation', { wordId, modelId, requestId })
+      this.client.invoke<WordExplanation>('generate_word_explanation', { ...target(wordId), modelId, requestId })
     );
   }
 
@@ -31,7 +45,7 @@ export class WordExplanationService extends BaseService {
 
   /** 向 AI 老师提问，返回完整回答与推荐追问；回答过程中的增量见 onTutorDelta */
   async askTutor(request: WordTutorRequest): Promise<ApiResult<TutorReply>> {
-    return this.executeWithLoading(() => this.client.invoke<TutorReply>('ask_word_tutor', { request }));
+    return this.executeWithLoading(() => this.client.invoke<TutorReply>('ask_word_tutor', { request: { ...request, ...target(request.wordId) } }));
   }
 
   /** 订阅 AI 老师回答的流式增量；返回取消订阅函数 */

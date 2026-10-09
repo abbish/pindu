@@ -760,7 +760,7 @@ const IRREGULAR_VERBS: &[(&str, &[&str])] = &[
 ];
 
 /// 文本里是否出现了某个词：含规则屈折形式与常见不规则动词变化
-fn text_uses_any_form(text: &str, word: &str) -> bool {
+pub fn text_uses_any_form(text: &str, word: &str) -> bool {
     if text_uses(text, word) {
         return true;
     }

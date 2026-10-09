@@ -18,6 +18,7 @@ pub mod study_schedule_repository;
 pub mod tag_repository;
 pub mod tts_repository;
 pub mod video_repository;
+pub mod word_card_repository;
 pub mod word_repository;
 pub mod wordbook_repository;
 

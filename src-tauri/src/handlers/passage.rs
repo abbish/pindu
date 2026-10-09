@@ -378,3 +378,135 @@ pub async fn get_passage_statistics(
     let result = service(&app).statistics(plan_id).await;
     finish(&logger, "get_passage_statistics", result)
 }
+
+// ==================== 单词卡（不在单词本的目标词） ====================
+
+fn word_cards(app: &AppHandle) -> crate::services::word_cards::WordCardService {
+    crate::services::word_cards::WordCardService::new(
+        Arc::new(app.state::<SqlitePool>().inner().clone()),
+        Arc::new(app.state::<Logger>().inner().clone()),
+    )
+}
+
+/// 短文里不在单词本的目标词已有的单词卡（还没生成的不在结果里，用 start_word_cards 补）
+#[tauri::command]
+pub async fn get_passage_word_cards(
+    app: AppHandle,
+    passage_id: i64,
+) -> AppResult<Vec<crate::types::material::WordCard>> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "get_passage_word_cards",
+        Some(&format!("passage {passage_id}")),
+    );
+    let result = word_cards(&app).passage_cards(passage_id).await;
+    finish(&logger, "get_passage_word_cards", result)
+}
+
+/// 读原文时把选中的词加成目标词（指定单词）；返回更新后的短文
+#[tauri::command]
+pub async fn add_passage_target_word(
+    app: AppHandle,
+    passage_id: i64,
+    word: String,
+) -> AppResult<crate::types::passage::Passage> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "add_passage_target_word",
+        Some(&format!("passage {passage_id} word {word}")),
+    );
+    let result = word_cards(&app).add_target_word(passage_id, &word).await;
+    finish(&logger, "add_passage_target_word", result)
+}
+
+/// 给这篇短文里还没有单词卡的未收录目标词生成单词卡（后台任务）。都有了返回 None；
+/// 这篇已经有在跑的同类任务时返回它的 id
+#[tauri::command]
+pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Option<String>> {
+    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::services::agent_settings::{AgentSettingsService, AgentTaskKind};
+    use crate::services::prompt_profile::PromptProfileService;
+    let logger = app.state::<Logger>();
+    logger.api_request("start_word_cards", Some(&format!("passage {passage_id}")));
+    let result = async {
+        let jobs = app.state::<Jobs>();
+        if let Some(running) = jobs.list().into_iter().find(|j| {
+            j.kind == "word_cards"
+                && j.status.is_active()
+                && j.link
+                    .as_ref()
+                    .and_then(|l| l.params.get("passageId"))
+                    .and_then(|v| v.as_i64())
+                    == Some(passage_id)
+        }) {
+            return Ok(Some(running.id));
+        }
+        let service = word_cards(&app);
+        let (passage, missing) = service.missing(passage_id).await?;
+        if missing.is_empty() {
+            return Ok(None);
+        }
+        let pool = Arc::new(app.state::<SqlitePool>().inner().clone());
+        let logger_arc = Arc::new(logger.inner().clone());
+        let settings = AgentSettingsService::new(pool.clone(), logger_arc.clone());
+        let model = settings.model_for(AgentTaskKind::Phonics, None).await?;
+        let batch_size = settings.get().await?.batch_size.max(1) as usize;
+        let profile = PromptProfileService::load(&pool).await?;
+        let context = crate::agent::tasks::PhonicsContext {
+            scene: crate::prompts::topic_scene(passage.scene.as_deref().unwrap_or(&passage.title)),
+            meanings: missing
+                .iter()
+                .filter_map(|t| {
+                    t.meaning
+                        .as_ref()
+                        .map(|m| (t.word.to_lowercase(), m.trim().to_string()))
+                })
+                .filter(|(_, m)| !m.is_empty())
+                .collect(),
+        };
+        let analyzer = super::word_analysis::phonics_analyzer(&app, &model, profile, context)?;
+        let words: Vec<String> = missing.into_iter().map(|t| t.word).collect();
+        let spec = JobSpec {
+            kind: "word_cards",
+            title: format!("生成单词卡 · {}", passage.title),
+            lane: Lane::Agent,
+            detached: true,
+            link: Some(JobLink::new(
+                "passage-detail",
+                serde_json::json!({ "passageId": passage_id }),
+            )),
+        };
+        Ok(Some(app.state::<Jobs>().spawn(
+            spec,
+            move |ctx| async move {
+                ctx.stage("AI 正在生成单词卡");
+                let batches: Vec<Vec<String>> =
+                    words.chunks(batch_size).map(|c| c.to_vec()).collect();
+                let total = words.len() as u64;
+                let mut done = 0u64;
+                let mut saved = 0usize;
+                let mut last_error = None;
+                ctx.progress(0, total);
+                for (i, batch) in batches.iter().enumerate() {
+                    if ctx.is_cancelled() {
+                        break;
+                    }
+                    match analyzer.analyze_batch(batch, i, batches.len()).await {
+                        Ok(outcome) => saved += service.save(&outcome.analyzed).await?,
+                        Err(e) => last_error = Some(e),
+                    }
+                    done += batch.len() as u64;
+                    ctx.progress(done, total);
+                }
+                if saved == 0 && !ctx.is_cancelled() {
+                    return Err(last_error.unwrap_or_else(|| {
+                        AppError::ExternalServiceError("没有生成单词卡，请再试一次".into())
+                    }));
+                }
+                Ok(serde_json::json!({ "saved": saved }))
+            },
+        )))
+    }
+    .await;
+    finish(&logger, "start_word_cards", result)
+}

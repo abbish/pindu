@@ -27,6 +27,7 @@ import type {
   SubmitPassageAttemptRequest,
   TodayPassageTask,
 } from '../types/passage';
+import type { WordCard } from '../types/material';
 
 /** 短文库：短文（独立素材）、阅读理解题组、作答与统计 */
 class PassageService extends BaseService {
@@ -70,6 +71,21 @@ class PassageService extends BaseService {
   /** 目标词的完整资料（音标、音节、拼读、释义、例句），朗读时点词查看 */
   async getPassageWords(passageId: number): Promise<ApiResult<Word[]>> {
     return this.executeWithLoading(() => this.client.invoke<Word[]>('get_passage_words', { passageId }));
+  }
+
+  /** 不在单词本的目标词已有的单词卡 */
+  async getWordCards(passageId: number): Promise<ApiResult<WordCard[]>> {
+    return this.executeWithLoading(() => this.client.invoke<WordCard[]>('get_passage_word_cards', { passageId }));
+  }
+
+  /** 读原文时把选中的词加成目标词，返回更新后的短文 */
+  async addTargetWord(passageId: number, word: string): Promise<ApiResult<Passage>> {
+    return this.executeWithLoading(() => this.client.invoke<Passage>('add_passage_target_word', { passageId, word }));
+  }
+
+  /** 给还没有单词卡的未收录目标词生成单词卡（后台任务）；都有了返回 null */
+  async startWordCards(passageId: number): Promise<ApiResult<string | null>> {
+    return this.executeWithLoading(() => this.client.invoke<string | null>('start_word_cards', { passageId }));
   }
 
   async deletePassage(passageId: number): Promise<ApiResult<void>> {

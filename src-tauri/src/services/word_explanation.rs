@@ -1,9 +1,8 @@
 //! 单词深度讲解：每次调用 agent 实时生成 Markdown（流式增量回调）与推荐追问，不落库。
 
 use crate::agent::{tasks, AgentPaths};
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::logger::Logger;
-use crate::repositories::word_repository::WordRepository;
 use crate::services::prompt_profile::PromptProfileService;
 use crate::types::common::Id;
 use crate::types::wordbook::WordExplanation;
@@ -24,14 +23,18 @@ impl WordExplanationService {
     pub async fn generate(
         &self,
         word_id: Id,
+        card_word: Option<&str>,
         model_id: Option<Id>,
         paths: &AgentPaths,
         on_delta: impl FnMut(&str),
     ) -> AppResult<WordExplanation> {
-        let word = WordRepository::new(self.pool.clone(), self.logger.clone())
-            .find_by_id(word_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("单词不存在，可能已被删除".to_string()))?;
+        let word = crate::services::word_cards::learning_word(
+            &self.pool,
+            &self.logger,
+            word_id,
+            card_word,
+        )
+        .await?;
         let model = crate::services::agent_settings::AgentSettingsService::new(
             self.pool.clone(),
             self.logger.clone(),
