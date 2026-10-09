@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { ListPagination, usePagination } from '@/components/ListPagination';
 import { PageError } from '@/components/PageError';
 import { cn } from '@/lib/utils';
 import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
@@ -150,6 +151,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   }, [passages, query, origin, tagId]);
 
   const selection = useSelection(useMemo(() => (visible ?? []).map((p) => p.id), [visible]));
+  const pager = usePagination(visible, { id: `passages:${bookId ?? 'all'}`, resetKey: `${query.trim()}|${origin ?? ''}|${tagId ?? ''}` });
   const bar = selection.selecting ? (
     <SelectionBar selection={selection} unit="篇短文">
       <BatchTagButton kind="passage" ids={selection.ids} onDone={load} />
@@ -219,11 +221,12 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   return (
     <>
       {bar}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
-        {visible.map((p) => (
+      <div ref={pager.anchorRef} className="grid scroll-mt-20 grid-cols-2 gap-3 xl:grid-cols-3">
+        {(pager.pageItems ?? []).map((p) => (
           <PassageCard key={p.id} passage={p} selection={selection} onOpen={() => onOpen(p.id)} onDelete={() => setToDelete([p])} />
         ))}
       </div>
+      <ListPagination page={pager.page} pageSize={pager.pageSize} total={pager.total} onChange={pager.setPage} hideSinglePage unit="篇" />
       <BatchDeleteDialog
         items={toDelete}
         onClose={() => setToDelete(null)}

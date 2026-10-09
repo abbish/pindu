@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { ListPagination, usePagination } from '@/components/ListPagination';
 import { MaterialToolbar, TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import { tagService } from '@/services/tagService';
 import { formatDuration } from '@/utils/datetime';
@@ -88,6 +89,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
   }, [clips, query, tag, video, level, subtitleHits]);
 
   const selection = useSelection(useMemo(() => (visible ?? []).map((c) => c.id), [visible]));
+  const pager = usePagination(visible, { id: 'clips', resetKey: `${query.trim()}|${tag}|${video}|${level}` });
   const pickedClips = (visible ?? []).filter((c) => selection.selected.has(c.id));
   const sourceVideos = videos.filter((v) => v.clipCount > 0);
   const active = (query ? 1 : 0) + (tag !== 'all' ? 1 : 0) + (video !== 'all' ? 1 : 0) + (level !== 'all' ? 1 : 0);
@@ -105,7 +107,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div ref={pager.anchorRef} className="flex scroll-mt-4 flex-col gap-4">
       {selection.selecting ? (
         <SelectionBar selection={selection} unit="段">
           <Button variant="ghost" size="sm" onClick={() => setPlaylist(pickedClips)}>
@@ -176,8 +178,9 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
       ) : visible.length === 0 ? (
         <EmptyState icon={<SearchX />} title="没有匹配的片段" />
       ) : (
+        <>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
-          {visible.map((c) => (
+          {(pager.pageItems ?? []).map((c) => (
             <ClipCard
               key={c.id}
               clip={c}
@@ -193,6 +196,8 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
             />
           ))}
         </div>
+        <ListPagination page={pager.page} pageSize={pager.pageSize} total={pager.total} onChange={pager.setPage} hideSinglePage unit="段" />
+        </>
       )}
       <ClipPlaylistDialog clips={playlist} onClose={() => setPlaylist(null)} onOpen={onOpen} />
       <BatchDeleteDialog

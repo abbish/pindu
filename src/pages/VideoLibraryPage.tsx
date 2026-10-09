@@ -33,6 +33,7 @@ import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { MaterialTags } from '@/components/MaterialTags/MaterialTags';
 import { ClipGrid } from './videos/ClipGrid';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { ListPagination, usePagination } from '@/components/ListPagination';
 import { ImportVideoDialog } from '@/components/ImportVideoDialog';
 import { PageError } from '@/components/PageError';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
@@ -130,6 +131,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
     );
   }, [videos, sourceQuery, sourceTag]);
   const selection = useSelection(useMemo(() => shownVideos.map((v) => v.id), [shownVideos]));
+  const pager = usePagination(videos === null ? null : shownVideos, { id: 'videos', resetKey: `${sourceQuery.trim()}|${sourceTag}` });
 
   const header = (
     <PageHeader
@@ -217,8 +219,8 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
           />
         )}
         {shownVideos.length === 0 && <EmptyState icon={<SearchX />} title="没有匹配的视频" />}
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-          {shownVideos.map((video) => {
+        <div ref={pager.anchorRef} className="grid scroll-mt-20 grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+          {(pager.pageItems ?? []).map((video) => {
             const job = jobOf(jobs, video.id);
             const interrupted = !job && (video.status === 'importing' || video.status === 'processing');
             const clickable = !job && video.mediaUrl !== null && (video.status === 'ready' || video.status === 'done' || video.status === 'processing');
@@ -316,6 +318,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
             );
           })}
         </div>
+        <ListPagination page={pager.page} pageSize={pager.pageSize} total={pager.total} onChange={pager.setPage} hideSinglePage unit="个" />
         </>
       )}
 

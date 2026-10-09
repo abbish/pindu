@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { ListPagination, usePagination } from '@/components/ListPagination';
 import { WordBookFormDialog } from '@/components/WordBookFormDialog/WordBookFormDialog';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
@@ -145,6 +146,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
   }, [data, filters]);
   // 已删除的单词本只能恢复，不参与勾选
   const selection = useSelection(useMemo(() => filteredBooks.filter((b) => !b.deleted_at).map((b) => b.id), [filteredBooks]));
+  const pager = usePagination(loading ? null : filteredBooks, { id: 'word-books', resetKey: JSON.stringify(filters) });
 
   const activeFilterCount =
     (filters.searchTerm ? 1 : 0) + (filters.tag !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0) + (filters.sortBy !== 'default' ? 1 : 0);
@@ -241,8 +243,9 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
           />
         )
       ) : (
-        <div className="grid grid-cols-3 gap-3">
-          {filteredBooks.map((book) => (
+        <>
+        <div ref={pager.anchorRef} className="grid scroll-mt-20 grid-cols-3 gap-3">
+          {(pager.pageItems ?? []).map((book) => (
             <WordBookSummaryCard
               key={book.id}
               title={book.title}
@@ -274,6 +277,8 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
             />
           ))}
         </div>
+        <ListPagination page={pager.page} pageSize={pager.pageSize} total={pager.total} onChange={pager.setPage} hideSinglePage unit="本" />
+        </>
       )}
       <WordBookFormDialog
         isOpen={editingBook !== null}

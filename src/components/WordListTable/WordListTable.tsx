@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { ListPagination } from '@/components/ListPagination';
 import { cn } from '@/lib/utils';
 import { partOfSpeechLabel } from '@/utils/partOfSpeech';
 import type { WordMaterialCount } from '@/types/material';
@@ -111,14 +112,6 @@ const POS_CLASS: Record<string, string> = {
   'prep.': 'bg-chart-5/15 text-foreground',
 };
 
-/** 页码：总页数 ≤ 7 全部显示，否则首尾 + 当前附近 + 省略号 */
-function pageNumbers(current: number, total: number): (number | 'gap')[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  if (current <= 4) return [1, 2, 3, 4, 5, 'gap', total];
-  if (current >= total - 3) return [1, 'gap', total - 4, total - 3, total - 2, total - 1, total];
-  return [1, 'gap', current - 1, current, current + 1, 'gap', total];
-}
-
 /**
  * 单词列表（shadcn 数据表）：勾选 + 批量删除、行操作（发音 / 例句 / 编辑 / 删除，右键同一组）、分页。
  * 单词本详情与计划详情（只读）共用。
@@ -195,9 +188,6 @@ export const WordListTable: React.FC<WordListTableProps> = ({
     );
   };
 
-  const pageCount = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.pageSize)) : 1;
-  const firstIndex = pagination ? (pagination.current - 1) * pagination.pageSize + 1 : 1;
-  const lastIndex = pagination ? Math.min(pagination.current * pagination.pageSize, pagination.total) : words.length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -358,38 +348,8 @@ export const WordListTable: React.FC<WordListTableProps> = ({
             </TableBody>
           </Table>
 
-          {pagination && pagination.total > 0 && (
-            <div className="flex items-center justify-between border-t px-4 py-2.5 text-sm">
-              <span className="text-muted-foreground tabular-nums">
-                显示第 {firstIndex}–{lastIndex} 条，共 {pagination.total} 条
-              </span>
-              {pageCount > 1 && (
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="sm" disabled={pagination.current <= 1} onClick={() => pagination.onChange(pagination.current - 1)}>
-                    上一页
-                  </Button>
-                  {pageNumbers(pagination.current, pageCount).map((p, i) =>
-                    p === 'gap' ? (
-                      <span key={`gap-${i}`} className="px-1 text-muted-foreground">…</span>
-                    ) : (
-                      <Button
-                        key={p}
-                        variant={p === pagination.current ? 'outline' : 'ghost'}
-                        size="icon"
-                        className={cn('size-8 tabular-nums', p === pagination.current && 'border-primary')}
-                        aria-current={p === pagination.current ? 'page' : undefined}
-                        onClick={() => pagination.onChange(p)}
-                      >
-                        {p}
-                      </Button>
-                    )
-                  )}
-                  <Button variant="outline" size="sm" disabled={pagination.current >= pageCount} onClick={() => pagination.onChange(pagination.current + 1)}>
-                    下一页
-                  </Button>
-                </div>
-              )}
-            </div>
+          {pagination && (
+            <ListPagination page={pagination.current} pageSize={pagination.pageSize} total={pagination.total} onChange={pagination.onChange} className="border-t px-4 py-2.5" />
           )}
         </Card>
       )}
