@@ -302,6 +302,23 @@ impl VideoProcessJob {
             poster,
         )
         .await?;
+        // 切片短文的标签 = 原视频的标签 + 片段的标签（AI 规划给的或用户改的）
+        let tags = crate::services::tag::TagService::new(self.pool.clone());
+        let mut tag_ids = tags.ensure_names_conn(&mut tx, &seg.tags).await?;
+        let repo = crate::repositories::tag_repository::TagRepository::new(self.pool.clone());
+        tag_ids.extend(
+            repo.tags_of(crate::types::material::MaterialKind::Video, self.video_id)
+                .await?
+                .into_iter()
+                .map(|t| t.id),
+        );
+        repo.add_conn(
+            &mut tx,
+            crate::types::material::MaterialKind::Passage,
+            passage_id,
+            &tag_ids,
+        )
+        .await?;
         tx.commit().await?;
         Ok(passage_id)
     }
@@ -404,6 +421,15 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!((clip.video_id, clip.seq), (video, 1));
+        // 有短片的短文来源显示为 video，按来源筛选能分开
+        let repo = PassageRepository::new(pool.clone());
+        assert_eq!(repo.find(passage).await.unwrap().unwrap().origin, "video");
+        assert_eq!(repo.list(None, None, Some("video")).await.unwrap().len(), 1);
+        assert!(repo
+            .list(None, None, Some("imported"))
+            .await
+            .unwrap()
+            .is_empty());
         // 句子的时间存进了 JSON
         let json: String = sqlx::query_scalar("SELECT sentences FROM passages WHERE id = ?")
             .bind(passage)
@@ -497,6 +523,7 @@ mod real_tests {
             level: "a2".into(),
             focus: "f".into(),
             key_words: vec!["menu".into()],
+            tags: vec!["点餐".into()],
         };
         let plan = crate::types::video::VideoPlan {
             requirements: String::new(),

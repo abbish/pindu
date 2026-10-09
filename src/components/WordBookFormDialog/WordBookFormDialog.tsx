@@ -6,12 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { ThemeTagPicker } from '@/components/ThemeTagPicker/ThemeTagPicker';
+import { TagPicker } from '@/components/TagPicker/TagPicker';
 import { WordBookIconPicker } from '@/components/WordBookIconPicker/WordBookIconPicker';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { WORD_BOOK_ICONS, normalizeBookColor } from '@/components/WordBookIcon/WordBookIcon';
 import { wordBookService } from '@/services/wordbookService';
-import type { ThemeTag, WordBook } from '@/types';
+import type { WordBook } from '@/types';
+import type { Tag } from '@/types/material';
+import { tagService } from '@/services/tagService';
 import { InlineError } from '@/components/InlineError';
 
 export interface WordBookFormDialogProps {
@@ -30,7 +32,7 @@ interface FormValues {
   description: string;
   icon: string;
   iconColor: string;
-  themeIds: number[];
+  tagIds: number[];
 }
 
 const TITLE_MAX = 100;
@@ -41,7 +43,7 @@ const initialValues = (book?: WordBook | null): FormValues => ({
   description: book?.description ?? '',
   icon: book?.icon && WORD_BOOK_ICONS.some((i) => i.value === book.icon) ? book.icon : 'bookmark',
   iconColor: normalizeBookColor(book?.icon_color),
-  themeIds: book?.theme_tags?.map((t) => t.id) ?? [],
+  tagIds: book?.tags.map((t) => t.id) ?? [],
 });
 
 /** 与后端 services/wordbook.rs 的 validate_title / validate_description 同一规则 */
@@ -55,7 +57,7 @@ function validate(values: FormValues): Partial<Record<keyof FormValues, string>>
 }
 
 /**
- * 新建 / 编辑单词本（同一个表单、同一套校验）：名称、图标与颜色、主题、描述。
+ * 新建 / 编辑单词本（同一个表单、同一套校验）：名称、图标与颜色、标签、描述。
  * 新建只建空单词本，单词在详情页里添加（先建对象，再填内容）。保存失败时弹窗保持打开并显示原因。
  */
 export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, onClose, wordBook, onSaved }) => {
@@ -65,8 +67,8 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [themes, setThemes] = useState<ThemeTag[] | null>(null);
-  const [themesFailed, setThemesFailed] = useState(false);
+  const [allTags, setTags] = useState<Tag[] | null>(null);
+  const [tagsFailed, setTagsFailed] = useState(false);
 
   // 每次打开按当前单词本回填（取消后再打开不残留未保存的修改）
   useEffect(() => {
@@ -77,21 +79,21 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
   }, [isOpen, wordBook]);
 
   useEffect(() => {
-    if (!isOpen || themes) return;
-    wordBookService.getThemeTags().then((result) => {
-      if (result.success) setThemes(result.data);
-      else setThemesFailed(true);
+    if (!isOpen || allTags) return;
+    tagService.getTags().then((result) => {
+      if (result.success) setTags(result.data);
+      else setTagsFailed(true);
     });
-  }, [isOpen, themes]);
+  }, [isOpen, allTags]);
 
-  /** 新建主题后加入列表；失败时提示原因 */
-  const createTheme = async (name: string): Promise<ThemeTag | null> => {
-    const result = await wordBookService.createThemeTag(name);
+  /** 新建标签后加入列表；失败时提示原因 */
+  const createTag = async (name: string): Promise<Tag | null> => {
+    const result = await tagService.createTag(name);
     if (!result.success) {
-      toast.showError('无法新建主题', result.error);
+      toast.showError('无法新建标签', result.error);
       return null;
     }
-    setThemes((prev) => (prev && !prev.some((t) => t.id === result.data.id) ? [...prev, result.data] : prev));
+    setTags((prev) => (prev && !prev.some((t) => t.id === result.data.id) ? [...prev, result.data] : prev));
     return result.data;
   };
 
@@ -112,7 +114,7 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
       description: values.description.trim(),
       icon: values.icon,
       icon_color: values.iconColor,
-      theme_tag_ids: values.themeIds,
+      tag_ids: values.tagIds,
     };
     const result = wordBook
       ? await wordBookService.updateWordBook(wordBook.id, payload)
@@ -163,11 +165,11 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="wb-themes">主题</Label>
-            {themes ? (
-              <ThemeTagPicker id="wb-themes" themes={themes} value={values.themeIds} onChange={(ids) => set('themeIds', ids)} onCreate={createTheme} />
-            ) : themesFailed ? (
-              <p className="text-sm text-muted-foreground">主题加载失败</p>
+            <Label htmlFor="wb-tags">标签</Label>
+            {allTags ? (
+              <TagPicker id="wb-tags" tags={allTags} value={values.tagIds} onChange={(ids) => set('tagIds', ids)} onCreate={createTag} />
+            ) : tagsFailed ? (
+              <p className="text-sm text-muted-foreground">标签加载失败</p>
             ) : (
               <Skeleton className="h-9 w-full" />
             )}

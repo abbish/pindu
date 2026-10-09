@@ -72,6 +72,7 @@ export function mergeWithNext(plan: VideoPlan, id: string): VideoPlan {
     endMs: b.endMs,
     focus: [a.focus, b.focus].filter(Boolean).join('；'),
     keyWords: [...new Set([...a.keyWords, ...b.keyWords])],
+    tags: [...new Set([...(a.tags ?? []), ...(b.tags ?? [])])],
   };
   return { ...plan, segments: [...segments.slice(0, i), merged, ...segments.slice(i + 2)] };
 }
@@ -207,4 +208,52 @@ export function undo(h: History): History {
 export function redo(h: History): History {
   if (h.future.length === 0) return h;
   return { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) };
+}
+
+/** 时间 t 处的缩略图（第 i 张在 i * intervalMs）；没有缩略图时为 undefined */
+export function thumbAt(thumbs: string[], intervalMs: number, t: number): string | undefined {
+  if (thumbs.length === 0 || intervalMs <= 0) return undefined;
+  return thumbs[Math.min(thumbs.length - 1, Math.max(0, Math.round(t / intervalMs)))];
+}
+
+/** 片段的预览图：取中间那一刻 */
+export function segmentThumb(thumbs: string[], intervalMs: number, seg: Pick<VideoSegment, 'startMs' | 'endMs'>): string | undefined {
+  return thumbAt(thumbs, intervalMs, (seg.startMs + seg.endMs) / 2);
+}
+
+/** 让开始于 cueStartMs（已按当前偏移换算）的那句字幕从 atMs 开始，需要的新偏移 */
+export function alignedOffset(currentOffsetMs: number, cueStartMs: number, atMs: number): number {
+  return Math.round(currentOffsetMs + (atMs - cueStartMs));
+}
+
+/** 离 t 最近的一句字幕（按开始时间） */
+export function nearestCue(cues: Cue[], t: number): Cue | undefined {
+  let best: Cue | undefined;
+  for (const c of cues) if (!best || Math.abs(c.startMs - t) < Math.abs(best.startMs - t)) best = c;
+  return best;
+}
+
+/** 重点词的常见变形（复数、过去式、-ing），用来在句子里标出 */
+function wordForms(word: string): string[] {
+  const w = word.toLowerCase();
+  const stem = w.endsWith('e') ? w.slice(0, -1) : w.endsWith('y') ? w.slice(0, -1) + 'i' : w;
+  return [w, `${w}s`, `${w}es`, `${w}d`, `${w}ed`, `${stem}ed`, `${stem}es`, `${w}ing`, `${w.endsWith('e') ? w.slice(0, -1) : w}ing`];
+}
+
+/** 把句子按重点词切开（忽略大小写，整词匹配，短语按原样匹配） */
+export function splitByKeyWords(text: string, keyWords: string[]): { text: string; key: boolean }[] {
+  const forms = [...new Set(keyWords.filter((k) => k.trim()).flatMap((k) => (k.includes(' ') ? [k.toLowerCase()] : wordForms(k.trim()))))]
+    .sort((a, b) => b.length - a.length)
+    .map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (forms.length === 0) return [{ text, key: false }];
+  const re = new RegExp(`\\b(${forms.join('|')})\\b`, 'gi');
+  const parts: { text: string; key: boolean }[] = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    if (m.index > last) parts.push({ text: text.slice(last, m.index), key: false });
+    parts.push({ text: m[0], key: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), key: false });
+  return parts;
 }

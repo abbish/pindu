@@ -21,6 +21,8 @@ use std::sync::Arc;
 /// 片段在第一条字幕前、最后一条字幕后留的余量
 const PAD_MS: i64 = 300;
 const MAX_KEY_WORDS: usize = 8;
+/// 每段最多几个标签
+const MAX_TAGS: usize = 3;
 const LEVELS: [&str; 5] = ["a1", "a2", "b1", "b2", "c1"];
 /// 分块规划时每块大约多长
 const CHUNK_MS: i64 = 15 * 60 * 1000;
@@ -42,6 +44,8 @@ struct SubmittedSegment {
     focus: String,
     #[serde(default)]
     key_words: Vec<String>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 /// AI 的提交 → 片段：编号换成时间（前后留余量、不出界），重点词只留字幕里出现过的。
@@ -91,6 +95,17 @@ pub fn segments_from_submission(
                 }
             }
             key_words.truncate(MAX_KEY_WORDS);
+            let mut tags: Vec<String> = Vec::new();
+            for tag in s
+                .tags
+                .iter()
+                .filter_map(|t| crate::services::tag::clean_name(t))
+            {
+                if !tags.iter().any(|k| k.eq_ignore_ascii_case(&tag)) {
+                    tags.push(tag);
+                }
+            }
+            tags.truncate(MAX_TAGS);
             let level = s.level.trim().to_lowercase();
             VideoSegment {
                 id: String::new(),
@@ -105,6 +120,7 @@ pub fn segments_from_submission(
                 },
                 focus: s.focus.trim().chars().take(300).collect(),
                 key_words,
+                tags,
             }
         })
         .collect())
@@ -197,6 +213,8 @@ pub struct VideoPlanJob {
     pub max_seconds: i64,
     /// 按意见修改时的意见
     pub feedback: Option<String>,
+    /// 已有的标签名（让 AI 优先复用）
+    pub tags: Vec<String>,
 }
 
 impl VideoPlanJob {
@@ -345,6 +363,7 @@ impl VideoPlanJob {
             requirements: &self.requirements,
             min_seconds: self.min_seconds,
             max_seconds: self.max_seconds,
+            tags: &self.tags,
             revise: feedback
                 .filter(|_| !local.is_empty())
                 .map(|f| (local.as_slice(), f)),
@@ -643,6 +662,7 @@ mod real_tests {
             min_seconds: 30,
             max_seconds: 120,
             feedback: None,
+            tags: Vec::new(),
         };
         let jobs = Jobs::new(|_| {});
         let spec = JobSpec {

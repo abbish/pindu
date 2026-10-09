@@ -373,6 +373,7 @@ impl PlanPassageService {
             .await?
             .into_iter()
             .map(|r| PlanPassage {
+                is_video: r.is_video,
                 id: r.item.id,
                 plan_id: r.plan_id,
                 passage_id: r.item.passage_id,
@@ -478,6 +479,7 @@ impl PlanPassageService {
             .await?
             .into_iter()
             .map(|r| TodayPassageTask {
+                is_video: r.is_video,
                 item_id: r.item.id,
                 plan_id: r.plan_id,
                 plan_name: r.plan_name,

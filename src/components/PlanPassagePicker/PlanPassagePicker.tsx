@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, FileText, Lock, Plus, Search, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Clapperboard, FileText, Lock, Plus, Search, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -28,6 +28,8 @@ export interface PlanPassageDraft {
   locked?: boolean;
   /** 已完成的日期（锁定项显示） */
   completedAt?: string | null;
+  /** 视频切片：不用题组时是「看视频跟读」 */
+  isVideo?: boolean;
 }
 
 /** 每几天一篇（后端允许 1–30） */
@@ -46,14 +48,18 @@ export const draftFromCandidate = (c: PlanPassageCandidate): PlanPassageDraft =>
   sets: c.sets,
   setId: c.defaultSetId,
   mode: 'reading',
+  isVideo: c.passage.origin === 'video',
 });
 
 export const toPassageInputs = (items: PlanPassageDraft[]): PlanPassageInput[] =>
   items.map((i) => ({ passageId: i.passageId, setId: i.setId, mode: i.setId === null ? 'reading' : i.mode }));
 
-/** 任务说明：题组 + 方式，或只朗读 */
-export const taskLabel = (setName: string | null | undefined, setId: number | null, mode: PassageMode) =>
-  setId === null ? '只朗读' : `${setName ?? '题组'} · ${MODE_LABEL[mode]}`;
+/** 不用题组的任务：短文只朗读，视频切片看视频跟读 */
+export const readOnlyLabel = (isVideo?: boolean) => (isVideo ? '看视频跟读' : '只朗读');
+
+/** 任务说明：题组 + 方式，或只朗读 / 看视频跟读 */
+export const taskLabel = (setName: string | null | undefined, setId: number | null, mode: PassageMode, isVideo?: boolean) =>
+  setId === null ? readOnlyLabel(isVideo) : `${setName ?? '题组'} · ${MODE_LABEL[mode]}`;
 
 /** 计划短文任务的状态显示 */
 export const PASSAGE_STATUS: Record<PlanPassageStatus, { label: string; className: string }> = {
@@ -108,6 +114,7 @@ export const PlanPassagePicker: React.FC<PlanPassagePickerProps> = ({ items, onC
               <span className="w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
+                  {it.isVideo && <Clapperboard className="size-3.5 shrink-0 text-muted-foreground" aria-label="视频片段" />}
                   <span className="truncate text-sm font-medium">{it.title}</span>
                   {it.locked && (
                     <Badge variant="outline" className="shrink-0 border-transparent bg-success-soft font-normal text-success">
@@ -135,7 +142,7 @@ export const PlanPassagePicker: React.FC<PlanPassagePickerProps> = ({ items, onC
                       {s.name}
                     </SelectItem>
                   ))}
-                  <SelectItem value={NO_SET}>只朗读</SelectItem>
+                  <SelectItem value={NO_SET}>{readOnlyLabel(it.isVideo)}</SelectItem>
                 </SelectContent>
               </Select>
               <ToggleGroup
@@ -206,18 +213,26 @@ const AddPassagesDialog: React.FC<{
   onAdd: (picked: PlanPassageCandidate[]) => void;
 }> = ({ open, onClose, candidates, excluded, overlapLabel, onCreatePassage, onAdd }) => {
   const [query, setQuery] = useState('');
+  const [kind, setKind] = useState<'all' | 'text' | 'video'>('all');
   const [picked, setPicked] = useState<number[]>([]);
 
   const available = (candidates ?? []).filter((c) => !excluded.has(c.passage.id));
   const q = query.trim().toLowerCase();
-  const shown = q
-    ? available.filter((c) => c.passage.title.toLowerCase().includes(q) || c.passage.targetWords.some((w) => w.word.toLowerCase().includes(q)))
-    : available;
+  const hasVideo = available.some((c) => c.passage.origin === 'video');
+  const shown = available.filter(
+    (c) =>
+      (kind === 'all' || (kind === 'video') === (c.passage.origin === 'video')) &&
+      (!q ||
+        c.passage.title.toLowerCase().includes(q) ||
+        c.passage.targetWords.some((w) => w.word.toLowerCase().includes(q)) ||
+        c.passage.tags.some((t) => t.name.toLowerCase().includes(q)))
+  );
 
   const toggle = (id: number) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const close = () => {
     setPicked([]);
     setQuery('');
+    setKind('all');
     onClose();
   };
 
@@ -245,9 +260,26 @@ const AddPassagesDialog: React.FC<{
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按标题或单词搜索" aria-label="搜索短文" className="pl-8" />
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按标题、单词或标签搜索" aria-label="搜索短文" className="pl-8" />
+              </div>
+              {hasVideo && (
+                <ToggleGroup type="single" value={kind} onValueChange={(v) => v && setKind(v as typeof kind)} className="rounded-lg bg-muted p-0.5" aria-label="类型">
+                  {(
+                    [
+                      ['all', '全部'],
+                      ['text', '短文'],
+                      ['video', '视频片段'],
+                    ] as const
+                  ).map(([v, label]) => (
+                    <ToggleGroupItem key={v} value={v} className="h-8 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm">
+                      {label}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              )}
             </div>
             <ul className="max-h-[50vh] divide-y overflow-y-auto rounded-lg border">
               {shown.map((c) => {
@@ -257,7 +289,10 @@ const AddPassagesDialog: React.FC<{
                     <label className={cn('flex cursor-default items-start gap-3 px-3 py-2.5 hover:bg-muted/50', checked && 'bg-accent/40')}>
                       <Checkbox checked={checked} onCheckedChange={() => toggle(c.passage.id)} className="mt-0.5" />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">{c.passage.title}</span>
+                        <span className="flex items-center gap-1.5 text-sm font-medium">
+                          {c.passage.origin === 'video' && <Clapperboard className="size-3.5 shrink-0 text-muted-foreground" aria-label="视频片段" />}
+                          <span className="truncate">{c.passage.title}</span>
+                        </span>
                         <span className="block text-xs text-muted-foreground">
                           {LEVEL_LABEL[c.passage.level] ?? c.passage.level} · {c.passage.wordCount} 词 · {c.sets.length > 0 ? `${c.sets.length} 套题` : '没有题'}
                         </span>

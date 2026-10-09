@@ -47,6 +47,7 @@ const toDraft = (p: PlanPassage, candidates: Map<number, PlanPassageCandidate>):
   mode: p.mode,
   locked: p.status === 'completed',
   completedAt: p.completedAt,
+  isVideo: p.isVideo,
 });
 
 const inputsKey = (items: PlanPassageDraft[]) => JSON.stringify(toPassageInputs(items));

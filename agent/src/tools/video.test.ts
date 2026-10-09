@@ -10,6 +10,7 @@ const seg = (first: number, last: number) => ({
   level: 'a2',
   focus: '学点餐的常用说法',
   key_words: ['menu', 'recommend'],
+  tags: ['点餐'],
 });
 const plan = (...segments: ReturnType<typeof seg>[]): VideoPlanSubmission => ({ cue_count: 20, segments });
 
@@ -31,4 +32,11 @@ test('字段缺失与水平不合法', () => {
   assert.equal(problems.length, 3);
   // 分块规划时某一部分可能没有合适的内容
   assert.deepEqual(videoPlanProblems({ cue_count: 3, segments: [] }), []);
+});
+
+test('标签要 1–3 个、每个不超过 10 个字', () => {
+  const none = { ...seg(1, 8), tags: [] };
+  const long = { ...seg(1, 8), tags: ['一二三四五六七八九十一'] };
+  assert.equal(videoPlanProblems(plan(none)).length, 1);
+  assert.equal(videoPlanProblems(plan(long)).length, 1);
 });

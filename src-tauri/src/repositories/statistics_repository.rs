@@ -28,7 +28,7 @@ const PROTECTED_TABLES: [&str; 6] = [
 
 /// 表的类别：config 配置类（设置页不建议清空）/ user_data 用户数据
 fn classify_table_type(table_name: &str) -> &'static str {
-    if PROTECTED_TABLES.contains(&table_name) || table_name == "theme_tags" {
+    if PROTECTED_TABLES.contains(&table_name) || table_name == "tags" {
         "config"
     } else {
         "user_data"

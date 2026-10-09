@@ -97,12 +97,7 @@ impl PromptProfileService {
         .await?;
         Ok(book
             .map(|b| {
-                let tags: Vec<String> = b
-                    .theme_tags
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|t| t.name)
-                    .collect();
+                let tags: Vec<String> = b.tags.into_iter().map(|t| t.name).collect();
                 prompts::book_scene(&b.title, &b.description, &tags)
             })
             .unwrap_or_default())

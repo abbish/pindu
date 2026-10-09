@@ -17,6 +17,7 @@ const VideoPlanParams = Type.Object({
       level: Type.String({ description: "CEFR level: a1, a2, b1, b2 or c1" }),
       focus: Type.String({ description: "one Chinese sentence: what this segment is good for learning" }),
       key_words: Type.Array(Type.String(), { description: "3-8 key words or phrases that appear in this segment's subtitles, base form" }),
+      tags: Type.Array(Type.String(), { description: "1-3 reusable Chinese tags (scene type, communicative function or language point), each at most 10 characters; reuse existing tag names when they fit" }),
     }),
     { description: "segments in order, not overlapping; empty only when nothing in the given subtitles suits the learner" },
   ),
@@ -38,6 +39,10 @@ export function videoPlanProblems(p: VideoPlanSubmission): string[] {
     if (!LEVELS.includes(s.level.trim().toLowerCase())) problems.push(`第 ${n} 段的 level 只能是 a1、a2、b1、b2、c1 之一`);
     if (!s.focus.trim()) problems.push(`第 ${n} 段缺少 focus`);
     if (s.key_words.length > 10) problems.push(`第 ${n} 段的 key_words 最多 10 个`);
+    if (s.tags.length === 0 || s.tags.length > 3) problems.push(`第 ${n} 段的 tags 要 1–3 个`);
+    s.tags.forEach((t) => {
+      if ([...t.trim()].length > 10) problems.push(`第 ${n} 段的标签「${t}」超过 10 个字`);
+    });
   });
   return problems;
 }

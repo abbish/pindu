@@ -1466,6 +1466,8 @@ pub struct VideoPlanSpec<'a> {
     pub requirements: &'a str,
     pub min_seconds: i64,
     pub max_seconds: i64,
+    /// 已有的标签名（优先复用）
+    pub tags: &'a [String],
     /// 按意见修改：当前规划（每段的字幕编号范围与标题，编号从 1 开始）与意见
     pub revise: Option<(&'a [CueRange], &'a str)>,
 }
@@ -1529,6 +1531,7 @@ pub fn video_plan_message(spec: &VideoPlanSpec) -> String {
             ("min_seconds", &spec.min_seconds.to_string()),
             ("max_seconds", &spec.max_seconds.to_string()),
             ("requirements", spec.requirements.trim()),
+            ("tags", &spec.tags.join("、")),
             ("current", &current),
             ("feedback", &feedback),
             ("cues", &cues.join("\n")),

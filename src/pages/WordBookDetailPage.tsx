@@ -1,4 +1,7 @@
 import React, { useRef, useCallback, useEffect, useState } from 'react';
+import { WordMaterialsSheet } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
+import { tagService } from '@/services/tagService';
+import type { WordMaterialCount } from '@/types/material';
 import { ChevronDown, FileUp, ListChecks, Loader2, MoreHorizontal, Pencil, PencilLine, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -103,6 +106,8 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
   const [batchDeleteError, setBatchDeleteError] = useState<string | null>(null);
   /** 页签（生成短文后切到「短文」） */
   const [tab, setTab] = useState('words');
+  const [materials, setMaterials] = useState<Map<number, WordMaterialCount>>(new Map());
+  const [materialsOf, setMaterialsOf] = useState<{ id: number; word: string } | null>(null);
   const [passageCount, setPassageCount] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -187,6 +192,12 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // 每个词出现在几个视频片段 / 短文里（次要信息，失败时不显示）
+  useEffect(() => {
+    if (!id) return;
+    tagService.getBookWordMaterials(id).then((r) => r.success && setMaterials(new Map(r.data.map((c) => [c.wordId, c]))));
+  }, [id, totalWords]);
 
   /** 单词变动后：刷新当前页、统计、单词本计数 */
   const refreshAfterWordChange = async () => {
@@ -298,16 +309,16 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
 
   return (
     <div className={container}>
-      {/* 头部：图标 + 名称 / 状态 / 主题 / 时间 + 操作 */}
+      {/* 头部：图标 + 名称 / 状态 / 标签 / 时间 + 操作 */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           <WordBookIcon icon={wordBook.icon} color={wordBook.icon_color} className="size-12 rounded-xl [&_svg]:size-6" />
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-2xl font-semibold tracking-tight">{wordBook.title}</h1>
-              {wordBook.theme_tags?.map((tag) => (
+              {wordBook.tags.map((tag) => (
                 <Badge key={tag.id} variant="secondary">
-                  <span aria-hidden="true">{tag.icon}</span>
+                  {tag.icon && <span aria-hidden="true">{tag.icon}</span>}
                   {tag.name}
                 </Badge>
               ))}
@@ -395,6 +406,8 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             onEditWord={handleEditWord}
             onDeleteWord={(w) => setWordsToDelete([w])}
             onBatchDelete={setWordsToDelete}
+            materials={materials}
+            onOpenMaterials={(w) => setMaterialsOf({ id: w.id, word: w.word })}
             onBatchPassage={(picked) => onNavigate?.('create-passage', { bookIds: [wordBook.id], wordIds: picked.map((w) => w.id) })}
             addAction={
               <DropdownMenu>
@@ -542,6 +555,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
         deleting={batchDeleteLoading}
         error={batchDeleteError}
       />
+      <WordMaterialsSheet word={materialsOf} onClose={() => setMaterialsOf(null)} onOpenPassage={(passageId) => onNavigate?.('passage-detail', { passageId })} />
     </div>
   );
 };

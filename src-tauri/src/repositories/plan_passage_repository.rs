@@ -38,6 +38,8 @@ pub struct PlanPassageDetailRow {
     pub word_count: i64,
     pub set_name: Option<String>,
     pub attempt: Option<PassageAttemptBrief>,
+    /// 视频切片（只读任务即「看视频跟读」）
+    pub is_video: bool,
 }
 
 /// 今天的短文任务
@@ -49,6 +51,8 @@ pub struct TodayPassageRow {
     pub title: String,
     pub word_count: i64,
     pub set_name: Option<String>,
+    /// 视频切片
+    pub is_video: bool,
 }
 
 /// 日历上的一项短文任务
@@ -63,6 +67,7 @@ pub struct CalendarPassageRow {
     pub title: String,
     pub set_id: Option<Id>,
     pub mode: String,
+    pub is_video: bool,
 }
 
 fn item_from_row(r: &SqliteRow) -> PlanPassageRow {
@@ -329,7 +334,7 @@ impl PlanPassageRepository {
     pub async fn details(&self, plan_id: Id) -> AppResult<Vec<PlanPassageDetailRow>> {
         let rows = sqlx::query(
             "SELECT pp.id, pp.plan_id, pp.passage_id, pp.set_id, pp.mode, pp.sort_order, pp.scheduled_date,
-                    pp.completed_at, p.title, p.level, p.word_count, qs.name AS set_name,
+                    pp.completed_at, p.title, p.level, p.word_count, qs.name AS set_name, EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = pp.passage_id) AS is_video,
                     a.id AS la_id, a.mode AS la_mode, a.objective_correct AS la_correct,
                     a.objective_total AS la_total, a.open_score AS la_open, a.open_total AS la_open_total,
                     a.completed_at AS la_completed_at
@@ -354,6 +359,7 @@ impl PlanPassageRepository {
                     level: r.get("level"),
                     word_count: r.get("word_count"),
                     set_name: r.get("set_name"),
+                    is_video: r.get("is_video"),
                     attempt: attempt_id.map(|id| PassageAttemptBrief {
                         id,
                         mode: r.get("la_mode"),
@@ -372,7 +378,8 @@ impl PlanPassageRepository {
     pub async fn today(&self, today: &str) -> AppResult<Vec<TodayPassageRow>> {
         let rows = sqlx::query(
             "SELECT pp.id, pp.plan_id, pp.passage_id, pp.set_id, pp.mode, pp.sort_order, pp.scheduled_date,
-                    pp.completed_at, sp.name AS plan_name, p.title, p.word_count, qs.name AS set_name
+                    pp.completed_at, sp.name AS plan_name, p.title, p.word_count, qs.name AS set_name,
+                    EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = pp.passage_id) AS is_video
              FROM study_plan_passages pp
              JOIN study_plans sp ON sp.id = pp.plan_id
              JOIN passages p ON p.id = pp.passage_id
@@ -394,6 +401,7 @@ impl PlanPassageRepository {
                 title: r.get("title"),
                 word_count: r.get("word_count"),
                 set_name: r.get("set_name"),
+                is_video: r.get("is_video"),
             })
             .collect())
     }
@@ -407,7 +415,8 @@ impl PlanPassageRepository {
     ) -> AppResult<Vec<CalendarPassageRow>> {
         let rows = sqlx::query(
             "SELECT pp.scheduled_date, pp.completed_at IS NOT NULL AS completed, sp.unified_status,
-                    pp.plan_id, sp.name AS plan_name, pp.passage_id, p.title, pp.set_id, pp.mode
+                    pp.plan_id, sp.name AS plan_name, pp.passage_id, p.title, pp.set_id, pp.mode,
+                    EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = pp.passage_id) AS is_video
              FROM study_plan_passages pp
              JOIN study_plans sp ON sp.id = pp.plan_id
              JOIN passages p ON p.id = pp.passage_id
@@ -434,6 +443,7 @@ impl PlanPassageRepository {
                 title: r.get("title"),
                 set_id: r.get("set_id"),
                 mode: r.get("mode"),
+                is_video: r.get("is_video"),
             })
             .collect())
     }

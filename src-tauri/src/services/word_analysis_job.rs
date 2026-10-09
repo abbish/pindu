@@ -130,7 +130,7 @@ impl WordAnalysisJob {
                 words: analyzed.iter().map(PhonicsWord::to_analyzed).collect(),
                 status: None,
                 book_id: Some(self.book_id),
-                theme_tag_ids: None,
+                tag_ids: None,
             })
             .await?;
         self.logger.info(

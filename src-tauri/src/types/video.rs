@@ -27,6 +27,11 @@ pub struct Video {
     pub error: Option<String>,
     pub cue_count: i64,
     pub clip_count: i64,
+    /// 字幕时间纠偏（毫秒，正数 = 字幕延后）；详情里的 cues 已按它换算
+    pub subtitle_offset_ms: i64,
+    /// 标签（列表里有；详情里为空）
+    #[serde(default)]
+    pub tags: Vec<crate::types::material::Tag>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -87,6 +92,9 @@ pub struct VideoSegment {
     pub focus: String,
     #[serde(default)]
     pub key_words: Vec<String>,
+    /// 标签名（素材共用标签，切分时写进切片短文的标签）
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// 导入视频（start_video_import）：文件路径来自系统选择文件对话框
@@ -134,4 +142,21 @@ pub struct PassageVideo {
     /// 在原视频里的起止
     pub start_ms: i64,
     pub end_ms: i64,
+}
+
+/// 视频库「片段」：切出来的短片（一段 = 一篇带视频的短文）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipSummary {
+    #[serde(flatten)]
+    pub passage: crate::types::passage::PassageSummary,
+    pub video_id: i64,
+    pub video_title: String,
+    /// 在原视频里第几段
+    pub seq: i64,
+    /// 在原视频里的起止
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub clip_url: Option<String>,
+    pub poster_url: Option<String>,
 }

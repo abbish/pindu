@@ -291,9 +291,9 @@ impl WordBookService {
                     creation_status,
                 )
                 .await?;
-            if let Some(tag_ids) = &request.theme_tag_ids {
+            if let Some(tag_ids) = &request.tag_ids {
                 self.repository
-                    .add_theme_tags_conn(&mut tx, new_book_id, tag_ids)
+                    .add_tags_conn(&mut tx, new_book_id, tag_ids)
                     .await?;
             }
             new_book_id
@@ -454,7 +454,7 @@ mod tests {
             words,
             status: None,
             book_id,
-            theme_tag_ids: Some(vec![1, 2]),
+            tag_ids: Some(vec![1, 2]),
         }
     }
 
@@ -488,12 +488,13 @@ mod tests {
             words_of(pool.as_ref(), result.book_id).await,
             vec![("Apple".into(), "苹果".into()), ("cat".into(), "猫".into())]
         );
-        let tags: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM word_book_theme_tags WHERE word_book_id = ?")
-                .bind(result.book_id)
-                .fetch_one(pool.as_ref())
-                .await
-                .unwrap();
+        let tags: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM material_tags WHERE kind = 'word_book' AND ref_id = ?",
+        )
+        .bind(result.book_id)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
         assert_eq!(tags, 2);
         let total: i64 = sqlx::query_scalar("SELECT total_words FROM word_books WHERE id = ?")
             .bind(result.book_id)
@@ -657,7 +658,7 @@ mod tests {
                 description: String::new(),
                 icon: "📚".to_string(),
                 icon_color: "#000".to_string(),
-                theme_tag_ids: Some(vec![1]),
+                tag_ids: Some(vec![1]),
             })
             .await
             .unwrap();
@@ -669,7 +670,7 @@ mod tests {
             .unwrap();
         assert_eq!(title, "新书");
         let tag: Id = sqlx::query_scalar(
-            "SELECT theme_tag_id FROM word_book_theme_tags WHERE word_book_id = ?",
+            "SELECT tag_id FROM material_tags WHERE kind = 'word_book' AND ref_id = ?",
         )
         .bind(id)
         .fetch_one(pool.as_ref())
@@ -790,7 +791,7 @@ mod tests {
             icon: None,
             icon_color: None,
             status: Some("draft".into()),
-            theme_tag_ids: None,
+            tag_ids: None,
         };
         // 草稿状态已取消：任何时候都不能转草稿
         assert!(matches!(
@@ -803,7 +804,7 @@ mod tests {
             icon: None,
             icon_color: None,
             status: Some("deleted".into()),
-            theme_tag_ids: None,
+            tag_ids: None,
         };
         assert!(matches!(
             service.update_word_book(book_id, bogus).await,

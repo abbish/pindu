@@ -226,7 +226,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
 
   // 进入不能看讲解的环节（盖·写）时，右栏切回默认的「例句」页签
   useEffect(() => {
-    if (writing) setSideTab(tab => (tab === 'explanation' ? 'examples' : tab));
+    if (writing) setSideTab(tab => (tab === 'examples' ? tab : 'examples'));
   }, [writing, task?.id]);
   const exampleMode: ExampleDisplayMode = !writing ? 'full' : hintLevel === 3 ? 'translation' : 'masked';
 

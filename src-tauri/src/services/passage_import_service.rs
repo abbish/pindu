@@ -373,7 +373,7 @@ impl PassageImportService {
                         words,
                         status: None,
                         book_id: Some(request.book_id),
-                        theme_tag_ids: None,
+                        tag_ids: None,
                     },
                 )
                 .await?;

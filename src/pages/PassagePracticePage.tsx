@@ -42,11 +42,13 @@ import { InlineError } from '@/components/InlineError';
 import { PageError } from '@/components/PageError';
 import { PassageReader } from '@/components/PassageReader';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
+import { useClipSentencePlayer } from '@/hooks/useClipSentencePlayer';
+import { videoService } from '@/services/videoService';
 import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
 import { formatDuration } from '@/utils/datetime';
 import { MODE_LABEL, scoreSummary, splitWithBlanks } from '@/utils/passage';
-import type { ClozeResult, Passage, PassageAttempt, PassageMode, PassageQuestion, QuestionResult, QuestionSet } from '@/types/passage';
+import type { ClozeResult, Passage, PassageAttempt, PassageMode, PassageQuestion, PassageSentence, QuestionResult, QuestionSet } from '@/types/passage';
 import type { NavigateFn, PassagePracticeReturn } from '../navigation';
 
 export interface PassagePracticePageProps {
@@ -66,10 +68,14 @@ const questionDomId = (id: number) => `passage-question-${id}`;
 
 // ==================== 听力播放器 ====================
 
-/** 逐句听：连播 / 暂停、上一句 / 下一句、重听本句；答题时不显示原文 */
-const ListeningPlayer: React.FC<{ texts: string[] }> = ({ texts }) => {
+const NO_SENTENCES: PassageSentence[] = [];
+
+/** 逐句听：连播 / 暂停、上一句 / 下一句、重听本句；答题时不显示原文。视频切片用原声，其余用合成语音 */
+const ListeningPlayer: React.FC<{ texts: string[]; clip?: { url: string; sentences: PassageSentence[] } }> = ({ texts, clip }) => {
   const [slow, setSlow] = useState(false);
-  const player = useSentencePlayer(texts, { speed: slow ? 'slow' : 'normal' });
+  const tts = useSentencePlayer(texts, { speed: slow ? 'slow' : 'normal' });
+  const original = useClipSentencePlayer(clip?.url ?? null, clip?.sentences ?? NO_SENTENCES, { slow });
+  const player = clip ? original : tts;
   const current = player.current ?? 0;
   const go = (delta: number) => player.play(Math.min(texts.length - 1, Math.max(0, current + delta)), true);
   return (
@@ -305,6 +311,8 @@ const QuestionItem: React.FC<{
 export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId, mode = 'reading', planId, returnTo, onNavigate }) => {
   const [set, setSet] = useState<QuestionSet | null>(null);
   const [passage, setPassage] = useState<Passage | null>(null);
+  /** 视频切片：听力用原声 */
+  const [clipUrl, setClipUrl] = useState<string | null>(null);
   const [attempt, setAttempt] = useState<PassageAttempt | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -333,6 +341,10 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
     if (!a.success) return setLoadError(a.error);
     setSet(s.data);
     setPassage(p.data);
+    if (p.data.origin === 'video') {
+      const v = await videoService.getPassageVideo(p.data.id);
+      setClipUrl(v.success ? (v.data?.clipUrl ?? null) : null);
+    }
     setAttempt(a.data);
     setAnswers({});
     setSubmitError(null);
@@ -552,7 +564,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
               </div>
             )}
           </div>
-          {mode === 'listening' && <ListeningPlayer texts={texts} />}
+          {mode === 'listening' && <ListeningPlayer texts={texts} clip={clipUrl && passage ? { url: clipUrl, sentences: passage.sentences } : undefined} />}
           {showText && <PassageReader sentences={passage.sentences} translation={showZh ? 'all' : 'off'} renderSentence={mode === 'reading' ? renderSentence : undefined} />}
           {mode === 'reading' && !finished && clozeQuestions.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 border-t pt-3 select-none">

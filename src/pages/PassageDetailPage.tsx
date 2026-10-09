@@ -24,6 +24,7 @@ import { QuestionSetDialog } from '@/components/QuestionSetDialog';
 import { ReadAloudPanel } from './passage-detail/ReadAloudPanel';
 import { ClipStudyPanel } from './passage-detail/ClipStudyPanel';
 import { videoService } from '@/services/videoService';
+import { MaterialTags } from '@/components/MaterialTags/MaterialTags';
 import { useJob, useOnJobFinished } from '@/hooks/useJobs';
 import { jobErrorText } from '@/components/Jobs';
 import type { PassageVideo } from '@/types/video';
@@ -239,7 +240,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   }
 
   // 导入的材料：单词本里的词（required）/ AI 标出的重点词；AI 写的短文：必用词 / AI 按场景挑选
-  const imported = passage.origin === 'imported';
+  // 视频切片与导入的材料一样：原文不是 AI 写的，重点词由 AI 标出，可以把生词加进单词本
+  const imported = passage.origin !== 'generated';
   const required = passage.targetWords.filter((w) => w.required);
   const picked = passage.targetWords.filter((w) => !w.required);
 
@@ -254,9 +256,11 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           </div>
           <p className="text-xs text-muted-foreground">
             {passage.origin === 'imported' && `我的材料${passage.sourceLabel ? `（${passage.sourceLabel}）` : ''} · `}
-            {passage.wordCount} 个英文单词 · {passage.sentences.length} 句 · {passage.origin === 'imported' ? '导入于' : '创建于'} {formatDate(passage.createdAt)}
+            {passage.origin === 'video' && `视频${passage.sourceLabel ? `（${passage.sourceLabel}）` : ''} · `}
+            {passage.wordCount} 个英文单词 · {passage.sentences.length} 句 · {passage.origin === 'generated' ? '创建于' : '导入于'} {formatDate(passage.createdAt)}
             {passage.modelName && ` · ${passage.modelName}`}
           </p>
+          <MaterialTags key={passage.id} kind="passage" refId={passage.id} tags={passage.tags} />
         </div>
         <div className="flex shrink-0 gap-2">
           <Button onClick={() => setShowGenerate(true)}>
@@ -287,7 +291,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             <span className="font-medium">{fromPlan.planName}</span>
             <span className="text-muted-foreground">
               {' '}
-              · {formatDate(planTask.scheduledDate)} · {taskLabel(planTask.setName, planTask.setId, planTask.mode)}
+              · {formatDate(planTask.scheduledDate)} · {taskLabel(planTask.setName, planTask.setId, planTask.mode, planTask.isVideo)}
             </span>
           </div>
           <Badge variant="outline" className={cn('border-transparent font-normal', PASSAGE_STATUS[planTask.status].className)}>
@@ -309,7 +313,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           {planActive && planTask.setId === null && (planTask.status === 'due' || planTask.status === 'overdue') && (
             <Button size="sm" onClick={markRead} disabled={markingRead}>
               {markingRead ? <Loader2 className="animate-spin" /> : <BookOpenCheck />}
-              读完了
+              {planTask.isVideo ? '看完了' : '读完了'}
             </Button>
           )}
         </Card>
@@ -345,7 +349,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                 <h2 className="text-sm font-semibold">目标词</h2>
                 {required.length > 0 && (
                   <div className="space-y-1.5">
-                    <div className="text-xs text-muted-foreground">{passage.origin === 'imported' ? '单词本里的词' : '必用词'}</div>
+                    <div className="text-xs text-muted-foreground">{imported ? '单词本里的词' : '必用词'}</div>
                     <div className="flex flex-wrap gap-1">
                       {required.map((w) => (
                         <span key={w.word} className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground">
@@ -357,7 +361,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                 )}
                 {picked.length > 0 && (
                   <div className="space-y-1.5">
-                    <div className="text-xs text-muted-foreground">{passage.origin === 'imported' ? 'AI 标出的重点词' : 'AI 按场景挑选'}</div>
+                    <div className="text-xs text-muted-foreground">{imported ? 'AI 标出的重点词' : 'AI 按场景挑选'}</div>
                     <div className="flex flex-wrap gap-1">
                       {picked.map((w) => (
                         <span key={w.word} className="rounded-full bg-muted px-2 py-0.5 text-xs" title={w.meaning ?? undefined}>

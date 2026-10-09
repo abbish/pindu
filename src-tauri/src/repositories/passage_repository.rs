@@ -2,8 +2,10 @@
 //! 以及生成短文时的候选词（单词本、学习计划的已学 / 难词 / 到期复习）
 
 use crate::error::{AppError, AppResult};
+use crate::repositories::tag_repository::TagRepository;
 use crate::services::passage_rules::{self, GeneratedPassage, GeneratedQuestionSet};
 use crate::types::common::Id;
+use crate::types::material::MaterialKind;
 use crate::types::passage::{
     ClozeResult, Passage, PassageAttempt, PassageAttemptBrief, PassageModeStatistics,
     PassageQuestion, PassageSentence, PassageSource, PassageStatistics, PassageSummary,
@@ -118,6 +120,17 @@ const SOURCE_SELECT: &str = "SELECT s.passage_id, s.kind, s.ref_id, s.name, s.de
         END AS present
      FROM passage_sources s";
 
+/// 短文正文（单词 ↔ 素材关联用）
+#[derive(Debug, Clone)]
+pub struct PassageText {
+    pub id: Id,
+    pub title: String,
+    pub origin: String,
+    pub level: String,
+    pub sentences: Vec<PassageSentence>,
+    pub target_words: Vec<PassageTargetWord>,
+}
+
 pub struct PassageRepository {
     pool: Arc<SqlitePool>,
 }
@@ -156,6 +169,13 @@ impl PassageRepository {
         .execute(&mut *conn)
         .await?
         .last_insert_rowid();
+        crate::repositories::passage_word_repository::PassageWordRepository::replace_conn(
+            conn,
+            id,
+            &passage.sentences,
+            &passage.target_words,
+        )
+        .await?;
         for source in meta.sources {
             sqlx::query(
                 "INSERT INTO passage_sources (passage_id, kind, ref_id, name, detail)
@@ -197,9 +217,9 @@ impl PassageRepository {
 
     pub async fn find(&self, id: Id) -> AppResult<Option<Passage>> {
         let Some(r) = sqlx::query(
-            "SELECT id, title, sentences, target_words, scene, level, word_count, model_name, created_at,
-                    origin, source_label
-             FROM passages WHERE id = ?",
+            "SELECT p.id, p.title, p.sentences, p.target_words, p.scene, p.level, p.word_count, p.model_name,
+                    p.created_at, CASE WHEN EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id) THEN 'video' ELSE p.origin END AS origin, p.source_label
+             FROM passages p WHERE p.id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -225,7 +245,34 @@ impl PassageRepository {
             question_sets: self.set_summaries(id).await?,
             origin: r.get("origin"),
             source_label: r.get("source_label"),
+            tags: TagRepository::new(self.pool.clone())
+                .tags_of(MaterialKind::Passage, id)
+                .await?,
         }))
+    }
+
+    /// 指定短文的正文与目标词（单词 ↔ 素材：只读命中的那几篇），最新在前
+    pub async fn texts_by_ids(&self, ids: &[Id]) -> AppResult<Vec<PassageText>> {
+        let rows = sqlx::query(
+            "SELECT p.id, p.title, p.level, p.sentences, p.target_words,
+                    CASE WHEN EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id) THEN 'video' ELSE p.origin END AS origin
+             FROM passages p WHERE p.id IN (SELECT value FROM json_each(?))
+             ORDER BY p.created_at DESC, p.id DESC",
+        )
+        .bind(serde_json::to_string(ids).unwrap_or_else(|_| "[]".into()))
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        Ok(rows
+            .iter()
+            .map(|r| PassageText {
+                id: r.get("id"),
+                title: r.get("title"),
+                origin: r.get("origin"),
+                level: r.get("level"),
+                sentences: parse(r.get("sentences")),
+                target_words: parse(r.get("target_words")),
+            })
+            .collect())
     }
 
     /// 只取正文（出题、评分用）
@@ -245,7 +292,8 @@ impl PassageRepository {
         origin: Option<&str>,
     ) -> AppResult<Vec<PassageSummary>> {
         let rows = sqlx::query(
-            "SELECT p.id, p.title, p.level, p.word_count, p.target_words, p.created_at, p.origin, p.source_label,
+            "SELECT p.id, p.title, p.level, p.word_count, p.target_words, p.created_at, p.source_label,
+                    CASE WHEN EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id) THEN 'video' ELSE p.origin END AS origin,
                     (SELECT COUNT(*) FROM passage_question_sets qs WHERE qs.passage_id = p.id) AS set_count,
                     (SELECT COUNT(*) FROM passage_attempts a
                      WHERE a.passage_id = p.id AND a.status = 'completed') AS completed_attempts,
@@ -261,7 +309,8 @@ impl PassageRepository {
                         WHERE s.passage_id = p.id AND s.kind = 'book' AND s.ref_id = ?1))
                AND (?2 IS NULL OR EXISTS (SELECT 1 FROM passage_sources s
                         WHERE s.passage_id = p.id AND s.kind = 'plan' AND s.ref_id = ?2))
-               AND (?3 IS NULL OR p.origin = ?3)
+               AND (?3 IS NULL OR (?3 = 'video') = EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id))
+               AND (?3 IS NULL OR ?3 = 'video' OR p.origin = ?3)
              ORDER BY p.created_at DESC, p.id DESC",
         )
         .bind(book_id)
@@ -271,6 +320,9 @@ impl PassageRepository {
         .await?;
         let ids: Vec<Id> = rows.iter().map(|r| r.get("id")).collect();
         let mut sources = self.sources_of(&ids).await?;
+        let mut tags = TagRepository::new(self.pool.clone())
+            .tags_of_kind(MaterialKind::Passage)
+            .await?;
         Ok(rows
             .into_iter()
             .map(|r| {
@@ -285,6 +337,7 @@ impl PassageRepository {
                     created_at: r.get("created_at"),
                     origin: r.get("origin"),
                     source_label: r.get("source_label"),
+                    tags: tags.remove(&id).unwrap_or_default(),
                     question_sets: r.get("set_count"),
                     completed_attempts: r.get("completed_attempts"),
                     last_attempt: brief_from_row(&r),
@@ -534,12 +587,26 @@ impl PassageRepository {
         passage_id: Id,
         target_words: &[PassageTargetWord],
     ) -> AppResult<()> {
+        let mut tx = self.pool.begin().await?;
         sqlx::query("UPDATE passages SET target_words = ?, updated_at = ? WHERE id = ?")
             .bind(json(&target_words)?)
             .bind(crate::time::now_utc())
             .bind(passage_id)
-            .execute(self.pool.as_ref())
+            .execute(&mut *tx)
             .await?;
+        let sentences: Option<String> =
+            sqlx::query_scalar("SELECT sentences FROM passages WHERE id = ?")
+                .bind(passage_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        crate::repositories::passage_word_repository::PassageWordRepository::replace_conn(
+            &mut tx,
+            passage_id,
+            &parse::<Vec<PassageSentence>>(sentences),
+            target_words,
+        )
+        .await?;
+        tx.commit().await?;
         Ok(())
     }
 

@@ -3,7 +3,7 @@
 use crate::error::AppResult;
 use crate::services::subtitle::Cue;
 use crate::types::video::VideoPlan;
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, Row, SqlitePool};
 
 /// videos 表的一行
 #[derive(Debug, Clone, FromRow)]
@@ -25,10 +25,20 @@ pub struct VideoRow {
     pub created_at: String,
     pub updated_at: String,
     pub clip_count: i64,
+    /// 字幕条数（SQL 里算，列表不读字幕本身）
+    pub cue_count: i64,
+    /// 字幕时间纠偏（毫秒，正数 = 字幕延后），迁移 060
+    pub subtitle_offset_ms: i64,
 }
 
 impl VideoRow {
+    /// 按纠偏换算后的字幕：显示、规划、切分一律用它（唯一换算点）
     pub fn cues(&self) -> Vec<Cue> {
+        shift_cues(self.raw_cues(), self.subtitle_offset_ms)
+    }
+
+    /// 字幕文件里的原始时间（写回翻译时用，下标与 cues() 一一对应）
+    pub fn raw_cues(&self) -> Vec<Cue> {
         serde_json::from_str(&self.cues).unwrap_or_default()
     }
 
@@ -37,6 +47,35 @@ impl VideoRow {
             .as_deref()
             .and_then(|p| serde_json::from_str(p).ok())
     }
+}
+
+/// 字幕整体平移 offset 毫秒（早于 0 的截到 0；条数与下标不变，翻译按下标写回原始字幕）
+pub fn shift_cues(cues: Vec<Cue>, offset_ms: i64) -> Vec<Cue> {
+    if offset_ms == 0 {
+        return cues;
+    }
+    cues.into_iter()
+        .map(|c| Cue {
+            start_ms: (c.start_ms + offset_ms).max(0),
+            end_ms: (c.end_ms + offset_ms).max(0),
+            ..c
+        })
+        .collect()
+}
+
+fn clip_with_title(r: &sqlx::sqlite::SqliteRow) -> (ClipRow, String) {
+    (
+        ClipRow {
+            video_id: r.get("video_id"),
+            passage_id: r.get("passage_id"),
+            seq: r.get("seq"),
+            start_ms: r.get("start_ms"),
+            end_ms: r.get("end_ms"),
+            file: r.get("file"),
+            poster_file: r.get("poster_file"),
+        },
+        r.get("title"),
+    )
 }
 
 /// video_clips 表的一行
@@ -51,10 +90,17 @@ pub struct ClipRow {
     pub poster_file: Option<String>,
 }
 
-const SELECT: &str = "SELECT v.id, v.title, v.source_name, v.source_file, v.media_file, v.subtitle_name, v.cues,
-        v.duration_ms, v.width, v.height, v.size_bytes, v.plan, v.status, v.error, v.created_at, v.updated_at,
-        (SELECT COUNT(*) FROM video_clips c WHERE c.video_id = v.id) AS clip_count
+/// 一个视频的全部信息（含字幕与规划）
+const SELECT: &str = "SELECT v.id, v.title, v.source_name, v.source_file, v.media_file, v.subtitle_name,
+        v.duration_ms, v.width, v.height, v.size_bytes, v.status, v.error, v.created_at, v.updated_at,
+        (SELECT COUNT(*) FROM video_clips c WHERE c.video_id = v.id) AS clip_count, v.subtitle_offset_ms,
+        json_array_length(v.cues) AS cue_count, v.cues, v.plan
      FROM videos v";
+
+/// 列表：不读字幕与规划（长视频的字幕有几百 KB，列表只要条数）
+fn select_list() -> String {
+    SELECT.replace("v.cues, v.plan", "'[]' AS cues, NULL AS plan")
+}
 
 pub struct VideoRepository;
 
@@ -88,7 +134,8 @@ impl VideoRepository {
 
     pub async fn list(pool: &SqlitePool) -> AppResult<Vec<VideoRow>> {
         Ok(sqlx::query_as::<_, VideoRow>(&format!(
-            "{SELECT} ORDER BY v.created_at DESC, v.id DESC"
+            "{} ORDER BY v.created_at DESC, v.id DESC",
+            select_list()
         ))
         .fetch_all(pool)
         .await?)
@@ -166,6 +213,33 @@ impl VideoRepository {
         Ok(done.rows_affected() > 0)
     }
 
+    /// 字幕时间纠偏
+    pub async fn set_subtitle_offset(
+        pool: &SqlitePool,
+        id: i64,
+        offset_ms: i64,
+    ) -> AppResult<bool> {
+        let done =
+            sqlx::query("UPDATE videos SET subtitle_offset_ms = ?, updated_at = ? WHERE id = ?")
+                .bind(offset_ms)
+                .bind(crate::time::now_utc())
+                .bind(id)
+                .execute(pool)
+                .await?;
+        Ok(done.rows_affected() > 0)
+    }
+
+    /// 写回字幕（补上的中文翻译；时间保持原始值）
+    pub async fn update_cues(pool: &SqlitePool, id: i64, cues: &[Cue]) -> AppResult<bool> {
+        let done = sqlx::query("UPDATE videos SET cues = ?, updated_at = ? WHERE id = ?")
+            .bind(serde_json::to_string(cues).unwrap_or_default())
+            .bind(crate::time::now_utc())
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(done.rows_affected() > 0)
+    }
+
     /// 删除原视频文件后：不再有 source_file；播放文件就是原视频时一起清空
     pub async fn clear_source(pool: &SqlitePool, id: i64) -> AppResult<()> {
         sqlx::query(
@@ -189,6 +263,34 @@ impl VideoRepository {
         .bind(video_id)
         .fetch_all(pool)
         .await?)
+    }
+
+    /// 全部短片与所属视频的标题（切片列表、单词 ↔ 素材关联用），按视频导入顺序与段序
+    pub async fn all_clips(pool: &SqlitePool) -> AppResult<Vec<(ClipRow, String)>> {
+        let rows = sqlx::query(
+            "SELECT c.video_id, c.passage_id, c.seq, c.start_ms, c.end_ms, c.file, c.poster_file, v.title
+             FROM video_clips c JOIN videos v ON v.id = c.video_id
+             ORDER BY v.created_at DESC, c.video_id, c.seq, c.id",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows.iter().map(clip_with_title).collect())
+    }
+
+    /// 指定短文的短片与所属视频标题
+    pub async fn clips_of_passages(
+        pool: &SqlitePool,
+        passage_ids: &[i64],
+    ) -> AppResult<Vec<(ClipRow, String)>> {
+        let rows = sqlx::query(
+            "SELECT c.video_id, c.passage_id, c.seq, c.start_ms, c.end_ms, c.file, c.poster_file, v.title
+             FROM video_clips c JOIN videos v ON v.id = c.video_id
+             WHERE c.passage_id IN (SELECT value FROM json_each(?))",
+        )
+        .bind(serde_json::to_string(passage_ids).unwrap_or_else(|_| "[]".into()))
+        .fetch_all(pool)
+        .await?;
+        Ok(rows.iter().map(clip_with_title).collect())
     }
 
     /// 短文对应的短片（短文详情页播放用）

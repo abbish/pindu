@@ -125,7 +125,7 @@ impl PassageService {
         origin: Option<&str>,
     ) -> AppResult<Vec<PassageSummary>> {
         if let Some(origin) = origin {
-            if !["generated", "imported"].contains(&origin) {
+            if !["generated", "imported", "video"].contains(&origin) {
                 return Err(AppError::ValidationError("短文来源筛选不正确".to_string()));
             }
         }

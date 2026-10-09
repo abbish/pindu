@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BookOpen, ChevronDown, FileQuestion, FileText, FileUp, Headphones, Plus, Search, Sparkles, Target, X } from 'lucide-react';
+import { BookOpen, ChevronDown, FileQuestion, FileText, FileUp, Headphones, Plus, Sparkles, Target } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { PassageList } from '@/components/PassageList';
@@ -15,6 +15,13 @@ import type { NavigateFn } from '../navigation';
 export interface PassageLibraryPageProps {
   onNavigate?: NavigateFn;
 }
+
+const ORIGINS = [
+  ['all', '全部来源'],
+  ['generated', 'AI 写的'],
+  ['imported', '我的材料'],
+  ['video', '视频'],
+] as const;
 
 const percent = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)}%`);
 
@@ -29,6 +36,9 @@ const modeHint = (label: string, m: PassageModeStatistics | undefined) =>
 export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNavigate }) => {
   const [query, setQuery] = useState('');
   const [origin, setOrigin] = useState<PassageOrigin | 'all'>('all');
+  const [tag, setTag] = useState('all');
+  /** 管理标签后重新加载列表（卡片上的标签名变了） */
+  const [listVersion, setListVersion] = useState(0);
   const [stats, setStats] = useState<PassageStatistics | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const create = () => onNavigate?.('create-passage');
@@ -85,33 +95,34 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
         ))}
       </section>
 
-      <div className="flex items-center gap-3">
-      <div className="relative w-72">
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索标题或单词" aria-label="搜索短文" className="px-8" />
-        {query && (
-          <Button variant="ghost" size="icon" className="absolute top-1/2 right-1 size-7 -translate-y-1/2" aria-label="清空搜索" onClick={() => setQuery('')}>
-            <X />
-          </Button>
-        )}
-      </div>
-        <ToggleGroup type="single" value={origin} onValueChange={(v) => v && setOrigin(v as PassageOrigin | 'all')} className="rounded-lg bg-muted p-0.5" aria-label="短文来源">
-          {(
-            [
-              ['all', '全部'],
-              ['generated', 'AI 写的'],
-              ['imported', '我的材料'],
-            ] as const
-          ).map(([v, label]) => (
-            <ToggleGroupItem key={v} value={v} className="h-8 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm">
-              {label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </div>
+      <MaterialToolbar
+        search={query}
+        onSearch={setQuery}
+        searchPlaceholder="搜索标题或单词"
+        tag={{ kind: 'passage', value: tag, onChange: setTag, onTagsChanged: () => setListVersion((v) => v + 1) }}
+        activeCount={(query ? 1 : 0) + (tag !== 'all' ? 1 : 0) + (origin !== 'all' ? 1 : 0)}
+        onReset={() => {
+          setQuery('');
+          setTag('all');
+          setOrigin('all');
+        }}
+      >
+        <Select value={origin} onValueChange={(v) => setOrigin(v as PassageOrigin | 'all')}>
+          <SelectTrigger className="w-32" aria-label="来源">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ORIGINS.map(([v, label]) => (
+              <SelectItem key={v} value={v}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </MaterialToolbar>
 
       {/* 列表数量变化（删除短文）时刷新统计 */}
-      <PassageList query={query} origin={origin === 'all' ? undefined : origin} onCreate={create} onImport={() => onNavigate?.('import-passage')} onCountChange={loadStats} onOpen={(passageId) => onNavigate?.('passage-detail', { passageId })} />
+      <PassageList key={listVersion} query={query} origin={origin === 'all' ? undefined : origin} tagId={tag === 'all' ? undefined : Number(tag)} onCreate={create} onImport={() => onNavigate?.('import-passage')} onCountChange={loadStats} onOpen={(passageId) => onNavigate?.('passage-detail', { passageId })} />
     </div>
   );
 };

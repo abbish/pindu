@@ -1,15 +1,6 @@
+use super::material::Tag;
 use super::{Id, Timestamp};
 use serde::{Deserialize, Serialize};
-
-/// 主题标签
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ThemeTag {
-    pub id: Id,
-    pub name: String,
-    pub icon: String,
-    pub color: String,
-    pub created_at: Timestamp,
-}
 
 /// 单词本
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -26,7 +17,9 @@ pub struct WordBook {
     pub last_used: Timestamp,
     pub deleted_at: Option<Timestamp>,
     pub status: String,
-    pub theme_tags: Option<Vec<ThemeTag>>,
+    /// 标签（迁移 060 起由「主题」改为素材共用标签）
+    #[serde(default)]
+    pub tags: Vec<Tag>,
     /// 词性分布（单词本列表一次查询带出，免得前端逐本请求统计）
     #[serde(default)]
     pub word_types: Option<WordTypeDistribution>,
@@ -39,7 +32,7 @@ pub struct CreateWordBookRequest {
     pub description: String,
     pub icon: String,
     pub icon_color: String,
-    pub theme_tag_ids: Option<Vec<Id>>,
+    pub tag_ids: Option<Vec<Id>>,
 }
 
 /// 更新单词本请求
@@ -50,7 +43,7 @@ pub struct UpdateWordBookRequest {
     pub icon: Option<String>,
     pub icon_color: Option<String>,
     pub status: Option<String>,
-    pub theme_tag_ids: Option<Vec<Id>>,
+    pub tag_ids: Option<Vec<Id>>,
 }
 
 /// 单词例句
@@ -251,5 +244,5 @@ pub struct CreateWordBookFromAnalysisRequest {
     pub words: Vec<AnalyzedWord>,
     pub status: Option<String>,
     pub book_id: Option<Id>, // 如果提供，则向现有单词本添加单词；否则创建新单词本
-    pub theme_tag_ids: Option<Vec<Id>>, // 主题标签ID列表
+    pub tag_ids: Option<Vec<Id>>,
 }

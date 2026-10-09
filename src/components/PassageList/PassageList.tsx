@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, FileText, FileUp, ListChecks, MoreHorizontal, Sparkles, Trash2 } from 'lucide-react';
+import { BookOpen, FileText, Clapperboard, FileUp, ListChecks, MoreHorizontal, Sparkles, Trash2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { PageError } from '@/components/PageError';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { cn } from '@/lib/utils';
+import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import { passageService } from '@/services/passageService';
 import { formatRelative } from '@/utils/datetime';
 import { LEVEL_LABEL, MODE_LABEL, scopeDetailLabel, scoreSummary } from '@/utils/passage';
@@ -32,6 +33,8 @@ export interface PassageListProps {
   query?: string;
   /** 只看 AI 写的 / 导入的材料 */
   origin?: PassageOrigin;
+  /** 只看带这个标签的 */
+  tagId?: number;
   /** 导入我的材料（空状态的次要操作） */
   onImport?: () => void;
   /** 打开短文详情 */
@@ -92,11 +95,14 @@ const PassageCard: React.FC<{ passage: PassageSummary; onOpen: () => void; onDel
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          {p.origin === 'imported' ? (
+          {p.origin !== 'generated' ? (
             <div className="flex flex-wrap gap-1">
               <Badge variant="outline" className="max-w-full font-normal" title={p.sourceLabel ?? undefined}>
-                <FileUp />
-                <span className="truncate">我的材料{p.sourceLabel ? ` · ${p.sourceLabel}` : ''}</span>
+                {p.origin === 'video' ? <Clapperboard /> : <FileUp />}
+                <span className="truncate">
+                  {p.origin === 'video' ? '视频' : '我的材料'}
+                  {p.sourceLabel ? ` · ${p.sourceLabel}` : ''}
+                </span>
               </Badge>
             </div>
           ) : (
@@ -108,6 +114,7 @@ const PassageCard: React.FC<{ passage: PassageSummary; onOpen: () => void; onDel
               </div>
             )
           )}
+          <TagChips tags={p.tags} />
           <div className="flex flex-wrap gap-1">
             {p.targetWords.slice(0, 12).map((w) => (
               <span key={w.word} className={cn('rounded-full px-2 py-0.5 text-xs', w.required ? 'bg-accent text-accent-foreground' : 'bg-muted')}>
@@ -128,7 +135,7 @@ const PassageCard: React.FC<{ passage: PassageSummary; onOpen: () => void; onDel
 };
 
 /** 短文卡片网格（短文库、单词本「短文」页签共用）：加载 / 空 / 错误三态，删除确认 */
-export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', origin, onOpen, onCreate, onImport, onCountChange, emptyDescription }) => {
+export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', origin, tagId, onOpen, onCreate, onImport, onCountChange, emptyDescription }) => {
   const toast = useToast();
   const [passages, setPassages] = useState<PassageSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -153,9 +160,12 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
     const q = query.trim().toLowerCase();
     if (!passages) return passages;
     return passages.filter(
-      (p) => (!origin || p.origin === origin) && (!q || p.title.toLowerCase().includes(q) || p.targetWords.some((w) => w.word.toLowerCase().includes(q)))
+      (p) =>
+        (!origin || p.origin === origin) &&
+        (tagId === undefined || p.tags.some((t) => t.id === tagId)) &&
+        (!q || p.title.toLowerCase().includes(q) || p.targetWords.some((w) => w.word.toLowerCase().includes(q)) || p.tags.some((t) => t.name.toLowerCase().includes(q)))
     );
-  }, [passages, query, origin]);
+  }, [passages, query, origin, tagId]);
 
   const remove = async () => {
     if (!toDelete) return;
@@ -200,7 +210,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
     );
   }
   if (visible.length === 0) {
-    if (!query.trim() && origin === 'imported') {
+    if (!query.trim() && tagId === undefined && origin === 'imported') {
       return (
         <EmptyState icon={<FileUp />} title="还没有导入的材料">
           {onImport && (

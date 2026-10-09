@@ -1,6 +1,6 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '../types';
-import type { MediaToolsStatus, PassageVideo, StartVideoImportRequest, StartVideoPlanRequest, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
+import type { ClipSummary, MediaToolsStatus, PassageVideo, StartVideoImportRequest, StartVideoPlanRequest, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
 
 /** 视频库（handlers/video.rs）：视频组件、导入（后台任务）、列表 / 详情 / 波形、改名、规划草稿、删除 */
 export class VideoService extends BaseService {
@@ -22,6 +22,11 @@ export class VideoService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<Video[]>('get_videos'));
   }
 
+  /** 全部切片（视频库「片段」） */
+  async getClips(): Promise<ApiResult<ClipSummary[]>> {
+    return this.executeWithLoading(() => this.client.invoke<ClipSummary[]>('get_clips'));
+  }
+
   async getVideo(videoId: number): Promise<ApiResult<VideoDetail>> {
     return this.executeWithLoading(() => this.client.invoke<VideoDetail>('get_video', { videoId }));
   }
@@ -37,6 +42,16 @@ export class VideoService extends BaseService {
 
   async savePlan(videoId: number, plan: VideoPlan): Promise<ApiResult<void>> {
     return this.executeWithLoading(() => this.client.invoke<void>('save_video_plan', { videoId, plan }));
+  }
+
+  /** 字幕时间纠偏（毫秒，正数 = 字幕延后） */
+  async setSubtitleOffset(videoId: number, offsetMs: number): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('set_video_subtitle_offset', { videoId, offsetMs }));
+  }
+
+  /** 翻译一段字幕（后台任务）：只翻译还没有中文的，写回字幕 */
+  async startTranslate(videoId: number, startMs: number, endMs: number): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_video_translate', { videoId, startMs, endMs }));
   }
 
   /** AI 规划切分（后台任务）：结果写进规划草稿，返回任务 id */

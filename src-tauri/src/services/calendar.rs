@@ -314,6 +314,7 @@ fn build_month_with_passages(
                 title: row.title.clone(),
                 set_id: row.set_id,
                 mode: row.mode.clone(),
+                is_video: row.is_video,
                 completed: row.completed,
                 unified_status: parse_lifecycle_status(&row.unified_status),
             });
@@ -612,6 +613,7 @@ mod tests {
             title: title.to_string(),
             set_id: None,
             mode: "reading".to_string(),
+            is_video: false,
         };
         let (start, end) = month_range(2026, 10, true).unwrap();
         let r = build_month_with_passages(

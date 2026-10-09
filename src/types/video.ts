@@ -1,3 +1,6 @@
+import type { PassageSummary } from './passage';
+import type { Tag } from './material';
+
 /** 视频库类型（对应 src-tauri/src/types/video.rs、services/subtitle.rs 与 media.rs，camelCase） */
 
 export type VideoStatus = 'importing' | 'ready' | 'processing' | 'done' | 'failed';
@@ -22,6 +25,10 @@ export interface Video {
   error: string | null;
   cueCount: number;
   clipCount: number;
+  /** 字幕时间纠偏（毫秒，正数 = 字幕延后）；详情里的 cues 已按它换算 */
+  subtitleOffsetMs: number;
+  /** 标签（列表里有；详情里为空） */
+  tags: Tag[];
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +55,8 @@ export interface VideoSegment {
   /** 学习重点 */
   focus: string;
   keyWords: string[];
+  /** 标签名（切分时写进切片的标签） */
+  tags?: string[];
 }
 
 /** 切分规划（编辑器草稿） */
@@ -120,4 +129,17 @@ export interface StartVideoPlanRequest {
   maxSeconds: number;
   /** 在当前规划基础上按意见修改 */
   feedback?: string;
+}
+
+/** 视频库「片段」：切出来的短片（一段 = 一篇带视频的短文） */
+export interface ClipSummary extends PassageSummary {
+  videoId: number;
+  videoTitle: string;
+  /** 在原视频里第几段 */
+  seq: number;
+  /** 在原视频里的起止 */
+  startMs: number;
+  endMs: number;
+  clipUrl: string | null;
+  posterUrl: string | null;
 }

@@ -7,6 +7,8 @@
 
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::repositories::tag_repository::TagRepository;
+use crate::types::material::{MaterialKind, Tag};
 use crate::types::{common::Id, wordbook::*};
 use sqlx::{Row, SqliteConnection, SqlitePool};
 use std::sync::Arc;
@@ -76,8 +78,9 @@ impl WordBookRepository {
                     Some(&format!("Found word book {}", id)),
                 );
 
-                // 获取主题标签
-                let tags = self.get_theme_tags(id).await?;
+                let tags = TagRepository::new(self.pool.clone())
+                    .tags_of(MaterialKind::WordBook, id)
+                    .await?;
 
                 Ok(Some(self.row_to_entity(row, tags)?))
             }
@@ -131,9 +134,9 @@ impl WordBookRepository {
             Some(&format!("Found {} word books", rows.len())),
         );
 
-        // 批量获取主题标签
-        let all_tags: std::collections::HashMap<Id, Vec<crate::types::wordbook::ThemeTag>> =
-            self.get_all_theme_tags().await?;
+        let all_tags = TagRepository::new(self.pool.clone())
+            .tags_of_kind(MaterialKind::WordBook)
+            .await?;
 
         rows.into_iter()
             .map(|row| {
@@ -157,8 +160,8 @@ impl WordBookRepository {
                 "normal",
             )
             .await?;
-        if let Some(tag_ids) = &request.theme_tag_ids {
-            self.add_theme_tags_conn(&mut tx, id, tag_ids).await?;
+        if let Some(tag_ids) = &request.tag_ids {
+            self.add_tags_conn(&mut tx, id, tag_ids).await?;
         }
         tx.commit().await?;
 
@@ -197,23 +200,16 @@ impl WordBookRepository {
         Ok(result.last_insert_rowid())
     }
 
-    /// 关联主题标签（在调用方事务内执行；已存在的关联忽略）
-    pub async fn add_theme_tags_conn(
+    /// 关联标签（在调用方事务内执行；已存在的关联忽略）
+    pub async fn add_tags_conn(
         &self,
         conn: &mut SqliteConnection,
         word_book_id: Id,
         tag_ids: &[Id],
     ) -> AppResult<()> {
-        for tag_id in tag_ids {
-            sqlx::query(
-                "INSERT OR IGNORE INTO word_book_theme_tags (word_book_id, theme_tag_id, created_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
-            )
-            .bind(word_book_id)
-            .bind(tag_id)
-            .execute(&mut *conn)
-            .await?;
-        }
-        Ok(())
+        TagRepository::new(self.pool.clone())
+            .add_conn(conn, MaterialKind::WordBook, word_book_id, tag_ids)
+            .await
     }
 
     /// 单词本是否存在且未删除（在调用方事务内读取）
@@ -299,13 +295,11 @@ impl WordBookRepository {
             Some(&format!("Updated word book {}", id)),
         );
 
-        // 更新主题标签：整体替换
-        if let Some(tag_ids) = &request.theme_tag_ids {
-            sqlx::query("DELETE FROM word_book_theme_tags WHERE word_book_id = ?")
-                .bind(id)
-                .execute(&mut *tx)
+        // 更新标签：整体替换
+        if let Some(tag_ids) = &request.tag_ids {
+            TagRepository::new(self.pool.clone())
+                .replace_conn(&mut tx, MaterialKind::WordBook, id, tag_ids)
                 .await?;
-            self.add_theme_tags_conn(&mut tx, id, tag_ids).await?;
         }
         tx.commit().await?;
 
@@ -530,11 +524,7 @@ impl WordBookRepository {
     }
 
     /// 将数据库行转换为实体
-    fn row_to_entity(
-        &self,
-        row: sqlx::sqlite::SqliteRow,
-        tags: Vec<ThemeTag>,
-    ) -> AppResult<WordBook> {
+    fn row_to_entity(&self, row: sqlx::sqlite::SqliteRow, tags: Vec<Tag>) -> AppResult<WordBook> {
         Ok(WordBook {
             id: row.get("id"),
             title: row.get("title"),
@@ -548,84 +538,9 @@ impl WordBookRepository {
             last_used: row.get("last_used"),
             deleted_at: row.get("deleted_at"),
             status: row.get("status"),
-            theme_tags: if tags.is_empty() { None } else { Some(tags) },
+            tags,
             word_types: None,
         })
-    }
-
-    /// 获取单词本的主题标签
-    async fn get_theme_tags(&self, word_book_id: Id) -> AppResult<Vec<ThemeTag>> {
-        let query = r#"
-            SELECT tt.id, tt.name, tt.icon, tt.color, tt.created_at
-            FROM theme_tags tt
-            JOIN word_book_theme_tags wbtt ON tt.id = wbtt.theme_tag_id
-            WHERE wbtt.word_book_id = ?
-            ORDER BY tt.name
-        "#;
-
-        let rows = sqlx::query(query)
-            .bind(word_book_id)
-            .fetch_all(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger
-                    .database_operation("SELECT", "theme_tags", false, Some(&e.to_string()));
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        Ok(rows
-            .iter()
-            .map(|row| ThemeTag {
-                id: row.get("id"),
-                name: row.get("name"),
-                icon: row.get("icon"),
-                color: row.get("color"),
-                created_at: row.get("created_at"),
-            })
-            .collect())
-    }
-
-    /// 批量获取所有单词本的主题标签
-    async fn get_all_theme_tags(&self) -> AppResult<std::collections::HashMap<Id, Vec<ThemeTag>>> {
-        let query = r#"
-            SELECT
-                wbtt.word_book_id,
-                tt.id, tt.name, tt.icon, tt.color, tt.created_at
-            FROM word_book_theme_tags wbtt
-            JOIN theme_tags tt ON wbtt.theme_tag_id = tt.id
-            ORDER BY wbtt.word_book_id, tt.name
-        "#;
-
-        let rows = sqlx::query(query)
-            .fetch_all(self.pool.as_ref())
-            .await
-            .map_err(|e| {
-                self.logger.database_operation(
-                    "SELECT",
-                    "word_book_theme_tags",
-                    false,
-                    Some(&e.to_string()),
-                );
-                AppError::DatabaseError(e.to_string())
-            })?;
-
-        let mut result: std::collections::HashMap<Id, Vec<ThemeTag>> =
-            std::collections::HashMap::new();
-
-        for row in rows {
-            let word_book_id: Id = row.get("word_book_id");
-            let tag = ThemeTag {
-                id: row.get("id"),
-                name: row.get("name"),
-                icon: row.get("icon"),
-                color: row.get("color"),
-                created_at: row.get("created_at"),
-            };
-
-            result.entry(word_book_id).or_default().push(tag);
-        }
-
-        Ok(result)
     }
 }
 
@@ -647,7 +562,7 @@ mod tests {
             description: "Test Description".to_string(),
             icon: "📚".to_string(),
             icon_color: "#FF5733".to_string(),
-            theme_tag_ids: None,
+            tag_ids: None,
         };
 
         let id = repo.create(request).await;
@@ -674,7 +589,7 @@ mod tests {
                 description: String::new(),
                 icon: "📚".to_string(),
                 icon_color: "#FF5733".to_string(),
-                theme_tag_ids: None,
+                tag_ids: None,
             })
             .await
             .unwrap();

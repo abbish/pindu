@@ -144,7 +144,7 @@ export const CalendarDayPanel: React.FC<CalendarDayPanelProps> = ({
               })}
               {passages.map((task) => {
                 const st = passageState(task, when);
-                const how = task.set_id === null ? '只朗读' : MODE_LABEL[task.mode];
+                const how = task.set_id === null ? (task.is_video ? '看视频跟读' : '只朗读') : MODE_LABEL[task.mode];
                 return (
                   <TaskRow
                     key={`p-${task.plan_id}-${task.passage_id}`}
@@ -169,7 +169,7 @@ export const CalendarDayPanel: React.FC<CalendarDayPanelProps> = ({
                       !task.completed && canPractice(task.unified_status) && (
                         <Button size="sm" onClick={() => onDoPassage(task)}>
                           <Play />
-                          {task.set_id === null ? '去朗读' : '开始练习'}
+                          {task.set_id === null ? (task.is_video ? '去观看' : '去朗读') : '开始练习'}
                         </Button>
                       )
                     }

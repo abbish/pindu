@@ -66,8 +66,10 @@ pub fn to_video(row: &VideoRow, data_dir: &Path, url: UrlOf) -> Video {
         size_bytes: row.size_bytes,
         status: row.status.clone(),
         error: row.error.clone(),
-        cue_count: row.cues().len() as i64,
+        cue_count: row.cue_count,
         clip_count: row.clip_count,
+        subtitle_offset_ms: row.subtitle_offset_ms,
+        tags: Vec::new(),
         created_at: row.created_at.clone(),
         updated_at: row.updated_at.clone(),
     }

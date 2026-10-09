@@ -15,6 +15,10 @@ import {
   snapTime,
   splitAt,
   undo,
+  alignedOffset,
+  nearestCue,
+  segmentThumb,
+  splitByKeyWords,
 } from './plan.ts';
 import type { Cue, VideoPlan } from '../../types/video';
 
@@ -115,4 +119,30 @@ test('时间显示', async () => {
   assert.equal(formatClock(62_345), '1:02.3');
   assert.equal(formatClock(3_723_000, false), '1:02:03');
   assert.equal(formatClock(-5), '0:00.0');
+});
+
+test('片段预览图取中间那一刻', () => {
+  const thumbs = ['a', 'b', 'c', 'd'];
+  assert.equal(segmentThumb(thumbs, 10_000, { startMs: 0, endMs: 20_000 }), 'b');
+  assert.equal(segmentThumb(thumbs, 10_000, { startMs: 50_000, endMs: 90_000 }), 'd');
+  assert.equal(segmentThumb([], 10_000, { startMs: 0, endMs: 1 }), undefined);
+});
+
+test('对齐字幕：让这句从播放头开始', () => {
+  // 字幕显示在 5s，实际 6.2s 才开口：字幕要延后 1.2s
+  assert.equal(alignedOffset(0, 5000, 6200), 1200);
+  assert.equal(alignedOffset(1200, 6200, 5900), 900);
+  const cues = [cue(1000, 2000, 'a'), cue(5000, 6000, 'b')];
+  assert.equal(nearestCue(cues, 4200)?.en, 'b');
+});
+
+test('句子里标出重点词与变形', () => {
+  const parts = splitByKeyWords('She ordered the menu. Orders!', ['order', 'menu']);
+  assert.deepEqual(
+    parts.filter((p) => p.key).map((p) => p.text),
+    ['ordered', 'menu', 'Orders']
+  );
+  assert.equal(splitByKeyWords('Hello', []).length, 1);
+  assert.deepEqual(splitByKeyWords('a piece of cake', ['piece of cake']).filter((p) => p.key).map((p) => p.text), ['piece of cake']);
+  assert.equal(splitByKeyWords('Careful', ['car']).filter((p) => p.key).length, 0);
 });

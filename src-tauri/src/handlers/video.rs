@@ -173,7 +173,7 @@ fn file_name(path: &Path) -> String {
 }
 
 /// 文件路径 → 本机媒体服务的地址（服务没启动时为 None）
-fn url_of(app: &AppHandle) -> impl Fn(&Path) -> Option<String> {
+pub(crate) fn url_of(app: &AppHandle) -> impl Fn(&Path) -> Option<String> {
     let server = app
         .try_state::<crate::media_server::MediaServer>()
         .map(|s| s.inner().clone());
@@ -186,11 +186,21 @@ pub async fn get_videos(app: AppHandle) -> AppResult<Vec<Video>> {
     let logger = app.state::<Logger>();
     logger.api_request("get_videos", None);
     let data = crate::app_paths::dirs(&app).data;
-    let result = VideoRepository::list(pool.inner()).await.map(|rows| {
-        rows.iter()
-            .map(|row| video_service::to_video(row, &data, &url_of(&app)))
-            .collect()
-    });
+    let result = async {
+        let rows = VideoRepository::list(pool.inner()).await?;
+        let mut tags =
+            crate::repositories::tag_repository::TagRepository::new(Arc::new(pool.inner().clone()))
+                .tags_of_kind(crate::types::material::MaterialKind::Video)
+                .await?;
+        Ok(rows
+            .iter()
+            .map(|row| Video {
+                tags: tags.remove(&row.id).unwrap_or_default(),
+                ..video_service::to_video(row, &data, &url_of(&app))
+            })
+            .collect())
+    }
+    .await;
     super::finish(&logger, "get_videos", result)
 }
 
@@ -256,10 +266,17 @@ pub async fn save_video_plan(app: AppHandle, video_id: i64, plan: VideoPlan) -> 
         )),
     );
     let pool = app.state::<SqlitePool>();
-    let result = match VideoRepository::save_plan(pool.inner(), video_id, &plan).await {
-        Ok(true) => Ok(()),
-        Ok(false) => Err(AppError::NotFound("视频不存在，可能已被删除".to_string())),
-        Err(e) => Err(e),
+    // AI 规划 / 切分进行中不能改规划：任务结束时会写入或按规划切分，中途改动会被覆盖或切出不一致的片段
+    let result = if busy(&app, video_id) {
+        Err(AppError::ValidationError(
+            "这个视频正在处理，等它完成后再修改".to_string(),
+        ))
+    } else {
+        match VideoRepository::save_plan(pool.inner(), video_id, &plan).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(AppError::NotFound("视频不存在，可能已被删除".to_string())),
+            Err(e) => Err(e),
+        }
     };
     super::finish(&logger, "save_video_plan", result)
 }
@@ -310,6 +327,7 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
             return Err(AppError::ValidationError("视频还没有导入完成".to_string()));
         }
         let pool_arc = Arc::new(pool.inner().clone());
+        let pool_arc_for_tags = pool_arc.clone();
         let logger_arc = Arc::new(logger.inner().clone());
         let job = crate::services::video_plan::VideoPlanJob {
             model: crate::services::agent_settings::AgentSettingsService::new(
@@ -331,6 +349,12 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
             min_seconds: request.min_seconds,
             max_seconds: request.max_seconds,
             feedback: request.feedback.clone(),
+            tags: crate::services::tag::TagService::new(pool_arc_for_tags)
+                .get_tags()
+                .await?
+                .into_iter()
+                .map(|t| t.tag.name)
+                .collect(),
         };
         Ok(app.state::<Jobs>().spawn(
             JobSpec {
@@ -459,15 +483,163 @@ async fn passage_video(
     }))
 }
 
-/// 有后台任务正在处理这个视频
-fn busy(app: &AppHandle, video_id: i64) -> bool {
+/// 全部切片（视频库「片段」）：最新导入的视频在前，同一视频按段序
+#[tauri::command]
+pub async fn get_clips(app: AppHandle) -> AppResult<Vec<crate::types::video::ClipSummary>> {
+    let logger = app.state::<Logger>();
+    logger.api_request("get_clips", None);
+    let result = async {
+        let pool = app.state::<SqlitePool>();
+        let mut passages: std::collections::HashMap<i64, crate::types::passage::PassageSummary> =
+            crate::repositories::passage_repository::PassageRepository::new(Arc::new(
+                pool.inner().clone(),
+            ))
+            .list(None, None, Some("video"))
+            .await?
+            .into_iter()
+            .map(|p| (p.id, p))
+            .collect();
+        let data = crate::app_paths::dirs(&app).data;
+        let url = url_of(&app);
+        Ok(VideoRepository::all_clips(pool.inner())
+            .await?
+            .into_iter()
+            .filter_map(|(clip, video_title)| {
+                let passage = passages.remove(&clip.passage_id)?;
+                let brief =
+                    crate::services::word_materials::clip_brief(&clip, &video_title, &data, &url);
+                Some(crate::types::video::ClipSummary {
+                    passage,
+                    video_id: clip.video_id,
+                    video_title,
+                    seq: clip.seq,
+                    start_ms: clip.start_ms,
+                    end_ms: clip.end_ms,
+                    clip_url: brief.clip_url,
+                    poster_url: brief.poster_url,
+                })
+            })
+            .collect())
+    }
+    .await;
+    super::finish(&logger, "get_clips", result)
+}
+
+/// 这个视频有没有指定种类的任务在跑
+fn running(app: &AppHandle, video_id: i64, kinds: &[&str]) -> bool {
     app.state::<Jobs>().list().iter().any(|job| {
         job.status.is_active()
+            && kinds.contains(&job.kind.as_str())
             && job
                 .link
                 .as_ref()
                 .is_some_and(|l| l.params["videoId"] == video_id)
     })
+}
+
+/// 有后台任务正在导入 / 规划 / 切分这个视频：这期间规划与字幕时间不能改（翻译字幕不算，它只补中文）
+fn busy(app: &AppHandle, video_id: i64) -> bool {
+    running(
+        app,
+        video_id,
+        &["video_import", "video_plan", "video_process"],
+    )
+}
+
+/// 字幕时间纠偏（毫秒，正数 = 字幕延后，±10 分钟内）；不改原始时间，显示、规划、切分都按它换算
+#[tauri::command]
+pub async fn set_video_subtitle_offset(
+    app: AppHandle,
+    video_id: i64,
+    offset_ms: i64,
+) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "set_video_subtitle_offset",
+        Some(&format!("video_id: {video_id}, offset: {offset_ms}ms")),
+    );
+    let result = async {
+        if offset_ms.abs() > 600_000 {
+            return Err(AppError::ValidationError(
+                "字幕偏移不能超过 10 分钟".to_string(),
+            ));
+        }
+        if busy(&app, video_id) {
+            return Err(AppError::ValidationError(
+                "这个视频正在处理，等它完成后再修改".to_string(),
+            ));
+        }
+        let pool = app.state::<SqlitePool>();
+        if VideoRepository::set_subtitle_offset(pool.inner(), video_id, offset_ms).await? {
+            Ok(())
+        } else {
+            Err(AppError::NotFound("视频不存在，可能已被删除".to_string()))
+        }
+    }
+    .await;
+    super::finish(&logger, "set_video_subtitle_offset", result)
+}
+
+/// 翻译一段字幕（后台任务）：只翻译这段里还没有中文的，写回字幕
+#[tauri::command]
+pub async fn start_video_translate(
+    app: AppHandle,
+    video_id: i64,
+    start_ms: i64,
+    end_ms: i64,
+) -> AppResult<String> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "start_video_translate",
+        Some(&format!("video_id: {video_id}, {start_ms}–{end_ms}ms")),
+    );
+    let result = async {
+        if running(&app, video_id, &["video_translate"]) {
+            return Err(AppError::ValidationError(
+                "正在翻译这个视频的字幕，等它完成".to_string(),
+            ));
+        }
+        let row = VideoRepository::get(pool.inner(), video_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
+        let pool_arc = Arc::new(pool.inner().clone());
+        let logger_arc = Arc::new(logger.inner().clone());
+        let job = crate::services::video_translate::VideoTranslateJob {
+            model: crate::services::agent_settings::AgentSettingsService::new(
+                pool_arc.clone(),
+                logger_arc.clone(),
+            )
+            .model_for(
+                crate::services::agent_settings::AgentTaskKind::Passage,
+                None,
+            )
+            .await?,
+            profile: crate::services::prompt_profile::PromptProfileService::load(pool.inner())
+                .await?,
+            paths: super::agent_paths(&app)?,
+            pool: pool_arc,
+            logger: logger_arc,
+            video_id,
+            start_ms,
+            end_ms,
+        };
+        Ok(app.state::<Jobs>().spawn(
+            JobSpec {
+                kind: "video_translate",
+                title: format!("翻译字幕 · {}", row.title),
+                lane: Lane::Agent,
+                detached: true,
+                link: Some(JobLink::new(
+                    "video-editor",
+                    serde_json::json!({ "videoId": video_id }),
+                )),
+            },
+            move |ctx| job.run(ctx),
+        ))
+    }
+    .await;
+    super::finish(&logger, "start_video_translate", result)
 }
 
 #[tauri::command]

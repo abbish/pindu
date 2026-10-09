@@ -120,64 +120,6 @@ pub async fn get_word_book_detail(app: AppHandle, book_id: Id) -> AppResult<Word
     }
 }
 
-/// 新建主题标签（名称 1–10 个字，同名已存在时返回已有的）
-#[tauri::command]
-pub async fn create_theme_tag(
-    app: AppHandle,
-    name: String,
-    icon: Option<String>,
-) -> AppResult<ThemeTag> {
-    use crate::services::theme_tag::ThemeTagService;
-    let pool = app.state::<SqlitePool>();
-    let logger = app.state::<Logger>();
-    logger.api_request("create_theme_tag", Some(&format!("name: {}", name)));
-    let service = ThemeTagService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone()),
-    );
-    let result = service.create_theme_tag(&name, icon.as_deref()).await;
-    logger.api_response(
-        "create_theme_tag",
-        result.is_ok(),
-        Some(&match &result {
-            Ok(tag) => format!("theme tag {}", tag.id),
-            Err(e) => e.to_string(),
-        }),
-    );
-    result
-}
-
-/// 获取所有主题标签
-#[tauri::command]
-pub async fn get_theme_tags(app: AppHandle) -> AppResult<Vec<ThemeTag>> {
-    use crate::services::theme_tag::ThemeTagService;
-
-    let pool = app.state::<SqlitePool>();
-    let logger = app.state::<Logger>();
-
-    logger.api_request("get_theme_tags", None);
-
-    let service = ThemeTagService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone()),
-    );
-
-    match service.get_theme_tags().await {
-        Ok(theme_tags) => {
-            logger.api_response(
-                "get_theme_tags",
-                true,
-                Some(&format!("Found {} theme tags", theme_tags.len())),
-            );
-            Ok(theme_tags)
-        }
-        Err(e) => {
-            logger.api_response("get_theme_tags", false, Some(&e.to_string()));
-            Err(e)
-        }
-    }
-}
-
 /// 获取单词本词性统计
 #[tauri::command]
 pub async fn get_word_book_statistics(

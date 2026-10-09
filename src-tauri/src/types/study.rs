@@ -534,6 +534,8 @@ pub struct CalendarPassageTask {
     pub set_id: Option<i64>,
     /// reading / listening
     pub mode: String,
+    /// 视频切片（只读任务即「看视频跟读」）
+    pub is_video: bool,
     pub completed: bool,
     /// 计划状态（与 CalendarStudyPlan 同一种取值）：只有待开始 / 进行中的计划能练
     pub unified_status: StudyPlanLifecycleStatus,

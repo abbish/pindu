@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Library, Plus, Search, SearchX, X } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { BookOpen, Library, Plus, SearchX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
@@ -13,7 +11,8 @@ import { WordBookSummaryCard } from '@/components/WordBookSummaryCard/WordBookSu
 import { useToast } from '@/components/Toast/ToastContainer';
 import { wordBookService } from '@/services/wordbookService';
 import { instantMs } from '@/utils/datetime';
-import type { ThemeTag, WordBook as DbWordBook } from '@/types';
+import type { WordBook as DbWordBook } from '@/types';
+import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
 import type { NavigateFn } from '@/navigation';
 import { PageError } from '@/components/PageError';
 import { messageOf } from '@/utils/errorHandler';
@@ -31,14 +30,14 @@ interface Filters {
   /** 搜索关键词（前端按名称、描述过滤） */
   searchTerm: string;
   /** 主题标签 ID，'all' 为不限 */
-  theme: string;
+  tag: string;
   /** 状态（后端过滤），'all' 为不限 */
   status: string;
   /** 排序 */
   sortBy: string;
 }
 
-const DEFAULT_FILTERS: Filters = { searchTerm: '', theme: 'all', status: 'all', sortBy: 'default' };
+const DEFAULT_FILTERS: Filters = { searchTerm: '', tag: 'all', status: 'all', sortBy: 'default' };
 
 const STATUS_OPTIONS = [
   { value: 'all', label: '所有状态' },
@@ -68,8 +67,6 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [themes, setThemes] = useState<ThemeTag[]>([]);
-  const [themesLoading, setThemesLoading] = useState(true);
 
   const loadWordBookData = useCallback(async (status: string) => {
     setLoading(true);
@@ -125,13 +122,6 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
     loadWordBookData(filters.status);
   }, [filters.status, loadWordBookData]);
 
-  // 主题标签
-  useEffect(() => {
-    wordBookService.getThemeTags().then((result) => {
-      if (result.success) setThemes(result.data);
-      setThemesLoading(false);
-    });
-  }, []);
 
   const filteredBooks = useMemo(() => {
     let books = [...(data?.books ?? [])];
@@ -139,9 +129,9 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
       const q = filters.searchTerm.toLowerCase();
       books = books.filter((b) => b.title.toLowerCase().includes(q) || (b.description ?? '').toLowerCase().includes(q));
     }
-    if (filters.theme !== 'all') {
-      const themeId = Number(filters.theme);
-      books = books.filter((b) => b.theme_tags?.some((t) => t.id === themeId) ?? false);
+    if (filters.tag !== 'all') {
+      const tagId = Number(filters.tag);
+      books = books.filter((b) => b.tags.some((t) => t.id === tagId));
     }
     if (filters.sortBy === 'created_time') {
       books.sort((a, b) => instantMs(b.created_at) - instantMs(a.created_at));
@@ -152,8 +142,8 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
   }, [data, filters]);
 
   const activeFilterCount =
-    (filters.searchTerm ? 1 : 0) + (filters.theme !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0) + (filters.sortBy !== 'default' ? 1 : 0);
-  const isFiltering = Boolean(filters.searchTerm) || filters.theme !== 'all' || filters.status !== 'all';
+    (filters.searchTerm ? 1 : 0) + (filters.tag !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0) + (filters.sortBy !== 'default' ? 1 : 0);
+  const isFiltering = Boolean(filters.searchTerm) || filters.tag !== 'all' || filters.status !== 'all';
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => setFilters((f) => ({ ...f, [key]: value }));
 
   const stats = data?.stats;
@@ -191,40 +181,15 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
         ))}
       </section>
 
-      {/* 工具栏：搜索 + 主题 + 状态 + 排序 + 重置 */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-72">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={filters.searchTerm}
-            onChange={(e) => setFilter('searchTerm', e.target.value)}
-            placeholder="搜索单词本"
-            aria-label="搜索单词本"
-            className="px-8"
-          />
-          {filters.searchTerm && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-1/2 right-1 size-7 -translate-y-1/2"
-              aria-label="清除搜索"
-              onClick={() => setFilter('searchTerm', '')}
-            >
-              <X />
-            </Button>
-          )}
-        </div>
-        <Select value={filters.theme} onValueChange={(v) => setFilter('theme', v)} disabled={themesLoading}>
-          <SelectTrigger className="w-36" aria-label="主题标签">
-            <SelectValue placeholder={themesLoading ? '加载主题…' : '所有主题'} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">所有主题</SelectItem>
-            {themes.map((t) => (
-              <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <MaterialToolbar
+        search={filters.searchTerm}
+        onSearch={(v) => setFilter('searchTerm', v)}
+        searchPlaceholder="搜索单词本"
+        tag={{ kind: 'word_book', value: filters.tag, onChange: (v) => setFilter('tag', v), onTagsChanged: () => loadWordBookData(filters.status) }}
+        activeCount={activeFilterCount}
+        onReset={() => setFilters(DEFAULT_FILTERS)}
+        countText={loading ? undefined : `共 ${filteredBooks.length} 本`}
+      >
         <Select value={filters.status} onValueChange={(v) => setFilter('status', v)}>
           <SelectTrigger className="w-32" aria-label="状态">
             <SelectValue />
@@ -245,16 +210,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
             ))}
           </SelectContent>
         </Select>
-        {activeFilterCount > 0 && (
-          <Button variant="ghost" onClick={() => setFilters(DEFAULT_FILTERS)}>
-            重置
-            <Badge variant="secondary" className="tabular-nums">{activeFilterCount}</Badge>
-          </Button>
-        )}
-        {!loading && (
-          <span className="ml-auto text-sm text-muted-foreground tabular-nums">共 {filteredBooks.length} 本</span>
-        )}
-      </div>
+      </MaterialToolbar>
 
       {loading ? (
         <div className="grid grid-cols-3 gap-3">
@@ -286,6 +242,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
               lastUsed={book.last_used}
               icon={book.icon}
               iconColor={book.icon_color}
+              tags={book.tags}
               status={book.deleted_at ? 'deleted' : book.status}
               // 已删除的单词本没有详情页：只能恢复
               onOpen={() => {

@@ -348,6 +348,8 @@ export interface CalendarPassageTask {
   /** 题组；为空表示只朗读 */
   set_id: number | null;
   mode: 'reading' | 'listening';
+  /** 视频切片（只读任务即「看视频跟读」） */
+  is_video: boolean;
   completed: boolean;
   /** 所属计划的状态（与 CalendarStudyPlan.unified_status 同一种小写取值）；只有进行中 / 待开始的计划能练 */
   unified_status: CalendarPlanStatus;

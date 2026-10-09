@@ -86,7 +86,7 @@ src-tauri/
 ├── src/media.rs              ffmpeg / ffprobe 调用唯一 owner：定位、读取信息、转码与精确切分（进度 + 取消）、波形峰值、缩略图
 ├── src/jobs.rs               后台任务唯一 owner：提交即返回 jobId，agent / media 两条队列，进度与结果经 `job-updated` 事件推送；只放内存（见 §4.4）
 ├── src/prompts/agent/*.md    agent 任务提示词，include_str! 编译进二进制（见 §6）
-├── migrations/001..059_*.sql
+├── migrations/001..060_*.sql
 └── src/test_support.rs       #[cfg(test)] 内存库与种子数据
 
 scripts/ffmpeg/                随应用分发的 ffmpeg：sources.json（版本 + sha256）、build.sh（LGPL 最小配置）、prepare.mjs（→ src-tauri/binaries/ffmpeg-<triple>）；许可证随包分发在 src-tauri/licenses/
@@ -126,7 +126,8 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 
 | 文件 | 命令（节选） |
 |---|---|
-| `handlers/wordbook.rs` | get_word_books, get_word_book_detail, get_word_book_linked_plans, get_word_book_statistics, get_global_word_book_statistics, get_theme_tags, create/update/delete_word_book, get_theme_tags / create_theme_tag（新建主题，1–10 字，同名复用）, restore_word_book |
+| `handlers/wordbook.rs` | get_word_books, get_word_book_detail, get_word_book_linked_plans, get_word_book_statistics, get_global_word_book_statistics, create/update/delete_word_book（`tag_ids`）, restore_word_book |
+| `handlers/material.rs` | get_tags（含各类素材数量）, create_tag（1–10 字，同名复用）, rename_tag（同名即合并）, delete_tag, set_material_tags（kind + refId 整体替换）, get_word_materials（一个词出现在哪些短文 / 切片）, get_book_word_materials（单词本各词的出现次数）；词索引在 `repositories/passage_word_repository.rs`，词形在 `services/word_forms.rs` |
 | `handlers/word.rs` | get_words_by_book（分页/搜索/词性过滤）, add_word_to_book / update_word（单词与释义必填、本内不重名）, delete_words（批量，单事务；单个删除也走它）, find_existing_words, generate_word_examples（AI 补充 append / 重新生成 replace 例句） |
 | `handlers/study_plan.rs` | get_study_plans, get_study_plan, generate_study_plan_schedule（默认顺序，立即完成）, start_study_plan_ordering（AI 排序，前台任务）, create_study_plan_with_schedule, start/complete/terminate/restart/publish/delete_study_plan, pause/resume_study_plan（暂停 / 继续，继续时顺延）, get_study_plan_words, batch_remove_words_from_plan, get_study_plan_schedules, get_study_plan_calendar_data, get_plan_memory_overview, get_study_statistics, get_study_plan_statistics, get_study_plan_word_books, update_study_plan_basic_info（任何状态）, preview_study_plan（确定性预览，不用 AI）, replan_study_plan_pace（就地改每天新词数，只重排没练过的新词日）, add_word_books_to_plan（追加单词本） |
 | `handlers/practice.rs` | start_practice_session, submit_step_result（`kind`: learn 首次作答 / retry 纠正后重考 / review 当轮小测；成绩与日程完成只看 learn）, save_practice_progress（中途时长落库，恢复后继续累计）, pause/resume/complete/cancel_practice_session, get_incomplete_practice_sessions, get_practice_session_detail, get_plan_practice_sessions |
@@ -145,7 +146,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 | `handlers/prompt_profile.rs` | get_prompt_profile / update_prompt_profile / apply_prompt_preset / preview_prompts（学习者档案与各任务补充要求，见 §6） |
 | `handlers/system.rs` | get_system_logs, get_log_level / set_log_level（最低记录级别）, open_log_folder, open_data_folder, get_startup_status（启动失败原因，见 §4.3） |
 | `handlers/updater.rs` | check_for_update（读 GitHub Releases 的 latest.json；开发版可用 `PINDU_UPDATE_ENDPOINT` 覆盖地址）, install_update（`on_progress: Channel<UpdateProgress>`，内置公钥验签；有 agent 任务在跑时拒绝，开始安装后 `agent::session` 不再启动新 sidecar；失败可直接重试）, restart_app；Linux 非 AppImage 只提示不安装。前端 `UpdateWatcher`（App 级：自动检查 + 菜单）/ `UpdateBanner`（AppShell 顶栏下与启动错误页） |
-| `handlers/video.rs` | get_media_tools_status / set_ffmpeg_dir（视频组件）, start_video_import（后台任务：复制 → 读信息 → 不能直接播放时转 720p 代理 → 波形与缩略图；字幕在命令里先解析）, get_videos, get_video（含字幕条、规划草稿、缩略图、已切出的短片）, get_video_peaks, rename_video, save_video_plan（编辑器自动保存）, start_video_plan（AI 规划，后台任务）, start_video_processing（按规划精确切分并逐段存成短文，后台任务，按段可续）, get_passage_video（短文详情播放短片）, delete_video（连同短片短文，计划还在用时拒绝）, delete_video_source |
+| `handlers/video.rs` | get_media_tools_status / set_ffmpeg_dir（视频组件）, start_video_import（后台任务：复制 → 读信息 → 不能直接播放时转 720p 代理 → 波形与缩略图；字幕在命令里先解析）, get_videos, get_video（含字幕条、规划草稿、缩略图、已切出的短片）, get_video_peaks, rename_video, save_video_plan（编辑器自动保存；规划 / 切分进行中拒绝）, set_video_subtitle_offset（字幕纠偏）, start_video_translate（按需翻译一段字幕，写回 cues）, get_clips（视频库「片段」）, start_video_plan（AI 规划，后台任务）, start_video_processing（按规划精确切分并逐段存成短文，后台任务，按段可续）, get_passage_video（短文详情播放短片）, delete_video（连同短片短文，计划还在用时拒绝）, delete_video_source |
 | `handlers/tts.rs` | text_to_speech（`style`: word / sentence → 固定语音指令，参与缓存键）, get_tts_voices（预置英文音色）, get_default_tts_voice（默认音色经 update_tts_config 设置，允许自定义音色 ID）, clear_tts_cache, get_tts_cache_stats, get_tts_config（返回 `TtsConfigSafe`）, update_tts_config（`request: UpdateTtsConfigRequest`） |
 
 `handlers/mod.rs` 用 `pub use xxx::*` 全部重导出，所以 `lib.rs` 里可直接写命令名。**新增命令必须在 `lib.rs` 的 `generate_handler!` 里注册**，否则前端 invoke 报 "command not found"。
@@ -155,8 +156,8 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 启动流程（owner `startup.rs`）：`AppDirs::resolve`（发布版 `<系统数据目录>/com.redlark.pindu-app/`；debug 构建 `com.redlark.pindu-app-dev/`；环境变量 `PINDU_DATA_DIR` 覆盖）→ `connect(<数据目录>/vocabulary.db)` → 对账 `_sqlx_migrations`（上次升级未完成、数据库来自更新的版本、已执行迁移被改过 → 不动数据、返回 `StartupFailure`）→ 有待执行迁移时先 `VACUUM INTO` 备份到 `backups/`（保留 5 份；备份失败不升级）→ `MIGRATOR.run` → `app.manage(pool)`。窗口立即显示 `index.html` 里的启动画面（样式内联在 index.html，前端代码加载前就能画出；`utils/bootSplash.ts` 更新进度、就绪后淡出），数据库在后台打开，阶段（opening / backing_up / upgrading / ready / failed）记在 `startup::StartupState`，`StartupGate` 轮询 `get_startup_status` 显示进度。任何失败都不 panic、不建新库：前端 `StartupGate` 只显示错误页；命令入口（`lib.rs` 的 invoke_handler → `startup::command_guard`）在数据库没打开时拒绝需要数据库的命令（返回 `DATABASE_ERROR`），只放行错误页、日志、更新与退出用的命令（`AVAILABLE_WITHOUT_DATABASE`）。`delete_database_and_restart` 删除前也先备份。发布版用 `tauri-plugin-single-instance` 保证只运行一个实例。
 外键是开启的（sqlx 默认 `foreign_keys = ON`），schema 中的 `ON DELETE CASCADE` 生效：删除计划/日程会连带删除单词关联、练习会话与作答记录。
 
-当前有效表（迁移 001–059 之后）：
-`word_books` · `words` · `word_examples`（单词例句，一对多，`sort_order` 0 为最简单的一句；`words.example_sentence/translation` 为 040 遗留列，041 起不再读写） · `theme_tags` · `word_book_theme_tags` · `study_plans` · `study_plan_words` · `study_plan_schedules` · `study_plan_schedule_words` · `study_plan_status_history` · `study_sessions` · `study_statistics`(遗留) · `study_timer_records` · `study_pause_records` · `practice_sessions` · `word_practice_records` · `practice_pause_records` · `ai_providers` · `ai_models` · `app_settings`（键值设置：AI 任务模型、批量参数、学习者档案）· `tts_cache` · `volcengine_tts_config` · `elevenlabs_config`(遗留，035 起不再读写) · `categories`(001 遗留) · `passages`（短文，独立素材：正文 + 逐句翻译（句子带 paragraph 段落标记）+ 目标词；`origin` generated AI 写的 / imported 导入的材料，`source_label` 文件名，057）· `passage_sources`（来源：单词本 / 计划，`ref_id` 无外键，删来源不删短文）· `passage_question_sets`（阅读理解题组，一篇短文可多套）· `passage_questions`（挂题组）· `passage_attempts`（按题组作答，口径独立于单词练习）· `study_plan_passages`（计划里的短文任务：短文 + 题组（空 = 只朗读）+ reading / listening + 排期日期 + 完成时刻，056；`study_plans.practice_content` words / passages / both、`passage_interval_days`）。`videos`（视频库：文件在 `<数据目录>/videos/<id>/`，表里只存文件名；`cues` 带时间的字幕 JSON、`plan` 切分规划草稿 JSON、`status` importing / ready / processing / done / failed，059）· `video_clips`（切出的短片，一段对应一篇短文，`passage_id` 级联；短文句子 JSON 带 `startMs` / `endMs`，相对短片开头）。`word_explanations`（讲解缓存）已在 058 删除：讲解每次实时生成（D31）。
+当前有效表（迁移 001–060 之后）：
+`word_books` · `words` · `word_examples`（单词例句，一对多，`sort_order` 0 为最简单的一句；`words.example_sentence/translation` 为 040 遗留列，041 起不再读写） · `tags` / `material_tags`（素材共用标签：kind word_book / passage / video + ref_id，删除素材时触发器清理；060 由 theme_tags 迁来）· `study_plans` · `study_plan_words` · `study_plan_schedules` · `study_plan_schedule_words` · `study_plan_status_history` · `study_sessions` · `study_statistics`(遗留) · `study_timer_records` · `study_pause_records` · `practice_sessions` · `word_practice_records` · `practice_pause_records` · `ai_providers` · `ai_models` · `app_settings`（键值设置：AI 任务模型、批量参数、学习者档案）· `tts_cache` · `volcengine_tts_config` · `elevenlabs_config`(遗留，035 起不再读写) · `categories`(001 遗留) · `passages`（短文，独立素材：正文 + 逐句翻译（句子带 paragraph 段落标记）+ 目标词；`origin` generated AI 写的 / imported 导入的材料，`source_label` 文件名，057）· `passage_sources`（来源：单词本 / 计划，`ref_id` 无外键，删来源不删短文）· `passage_question_sets`（阅读理解题组，一篇短文可多套）· `passage_questions`（挂题组）· `passage_attempts`（按题组作答，口径独立于单词练习）· `study_plan_passages`（计划里的短文任务：短文 + 题组（空 = 只朗读）+ reading / listening + 排期日期 + 完成时刻，056；`study_plans.practice_content` words / passages / both、`passage_interval_days`）。`videos`（视频库：文件在 `<数据目录>/videos/<id>/`，表里只存文件名；`cues` 带时间的字幕 JSON、`plan` 切分规划草稿 JSON、`status` importing / ready / processing / done / failed，059）· `video_clips`（切出的短片，一段对应一篇短文，`passage_id` 级联；短文句子 JSON 带 `startMs` / `endMs`，相对短片开头）。`passage_words`（短文词索引：每篇的小写词形 + 目标词 key，写短文时同事务维护，旧数据查询时补齐；单词 ↔ 素材查询只走它，060）。`videos.subtitle_offset_ms` 字幕纠偏（060，`VideoRow::cues()` 唯一换算点）。切片短文的来源「视频」由 video_clips 推导，不写 origin。`word_explanations`（讲解缓存）已在 058 删除：讲解每次实时生成（D31）。
 `tts_providers` / `tts_voices` 已在 030 删除；TTS 自 035 起为火山引擎豆包（单行配置 `volcengine_tts_config`，鉴权 API Key 或 AppID+Access Token，资源 ID 为空时按音色推断）。性能索引见 032；033 刷新种子模型（只改仍为种子原值的行）；036 把种子提供商收敛为 OpenRouter / MiniMax / 月之暗面 / DeepSeek（034 的火山方舟仅在未配置时移除）。
 
 **单词本生命周期**：状态只有 `normal`（正式）/ `draft`（草稿，不能用于计划）；删除为软删除（`deleted_at`），在列表“已删除”里可恢复（`restore_word_book`）。被草稿 / 待开始 / 进行中 / 已暂停的计划使用时不能删除或转草稿。列表的单词数与关联计划数在查询时实时计算。删除单词会在同一事务里把它从所有计划移除并重算日程计数（`services/word.rs::delete_word`）。
@@ -201,7 +202,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 
 ### 5.1 路由
 `App.tsx` 的 `switch(currentPage)`，页面通过 `onNavigate(page, params)` 跳转。有效 page 键：
-`home` `plans` `create-plan` `plan-detail` `wordbooks` `wordbook-detail` `passages` `create-passage` `import-passage` `passage-detail` `word-practice` `passage-practice` `practice-result` `videos` `video-editor` `calendar` `settings`。侧边栏：一级 首页 / 计划 / 日历，分组「素材库」= 单词本 / 短文库 / 视频库（`AppShell` 的 `NAV_GROUPS`）。剪辑编辑器 `pages/video-editor/`（时间轴自绘，规划操作是 `plan.ts` 纯函数）是整窗页面。路由表唯一 owner 是 `src/navigation.ts` 的 `RouteParams`（键 → 参数类型），`onNavigate` 类型为 `NavigateFn`，无别名键。
+`home` `plans` `create-plan` `plan-detail` `wordbooks` `wordbook-detail` `passages` `create-passage` `import-passage` `passage-detail` `word-practice` `passage-practice` `practice-result` `videos` `video-editor` `calendar` `settings`。侧边栏：一级 首页 / 计划 / 日历，分组「素材库」= 单词本 / 短文库 / 视频库（`AppShell` 的 `NAV_GROUPS`）；三个素材首页共用 `components/MaterialToolbar`（搜索 → 标签筛选与管理 → 专属筛选 → 重置 → 数量），视频库默认「片段」页签（`pages/videos/`），原始视频是第二页签。剪辑编辑器 `pages/video-editor/`（时间轴自绘，规划操作是 `plan.ts` 纯函数）是整窗页面。路由表唯一 owner 是 `src/navigation.ts` 的 `RouteParams`（键 → 参数类型），`onNavigate` 类型为 `NavigateFn`，无别名键。
 新增页面：`RouteParams`、`TOP_LEVEL_OF`、`PAGE_TITLE` 加键 → pages/ 下建 `XxxPage.tsx` → App.tsx 加 case（tsc 会指出遗漏）。页面由 `AppShell`（侧边栏 + 顶栏面包屑）包裹，只渲染内容区；整窗专注页面（单词练习、短文练习）列入 `FOCUS_PAGES`。
 
 ### 5.2 服务层
@@ -217,7 +218,7 @@ class FooService extends BaseService {
 export const fooService = new FooService();
 ```
 - `ApiResult<T> = { success: true; data: T } | { success: false; error: string; code?; detail? }`（`error` 是给用户看的话，`detail` 是原始错误），调用方必须判 `success`，**不要 try/catch 服务层**；所有服务都返回 ApiResult、不抛异常。
-- 现有服务（均为模块级单例，组件内不要 `new`，按文件路径导入）：`wordBookService` · `studyService` · `practiceService` · `calendarService` · `passageService` · `materialService`（资料文件读成文本，单词本提取与短文导入共用）· `dataManagementService` · `ttsService` · `aiModelService` · `agentSettingsService` · `promptProfileService` · `wordExplanationService` · `wordAnalysisService` · `updateService`（应用内更新）· `jobService`（后台任务）· `videoService`（视频库）。
+- 现有服务（均为模块级单例，组件内不要 `new`，按文件路径导入）：`wordBookService` · `studyService` · `practiceService` · `calendarService` · `passageService` · `materialService`（资料文件读成文本，单词本提取与短文导入共用）· `dataManagementService` · `ttsService` · `tagService`（标签与单词 ↔ 素材）· `aiModelService` · `agentSettingsService` · `promptProfileService` · `wordExplanationService` · `wordAnalysisService` · `updateService`（应用内更新）· `jobService`（后台任务）· `videoService`（视频库）。
 - 类型放 `src/types/*.ts`，字段名与 Rust struct 的序列化结果保持一致（大部分 Rust 类型是 snake_case 输出；`types/tts.rs` 等少数标了 `rename_all = "camelCase"`，改字段前先看 Rust 侧的 serde 属性）。
 
 ### 5.3 样式与主题
@@ -242,7 +243,7 @@ export const fooService = new FooService();
 ## 7. 开发规范（硬性）
 
 ### 7.1 数据库迁移
-1. **只增不改**：任何表结构变更都新建 `NNN_description.sql`，序号连续（下一号 060），绝不修改已有迁移。
+1. **只增不改**：任何表结构变更都新建 `NNN_description.sql`，序号连续（下一号 061），绝不修改已有迁移。
 2. **禁止删库重建**解决问题；向前兼容现有数据（SQLite 改列需走 建新表 → 拷数据 → drop → rename 模式，参考 020/023/031）。
 3. 新增迁移后在 Repository 里补对应字段映射，并同步 `types/*.rs` 与 `src/types/*.ts`。
 4. 怎样在 SQLite + sqlx 上做到以上三条（重建表模式、兼容已有数据、空库/真实库双验证）以 `.claude/skills/deliver-backend-rust/references/sqlx-migration-standards.md` 为准。`.claude/hooks/guard-migrations.sh` 会拦截对已有迁移文件的编辑。
@@ -291,7 +292,7 @@ export const fooService = new FooService();
 1. `repositories/xxx_repository.rs` 加查询方法 → 2. `services/xxx.rs` 加业务方法 → 3. `handlers/xxx.rs` 加 `#[tauri::command]` → 4. `lib.rs` `generate_handler!` 注册 → 5. `src/types/*.ts` 补类型 → 6. `src/services/xxxService.ts` 加方法 → 7. 页面/组件调用并处理 `success === false`。
 
 **改表结构**
-`migrations/060_*.sql` → Repository 映射 → `types/*.rs` → `src/types/*.ts` → 受影响的 Service/组件。
+`migrations/061_*.sql` → Repository 映射 → `types/*.rs` → `src/types/*.ts` → 受影响的 Service/组件。
 
 **改 AI 行为**
 `src-tauri/src/prompts/agent/*.md`（提示词）/ `agent/src/tools/*.ts`（工具与校验）→ `agent::tasks` 的结果校正 → `npm run agent:build` + 重新编译 → `agent/eval/` 前后对比 + 设置页「测试」与真实 Provider 验证 → 在 DECISIONS.md 追加决策。

@@ -1,0 +1,242 @@
+//! 素材标签业务：新建（同名复用）、按名称批量确保存在（AI 给的标签）、整体设置素材的标签
+
+use crate::error::{AppError, AppResult};
+use crate::repositories::tag_repository::TagRepository;
+use crate::types::material::{MaterialKind, Tag, TagUsage};
+use crate::types::Id;
+use sqlx::{SqliteConnection, SqlitePool};
+use std::sync::Arc;
+
+/// 标签名最长字数
+pub const TAG_NAME_MAX: usize = 10;
+
+pub struct TagService {
+    repository: TagRepository,
+}
+
+/// 清理标签名：去首尾空格、合并连续空白；空或超长返回 None
+pub fn clean_name(name: &str) -> Option<String> {
+    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    let len = name.chars().count();
+    (len > 0 && len <= TAG_NAME_MAX).then_some(name)
+}
+
+impl TagService {
+    pub fn new(pool: Arc<SqlitePool>) -> Self {
+        Self {
+            repository: TagRepository::new(pool),
+        }
+    }
+
+    pub async fn get_tags(&self) -> AppResult<Vec<TagUsage>> {
+        self.repository.find_all_with_usage().await
+    }
+
+    /// 新建标签：名称 1–10 个字；同名（忽略大小写）已存在时直接返回已有的
+    pub async fn create_tag(&self, name: &str, icon: Option<&str>) -> AppResult<Tag> {
+        let name = clean_name(name).ok_or_else(|| {
+            AppError::ValidationError(format!("标签名称需要 1–{TAG_NAME_MAX} 个字"))
+        })?;
+        let icon = icon
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && s.chars().count() <= 4);
+        let mut tx = self.repository.begin().await?;
+        let tag = match self.repository.find_by_name_conn(&mut tx, &name).await? {
+            Some(existing) => existing,
+            None => self.repository.insert_conn(&mut tx, &name, icon).await?,
+        };
+        tx.commit().await?;
+        Ok(tag)
+    }
+
+    /// 按名称确保标签存在，返回 id（去重；不合格的名字跳过）。AI 规划给的标签用这个落库
+    pub async fn ensure_names_conn(
+        &self,
+        conn: &mut SqliteConnection,
+        names: &[String],
+    ) -> AppResult<Vec<Id>> {
+        let mut ids: Vec<Id> = Vec::new();
+        for name in names.iter().filter_map(|n| clean_name(n)) {
+            let tag = match self.repository.find_by_name_conn(conn, &name).await? {
+                Some(t) => t,
+                None => self.repository.insert_conn(conn, &name, None).await?,
+            };
+            if !ids.contains(&tag.id) {
+                ids.push(tag.id);
+            }
+        }
+        Ok(ids)
+    }
+
+    /// 改名：与另一个标签同名（忽略大小写）时合并进那个标签，返回最终的标签
+    pub async fn rename_tag(&self, id: Id, name: &str) -> AppResult<Tag> {
+        let name = clean_name(name).ok_or_else(|| {
+            AppError::ValidationError(format!("标签名称需要 1–{TAG_NAME_MAX} 个字"))
+        })?;
+        let mut tx = self.repository.begin().await?;
+        let tag = self
+            .repository
+            .find_conn(&mut tx, id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("标签不存在，可能已被删除".to_string()))?;
+        let result = match self.repository.find_by_name_conn(&mut tx, &name).await? {
+            Some(other) if other.id != id => {
+                self.repository.merge_conn(&mut tx, id, other.id).await?;
+                other
+            }
+            _ => {
+                self.repository.rename_conn(&mut tx, id, &name).await?;
+                Tag { name, ..tag }
+            }
+        };
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    /// 删除标签：素材本身不受影响，只是不再带这个标签
+    pub async fn delete_tag(&self, id: Id) -> AppResult<()> {
+        let mut tx = self.repository.begin().await?;
+        self.repository.delete_conn(&mut tx, id).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// 整体设置一个素材的标签
+    pub async fn set_material_tags(
+        &self,
+        kind: MaterialKind,
+        ref_id: Id,
+        tag_ids: &[Id],
+    ) -> AppResult<Vec<Tag>> {
+        if !self.repository.material_exists(kind, ref_id).await? {
+            return Err(AppError::NotFound("素材不存在".to_string()));
+        }
+        let mut tx = self.repository.begin().await?;
+        self.repository
+            .replace_conn(&mut tx, kind, ref_id, tag_ids)
+            .await?;
+        tx.commit().await?;
+        self.repository.tags_of(kind, ref_id).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::memory_pool;
+
+    #[tokio::test]
+    async fn creating_tags_validates_and_reuses_same_name() {
+        let pool = memory_pool().await;
+        let service = TagService::new(pool.clone());
+        assert!(service.create_tag("  ", None).await.is_err());
+        assert!(service
+            .create_tag("一二三四五六七八九十一", None)
+            .await
+            .is_err());
+
+        let tag = service.create_tag(" 演讲 ", Some("🎤")).await.unwrap();
+        assert_eq!(tag.name, "演讲");
+        assert_eq!(tag.icon.as_deref(), Some("🎤"));
+        assert_eq!(service.create_tag("演讲", None).await.unwrap().id, tag.id);
+        let ted = service.create_tag("TED", None).await.unwrap();
+        assert_eq!(ted.icon, None);
+        assert_eq!(service.create_tag("ted", None).await.unwrap().id, ted.id);
+        crate::time::assert_instants_canonical(&pool).await;
+    }
+
+    #[tokio::test]
+    async fn material_tags_are_replaced_and_cleaned_with_material() {
+        let pool = memory_pool().await;
+        let service = TagService::new(pool.clone());
+        let mut conn = pool.acquire().await.unwrap();
+        let ids = service
+            .ensure_names_conn(
+                &mut conn,
+                &["餐厅".into(), " 餐厅 ".into(), "".into(), "旅行".into()],
+            )
+            .await
+            .unwrap();
+        drop(conn);
+        assert_eq!(ids.len(), 2);
+
+        crate::test_support::seed_schedule(pool.as_ref(), 1).await;
+        let book: Id = sqlx::query_scalar("SELECT id FROM word_books ORDER BY id LIMIT 1")
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        let tags = service
+            .set_material_tags(MaterialKind::WordBook, book, &ids)
+            .await
+            .unwrap();
+        assert_eq!(tags.len(), 2);
+        let tags = service
+            .set_material_tags(MaterialKind::WordBook, book, &ids[..1])
+            .await
+            .unwrap();
+        assert_eq!(tags.len(), 1);
+        assert!(service
+            .set_material_tags(MaterialKind::Video, 999, &ids)
+            .await
+            .is_err());
+
+        let usage = service.get_tags().await.unwrap();
+        let canteen = usage.iter().find(|u| u.tag.name == "餐厅").unwrap();
+        assert_eq!(canteen.word_books, 1);
+
+        // 删除素材时触发器清掉关联
+        sqlx::query("DELETE FROM word_books WHERE id = ?")
+            .bind(book)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM material_tags")
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        assert_eq!(left, 0);
+        crate::time::assert_instants_canonical(&pool).await;
+    }
+
+    #[tokio::test]
+    async fn renaming_to_an_existing_name_merges_tags() {
+        let pool = memory_pool().await;
+        crate::test_support::seed_schedule(pool.as_ref(), 1).await;
+        let service = TagService::new(pool.clone());
+        let book: Id = sqlx::query_scalar("SELECT id FROM word_books ORDER BY id LIMIT 1")
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        let a = service.create_tag("点餐", None).await.unwrap();
+        let b = service.create_tag("餐厅点餐", None).await.unwrap();
+        service
+            .set_material_tags(MaterialKind::WordBook, book, &[a.id, b.id])
+            .await
+            .unwrap();
+        // 普通改名
+        let renamed = service.rename_tag(b.id, "  在餐厅 ").await.unwrap();
+        assert_eq!((renamed.id, renamed.name.as_str()), (b.id, "在餐厅"));
+        // 改成已有的名字：合并，素材上只剩一个
+        let merged = service.rename_tag(b.id, "点餐").await.unwrap();
+        assert_eq!(merged.id, a.id);
+        let tags = service
+            .set_material_tags(MaterialKind::WordBook, book, &[a.id])
+            .await
+            .unwrap();
+        assert_eq!(tags.len(), 1);
+        let names: Vec<String> = service
+            .get_tags()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.tag.name)
+            .collect();
+        assert!(names.contains(&"点餐".to_string()) && !names.contains(&"在餐厅".to_string()));
+        service.delete_tag(a.id).await.unwrap();
+        let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM material_tags")
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        assert_eq!(left, 0);
+    }
+}

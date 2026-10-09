@@ -7,6 +7,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { WordBookIcon } from '@/components/WordBookIcon/WordBookIcon';
 import { cn } from '@/lib/utils';
 import { formatRelativeDay, sameMinute } from '@/utils/datetime';
+import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
+import type { Tag } from '@/types/material';
 
 export interface WordBookSummaryCardProps {
   /** 单词本名称 */
@@ -33,6 +35,8 @@ export interface WordBookSummaryCardProps {
   onOpen: () => void;
   /** 恢复（只对已删除的单词本显示「恢复」按钮） */
   onRestore?: () => void;
+  /** 标签 */
+  tags?: Tag[];
 }
 
 const SEGMENTS = [
@@ -57,6 +61,7 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
   status,
   icon,
   iconColor,
+  tags = [],
   onOpen,
   onRestore,
 }) => {
@@ -101,6 +106,7 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
           </p>
         </div>
       </div>
+      <TagChips tags={tags} />
 
       <div className="flex items-end justify-between gap-2">
         <div className="leading-none">

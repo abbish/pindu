@@ -93,6 +93,16 @@ impl WordRepository {
         .await?)
     }
 
+    /// 单词本里全部单词的 id 与拼写（单词 ↔ 素材计数用）
+    pub async fn id_texts_by_book(&self, book_id: Id) -> AppResult<Vec<(Id, String)>> {
+        Ok(
+            sqlx::query_as("SELECT id, word FROM words WHERE word_book_id = ? ORDER BY id")
+                .bind(book_id)
+                .fetch_all(self.pool.as_ref())
+                .await?,
+        )
+    }
+
     pub async fn find_existing_words_by_book(
         &self,
         book_id: Id,

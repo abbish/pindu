@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Clapperboard, Film, Loader2, MoreHorizontal, Pencil, Plus, Scissors, Trash2 } from 'lucide-react';
+import { Clapperboard, Film, Loader2, MoreHorizontal, Pencil, Plus, Scissors, Tags, Target, Trash2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +17,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MetricCard } from '@/components/MetricCard/MetricCard';
+import { MaterialTags } from '@/components/MaterialTags/MaterialTags';
+import { ClipGrid } from './videos/ClipGrid';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { ImportVideoDialog } from '@/components/ImportVideoDialog';
 import { PageError } from '@/components/PageError';
@@ -28,10 +32,14 @@ import { videoService } from '@/services/videoService';
 import { formatBytes } from '@/utils/fileSize';
 import { formatDuration, formatRelative } from '@/utils/datetime';
 import { isJobActive, type Job } from '@/types/job';
-import type { Video } from '@/types/video';
+import type { ClipSummary, Video } from '@/types/video';
 import type { NavigateFn } from '../navigation';
 
 export interface VideoLibraryPageProps {
+  /** clips 片段（默认）/ sources 原始视频 */
+  tab?: 'clips' | 'sources';
+  /** 只看这个视频切出的片段 */
+  videoId?: number;
   onNavigate?: NavigateFn;
 }
 
@@ -48,11 +56,14 @@ const STATUS_LABEL: Record<Video['status'], string> = {
 };
 
 /**
- * 素材库 · 视频库：导入视频与字幕 → 剪辑编辑器里规划切分 → 后台切成场景短片（短片在短文库里练习）。
- * 卡片显示封面、时长、状态；导入 / 处理中的视频显示后台任务的进度。
+ * 素材库 · 视频库：切出来的「片段」是主要素材（默认页签，可按标签 / 来源视频 / 难度 / 字幕里的词筛选）；
+ * 「原始视频」是待加工的材料：导入视频与字幕 → 剪辑编辑器里规划切分 → 后台切成片段。
+ * 原始视频卡片显示封面、时长、状态；导入 / 处理中的显示后台任务的进度。
  */
-export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ onNavigate }) => {
+export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initialTab, videoId, onNavigate }) => {
+  const [tab, setTab] = useState<'clips' | 'sources'>(initialTab ?? 'clips');
   const [videos, setVideos] = useState<Video[] | null>(null);
+  const [clips, setClips] = useState<ClipSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [renaming, setRenaming] = useState<Video | null>(null);
@@ -62,12 +73,13 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ onNavigate }
   const toast = useToast();
 
   const load = useCallback(async () => {
-    const result = await videoService.getVideos();
-    if (result.success) {
+    const [result, clipResult] = await Promise.all([videoService.getVideos(), videoService.getClips()]);
+    if (result.success && clipResult.success) {
       setVideos(result.data);
+      setClips(clipResult.data);
       setLoadError(null);
     } else {
-      setLoadError(result.error);
+      setLoadError(result.success ? (clipResult.success ? null : clipResult.error) : result.error);
     }
   }, []);
 
@@ -120,12 +132,43 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ onNavigate }
     />
   );
 
+  const clipMs = (clips ?? []).reduce((sum, c) => sum + c.endMs - c.startMs, 0);
+  const practiced = (clips ?? []).filter((c) => c.completedAttempts > 0).length;
+  const tagCount = new Set((clips ?? []).flatMap((c) => c.tags.map((t) => t.id))).size;
+  const metrics = [
+    { label: '片段', value: clips?.length ?? 0, unit: '段', icon: Clapperboard, hint: clipMs > 0 ? formatDuration(clipMs, 'clock') : undefined },
+    { label: '练过的片段', value: practiced, unit: '段', icon: Target },
+    { label: '标签', value: tagCount, unit: '个', icon: Tags },
+    { label: '原始视频', value: videos?.length ?? 0, unit: '个', icon: Film, hint: videos && videos.length > 0 ? formatBytes(videos.reduce((s, v) => s + v.sizeBytes, 0)) : undefined },
+  ];
+
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
       {header}
 
+      <section aria-label="视频库统计" className="grid grid-cols-4 gap-3">
+        {metrics.map((m) => (
+          <MetricCard key={m.label} {...m} loading={videos === null && !loadError} />
+        ))}
+      </section>
+
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'clips' | 'sources')}>
+        <TabsList>
+          <TabsTrigger value="clips">
+            片段
+            {clips && <span className="text-muted-foreground tabular-nums">{clips.length}</span>}
+          </TabsTrigger>
+          <TabsTrigger value="sources">
+            原始视频
+            {videos && <span className="text-muted-foreground tabular-nums">{videos.length}</span>}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {loadError ? (
         <PageError title="无法加载视频库" message={loadError} onRetry={load} />
+      ) : tab === 'clips' ? (
+        <ClipGrid clips={clips} videos={videos ?? []} videoId={videoId} onOpen={(c) => onNavigate?.('passage-detail', { passageId: c.id })} onGoSources={() => setTab('sources')} onTagsChanged={load} />
       ) : videos === null ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {[0, 1, 2].map((i) => (
@@ -216,7 +259,16 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ onNavigate }
                       <Badge variant={video.status === 'failed' || interrupted ? 'destructive' : video.status === 'done' ? 'default' : 'secondary'}>
                         {interrupted ? '被中断' : STATUS_LABEL[video.status]}
                       </Badge>
-                      {video.clipCount > 0 && <span className="text-xs text-muted-foreground">{video.clipCount} 段短片</span>}
+                      {video.clipCount > 0 && (
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs text-muted-foreground"
+                          onClick={() => onNavigate?.('videos', { tab: 'clips', videoId: video.id })}
+                        >
+                          {video.clipCount} 个片段
+                        </Button>
+                      )}
                       {video.status === 'ready' && (
                         <Button variant="ghost" size="sm" className="ml-auto h-7" onClick={() => open(video)}>
                           <Scissors />
@@ -225,6 +277,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ onNavigate }
                       )}
                     </div>
                   )}
+                  {(video.status === 'ready' || video.status === 'done') && <MaterialTags kind="video" refId={video.id} tags={video.tags} />}
                   {video.status === 'failed' && video.error && <p className="line-clamp-2 text-xs text-destructive">{video.error}</p>}
                   {interrupted && video.status === 'importing' && <p className="text-xs text-muted-foreground">删除后重新导入</p>}
                 </div>

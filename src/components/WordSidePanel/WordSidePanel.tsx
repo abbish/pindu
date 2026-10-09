@@ -2,12 +2,13 @@ import React from 'react';
 import type { WordExample } from '../../types';
 import { ExamplePanel, type ExampleDisplayMode, type ExampleGenerateMode } from '../ExamplePanel';
 import { WordExplanationView } from '../WordExplanation';
-import { GraduationCap, Lock, Quote } from 'lucide-react';
+import { Clapperboard, GraduationCap, Lock, Quote } from 'lucide-react';
+import { WordMaterialsList } from '../WordMaterialsSheet/WordMaterialsSheet';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-export type WordSideTab = 'examples' | 'explanation';
+export type WordSideTab = 'examples' | 'explanation' | 'scenes';
 
 export interface WordSidePanelProps {
   /** 当前页签 */
@@ -38,6 +39,7 @@ export interface WordSidePanelProps {
 const TABS: { key: WordSideTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'examples', label: '例句', icon: Quote },
   { key: 'explanation', label: 'AI 讲解', icon: GraduationCap },
+  { key: 'scenes', label: '场景', icon: Clapperboard },
 ];
 
 /**
@@ -64,7 +66,8 @@ export const WordSidePanel: React.FC<WordSidePanelProps> = ({
       <header className="space-y-2">
         <div className="inline-flex gap-0.5 rounded-lg bg-muted p-[3px]" role="tablist" aria-label="单词资料">
           {TABS.map((t) => {
-            const locked = t.key === 'explanation' && explanationLocked;
+            // 讲解与场景里都看得到拼写：「盖·写」时一起锁住
+            const locked = t.key !== 'examples' && explanationLocked;
             const suggested = t.key === 'explanation' && explanationSuggested && tab !== 'explanation';
             const Icon = locked ? Lock : t.icon;
             return (
@@ -106,10 +109,15 @@ export const WordSidePanel: React.FC<WordSidePanelProps> = ({
       <div role="tabpanel" hidden={tab !== 'explanation' || explanationLocked}>
         <WordExplanationView wordId={wordId} active={tab === 'explanation' && !explanationLocked} autoGenerate={explanationAutoGenerate} />
       </div>
-      {tab === 'explanation' && explanationLocked && (
+      {tab === 'scenes' && !explanationLocked && (
+        <div role="tabpanel" className="max-h-[70vh] overflow-y-auto">
+          <WordMaterialsList key={wordId} word={word} wordId={wordId} clipsOnly />
+        </div>
+      )}
+      {tab !== 'examples' && explanationLocked && (
         <div role="tabpanel" className="flex flex-col items-center gap-2 py-10 text-center">
           <Lock className="size-6 text-muted-foreground" />
-          <p className="font-medium">写完这一题再看讲解</p>
+          <p className="font-medium">写完这一题再看{tab === 'scenes' ? '场景' : '讲解'}</p>
         </div>
       )}
     </Card>

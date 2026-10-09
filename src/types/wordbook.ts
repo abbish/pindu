@@ -1,13 +1,5 @@
 import { Id, Timestamp } from './common';
-
-/// 主题标签
-export interface ThemeTag {
-  id: Id;
-  name: string;
-  icon: string;
-  color: string;
-  created_at: Timestamp;
-}
+import type { Tag } from './material';
 
 /// 单词本
 export interface WordBook {
@@ -23,7 +15,8 @@ export interface WordBook {
   last_used: Timestamp;
   deleted_at?: Timestamp;
   status: string;
-  theme_tags?: ThemeTag[];
+  /** 标签（素材共用） */
+  tags: Tag[];
   /** 词性分布（`get_word_books` 一次带出；其他返回单词本的接口可能没有） */
   word_types?: WordTypeDistribution | null;
 }
@@ -34,7 +27,7 @@ export interface CreateWordBookRequest {
   description: string;
   icon: string;
   icon_color: string;
-  theme_tag_ids?: Id[];
+  tag_ids?: Id[];
 }
 
 /// 更新单词本请求
@@ -44,7 +37,7 @@ export interface UpdateWordBookRequest {
   icon?: string;
   icon_color?: string;
   status?: string;
-  theme_tag_ids?: Id[];
+  tag_ids?: Id[];
 }
 
 /// 单词例句

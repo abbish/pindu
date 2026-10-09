@@ -81,7 +81,7 @@ export const PlanPassagesView: React.FC<PlanPassagesViewProps> = ({ items, loadi
                     {LEVEL_LABEL[item.level] ?? item.level} · {item.wordCount} 词
                   </div>
                 </TableCell>
-                <TableCell className="text-sm">{taskLabel(item.setName, item.setId, item.mode)}</TableCell>
+                <TableCell className="text-sm">{taskLabel(item.setName, item.setId, item.mode, item.isVideo)}</TableCell>
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge variant="outline" className={cn('border-transparent font-normal', status.className)}>
@@ -104,7 +104,7 @@ export const PlanPassagesView: React.FC<PlanPassagesViewProps> = ({ items, loadi
                   {actionable && readOnly && (
                     <div className="flex justify-end gap-2">
                       <Button size="sm" variant="outline" onClick={() => onOpen(item)}>
-                        朗读
+                        {item.isVideo ? '观看' : '朗读'}
                       </Button>
                       <Button
                         size="sm"
@@ -116,7 +116,7 @@ export const PlanPassagesView: React.FC<PlanPassagesViewProps> = ({ items, loadi
                         }}
                       >
                         {marking === item.id ? <Loader2 className="animate-spin" /> : <BookOpenCheck />}
-                        读完了
+                        {item.isVideo ? '看完了' : '读完了'}
                       </Button>
                     </div>
                   )}

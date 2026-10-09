@@ -31,8 +31,8 @@ export interface RouteParams {
    * returnTo：练完 / 退出回到哪里（默认短文详情）
    */
   'passage-practice': { setId: number; mode: PassageMode; planId?: number; returnTo?: PassagePracticeReturn };
-  /** 视频库 */
-  videos: undefined;
+  /** 视频库：tab 片段（默认）/ 原始视频；videoId 只看这个视频切出的片段 */
+  videos: { tab?: 'clips' | 'sources'; videoId?: number } | undefined;
   /** 剪辑编辑器：预览、调整切分规划（整窗页面） */
   'video-editor': { videoId: number };
   calendar: undefined;

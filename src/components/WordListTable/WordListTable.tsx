@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, MessageSquareText, MoreHorizontal, Pencil, Plus, SearchX, Trash2, Volume2 } from 'lucide-react';
+import { Clapperboard, FileText, MessageSquareText, MoreHorizontal, Pencil, Plus, SearchX, Trash2, Volume2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -18,6 +18,32 @@ import {
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { cn } from '@/lib/utils';
 import { partOfSpeechLabel } from '@/utils/partOfSpeech';
+import type { WordMaterialCount } from '@/types/material';
+
+/** 单词出现在几个视频片段 / 几篇短文里，点开看是哪些 */
+const MaterialCount: React.FC<{ count: WordMaterialCount | undefined; onOpen?: () => void }> = ({ count, onOpen }) =>
+  !count || count.clips + count.passages === 0 ? null : (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none"
+      onClick={onOpen}
+      disabled={!onOpen}
+      title={`${count.clips} 个视频片段 · ${count.passages} 篇短文`}
+    >
+      {count.clips > 0 && (
+        <span className="inline-flex items-center gap-0.5">
+          <Clapperboard className="size-3" />
+          {count.clips}
+        </span>
+      )}
+      {count.passages > 0 && (
+        <span className="inline-flex items-center gap-0.5">
+          <FileText className="size-3" />
+          {count.passages}
+        </span>
+      )}
+    </button>
+  );
 
 export interface WordDetail {
   /** 单词ID */
@@ -70,6 +96,10 @@ export interface WordListTableProps {
   };
   /** 只读模式：不显示勾选与操作列 */
   readonly?: boolean;
+  /** 每个词出现在几个视频片段 / 几篇短文里（wordId → 数量） */
+  materials?: Map<number, WordMaterialCount>;
+  /** 点数量：看这个词出现在哪些素材里 */
+  onOpenMaterials?: (word: WordDetail) => void;
 }
 
 /** 词性 → 配色（语义 token；中文名见 utils/partOfSpeech） */
@@ -106,6 +136,8 @@ export const WordListTable: React.FC<WordListTableProps> = ({
   loading = false,
   pagination,
   readonly = false,
+  materials,
+  onOpenMaterials,
 }) => {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // 勾选只针对当前页：换页、刷新、筛选后清空，避免计数包含看不见的其它页
@@ -256,7 +288,12 @@ export const WordListTable: React.FC<WordListTableProps> = ({
                             <Checkbox checked={selected.has(word.id)} onCheckedChange={() => toggle(word.id)} aria-label={`选择单词 ${word.word}`} />
                           </TableCell>
                         )}
-                        <TableCell className="font-semibold select-text">{word.word}</TableCell>
+                        <TableCell className="font-semibold select-text">
+                          <div className="flex items-center gap-1.5">
+                            {word.word}
+                            <MaterialCount count={materials?.get(word.id)} onOpen={onOpenMaterials && (() => onOpenMaterials(word))} />
+                          </div>
+                        </TableCell>
                         <TableCell className="whitespace-normal select-text">
                           <div>{word.meaning}</div>
                           {word.exampleSentence && (

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Check,
   CircleAlert,
+  Clapperboard,
   Loader2,
   Magnet,
   Merge,
@@ -22,12 +23,9 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
-import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { PageError } from '@/components/PageError';
@@ -42,6 +40,10 @@ import type { NavigateFn } from '@/navigation';
 import type { VideoDetail, VideoPlan, VideoSegment } from '@/types/video';
 import { AiPlanDialog } from './AiPlanDialog';
 import { AutoSplitDialog } from './AutoSplitDialog';
+import { EditorBusyDialog } from './EditorBusyDialog';
+import { SegmentPanel } from './SegmentPanel';
+import { SubtitleOffsetControl } from './SubtitleOffsetControl';
+import { tagService } from '@/services/tagService';
 import {
   ISSUE_TEXT,
   addSegment,
@@ -54,6 +56,7 @@ import {
   removeSegment,
   segmentAt,
   segmentIssues,
+  segmentThumb,
   splitAt,
   undo,
   type History,
@@ -66,7 +69,6 @@ export interface VideoEditorPageProps {
   onNavigate?: NavigateFn;
 }
 
-const LEVELS = ['a1', 'a2', 'b1', 'b2', 'c1'];
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 200;
 /** 逐帧移动的步长（按 25fps 估） */
@@ -115,6 +117,11 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     jobs.find((j) => j.kind === kind && isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId);
   const planJob = activeJob('video_plan');
   const processJob = activeJob('video_process');
+  const translateJob = activeJob('video_translate');
+  /** 规划 / 切分进行中：编辑器锁住，弹窗显示进度 */
+  const busyJob = planJob ?? processJob;
+  const locked = busyJob !== undefined;
+  const [tagNames, setTagNames] = useState<string[]>([]);
   /** 连续编辑同一字段只记一次撤销 */
   const lastEditKey = useRef<string | null>(null);
   const loaded = useRef(false);
@@ -137,9 +144,35 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     load();
   }, [load]);
 
+  useEffect(() => {
+    tagService.getTags().then((r) => r.success && setTagNames(r.data.map((t) => t.name)));
+  }, []);
+
+  /** 重新读字幕与视频信息（翻译写回、改了纠偏之后） */
+  const reloadCues = useCallback(async () => {
+    if (!videoId) return;
+    const result = await videoService.getVideo(videoId);
+    if (result.success) setDetail((d) => (d ? { ...d, cues: result.data.cues, video: result.data.video } : d));
+  }, [videoId]);
+
+  const changeOffset = async (offsetMs: number) => {
+    if (!videoId) return;
+    const result = await videoService.setSubtitleOffset(videoId, offsetMs);
+    if (!result.success) {
+      toast.showError('无法调整字幕时间', result.error);
+      return;
+    }
+    await reloadCues();
+  };
+
   // AI 规划结束：读回规划，替换到时间轴（进撤销栈）；切分结束：刷新已切出的短片
   useOnJobFinished(async (job) => {
     if ((job.link?.params as { videoId?: number } | undefined)?.videoId !== videoId) return;
+    if (job.kind === 'video_translate') {
+      if (job.status === 'failed') toast.showError('没有翻译完', jobErrorText(job));
+      else await reloadCues();
+      return;
+    }
     if (job.kind === 'video_process') {
       const result = videoId ? await videoService.getVideo(videoId) : null;
       if (result?.success) setDetail((d) => (d ? { ...d, clips: result.data.clips, video: result.data.video } : d));
@@ -174,7 +207,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
 
   // 自动保存（加载后的第一次不存）
   useEffect(() => {
-    if (!history || !videoId) return;
+    if (!history || !videoId || locked) return;
     if (!loaded.current) {
       loaded.current = true;
       return;
@@ -185,7 +218,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
       setSaveState(result.success ? 'saved' : 'error');
     }, AUTOSAVE_MS);
     return () => window.clearTimeout(timer);
-  }, [history?.present, videoId]);
+  }, [history?.present, videoId, locked]);
 
   /** 改规划；editKey 相同的连续编辑合并成一次撤销 */
   const commit = useCallback((next: VideoPlan, editKey: string | null = null) => {
@@ -320,7 +353,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   // ── 快捷键 ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (typing(e) || !history) return;
+      if (typing(e) || !history || locked) return;
       const mod = e.metaKey || e.ctrlKey;
       const v = videoRef.current;
       if (mod && e.key.toLowerCase() === 'z') {
@@ -406,9 +439,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [history, playhead, marks, selected, togglePlay, seek, split, merge, remove, createFrom, playSegment, zoomBy, toast]);
+  }, [history, locked, playhead, marks, selected, togglePlay, seek, split, merge, remove, createFrom, playSegment, zoomBy, toast]);
 
-  const back = () => onNavigate?.('videos');
+  const back = () => onNavigate?.('videos', { tab: 'sources' });
 
   if (loadError) {
     return (
@@ -429,7 +462,6 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   const segments = plan.segments;
   const clipOf = (s: VideoSegment) => detail.clips.find((c) => c.startMs === s.startMs && c.endMs === s.endMs);
   const pendingCount = segments.filter((s) => !clipOf(s)).length;
-  const processing = processJob !== undefined;
 
   const startProcessing = async () => {
     // 先把最新的规划存好，任务按库里的规划切
@@ -446,6 +478,11 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   const totalMs = segments.reduce((sum, s) => sum + s.endMs - s.startMs, 0);
   const segmentUnderPlayhead = segmentAt(plan, playhead);
   const mediaSrc = detail.video.mediaUrl ?? undefined;
+  const thumbOf = (s: VideoSegment) => segmentThumb(detail.thumbs, detail.thumbIntervalMs, s);
+  const translate = async (seg: VideoSegment) => {
+    const result = await videoService.startTranslate(detail.video.id, seg.startMs, seg.endMs);
+    if (!result.success) toast.showError('无法翻译', result.error);
+  };
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -475,47 +512,29 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
           </span>
           <div className="ml-auto flex items-center gap-2">
             {onNavigate && <JobIndicator onNavigate={onNavigate} />}
-            {planJob ? (
-              <>
-                <span className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 shrink-0 animate-spin" />
-                  <span className="truncate">{planJob.status === 'queued' ? '排队中' : (planJob.stage ?? 'AI 正在规划…')}</span>
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => jobService.cancel(planJob.id)}>
-                  停止
-                </Button>
-              </>
-            ) : (
-              <Button variant="outline" size="sm" onClick={() => setAiPlanOpen(true)}>
-                <Sparkles />
-                AI 规划…
-              </Button>
-            )}
-            <Button variant="outline" size="sm" onClick={() => setAutoSplitOpen(true)}>
+            <Button variant="outline" size="sm" onClick={() => setAiPlanOpen(true)} disabled={locked}>
+              <Sparkles />
+              AI 规划…
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setAutoSplitOpen(true)} disabled={locked}>
               <Wand2 />
               按字幕自动切分…
             </Button>
-            {processing ? (
-              <>
-                <span className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 shrink-0 animate-spin" />
-                  <span className="truncate">{processJob?.status === 'queued' ? '排队中' : (processJob?.stage ?? '切分中')}</span>
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => processJob && jobService.cancel(processJob.id)}>
-                  停止
-                </Button>
-              </>
-            ) : (
-              <Button size="sm" onClick={startProcessing} disabled={pendingCount === 0 || saveState === 'saving'}>
-                <Scissors />
-                {pendingCount === 0 && segments.length > 0 ? '已全部切分' : `开始切分（${pendingCount} 段）`}
+            {detail.clips.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => onNavigate?.('videos', { tab: 'clips', videoId: detail.video.id })} disabled={locked}>
+                <Clapperboard />
+                查看片段（{detail.clips.length}）
               </Button>
             )}
+            <Button size="sm" onClick={startProcessing} disabled={locked || pendingCount === 0 || saveState === 'saving'}>
+              <Scissors />
+              {pendingCount === 0 && segments.length > 0 ? '已全部切分' : `开始切分（${pendingCount} 段）`}
+            </Button>
           </div>
         </header>
 
         {/* 主区：片段列表 · 播放器 · 片段属性 */}
-        <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)_300px]">
+        <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_360px]">
           <aside className="flex min-h-0 flex-col border-r">
             <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
               <span>
@@ -543,7 +562,10 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
                     }}
                     onDoubleClick={() => playSegment(s)}
                   >
-                    <span className="w-5 shrink-0 pt-px text-right text-xs text-muted-foreground tabular-nums">{i + 1}</span>
+                    <span className="relative aspect-video w-16 shrink-0 overflow-hidden rounded bg-muted">
+                      {thumbOf(s) && <img src={thumbOf(s)} alt="" className="size-full object-cover" loading="lazy" />}
+                      <span className="absolute bottom-0 left-0 rounded-tr bg-black/60 px-1 text-[10px] text-white tabular-nums">{i + 1}</span>
+                    </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{s.title || '未命名'}</span>
                       <span className="block text-xs text-muted-foreground tabular-nums">
@@ -612,6 +634,14 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
                 {formatClock(playhead)} <span className="text-muted-foreground">/ {formatClock(durationMs, false)}</span>
               </span>
               <div className="ml-auto flex items-center gap-1">
+                <SubtitleOffsetControl
+                  offsetMs={detail.video.subtitleOffsetMs}
+                  cues={cues}
+                  playheadMs={playhead}
+                  hasClips={detail.clips.length > 0}
+                  disabled={locked}
+                  onChange={changeOffset}
+                />
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Toggle size="sm" pressed={loopSegment} onPressedChange={setLoopSegment} aria-label="只播当前片段">
@@ -636,16 +666,23 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
             </div>
           </section>
 
-          <aside className="min-h-0 overflow-y-auto border-l p-4">
+          <aside className={cn('min-h-0 border-l', !selected && 'overflow-y-auto p-4')}>
             {selected ? (
-              <SegmentInspector
+              <SegmentPanel
                 key={selected.id}
                 index={segments.findIndex((s) => s.id === selected.id)}
                 segment={selected}
-                cueCount={cuesIn(cues, selected).length}
+                cues={cuesIn(cues, selected)}
+                playheadMs={playhead}
+                thumb={thumbOf(selected)}
                 issues={segmentIssues(selected, cues)}
+                cut={clipOf(selected) !== undefined}
+                translating={translateJob !== undefined}
+                tagNames={tagNames}
                 onChange={updateSelected}
                 onPlay={() => playSegment(selected)}
+                onSeek={seek}
+                onTranslate={() => translate(selected)}
                 onSplit={split}
                 onMerge={merge}
                 onDelete={remove}
@@ -735,6 +772,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
         </div>
       </div>
 
+      <EditorBusyDialog job={busyJob} onStop={(job) => jobService.cancel(job.id)} onBackground={back} />
       <AiPlanDialog
         open={aiPlanOpen}
         onOpenChange={setAiPlanOpen}
@@ -794,110 +832,3 @@ const ShortcutHelp: React.FC = () => (
     ))}
   </div>
 );
-
-interface SegmentInspectorProps {
-  index: number;
-  segment: VideoSegment;
-  cueCount: number;
-  issues: ReturnType<typeof segmentIssues>;
-  onChange: (patch: Partial<VideoSegment>, field: string) => void;
-  onPlay: () => void;
-  onSplit: () => void;
-  onMerge: () => void;
-  onDelete: () => void;
-}
-
-/** 选中片段的属性：时间、标题、场景、难度、学习重点、重点词 */
-const SegmentInspector: React.FC<SegmentInspectorProps> = ({ index, segment, cueCount, issues, onChange, onPlay, onSplit, onMerge, onDelete }) => {
-  const [keyWords, setKeyWords] = useState(segment.keyWords.join(', '));
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="font-medium">片段 {index + 1}</div>
-        <Button variant="outline" size="sm" onClick={onPlay}>
-          <Play />
-          播放
-        </Button>
-      </div>
-      <div className="grid grid-cols-3 gap-2 rounded-lg border p-2 text-center text-xs">
-        <div>
-          <div className="text-muted-foreground">开始</div>
-          <div className="tabular-nums">{formatClock(segment.startMs)}</div>
-        </div>
-        <div>
-          <div className="text-muted-foreground">结束</div>
-          <div className="tabular-nums">{formatClock(segment.endMs)}</div>
-        </div>
-        <div>
-          <div className="text-muted-foreground">时长</div>
-          <div className="tabular-nums">{formatClock(segment.endMs - segment.startMs)}</div>
-        </div>
-      </div>
-      {issues.length > 0 && (
-        <p className="flex items-start gap-1.5 text-xs text-warning">
-          <AlertTriangle className="mt-px size-3.5 shrink-0" />
-          {issues.map((i) => ISSUE_TEXT[i]).join('、')}
-        </p>
-      )}
-      <div className="space-y-1.5">
-        <Label htmlFor="seg-title">标题</Label>
-        <Input id="seg-title" value={segment.title} maxLength={60} placeholder="如：在餐厅点餐" onChange={(e) => onChange({ title: e.target.value }, 'title')} />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="seg-scene">场景</Label>
-        <Input id="seg-scene" value={segment.scene} maxLength={40} placeholder="如：餐厅" onChange={(e) => onChange({ scene: e.target.value }, 'scene')} />
-      </div>
-      <div className="space-y-1.5">
-        <Label>难度</Label>
-        <Select value={segment.level || 'none'} onValueChange={(v) => onChange({ level: v === 'none' ? '' : v }, 'level')}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">未定</SelectItem>
-            {LEVELS.map((l) => (
-              <SelectItem key={l} value={l}>
-                {l.toUpperCase()}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="seg-focus">学习重点</Label>
-        <Textarea id="seg-focus" rows={3} value={segment.focus} maxLength={300} placeholder="这一段适合学什么" onChange={(e) => onChange({ focus: e.target.value }, 'focus')} />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="seg-words">重点词（逗号分隔）</Label>
-        <Input
-          id="seg-words"
-          value={keyWords}
-          onChange={(e) => setKeyWords(e.target.value)}
-          onBlur={() =>
-            onChange(
-              {
-                keyWords: [...new Set(keyWords.split(/[,，、]/).map((w) => w.trim()).filter(Boolean))],
-              },
-              'keyWords'
-            )
-          }
-        />
-      </div>
-      <div className="text-xs text-muted-foreground">包含 {cueCount} 条字幕</div>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={onSplit}>
-          <Scissors />
-          拆分
-        </Button>
-        <Button variant="outline" size="sm" onClick={onMerge}>
-          <Merge />
-          合并
-        </Button>
-        <Button variant="outline" size="sm" className="ml-auto text-destructive" onClick={onDelete}>
-          <Trash2 />
-          删除
-        </Button>
-      </div>
-    </div>
-  );
-};

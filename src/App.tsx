@@ -82,7 +82,7 @@ function App() {
           />
         );
       case 'videos':
-        return <VideoLibraryPage onNavigate={navigate} />;
+        return <VideoLibraryPage key={JSON.stringify(route.params ?? {})} tab={route.params?.tab} videoId={route.params?.videoId} onNavigate={navigate} />;
       case 'video-editor':
         return <VideoEditorPage key={route.params?.videoId} videoId={route.params?.videoId} onNavigate={navigate} />;
       case 'calendar':

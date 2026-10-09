@@ -15,7 +15,6 @@ import {
   WordBookStatistics,
   WordTypeDistribution,
   WordSaveResult,
-  ThemeTag,
   Id,
   ApiResult,
 } from '../types';
@@ -192,20 +191,6 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 获取所有主题标签
-   */
-  /** 新建主题标签（名称 1–10 个字；同名已存在时返回已有的） */
-  async createThemeTag(name: string, icon?: string): Promise<ApiResult<ThemeTag>> {
-    return this.executeWithLoading(() => this.client.invoke<ThemeTag>('create_theme_tag', { name, icon }));
-  }
-
-  async getThemeTags(): Promise<ApiResult<ThemeTag[]>> {
-    return this.executeWithLoading(async () => {
-      return this.client.invoke<ThemeTag[]>('get_theme_tags');
-    });
-  }
-
-  /**
    * 获取单词本词性统计
    */
   async getWordBookTypeStatistics(bookId: Id): Promise<ApiResult<WordTypeDistribution>> {
@@ -230,7 +215,7 @@ export class WordBookService extends BaseService {
       words: AnalyzedWord[];
       status?: string;
       book_id?: Id; // 如果提供，则向现有单词本添加单词
-      theme_tag_ids?: number[]; // 主题标签ID列表
+      tag_ids?: number[];
     }): Promise<ApiResult<WordSaveResult>> {
     return this.executeWithLoading(async () => {
       // 验证输入

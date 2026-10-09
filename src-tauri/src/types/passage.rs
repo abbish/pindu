@@ -4,7 +4,7 @@ use crate::types::common::Id;
 use serde::{Deserialize, Serialize};
 
 /// 短文的一句：英文 + 中文翻译
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PassageSentence {
     pub en: String,
@@ -145,10 +145,11 @@ pub struct Passage {
     pub model_name: Option<String>,
     pub created_at: String,
     pub question_sets: Vec<QuestionSetSummary>,
-    /// generated AI 写的 / imported 导入的材料
+    /// generated AI 写的 / imported 导入的材料 / video 视频切片
     pub origin: String,
     /// 导入时的文件名或「粘贴的文本」（AI 写的为空）
     pub source_label: Option<String>,
+    pub tags: Vec<crate::types::material::Tag>,
 }
 
 /// 短文列表项
@@ -162,10 +163,11 @@ pub struct PassageSummary {
     pub target_words: Vec<PassageTargetWord>,
     pub sources: Vec<PassageSource>,
     pub created_at: String,
-    /// generated AI 写的 / imported 导入的材料
+    /// generated AI 写的 / imported 导入的材料 / video 视频切片
     pub origin: String,
     /// 导入时的文件名或「粘贴的文本」
     pub source_label: Option<String>,
+    pub tags: Vec<crate::types::material::Tag>,
     /// 题组数
     pub question_sets: i64,
     /// 完成的作答次数（所有题组）
@@ -472,6 +474,8 @@ pub struct PlanPassage {
     /// completed / due（今天）/ overdue（日期已过没完成）/ upcoming
     pub status: String,
     /// 完成这项任务的作答（只读任务为空）
+    /// 视频切片：只读任务即「看视频跟读」
+    pub is_video: bool,
     pub attempt: Option<PassageAttemptBrief>,
 }
 
@@ -488,6 +492,8 @@ pub struct TodayPassageTask {
     pub set_id: Option<Id>,
     pub set_name: Option<String>,
     pub mode: String,
+    /// 视频切片
+    pub is_video: bool,
     pub scheduled_date: String,
     /// completed / due / overdue
     pub status: String,

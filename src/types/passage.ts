@@ -1,4 +1,5 @@
 /** 短文库的类型，对应 Rust `types/passage.rs`（camelCase） */
+import type { Tag } from './material';
 
 /** 短文的一句：英文 + 中文翻译 */
 export interface PassageSentence {
@@ -141,6 +142,7 @@ export interface Passage {
   origin: PassageOrigin;
   /** 导入材料的来源说明（文件名或「粘贴的文本」） */
   sourceLabel: string | null;
+  tags: Tag[];
 }
 
 /** 短文列表项 */
@@ -161,6 +163,7 @@ export interface PassageSummary {
   origin: PassageOrigin;
   /** 导入材料的来源说明 */
   sourceLabel: string | null;
+  tags: Tag[];
 }
 
 /** 选词填空一空的结果 */
@@ -372,6 +375,8 @@ export interface PlanPassage {
   status: PlanPassageStatus;
   /** 完成这项任务的作答（只读任务为空） */
   attempt: PassageAttemptBrief | null;
+  /** 视频切片：只读任务即「看视频跟读」 */
+  isVideo: boolean;
 }
 
 /** 今天的短文任务（到期没完成的 + 今天完成的） */
@@ -385,6 +390,8 @@ export interface TodayPassageTask {
   setId: number | null;
   setName: string | null;
   mode: PassageMode;
+  /** 视频切片 */
+  isVideo: boolean;
   scheduledDate: string;
   status: Exclude<PlanPassageStatus, 'upcoming'>;
 }
@@ -409,7 +416,7 @@ export interface PlanPassageCandidate {
 // ==================== 导入材料（passage-import） ====================
 
 /** 短文的来源：AI 写的 / 导入的用户材料 */
-export type PassageOrigin = 'generated' | 'imported';
+export type PassageOrigin = 'generated' | 'imported' | 'video';
 
 /** 导入材料里的一句原文 */
 export interface ImportSentence {
