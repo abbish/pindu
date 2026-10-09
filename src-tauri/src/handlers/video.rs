@@ -669,15 +669,24 @@ pub async fn start_video_translate(
         Some(&format!("video_id: {video_id}, {start_ms:?}–{end_ms:?}ms")),
     );
     let result = async {
-        if running(&app, video_id, &["video_translate"]) {
-            return Err(AppError::ValidationError(
-                "正在翻译这个视频的字幕，等它完成".to_string(),
-            ));
+        // 同一范围（整部或同一段）不重复翻译；整部在翻时可以先翻某一段
+        let range = start_ms.zip(end_ms);
+        let same = app.state::<Jobs>().list().iter().any(|job| {
+            job.status.is_active()
+                && job.kind == "video_translate"
+                && job.link.as_ref().is_some_and(|l| {
+                    l.params["videoId"] == video_id
+                        && l.params["startMs"].as_i64() == range.map(|r| r.0)
+                        && l.params["endMs"].as_i64() == range.map(|r| r.1)
+                })
+        });
+        if same {
+            return Err(AppError::ValidationError("正在翻译，等它完成".to_string()));
         }
         let row = VideoRepository::get(app.state::<SqlitePool>().inner(), video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
-        spawn_translate(&app, video_id, &row.title, start_ms.zip(end_ms)).await
+        spawn_translate(&app, video_id, &row.title, range).await
     }
     .await;
     super::finish(&logger, "start_video_translate", result)
@@ -714,12 +723,19 @@ async fn spawn_translate(
     Ok(app.state::<Jobs>().spawn(
         JobSpec {
             kind: "video_translate",
-            title: format!("翻译字幕 · {title}"),
+            title: match range {
+                Some(_) => format!("翻译一段字幕 · {title}"),
+                None => format!("翻译字幕 · {title}"),
+            },
             lane: Lane::Agent,
             detached: true,
             link: Some(JobLink::new(
                 "video-editor",
-                serde_json::json!({ "videoId": video_id }),
+                serde_json::json!({
+                    "videoId": video_id,
+                    "startMs": range.map(|r| r.0),
+                    "endMs": range.map(|r| r.1),
+                }),
             )),
         },
         move |ctx| job.run(ctx),

@@ -5,6 +5,7 @@ import {
   Check,
   CircleAlert,
   Clapperboard,
+  Languages,
   Loader2,
   Magnet,
   Merge,
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Toggle } from '@/components/ui/toggle';
@@ -117,7 +119,12 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     jobs.find((j) => j.kind === kind && isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId);
   const planJob = activeJob('video_plan');
   const processJob = activeJob('video_process');
-  const translateJob = activeJob('video_translate');
+  // 翻译：整部（导入时自动启动或顶栏发起）与某一段（片段面板发起）可以同时进行
+  const translateJobs = jobs.filter(
+    (j) => j.kind === 'video_translate' && isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId
+  );
+  const rangeOf = (j: (typeof jobs)[number]) => j.link?.params as { startMs?: number | null; endMs?: number | null } | undefined;
+  const wholeTranslateJob = translateJobs.find((j) => rangeOf(j)?.startMs == null);
   /** 规划 / 切分进行中：编辑器锁住，弹窗显示进度 */
   const busyJob = planJob ?? processJob;
   const locked = busyJob !== undefined;
@@ -149,7 +156,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   }, []);
 
   // 翻译每写回一块就刷新字幕，中文一段段出现
-  const translatedChunks = translateJob?.current ?? 0;
+  const translatedChunks = translateJobs.reduce((n, j) => n + j.current, 0);
   useEffect(() => {
     if (translatedChunks > 0) void reloadCuesRef.current();
   }, [translatedChunks]);
@@ -490,8 +497,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   const segmentUnderPlayhead = segmentAt(plan, playhead);
   const mediaSrc = detail.video.mediaUrl ?? undefined;
   const thumbOf = (s: VideoSegment) => segmentThumb(detail.thumbs, detail.thumbIntervalMs, s);
-  const translateAll = async () => {
-    const result = await videoService.startTranslate(detail.video.id);
+  /** 翻译字幕：不给片段时整部 */
+  const translate = async (seg?: VideoSegment) => {
+    const result = await videoService.startTranslate(detail.video.id, seg?.startMs, seg?.endMs);
     if (!result.success) toast.showError('无法翻译字幕', result.error);
   };
 
@@ -521,6 +529,31 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
               </>
             )}
           </span>
+          {/* 整部字幕的翻译：进行中显示进度；还有缺中文的句子时可以翻译全部 */}
+          {wholeTranslateJob ? (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
+              <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
+              <Languages className="size-3.5" />
+              翻译字幕
+              {wholeTranslateJob.total > 0 ? (
+                <>
+                  <Progress value={(wholeTranslateJob.current / wholeTranslateJob.total) * 100} className="h-1 w-16" />
+                  <span className="tabular-nums">
+                    {wholeTranslateJob.current}/{wholeTranslateJob.total}
+                  </span>
+                </>
+              ) : (
+                <Loader2 className="size-3 animate-spin" />
+              )}
+            </span>
+          ) : (
+            untranslatedTotal > 0 && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => translate()}>
+                <Languages />
+                翻译全部字幕（{untranslatedTotal} 句）
+              </Button>
+            )
+          )}
           <div className="ml-auto flex items-center gap-2">
             {onNavigate && <JobIndicator onNavigate={onNavigate} />}
             <Button variant="outline" size="sm" onClick={() => setAiPlanOpen(true)} disabled={locked}>
@@ -688,13 +721,13 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
                 thumb={thumbOf(selected)}
                 issues={segmentIssues(selected, cues)}
                 cut={clipOf(selected) !== undefined}
-                translating={translateJob ? { current: translateJob.current, total: translateJob.total } : null}
-                untranslatedTotal={untranslatedTotal}
+                translating={translateJobs.some((j) => rangeOf(j)?.startMs === selected.startMs && rangeOf(j)?.endMs === selected.endMs)}
+                wholeTranslating={wholeTranslateJob !== undefined}
                 tagNames={tagNames}
                 onChange={updateSelected}
                 onPlay={() => playSegment(selected)}
                 onSeek={seek}
-                onTranslate={translateAll}
+                onTranslate={() => translate(selected)}
                 onSplit={split}
                 onMerge={merge}
                 onDelete={remove}

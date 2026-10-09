@@ -16,6 +16,9 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
+/// 写回字幕的锁：整部翻译与「先翻译这一段」可以同时进行，写回（读 → 补空 → 写）必须一个一个来
+static WRITE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// 每次交给 AI 的句数
 const CHUNK: usize = 40;
 const CONCURRENCY: usize = 3;
@@ -145,6 +148,7 @@ impl VideoTranslateJob {
 
     /// 重新读一次再写：只补空的中文，别覆盖别处写入的；返回补了几句
     async fn write_back(&self, chunk: &[usize], zh: Vec<String>) -> AppResult<usize> {
+        let _guard = WRITE_LOCK.lock().await;
         let Some(row) = VideoRepository::get(&self.pool, self.video_id).await? else {
             return Ok(0);
         };

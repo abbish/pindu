@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, Languages, Loader2, Merge, Play, Plus, Scissors, Trash2, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
@@ -28,10 +27,10 @@ export interface SegmentPanelProps {
   issues: SegmentIssue[];
   /** 已切出短片 */
   cut: boolean;
-  /** 正在翻译这个视频的字幕：已完成的块 / 总块数（0 / 0 表示刚开始） */
-  translating: { current: number; total: number } | null;
-  /** 整部视频还有多少句没有中文 */
-  untranslatedTotal: number;
+  /** 正在翻译这一段 */
+  translating: boolean;
+  /** 整部字幕正在后台翻译（这一段可能还没轮到） */
+  wholeTranslating: boolean;
   /** 已有的标签名（补全用） */
   tagNames: string[];
   onChange: (patch: Partial<VideoSegment>, field: string) => void;
@@ -48,7 +47,8 @@ export interface SegmentPanelProps {
  * 当前句高亮、重点词标出、缺中文时可翻译这一段），「信息」页改标题、场景、难度、学习重点、重点词与标签。
  */
 export const SegmentPanel: React.FC<SegmentPanelProps> = (props) => {
-  const { index, segment, cues, playheadMs, thumb, issues, cut, translating, untranslatedTotal, onPlay, onSeek, onTranslate } = props;
+  const { index, segment, cues, playheadMs, thumb, issues, cut, translating, wholeTranslating, onPlay, onSeek, onTranslate } = props;
+  const untranslated = cues.filter((c) => c.en.trim() && !c.zh.trim()).length;
   const activeRef = useRef<HTMLButtonElement>(null);
   const active = cues.find((c) => c.startMs <= playheadMs && playheadMs < c.endMs);
 
@@ -108,30 +108,24 @@ export const SegmentPanel: React.FC<SegmentPanelProps> = (props) => {
           <TabsTrigger value="info">信息</TabsTrigger>
         </TabsList>
         <TabsContent value="subtitles" className="min-h-0 overflow-y-auto px-2 pt-2 pb-4">
-          {translating ? (
-            <div className="mx-2 mb-2 space-y-1.5 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground" aria-live="polite">
-              <div className="flex items-center gap-1.5">
+          {untranslated > 0 &&
+            (translating ? (
+              <div className="mx-2 mb-2 flex items-center gap-1.5 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground" aria-live="polite">
                 <Loader2 className="size-3.5 animate-spin" />
-                正在翻译字幕
-                {translating.total > 0 && (
-                  <span className="ml-auto tabular-nums">
-                    {translating.current} / {translating.total}
-                  </span>
-                )}
+                正在翻译这一段…
               </div>
-              {translating.total > 0 && <Progress value={(translating.current / translating.total) * 100} className="h-1" />}
-            </div>
-          ) : (
-            untranslatedTotal > 0 && (
+            ) : (
               <div className="mx-2 mb-2 flex items-center justify-between gap-2 rounded-md bg-muted px-3 py-2 text-xs">
-                <span className="text-muted-foreground">{untranslatedTotal} 句字幕没有中文</span>
+                <span className="text-muted-foreground">
+                  这一段 {untranslated} 句没有中文
+                  {wholeTranslating && '，整部字幕正在翻译'}
+                </span>
                 <Button variant="outline" size="sm" className="h-7" onClick={onTranslate}>
                   <Languages />
-                  翻译全部字幕
+                  {wholeTranslating ? '先翻译这一段' : '翻译这一段'}
                 </Button>
               </div>
-            )
-          )}
+            ))}
           {cues.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-muted-foreground">这一段没有字幕</p>
           ) : (
