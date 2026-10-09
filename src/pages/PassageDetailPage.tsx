@@ -21,6 +21,7 @@ import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { PageError } from '@/components/PageError';
 import { SourceBadge } from '@/components/PassageList';
 import { QuestionSetDialog } from '@/components/QuestionSetDialog';
+import { TargetWordsPanel } from './passage-detail/TargetWordsPanel';
 import { ReadAloudPanel } from './passage-detail/ReadAloudPanel';
 import { ClipStudyPanel } from './passage-detail/ClipStudyPanel';
 import { videoService } from '@/services/videoService';
@@ -110,6 +111,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const [passage, setPassage] = useState<Passage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState('text');
+  const [focusWord, setFocusWord] = useState<string | null>(null);
   /** 正在给这篇出题的后台任务（离开再回来也接得上；这个页面开着时由页面提示结果） */
   const jobs = useJobs();
   const runningQs = passageId === undefined ? undefined : activeJobFor(jobs, ['question_set'], 'passageId', passageId);
@@ -253,6 +255,13 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const imported = passage.origin !== 'generated';
   const required = passage.targetWords.filter((w) => w.required);
   const picked = passage.targetWords.filter((w) => !w.required);
+  /** 有还没收录进单词本的目标词 */
+  const hasNewWords = passage.targetWords.some((w) => w.wordId === null);
+  /** 侧栏点目标词：到「目标词」页签看这个词的单词卡 */
+  const openWord = (word: string) => {
+    setFocusWord(word);
+    setTab('words');
+  };
 
   return (
     <div className={container}>
@@ -338,6 +347,11 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           <TabsTrigger value="text" className="px-3">
             原文
           </TabsTrigger>
+          {passage.targetWords.length > 0 && (
+            <TabsTrigger value="words" className="gap-1.5 px-3">
+              目标词<span className="text-xs text-muted-foreground tabular-nums">{passage.targetWords.length}</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="sets" className="gap-1.5 px-3">
             阅读理解<span className="text-xs text-muted-foreground tabular-nums">{passage.questionSets.length}</span>
           </TabsTrigger>
@@ -361,9 +375,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                     <div className="text-xs text-muted-foreground">指定单词</div>
                     <div className="flex flex-wrap gap-1">
                       {required.map((w) => (
-                        <span key={w.word} className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground">
+                        <button key={w.word} type="button" onClick={() => openWord(w.word)} className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground hover:ring-1 hover:ring-primary/40">
                           {w.word}
-                        </span>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -373,16 +387,16 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                     <div className="text-xs text-muted-foreground">{imported ? '重点词' : 'AI 选词'}</div>
                     <div className="flex flex-wrap gap-1">
                       {picked.map((w) => (
-                        <span key={w.word} className="rounded-full bg-muted px-2 py-0.5 text-xs" title={w.meaning ?? undefined}>
+                        <button key={w.word} type="button" onClick={() => openWord(w.word)} className="rounded-full bg-muted px-2 py-0.5 text-xs hover:ring-1 hover:ring-primary/40" title={w.meaning ?? undefined}>
                           {w.word}
                           {w.meaning && <span className="text-muted-foreground"> {w.meaning}</span>}
-                        </span>
+                        </button>
                       ))}
                     </div>
                   </div>
                 )}
               </Card>
-              {imported && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
+              {hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
               {passage.sources.length > 0 && (
                 <Card className="gap-3 px-5 py-4">
                   <h2 className="text-sm font-semibold">词汇来源</h2>
@@ -401,6 +415,14 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
               )}
             </aside>
           </div>
+        </TabsContent>
+
+        <TabsContent value="words">
+          <TargetWordsPanel
+            passage={passage}
+            focusWord={focusWord}
+            footer={hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
+          />
         </TabsContent>
 
         <TabsContent value="sets">
