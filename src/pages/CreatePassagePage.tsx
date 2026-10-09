@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronUp, ListChecks, PenLine, Plus, Search, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronUp, ListChecks, PenLine, Plus, RotateCw, Search, Sparkles, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,6 +21,7 @@ import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { passageService } from '@/services/passageService';
 import { studyService } from '@/services/studyService';
 import { wordBookService } from '@/services/wordbookService';
+import { wordAnalysisService } from '@/services/wordAnalysisService';
 import { toUserMessage } from '@/api/errors';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { AiWorking } from '@/components/AiWorking';
@@ -40,15 +41,16 @@ export interface CreatePassagePageProps {
 }
 
 const STEPS = ['生成方式', '选择单词', '场景与篇幅', '内容规划'];
-/** 按描述生成：AI 按要求定主题、选目标词并规划，之后与基于单词的流程一样确认规划、逐篇生成 */
-const BRIEF_STEPS = ['写作要求', '内容规划'];
+/** 按描述生成：第一步由 AI 按要求选词（代替选来源），后面与基于单词的流程相同 */
+const BRIEF_STEPS = ['写作要求', '选择单词', '要求与篇幅', '内容规划'];
+const BRIEF_WORD_COUNTS = [10, 15, 20, 30];
 /** 写作要求最多几个字（与后端 INSTRUCTION_MAX 一致） */
 const INSTRUCTION_MAX = 500;
 
 /** 生成方式：按描述直接生成，或基于单词本 / 学习计划里的单词（三者并列，选一种） */
 type SourceMode = 'brief' | 'books' | 'plans';
 const SOURCE_MODES: { value: SourceMode; label: string; description: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { value: 'brief', label: '按描述生成', description: '写下主题和要求，由 AI 规划与选词', icon: PenLine },
+  { value: 'brief', label: '按描述生成', description: '写下主题和要求，由 AI 选词', icon: PenLine },
   { value: 'books', label: '基于单词本', description: '从单词本中选词', icon: BookOpen },
   { value: 'plans', label: '基于学习计划', description: '按学习进度选词', icon: ListChecks },
 ];
@@ -174,8 +176,14 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   const [step, setStep] = useState(initial?.wordIds?.length ? 1 : 0);
   /** 生成方式：从单词本 / 计划进入时按入口，否则默认按描述生成 */
   const [sourceMode, setSourceMode] = useState<SourceMode>(initial?.planIds?.length ? 'plans' : initial?.bookIds?.length || initial?.wordIds?.length ? 'books' : 'brief');
-  /** 按描述生成：写作要求 */
+  /** 按描述生成：写作要求、要几个目标词、AI 选出的词（可勾掉） */
   const [instruction, setInstruction] = useState('');
+  const [briefCount, setBriefCount] = useState(15);
+  const [briefWords, setBriefWords] = useState<{ word: string; meaning: string; selected: boolean }[] | null>(null);
+  /** AI 选的词对应的要求与数量：没改就不重新选 */
+  const [briefFor, setBriefFor] = useState('');
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestRun = useRef(0);
   const [books, setBooks] = useState<WordBook[] | null>(null);
   const [plans, setPlans] = useState<StudyPlanWithProgress[] | null>(null);
   const [bookIds, setBookIds] = useState<number[]>(initial?.bookIds ?? []);
@@ -312,7 +320,9 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     prefs.frequency === 'any' ? '词频不限' : FREQUENCIES.find((f) => f.value === prefs.frequency)?.label,
     prefs.statuses.length > 0 ? PICK_STATUSES.filter((p) => prefs.statuses.includes(p.value)).map((p) => p.label).join('、') : '全部单词',
   ].join(' · ');
-  const total = required.size + extraWords.length + effectivePick;
+  /** 按描述生成时勾选的 AI 选词 */
+  const briefSelected = sourceMode === 'brief' ? (briefWords ?? []).filter((w) => w.selected).map((w) => w.word) : [];
+  const total = required.size + extraWords.length + effectivePick + briefSelected.length;
   const totalError = total < MIN_WORDS ? (aiMode ? '没有可用的单词：请放宽选词范围，或指定单词' : '请至少选择 1 个单词') : null;
   const sceneHint = useMemo(() => {
     const descriptions = (books ?? []).filter((b) => bookIds.includes(b.id) && b.description?.trim()).map((b) => b.description.trim());
@@ -335,7 +345,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
       .filter(Boolean);
     const bad = words.filter((w) => !isWord(w));
     if (bad.length > 0) return setError({ title: '无法添加单词', message: `「${bad.join('、')}」不是英文单词` });
-    const existing = new Set([...extraWords, ...(candidates ?? []).filter((c) => required.has(c.wordId)).map((c) => c.word)].map((w) => w.toLowerCase()));
+    const existing = new Set([...extraWords, ...briefSelected, ...(candidates ?? []).filter((c) => required.has(c.wordId)).map((c) => c.word)].map((w) => w.toLowerCase()));
     setExtraWords((prev) => [...prev, ...words.filter((w) => !existing.has(w.toLowerCase()))]);
     setExtraDraft('');
     setError(null);
@@ -346,7 +356,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     planIds,
     planScopes: scopes,
     requiredWordIds: [...required],
-    extraWords,
+    extraWords: [...briefSelected, ...extraWords],
     aiPick: effectivePick,
     pickStatuses: effectivePick > 0 ? prefs.statuses : [],
     pickDifficulty: effectivePick > 0 && prefs.difficulty !== 'any' ? prefs.difficulty : null,
@@ -384,6 +394,22 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     setRuns((prev) => [...prev, { jobId: started.data, indexes }]);
   };
   const generateAll = () => write(planItems.map((it, i) => (it.include ? i : -1)).filter((i) => i >= 0));
+
+  /** 按描述生成第一步：AI 按要求选出目标词（要求与数量没变时沿用上次的结果） */
+  const suggestWords = async (force = false) => {
+    const key = `${instruction.trim()}|${briefCount}`;
+    if (!force && briefWords && briefFor === key) return setStep(1);
+    const run = ++suggestRun.current;
+    setSuggesting(true);
+    setError(null);
+    const result = await wordAnalysisService.generateWordsFromIntent(instruction.trim(), briefCount);
+    if (run !== suggestRun.current) return;
+    setSuggesting(false);
+    if (!result.success) return setError({ title: '无法选词', message: result.error });
+    setBriefWords(result.data.words.map((w) => ({ word: w.word, meaning: w.meaning ?? '', selected: true })));
+    setBriefFor(key);
+    setStep(1);
+  };
 
   /** 换生成方式：只保留这种方式的来源 */
   const chooseSource = (mode: SourceMode) => {
@@ -428,16 +454,16 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   const writing = statuses !== null && statuses.some((st) => st.state === 'running' || st.state === 'waiting');
   /** 正在写的那一批（最近提交的进行中任务） */
   const activeRunJob = [...runs].reverse().map((r) => jobs.find((j) => j.id === r.jobId)).find((j) => j && isJobActive(j));
-  const requiredWords = [...(candidates ?? []).filter((c) => required.has(c.wordId)).map((c) => c.word), ...extraWords];
+  const requiredWords = [...(candidates ?? []).filter((c) => required.has(c.wordId)).map((c) => c.word), ...briefSelected, ...extraWords];
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-7">
       <PageHeader title="新建短文" />
-      {sourceMode === 'brief' ? <Stepper steps={BRIEF_STEPS} current={step === 3 ? 1 : 0} /> : <Stepper steps={STEPS} current={step} />}
+      <Stepper steps={sourceMode === 'brief' ? BRIEF_STEPS : STEPS} current={step} />
 
-      {planning ? (
+      {planning || suggesting ? (
         <Card className="px-6">
-          <AiWorking title="AI 正在规划内容" />
+          <AiWorking title={suggesting ? 'AI 正在选词' : 'AI 正在规划内容'} />
         </Card>
       ) : (
         <>
@@ -469,19 +495,24 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                       value={instruction}
                       maxLength={INSTRUCTION_MAX}
                       onChange={(e) => setInstruction(e.target.value)}
-                      placeholder="例如：一篇关于在机场转机的小故事，包含问路和办理登机的对话"
+                      placeholder="例如：几篇介绍恐龙的博物馆展板文字，语言专业、使用学术词汇"
                       className="min-h-32 resize-none"
                     />
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <Label>篇幅</Label>
-                    <ToggleGroup type="single" value={length} onValueChange={(v) => v && setLength(v as typeof length)} className="rounded-lg bg-muted p-0.5" aria-label="篇幅">
-                      {LENGTHS.map((l) => (
-                        <ToggleGroupItem key={l.value} value={l.value} className={segmentItem}>
-                          {l.label}
-                        </ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
+                    <Label>目标词数量</Label>
+                    <Select value={String(briefCount)} onValueChange={(v) => setBriefCount(Number(v))}>
+                      <SelectTrigger className="w-28" aria-label="目标词数量">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BRIEF_WORD_COUNTS.map((n) => (
+                          <SelectItem key={n} value={String(n)}>
+                            {n} 个
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </Card>
               )}
@@ -534,7 +565,87 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
             </div>
           )}
 
-          {step === 1 && (
+          {step === 1 && sourceMode === 'brief' && (
+            <div className="flex flex-col gap-4">
+              <Card className="gap-3 px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="font-semibold">选择单词</h2>
+                    <p className="text-sm text-muted-foreground">已选 {requiredWords.length} 个，都会出现在短文中</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => suggestWords(true)}>
+                    <RotateCw />
+                    换一批
+                  </Button>
+                </div>
+                <div className="max-h-96 overflow-y-auto rounded-md border">
+                  <Table>
+                    <TableHeader className="sticky top-0 z-10 bg-card">
+                      <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={(briefWords ?? []).every((w) => w.selected) ? true : briefSelected.length > 0 ? 'indeterminate' : false}
+                            onCheckedChange={() => {
+                              const all = (briefWords ?? []).every((w) => w.selected);
+                              setBriefWords((prev) => (prev ?? []).map((w) => ({ ...w, selected: !all })));
+                            }}
+                            aria-label="全选"
+                          />
+                        </TableHead>
+                        <TableHead>单词</TableHead>
+                        <TableHead>释义</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(briefWords ?? []).map((w, i) => (
+                        <TableRow
+                          key={w.word}
+                          data-state={w.selected ? 'selected' : undefined}
+                          onClick={() => setBriefWords((prev) => (prev ?? []).map((x, k) => (k === i ? { ...x, selected: !x.selected } : x)))}
+                        >
+                          <TableCell>
+                            <Checkbox
+                              checked={w.selected}
+                              onCheckedChange={() => setBriefWords((prev) => (prev ?? []).map((x, k) => (k === i ? { ...x, selected: !x.selected } : x)))}
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label={`选择 ${w.word}`}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">{w.word}</TableCell>
+                          <TableCell className="text-muted-foreground">{w.meaning}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    value={extraDraft}
+                    onChange={(e) => setExtraDraft(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && extraDraft.trim() && addExtra()}
+                    placeholder="输入其他英文单词，用空格或逗号分隔"
+                    aria-label="手动输入单词"
+                    className="w-96"
+                  />
+                  <Button variant="outline" onClick={addExtra} disabled={!extraDraft.trim()}>
+                    <Plus />
+                    添加
+                  </Button>
+                  {extraWords.map((w) => (
+                    <Badge key={w} variant="secondary" className="gap-1 pr-1">
+                      {w}
+                      <Button variant="ghost" size="icon" className="size-4 rounded-full" aria-label={`移除 ${w}`} onClick={() => setExtraWords((prev) => prev.filter((x) => x !== w))}>
+                        <X className="size-3" />
+                      </Button>
+                    </Badge>
+                  ))}
+                </div>
+              </Card>
+              {totalError && <p className="text-right text-sm text-destructive">{totalError}</p>}
+            </div>
+          )}
+
+          {step === 1 && sourceMode !== 'brief' && (
             <div className="flex flex-col gap-4">
               {hasSources && (
                 <ToggleGroup type="single" value={pickMode} onValueChange={(v) => v && chooseMode(v as PickMode)} className="self-start rounded-lg bg-muted p-0.5" aria-label="选词方式">
@@ -717,10 +828,17 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
           {step === 2 && (
             <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-4">
               <Card className="gap-5 px-5 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cp-scene">场景</Label>
-                  <Textarea id="cp-scene" value={scene} maxLength={SCENE_MAX} onChange={(e) => setScene(e.target.value)} placeholder={sceneHint} className="min-h-28 resize-none" />
-                </div>
+                {sourceMode === 'brief' ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="cp-instruction-2">写作要求</Label>
+                    <Textarea id="cp-instruction-2" value={instruction} maxLength={INSTRUCTION_MAX} onChange={(e) => setInstruction(e.target.value)} className="min-h-28 resize-none" />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="cp-scene">场景</Label>
+                    <Textarea id="cp-scene" value={scene} maxLength={SCENE_MAX} onChange={(e) => setScene(e.target.value)} placeholder={sceneHint} className="min-h-28 resize-none" />
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-4">
                   <Label>篇幅</Label>
                   <ToggleGroup type="single" value={length} onValueChange={(v) => v && setLength(v as typeof length)} className="rounded-lg bg-muted p-0.5" aria-label="篇幅">
@@ -746,7 +864,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                       ))}
                     </div>
                   ) : (
-                    <div>未选择</div>
+                    <div>{sourceMode === 'brief' ? '按描述生成' : '未选择'}</div>
                   )}
                 </div>
                 <div className="space-y-1">
@@ -800,32 +918,22 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
       {error && <InlineError title={error.title}>{error.message}</InlineError>}
 
-      {planning && (
+      {(planning || suggesting) && (
         <div className="flex items-center gap-2 border-t pt-4">
           <Button
             variant="outline"
             onClick={() => {
               planRun.current += 1;
+              suggestRun.current += 1;
               setPlanning(false);
+              setSuggesting(false);
             }}
           >
             停止
           </Button>
         </div>
       )}
-      {!planning && sourceMode === 'brief' && step === 0 && (
-        <div className="flex items-center gap-2 border-t pt-4">
-          <Button variant="ghost" onClick={() => onNavigate?.('passages')}>
-            取消
-          </Button>
-          <div className="flex-1" />
-          <Button onClick={() => makePlan()} disabled={!instruction.trim()}>
-            <Sparkles />
-            生成内容规划
-          </Button>
-        </div>
-      )}
-      {!planning && !(sourceMode === 'brief' && step === 0) && (
+      {!planning && !suggesting && (
         <div className="flex items-center gap-2 border-t pt-4">
           {statuses === null && (
             <Button variant="ghost" onClick={() => onNavigate?.('passages')}>
@@ -834,13 +942,20 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
           )}
           <div className="flex-1" />
           {step > 0 && statuses === null && (
-            <Button variant="outline" onClick={() => setStep((s) => (sourceMode === 'brief' ? 0 : s - 1))}>
+            <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
               <ArrowLeft />
               上一步
             </Button>
           )}
           {step < 2 && (
-            <Button onClick={() => setStep((s) => s + 1)} disabled={(step === 0 && !hasSources) || (step === 0 && planIds.length > 0 && scopes.length === 0) || (step === 1 && totalError !== null)}>
+            <Button
+              onClick={() => (step === 0 && sourceMode === 'brief' ? suggestWords() : setStep((s) => s + 1))}
+              disabled={
+                (step === 0 && (sourceMode === 'brief' ? !instruction.trim() : !hasSources)) ||
+                (step === 0 && planIds.length > 0 && scopes.length === 0) ||
+                (step === 1 && totalError !== null)
+              }
+            >
               下一步
               <ArrowRight />
             </Button>
