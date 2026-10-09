@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote, Snail, Volume2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -62,6 +62,8 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
   /** 补生成单词卡的后台任务 */
   const [cardJobId, setCardJobId] = useState<string | null>(null);
   const cardJob = useJob(cardJobId);
+  /** 已请求过补生成的那组词（避免重复挂载时提交两次） */
+  const requestedRef = useRef('');
   const [index, setIndex] = useState(0);
   const audio = useAudioPlayer();
   const imported = passage.origin !== 'generated';
@@ -71,8 +73,11 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
   useEffect(() => {
     passageService.getPassageWords(passage.id).then((r) => setDetails(new Map((r.success ? r.data : []).map((w) => [w.word.toLowerCase(), w]))));
     void loadCards();
-    // 未收录的词还没有单词卡：自动补生成（已有在跑的同类任务时接上它）
-    if (passage.targetWords.some((w) => w.wordId === null)) {
+    // 未收录的词还没有单词卡：自动补生成（已有在跑的同类任务时后端返回它）。同一组词只请求一次
+    const unrecorded = passage.targetWords.filter((w) => w.wordId === null).map((w) => w.word.toLowerCase());
+    const key = `${passage.id}:${unrecorded.join(',')}`;
+    if (unrecorded.length > 0 && requestedRef.current !== key) {
+      requestedRef.current = key;
       passageService.startWordCards(passage.id).then((r) => r.success && setCardJobId(r.data));
     }
     // loadCards 只依赖 passage.id

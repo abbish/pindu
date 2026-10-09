@@ -419,6 +419,25 @@ pub async fn add_passage_target_word(
     finish(&logger, "add_passage_target_word", result)
 }
 
+/// 提交单词卡任务时加锁：同一篇短文同时只跑一个
+static WORD_CARD_SPAWN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 这篇短文正在跑的单词卡任务
+fn running_word_cards(jobs: &crate::jobs::Jobs, passage_id: i64) -> Option<String> {
+    jobs.list()
+        .into_iter()
+        .find(|j| {
+            j.kind == "word_cards"
+                && j.status.is_active()
+                && j.link
+                    .as_ref()
+                    .and_then(|l| l.params.get("passageId"))
+                    .and_then(|v| v.as_i64())
+                    == Some(passage_id)
+        })
+        .map(|j| j.id)
+}
+
 /// 给这篇短文里还没有单词卡的未收录目标词生成单词卡（后台任务）。都有了返回 None；
 /// 这篇已经有在跑的同类任务时返回它的 id
 #[tauri::command]
@@ -429,17 +448,8 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
     let logger = app.state::<Logger>();
     logger.api_request("start_word_cards", Some(&format!("passage {passage_id}")));
     let result = async {
-        let jobs = app.state::<Jobs>();
-        if let Some(running) = jobs.list().into_iter().find(|j| {
-            j.kind == "word_cards"
-                && j.status.is_active()
-                && j.link
-                    .as_ref()
-                    .and_then(|l| l.params.get("passageId"))
-                    .and_then(|v| v.as_i64())
-                    == Some(passage_id)
-        }) {
-            return Ok(Some(running.id));
+        if let Some(id) = running_word_cards(&app.state::<Jobs>(), passage_id) {
+            return Ok(Some(id));
         }
         let service = word_cards(&app);
         let (passage, missing) = service.missing(passage_id).await?;
@@ -476,36 +486,38 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
                 serde_json::json!({ "passageId": passage_id }),
             )),
         };
-        Ok(Some(app.state::<Jobs>().spawn(
-            spec,
-            move |ctx| async move {
-                ctx.stage("AI 正在生成单词卡");
-                let batches: Vec<Vec<String>> =
-                    words.chunks(batch_size).map(|c| c.to_vec()).collect();
-                let total = words.len() as u64;
-                let mut done = 0u64;
-                let mut saved = 0usize;
-                let mut last_error = None;
-                ctx.progress(0, total);
-                for (i, batch) in batches.iter().enumerate() {
-                    if ctx.is_cancelled() {
-                        break;
-                    }
-                    match analyzer.analyze_batch(batch, i, batches.len()).await {
-                        Ok(outcome) => saved += service.save(&outcome.analyzed).await?,
-                        Err(e) => last_error = Some(e),
-                    }
-                    done += batch.len() as u64;
-                    ctx.progress(done, total);
+        // 检查与提交之间不能有 await：几乎同时的两次请求（如页面重复挂载）只提交一个任务
+        let _guard = WORD_CARD_SPAWN.lock().unwrap_or_else(|e| e.into_inner());
+        let jobs = app.state::<Jobs>();
+        if let Some(id) = running_word_cards(&jobs, passage_id) {
+            return Ok(Some(id));
+        }
+        Ok(Some(jobs.spawn(spec, move |ctx| async move {
+            ctx.stage("AI 正在生成单词卡");
+            let batches: Vec<Vec<String>> = words.chunks(batch_size).map(|c| c.to_vec()).collect();
+            let total = words.len() as u64;
+            let mut done = 0u64;
+            let mut saved = 0usize;
+            let mut last_error = None;
+            ctx.progress(0, total);
+            for (i, batch) in batches.iter().enumerate() {
+                if ctx.is_cancelled() {
+                    break;
                 }
-                if saved == 0 && !ctx.is_cancelled() {
-                    return Err(last_error.unwrap_or_else(|| {
-                        AppError::ExternalServiceError("没有生成单词卡，请再试一次".into())
-                    }));
+                match analyzer.analyze_batch(batch, i, batches.len()).await {
+                    Ok(outcome) => saved += service.save(&outcome.analyzed).await?,
+                    Err(e) => last_error = Some(e),
                 }
-                Ok(serde_json::json!({ "saved": saved }))
-            },
-        )))
+                done += batch.len() as u64;
+                ctx.progress(done, total);
+            }
+            if saved == 0 && !ctx.is_cancelled() {
+                return Err(last_error.unwrap_or_else(|| {
+                    AppError::ExternalServiceError("没有生成单词卡，请再试一次".into())
+                }));
+            }
+            Ok(serde_json::json!({ "saved": saved }))
+        })))
     }
     .await;
     finish(&logger, "start_word_cards", result)
