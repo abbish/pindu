@@ -42,7 +42,7 @@ export function defaultSpec(level: string): QuestionSetSpec {
 }
 
 /**
- * 生成阅读理解题（Dialog 表单）：每种题型的数量、难度、题组名称 → AI 出一套题。
+ * 生成题组（Dialog 表单）：每种题型的数量、难度、题组名称 → AI 出一套题。
  * 生成中可以关闭弹窗，完成后题组出现在「阅读理解」页签。
  */
 export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, onClose, passageId, level, existingSets, onStarted }) => {
@@ -82,7 +82,7 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>生成阅读理解题</DialogTitle>
+          <DialogTitle>生成题组</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
@@ -97,7 +97,7 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
                   <SelectContent>
                     {Array.from({ length: t.max + 1 }, (_, n) => (
                       <SelectItem key={n} value={String(n)}>
-                        {n === 0 ? '不出' : `${n} ${t.key === 'cloze' ? '空' : '道'}`}
+                        {n === 0 ? '0' : `${n} ${t.key === 'cloze' ? '空' : '道'}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -125,21 +125,21 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="qs-name">名称</Label>
+            <Label htmlFor="qs-name">题组名称</Label>
             <Input id="qs-name" value={name} maxLength={30} disabled={starting} onChange={(e) => setName(e.target.value)} placeholder={`第 ${existingSets + 1} 套`} />
           </div>
 
-          {error && <InlineError title="无法生成题目">{error}</InlineError>}
+          {error && <InlineError title="无法生成题组">{error}</InlineError>}
         </div>
 
         <DialogFooter className="items-center">
-          <span className="mr-auto text-xs text-muted-foreground">{total === 0 ? '至少选一种题型' : `共 ${total} 题`}</span>
+          <span className="mr-auto text-xs text-muted-foreground">{total === 0 ? '请至少选择一种题型' : `共 ${total} 题`}</span>
           <Button variant="outline" onClick={onClose}>
             取消
           </Button>
           <Button onClick={generate} disabled={starting || total === 0}>
             {starting ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            生成题目
+            生成题组
           </Button>
         </DialogFooter>
       </DialogContent>

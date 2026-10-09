@@ -198,7 +198,7 @@ const QuestionItem: React.FC<{
     ) : result?.score != null ? (
       <Badge variant="secondary">{result.score} / 4 分</Badge>
     ) : null;
-  const kindLabel = question.kind === 'true_false' ? '判断' : question.kind === 'open' ? '开放题' : '选择';
+  const kindLabel = question.kind === 'true_false' ? '判断题' : question.kind === 'open' ? '开放题' : '选择题';
 
   return (
     <div id={id} className={cn('flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors', missing && 'border-destructive')} aria-invalid={missing || undefined}>
@@ -292,7 +292,7 @@ const QuestionItem: React.FC<{
                   {result.feedback}
                 </p>
               )}
-              {result?.suggestion && <p className="text-muted-foreground">可以这样说：{result.suggestion}</p>}
+              {result?.suggestion && <p className="text-muted-foreground">参考表达：{result.suggestion}</p>}
               {question.referenceAnswer && <p className="text-muted-foreground">参考答案：{question.referenceAnswer}</p>}
             </>
           )}
@@ -545,7 +545,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
               <Headphones />
               {mode === 'listening' ? '再听一次' : '听力练习'}
             </Button>
-            <Button onClick={back}>{returnTo === 'plan-detail' && planId ? '回到计划' : '完成'}</Button>
+            <Button onClick={back}>{returnTo === 'plan-detail' && planId ? '返回计划' : '完成'}</Button>
           </div>
         </Card>
       )}
@@ -553,13 +553,13 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
       <div className="grid grid-cols-2 items-start gap-6">
         <section className="sticky top-0 flex flex-col gap-4 rounded-xl border bg-card p-6">
           <div className="flex items-center gap-2 select-none">
-            <h2 className="flex-1 text-xl font-semibold">{showText ? passage.title : '听一听'}</h2>
+            <h2 className="flex-1 text-xl font-semibold">{showText ? passage.title : '听力'}</h2>
             {showText && (
               <div className="flex items-center gap-2">
                 <Switch id="pp-zh" checked={showZh} onCheckedChange={setShowZh} disabled={!finished} />
-                <Label htmlFor="pp-zh" className={cn(!finished && 'text-muted-foreground')}>
+                <Label htmlFor="pp-zh" className={cn(!finished && 'text-muted-foreground')} title={finished ? undefined : '提交后可查看'}>
                   <Languages className="size-4" />
-                  {finished ? '显示翻译' : '提交后可看翻译'}
+                  译文
                 </Label>
               </div>
             )}
@@ -568,7 +568,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
           {showText && <PassageReader sentences={passage.sentences} translation={showZh ? 'all' : 'off'} renderSentence={mode === 'reading' ? renderSentence : undefined} />}
           {mode === 'reading' && !finished && clozeQuestions.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 border-t pt-3 select-none">
-              <span className="mr-1 text-xs text-muted-foreground">点空位选词</span>
+              <span className="mr-1 text-xs text-muted-foreground">词库</span>
               {set.clozeBank.map((w) => (
                 <span key={w} className={cn('rounded-full border px-2.5 py-0.5 text-sm', usedWords.has(w.toLowerCase()) && 'line-through opacity-40')}>
                   {w}
@@ -592,11 +592,11 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
             />
           ))}
           {otherQuestions.length === 0 && (
-            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">在左边的原文里作答</p>
+            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">请在原文中作答</p>
           )}
           {showMissing && !finished && answered < total && (
-            <InlineError title={`还有 ${total - answered} 题没有作答`}>
-              标红的题目答完才能提交
+            <InlineError title={`还有 ${total - answered} 题未作答`}>
+              请完成标红的题目后提交
             </InlineError>
           )}
           {submitError && <InlineError title={submitError.title}>{submitError.message}</InlineError>}

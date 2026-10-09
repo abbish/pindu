@@ -176,7 +176,7 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="wb-desc">描述</Label>
+            <Label htmlFor="wb-desc">场景描述</Label>
             <Textarea
               id="wb-desc"
               value={values.description}
@@ -189,7 +189,7 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
             {errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
           </div>
 
-          {submitError && <InlineError title={editing ? '无法保存单词本' : '无法创建单词本'}>{submitError}</InlineError>}
+          {submitError && <InlineError title={editing ? '无法保存单词本' : '无法新建单词本'}>{submitError}</InlineError>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>

@@ -46,8 +46,8 @@ interface Filters {
 const DEFAULT_FILTERS: Filters = { searchTerm: '', tag: 'all', status: 'all' };
 
 const STATUS_OPTIONS = [
-  { value: 'all', label: '所有状态' },
-  { value: 'normal', label: '正常' },
+  { value: 'all', label: '全部状态' },
+  { value: 'normal', label: '使用中' },
   { value: 'deleted', label: '已删除' },
 ];
 
@@ -87,7 +87,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
     setError(null);
     try {
 
-      // “所有状态”不含已删除的单词本，已删除的只在“已删除”筛选里看
+      // “全部状态”不含已删除的单词本，已删除的只在“已删除”筛选里看
       const includeDeleted = status === 'deleted';
       const [statsResult, booksResult] = await Promise.all([
         wordBookService.getWordBookStatistics(),
@@ -175,7 +175,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
   const createAction = (
     <Button onClick={() => setCreatingBook(true)}>
       <Plus />
-      创建单词本
+      新建单词本
     </Button>
   );
 
@@ -238,7 +238,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
           <EmptyState
             icon={<BookOpen />}
             title="还没有单词本"
-            action="创建单词本"
+            action="新建单词本"
             actionIcon={<Plus />}
             onAction={() => setCreatingBook(true)}
           />

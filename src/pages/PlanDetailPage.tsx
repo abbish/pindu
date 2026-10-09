@@ -283,10 +283,10 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
     if (!plan) return;
     const result = await passageService.completePlanPassageReading(plan.id, item.passageId);
     if (!result.success) {
-      toast.showError('无法标记为读完', result.error);
+      toast.showError('无法标记为已完成', result.error);
       return;
     }
-    toast.showSuccess(`已读完「${item.title}」`);
+    toast.showSuccess(`已完成「${item.title}」`);
     await loadAll();
   };
 

@@ -28,7 +28,7 @@ export interface WordExplanationViewProps {
 const AUTO_GENERATE_DELAY_MS = 1200;
 
 /** AI 没给出推荐追问时的固定建议 */
-const FALLBACK_SUGGESTIONS = ['为什么这样拼？', '能再举一个例子吗？', '它和哪个词容易搞混？'];
+const FALLBACK_SUGGESTIONS = ['为什么这样拼？', '能再举一个例子吗？', '有哪些易混淆词？'];
 
 /** 本次打开应用期间按单词保留生成的讲解（不落库；换词再回来不用重新生成） */
 const explanationStore = new Map<number, WordExplanation>();
@@ -163,7 +163,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
             <GraduationCap className="size-6 text-muted-foreground" />
             <p className="font-medium">还没有讲解</p>
             <Button size="sm" className="mt-1" onClick={() => generate(wordId)}>
-              让 AI 老师讲一讲
+              生成讲解
             </Button>
           </div>
         ) : state.status === 'error' ? (
@@ -191,7 +191,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
         {(chat.messages.length > 0 || chat.pendingText !== null) && (
           <div className="mt-4 flex flex-col gap-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-              和 AI 老师的对话
+              答疑
             </div>
             {chat.messages.map((m, i) => (
               <div key={i} className={cn('flex gap-2', m.role === 'student' && 'justify-end')}>
@@ -220,7 +220,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
                   {chat.pendingText ? (
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{chat.pendingText}</ReactMarkdown>
                   ) : (
-                    <span className="text-muted-foreground">AI 老师正在想…</span>
+                    <span className="text-muted-foreground">正在回答…</span>
                   )}
                 </div>
               </div>
@@ -244,7 +244,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
           <Input
             value={question}
             maxLength={300}
-            placeholder="问问 AI 老师"
+            placeholder="输入问题"
             aria-label="向 AI 老师提问"
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => {

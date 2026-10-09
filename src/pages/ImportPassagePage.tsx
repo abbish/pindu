@@ -66,7 +66,7 @@ let keySeq = 0;
 const withKey = (it: ImportPreviewItem): DraftItem => ({ ...it, key: `i${++keySeq}` });
 
 /**
- * 导入我的材料（passage-import B3）：粘贴或选文件 → 预览与拆分（清理、分句、拆篇由后端确定性完成，用户可合并 / 拆开 / 改标题）
+ * 从文本导入短文（passage-import B3）：粘贴或选文件 → 预览与拆分（清理、分句、拆篇由后端确定性完成，用户可合并 / 拆开 / 改标题）
  * → 逐篇导入（AI 只逐句翻译、起标题、估水平、挑重点词，原文一字不改）。
  */
 export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate }) => {
@@ -218,8 +218,8 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
           />
 
           <div className="flex items-center justify-between gap-4">
-            <div className="text-sm font-medium">每篇多长</div>
-            <ToggleGroup type="single" value={String(targetWords)} onValueChange={(v) => v && setTargetWords(Number(v))} className="rounded-lg bg-muted p-0.5" aria-label="每篇多长">
+            <div className="text-sm font-medium">每篇篇幅</div>
+            <ToggleGroup type="single" value={String(targetWords)} onValueChange={(v) => v && setTargetWords(Number(v))} className="rounded-lg bg-muted p-0.5" aria-label="每篇篇幅">
               {LENGTHS.map((l) => (
                 <ToggleGroupItem key={l.value} value={String(l.value)} className={segmentItem}>
                   {l.label}
@@ -267,7 +267,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm">
                   <BookOpen />
-                  {bookIds.length > 0 ? `标出 ${bookIds.length} 本单词本里的词` : '从单词本标出目标词'}
+                  {bookIds.length > 0 ? `从 ${bookIds.length} 本单词本标注目标词` : '从单词本标注目标词'}
                   <ChevronDown className="opacity-60" />
                 </Button>
               </PopoverTrigger>
@@ -293,8 +293,8 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
             </Popover>
             <label className="flex items-center gap-2 text-sm">
               <Sparkles className="size-4 text-primary" />
-              AI 标出重点词
-              <Switch checked={aiKeyWords} onCheckedChange={setAiKeyWords} aria-label="AI 标出重点词" />
+              AI 识别重点词
+              <Switch checked={aiKeyWords} onCheckedChange={setAiKeyWords} aria-label="AI 识别重点词" />
             </label>
           </Card>
 
@@ -311,7 +311,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                       <Input
                         value={item.title}
                         onChange={(e) => setItems((prev) => renameItem(prev, i, e.target.value))}
-                        placeholder="AI 起标题"
+                        placeholder="留空由 AI 生成"
                         aria-label={`第 ${i + 1} 篇标题`}
                         className="h-8 flex-1 font-medium"
                         maxLength={120}
@@ -321,7 +321,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                       </span>
                       {hint && (
                         <Badge variant="outline" className="shrink-0 border-transparent bg-warning-soft font-normal text-warning">
-                          {hint === 'short' ? '偏短，可以合并' : '偏长，可以拆开'}
+                          {hint === 'short' ? '偏短' : '偏长'}
                         </Badge>
                       )}
                       {i > 0 && (
@@ -357,7 +357,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                     {item.sentences.length > COLLAPSED_SENTENCES && (
                       <Button variant="ghost" size="sm" className="self-start pl-8 text-muted-foreground" onClick={() => toggleExpanded(item.key)}>
                         {open ? <ChevronUp /> : <ChevronDown />}
-                        {open ? '收起' : `展开全部 ${item.sentences.length} 句（可以从任意一句拆开）`}
+                        {open ? '收起' : `展开（${item.sentences.length} 句）`}
                       </Button>
                     )}
                   </Card>
@@ -398,7 +398,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                     <div className="truncate text-sm font-medium">{st.state === 'done' ? st.title : item.title || `第 ${i + 1} 篇`}</div>
                     <div className={cn('text-xs text-muted-foreground', st.state === 'failed' && 'text-destructive')}>
                       {st.state === 'waiting' && `等待中 · ${item.wordCount} 词`}
-                      {st.state === 'running' && '正在翻译、标出重点词'}
+                      {st.state === 'running' && '正在翻译、识别重点词'}
                       {st.state === 'done' && '已导入'}
                       {st.state === 'cancelled' && '已停止'}
                       {st.state === 'failed' && st.error}
@@ -429,11 +429,11 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                 {retryable.length > 0 && (
                   <Button variant="outline" onClick={() => runImport(retryable)}>
                     <RotateCw />
-                    重试没导入的 {retryable.length} 篇
+                    重试失败的 {retryable.length} 篇
                   </Button>
                 )}
                 <Button variant={doneItems.length === 1 ? 'outline' : 'default'} onClick={() => onNavigate?.('passages')}>
-                  回到短文库
+                  返回短文库
                 </Button>
                 {doneItems.length === 1 && <Button onClick={() => onNavigate?.('passage-detail', { passageId: doneItems[0].passageId })}>打开短文</Button>}
               </>

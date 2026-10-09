@@ -377,7 +377,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
       return item;
     });
     const started = await passageService.startGeneration({ base: baseRequest(), items });
-    if (!started.success) return setError({ title: '无法开始写短文', message: started.error });
+    if (!started.success) return setError({ title: '无法开始生成短文', message: started.error });
     setRuns((prev) => [...prev, { jobId: started.data, indexes }]);
   };
   const generateAll = () => write(planItems.map((it, i) => (it.include ? i : -1)).filter((i) => i >= 0));
@@ -799,7 +799,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
           )}
 
           {step === 3 && activeRunJob && (
-            <JobPanel job={activeRunJob} title="AI 正在写短文" actions={{ stop: true, onBackground: () => onNavigate?.('passages') }} />
+            <JobPanel job={activeRunJob} title="AI 正在生成短文" actions={{ stop: true, onBackground: () => onNavigate?.('passages') }} />
           )}
           {step === 3 && (
             <PassagePlanEditor

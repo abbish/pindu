@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, ChevronLeft, ChevronRight, Eye, EyeOff, Loader2, Pause, Play, Settings2 } from 'lucide-react';
+import { Brain, ChevronLeft, ChevronRight, EyeOff, Loader2, Pause, Play, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -193,9 +193,9 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
   };
 
   const status = (() => {
-    if (recall) return '回忆一下刚才听到的词';
-    if (player.pausing) return '停顿中，跟着说一遍…';
-    if (player.current == null || !player.playing) return blind ? '盲听：先只听，读完自动显示原文' : '点句子前的喇叭可以单独听一句；点目标词看单词卡片';
+    if (recall) return '回忆目标词';
+    if (player.pausing) return '停顿中，请跟读';
+    if (player.current == null || !player.playing) return blind ? '盲听中' : '点击句首图标朗读单句，点击目标词查看单词';
     const round = prefs.repeat > 1 ? ` · 第 ${player.round}/${prefs.repeat} 遍` : '';
     return `第 ${player.current + 1}/${texts.length} 句${round}`;
   })();
@@ -234,7 +234,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
     return (
       <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-lg border bg-background px-3 py-2 text-sm select-none" role="group" aria-label="听后回忆">
         <Brain className="size-4 text-primary" />
-        <span className="mr-1 text-muted-foreground">{done ? (recall.revealed ? '记住它们，继续听…' : '全对！继续…') : '刚才听到的是哪个词？按顺序点选'}</span>
+        <span className="mr-1 text-muted-foreground">{done ? (recall.revealed ? '已显示答案' : '正确') : '按顺序选择听到的目标词'}</span>
         {!done &&
           recall.bank.map((w) => (
             <Button key={w} variant="outline" size="sm" className={cn('h-7', recall.wrong === w && 'border-destructive text-destructive')} onClick={() => pick(w)}>
@@ -243,7 +243,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
           ))}
         {!done && (
           <Button variant="ghost" size="sm" className="ml-auto h-7" onClick={reveal}>
-            看答案
+            显示答案
           </Button>
         )}
       </div>
@@ -269,12 +269,12 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
         <div className="flex-1" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant={blind ? 'secondary' : 'ghost'} size="sm" onClick={toggleBlind}>
-              {blind ? <Eye /> : <EyeOff />}
-              {blind ? '显示原文' : '盲听'}
+            <Button variant={blind ? 'secondary' : 'ghost'} size="sm" onClick={toggleBlind} aria-pressed={blind}>
+              <EyeOff />
+              盲听
             </Button>
           </TooltipTrigger>
-          <TooltipContent>先只听不看原文，读完一遍后自动显示原文</TooltipContent>
+          <TooltipContent>隐藏原文，朗读结束后显示</TooltipContent>
         </Tooltip>
         <Popover>
           <PopoverTrigger asChild>
@@ -294,7 +294,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
                 </ToggleGroupItem>
               </ToggleGroup>
             </SettingRow>
-            <SettingRow label="每句读">
+            <SettingRow label="每句重复">
               <ToggleGroup type="single" value={String(prefs.repeat)} onValueChange={(v) => v && updatePrefs({ repeat: Number(v) })} className="rounded-lg bg-muted p-0.5">
                 {[1, 2, 3].map((n) => (
                   <ToggleGroupItem key={n} value={String(n)} className={segmentItem}>
@@ -306,7 +306,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
             <SettingRow label="句间停顿">
               <ToggleGroup type="single" value={String(prefs.pauseMs)} onValueChange={(v) => v && updatePrefs({ pauseMs: Number(v) })} className="rounded-lg bg-muted p-0.5">
                 {[
-                  [0, '不停'],
+                  [0, '不暂停'],
                   [2000, '2 秒'],
                   [4000, '4 秒'],
                 ].map(([v, label]) => (
@@ -316,7 +316,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
                 ))}
               </ToggleGroup>
             </SettingRow>
-            <SettingRow label="翻译">
+            <SettingRow label="译文">
               <ToggleGroup type="single" value={prefs.translation} onValueChange={(v) => v && updatePrefs({ translation: v as TranslationMode })} className="rounded-lg bg-muted p-0.5">
                 {[
                   ['off', '不显示'],
@@ -331,19 +331,19 @@ export const ReadAloudPanel: React.FC<{ passage: Passage }> = ({ passage }) => {
             </SettingRow>
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="ra-recall" className="text-sm font-normal">
-                读完挖空目标词
+                朗读后回忆目标词
               </Label>
               <Switch id="ra-recall" checked={prefs.recall} onCheckedChange={(v) => updatePrefs({ recall: v })} />
             </div>
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="ra-focus" className="text-sm font-normal">
-                模糊前后句子
+                聚焦当前句
               </Label>
               <Switch id="ra-focus" checked={prefs.focusBlur} onCheckedChange={(v) => updatePrefs({ focusBlur: v })} />
             </div>
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="ra-hl" className="text-sm font-normal">
-                标出目标词
+                高亮目标词
               </Label>
               <Switch id="ra-hl" checked={prefs.highlight} onCheckedChange={(v) => updatePrefs({ highlight: v })} />
             </div>

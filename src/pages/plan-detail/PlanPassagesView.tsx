@@ -30,7 +30,7 @@ export interface PlanPassagesViewProps {
 
 /**
  * 计划详情「短文」页签：每篇短文的日期、题组与方式、状态与成绩。
- * 到期（今天 / 逾期）的任务可以练习；只朗读的任务打开短文读完后点「读完了」。
+ * 到期（今天 / 逾期）的任务可以练习；只朗读的任务打开短文读完后点「标记为已读」。
  */
 export const PlanPassagesView: React.FC<PlanPassagesViewProps> = ({ items, loading, intervalDays, canPractice, onOpen, onPractice, onMarkRead }) => {
   const [marking, setMarking] = useState<number | null>(null);
@@ -116,7 +116,7 @@ export const PlanPassagesView: React.FC<PlanPassagesViewProps> = ({ items, loadi
                         }}
                       >
                         {marking === item.id ? <Loader2 className="animate-spin" /> : <BookOpenCheck />}
-                        {item.isVideo ? '看完了' : '读完了'}
+                        {item.isVideo ? '标记为已看' : '标记为已读'}
                       </Button>
                     </div>
                   )}

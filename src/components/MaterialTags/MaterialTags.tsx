@@ -66,7 +66,7 @@ export const MaterialTags: React.FC<MaterialTagsProps> = ({ kind, refId, tags, o
       {value.map((t) => (
         <Badge key={t.id} variant="outline" className="gap-1 pr-1 font-normal">
           {t.name}
-          <button type="button" aria-label={`去掉 ${t.name}`} className="rounded-sm p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => toggle(t)} disabled={saving}>
+          <button type="button" aria-label={`移除 ${t.name}`} className="rounded-sm p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => toggle(t)} disabled={saving}>
             <X className="size-3" />
           </button>
         </Badge>

@@ -75,7 +75,7 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
     return (
       <Card className="flex-row items-center gap-2 px-5 py-4 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
-        正在汇总生词…
+        正在汇总未收录词…
       </Card>
     );
   }
@@ -86,7 +86,7 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
       <Card className="flex-row items-center gap-3 px-5 py-4">
         <Check className="size-5 shrink-0 text-success" />
         <div className="min-w-0 flex-1 text-sm">
-          已整理到「{result.title}」：{result.count} 个词，音标、拼读和例句已补全
+          已加入「{result.title}」：{result.count} 词，音标、拼读与例句已补全
         </div>
         <Button size="sm" variant="outline" onClick={() => onOpenBook(result.bookId)}>
           打开单词本
@@ -131,7 +131,7 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
     setResult({ bookId: book.bookId, title: book.title, count });
     toast.showToast({
       type: 'success',
-      title: book.created ? `已新建「${book.title}」，整理了 ${count} 个词` : `已把 ${count} 个词加入「${book.title}」`,
+      title: book.created ? `已新建「${book.title}」并加入 ${count} 词` : `已将 ${count} 词加入「${book.title}」`,
       action: { label: '打开单词本', onClick: () => onOpenBook(book.bookId) },
     });
   };
@@ -141,8 +141,8 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
       <div className="flex items-start gap-3">
         <BookPlus className="mt-0.5 size-5 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
-          <h2 className="font-semibold">生词整理成单词本</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">{words.length} 个词还不在单词本里</p>
+          <h2 className="font-semibold">将未收录词加入单词本</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">{words.length} 个未收录词</p>
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -164,16 +164,16 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
         </div>
         <div className="flex-1" />
         <Button variant="ghost" size="sm" onClick={() => setPicked(picked.size === words.length ? new Set() : new Set(words.map((w) => w.word)))} disabled={running}>
-          {picked.size === words.length ? '全不选' : '全选'}
+          {picked.size === words.length ? '取消全选' : '全选'}
         </Button>
         <Button onClick={collect} disabled={running || !isBookTargetReady(target) || picked.size === 0}>
           {running ? <Loader2 className="animate-spin" /> : <BookPlus />}
           {running
-            ? `正在整理第 ${Math.min(progress.done + 1, progress.total)} / ${progress.total} 篇…`
-            : `${target?.kind === 'new' ? '新建单词本' : '加入单词本'}（${picked.size} 个词）`}
+            ? `正在加入（第 ${Math.min(progress.done + 1, progress.total)}/${progress.total} 篇）…`
+            : `${target?.kind === 'new' ? '新建单词本' : '加入单词本'}（${picked.size} 词）`}
         </Button>
       </div>
-      {error && <InlineError title="有些词没有整理进去">{error}</InlineError>}
+      {error && <InlineError title="部分单词未能加入">{error}</InlineError>}
     </Card>
   );
 };

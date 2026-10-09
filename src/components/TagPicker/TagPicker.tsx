@@ -67,7 +67,7 @@ export const TagPicker: React.FC<TagPickerProps> = ({ tags, value, onChange, onC
                   <span
                     role="button"
                     tabIndex={-1}
-                    aria-label={`去掉 ${tag.name}`}
+                    aria-label={`移除 ${tag.name}`}
                     className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
                     onPointerDown={(e) => e.preventDefault()}
                     onClick={(e) => {

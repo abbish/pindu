@@ -80,7 +80,7 @@ export interface WordListTableProps {
   onDeleteWord?: (word: WordDetail) => void;
   /** 批量删除回调 */
   onBatchDelete?: (words: WordDetail[]) => void;
-  /** 用选中的单词写短文 */
+  /** 用所选单词生成短文 */
   onBatchPassage?: (words: WordDetail[]) => void;
   /** 添加单词回调 */
   onAddWords?: () => void;
@@ -199,11 +199,13 @@ export const WordListTable: React.FC<WordListTableProps> = ({
         {!readonly && selected.size > 0 ? (
           <div className="flex flex-1 items-center gap-1 rounded-lg border bg-muted px-3 py-1">
             <span className="text-sm font-medium">已选择 {selected.size} 个单词</span>
-            <Button variant="ghost" size="sm" onClick={toggleAll}>
-              {allSelected ? '取消全选' : '全选'}
-            </Button>
+            {!allSelected && (
+              <Button variant="ghost" size="sm" onClick={toggleAll}>
+                全选
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-              清除选择
+              取消全选
             </Button>
             <div className="flex-1" />
             {onBatchPassage && (
@@ -216,7 +218,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
                 }}
               >
                 <FileText />
-                用选中的词写短文
+                用所选单词生成短文
               </Button>
             )}
             {onBatchDelete && (
@@ -255,7 +257,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
                   </TableHead>
                 )}
                 <TableHead className="w-40">单词</TableHead>
-                <TableHead>中文释义</TableHead>
+                <TableHead>释义</TableHead>
                 <TableHead className="w-36">音标</TableHead>
                 <TableHead className="w-32">音节</TableHead>
                 <TableHead className="w-20">词性</TableHead>

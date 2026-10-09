@@ -140,7 +140,7 @@ export const MaterialSettings: React.FC = () => {
 
       <SettingsSection title="短文">
         <SettingsRow label="篇幅">
-          <Choice label="AI 写短文的篇幅" value={s.passageLength} options={LENGTHS} onChange={(passageLength) => update({ passageLength })} />
+          <Choice label="AI 生成短文的篇幅" value={s.passageLength} options={LENGTHS} onChange={(passageLength) => update({ passageLength })} />
         </SettingsRow>
         <SettingsRow label="AI 选词数量">
           <Choice label="AI 选词数量" value={s.passagePickCount} options={PICK_COUNTS} onChange={(passagePickCount) => update({ passagePickCount })} />

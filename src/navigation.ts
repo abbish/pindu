@@ -102,7 +102,7 @@ export const PAGE_TITLE: Record<PageKey, string> = {
   'practice-result': '练习结果',
   passages: '短文库',
   'create-passage': '新建短文',
-  'import-passage': '从我的材料导入',
+  'import-passage': '导入短文',
   'passage-detail': '短文详情',
   'passage-practice': '短文练习',
   videos: '视频库',

@@ -69,7 +69,7 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: (mode: Passag
       <div className="mt-0.5 text-xs text-muted-foreground">
         {set.lastAttempt
           ? `最近一次${set.lastAttempt.mode === 'listening' ? '听力' : '阅读'}：${scoreSummary(set.lastAttempt)}${set.completedAttempts > 1 ? ` · 共练 ${set.completedAttempts} 次` : ''}`
-          : '还没练过'}
+          : '未练习'}
       </div>
     </div>
     <Tooltip>
@@ -79,7 +79,7 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: (mode: Passag
           听力练习
         </Button>
       </TooltipTrigger>
-      <TooltipContent>先只听不看原文，不考选词填空</TooltipContent>
+      <TooltipContent>不显示原文</TooltipContent>
     </Tooltip>
     <Button variant="outline" onClick={() => onStart('reading')}>
       <BookOpen />
@@ -123,7 +123,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
       toast.showSuccess(`已生成「${r?.name ?? '题组'}」`, `共 ${r?.count ?? 0} 题`);
       load();
     } else if (job.status === 'failed') {
-      toast.showError('无法生成题目', jobErrorText(job));
+      toast.showError('无法生成题组', jobErrorText(job));
     }
   });
   /** 视频短片：有就默认打开「视频」页签 */
@@ -166,10 +166,10 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     const result = await passageService.completePlanPassageReading(fromPlan.planId, passageId);
     setMarkingRead(false);
     if (!result.success) {
-      toast.showError('无法标记为读完', result.error);
+      toast.showError('无法标记为已完成', result.error);
       return;
     }
-    toast.showSuccess(`已读完「${planTask?.title ?? passage?.title ?? '短文'}」`);
+    toast.showSuccess(`已完成「${planTask?.title ?? passage?.title ?? '短文'}」`);
     backToPlan();
   };
 
@@ -248,15 +248,15 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     );
   }
 
-  // 导入的材料：单词本里的词（required）/ AI 标出的重点词；AI 写的短文：必用词 / AI 按场景挑选
-  // 视频切片与导入的材料一样：原文不是 AI 写的，重点词由 AI 标出，可以把生词加进单词本
+  // 导入的材料：指定单词（required）/ 重点词；AI 生成的短文：指定单词 / AI 选词
+  // 视频切片与导入的材料一样：原文不是 AI 生成的，重点词由 AI 识别，可以把未收录词加进单词本
   const imported = passage.origin !== 'generated';
   const required = passage.targetWords.filter((w) => w.required);
   const picked = passage.targetWords.filter((w) => !w.required);
 
   return (
     <div className={container}>
-      {/* 头部：标题 / 水平 / 词数 / 时间 + 主操作（生成阅读理解题）+ ⋯ */}
+      {/* 头部：标题 / 水平 / 词数 / 时间 + 主操作（生成题组）+ ⋯ */}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -264,9 +264,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             <Badge variant="secondary">{LEVEL_LABEL[passage.level] ?? passage.level}</Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            {passage.origin === 'imported' && `我的材料${passage.sourceLabel ? `（${passage.sourceLabel}）` : ''} · `}
+            {passage.origin === 'imported' && `导入${passage.sourceLabel ? `（${passage.sourceLabel}）` : ''} · `}
             {passage.origin === 'video' && `视频${passage.sourceLabel ? `（${passage.sourceLabel}）` : ''} · `}
-            {passage.wordCount} 个英文单词 · {passage.sentences.length} 句 · {passage.origin === 'generated' ? '创建于' : '导入于'} {formatDate(passage.createdAt)}
+            {passage.wordCount} 词 · {passage.sentences.length} 句 · {passage.origin === 'generated' ? '创建于' : '导入于'} {formatDate(passage.createdAt)}
             {passage.modelName && ` · ${passage.modelName}`}
           </p>
           <MaterialTags key={passage.id} kind="passage" refId={passage.id} tags={passage.tags} />
@@ -274,7 +274,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         <div className="flex shrink-0 gap-2">
           <Button onClick={() => setShowGenerate(true)}>
             <Sparkles />
-            生成阅读理解题
+            生成题组
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -322,7 +322,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           {planActive && planTask.setId === null && (planTask.status === 'due' || planTask.status === 'overdue') && (
             <Button size="sm" onClick={markRead} disabled={markingRead}>
               {markingRead ? <Loader2 className="animate-spin" /> : <BookOpenCheck />}
-              {planTask.isVideo ? '看完了' : '读完了'}
+              {planTask.isVideo ? '标记为已看' : '标记为已读'}
             </Button>
           )}
         </Card>
@@ -358,7 +358,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                 <h2 className="text-sm font-semibold">目标词</h2>
                 {required.length > 0 && (
                   <div className="space-y-1.5">
-                    <div className="text-xs text-muted-foreground">{imported ? '单词本里的词' : '必用词'}</div>
+                    <div className="text-xs text-muted-foreground">指定单词</div>
                     <div className="flex flex-wrap gap-1">
                       {required.map((w) => (
                         <span key={w.word} className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground">
@@ -370,7 +370,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                 )}
                 {picked.length > 0 && (
                   <div className="space-y-1.5">
-                    <div className="text-xs text-muted-foreground">{imported ? 'AI 标出的重点词' : 'AI 按场景挑选'}</div>
+                    <div className="text-xs text-muted-foreground">{imported ? '重点词' : 'AI 选词'}</div>
                     <div className="flex flex-wrap gap-1">
                       {picked.map((w) => (
                         <span key={w.word} className="rounded-full bg-muted px-2 py-0.5 text-xs" title={w.meaning ?? undefined}>
@@ -406,14 +406,14 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         <TabsContent value="sets">
           {qsJob && isJobActive(qsJob) && (
             <div className="mb-3">
-              <JobPanel job={qsJob} title="AI 正在出题" actions={{ stop: true }} />
+              <JobPanel job={qsJob} title="AI 正在生成题组" actions={{ stop: true }} />
             </div>
           )}
           {passage.questionSets.length === 0 ? (
-            <EmptyState icon={<FileQuestion />} title="还没有阅读理解题">
+            <EmptyState icon={<FileQuestion />} title="还没有题组">
               <Button onClick={() => setShowGenerate(true)}>
                 <Sparkles />
-                生成阅读理解题
+                生成题组
               </Button>
             </EmptyState>
           ) : (
@@ -446,8 +446,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             </AlertDialogTitle>
             <AlertDialogDescription>
               {isClip
-                ? `片段的视频、${passage.questionSets.length} 套阅读理解题和练习记录都会删除；原始视频不受影响，可以重新切出来。`
-                : `短文、它的 ${passage.questionSets.length} 套阅读理解题和练习记录都会删除，单词本和学习计划不受影响。`}
+                ? `将同时删除片段视频、${passage.questionSets.length} 个题组与练习记录；原始视频不受影响。`
+                : `将同时删除 ${passage.questionSets.length} 个题组与练习记录；单词本与学习计划不受影响。`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -463,7 +463,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>删除题组「{setToDelete?.name}」？</AlertDialogTitle>
-            <AlertDialogDescription>这套题和它的练习记录会删除，短文本身不受影响。</AlertDialogDescription>
+            <AlertDialogDescription>将同时删除该题组的练习记录，短文不受影响。</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>

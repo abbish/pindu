@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, Sele
 import { normalizeBookColor } from '@/components/WordBookIcon/WordBookIcon';
 import { wordBookService } from '@/services/wordbookService';
 
-/** 生词加到哪里：现有单词本 / 新建一本 */
+/** 未收录词加到哪里：现有单词本 / 新建一本 */
 export type BookTarget = { kind: 'existing'; bookId: number } | { kind: 'new'; title: string };
 
 const NEW = 'new';
@@ -12,7 +12,7 @@ const NEW = 'new';
 export interface BookTargetPickerProps {
   value: BookTarget | null;
   onChange: (value: BookTarget | null) => void;
-  /** 新建时的默认名称（如「材料名 生词」） */
+  /** 新建时的默认名称（如「材料名 词汇」） */
   defaultTitle: string;
   /** 默认选「新建单词本」 */
   preferNew?: boolean;
@@ -20,8 +20,8 @@ export interface BookTargetPickerProps {
 }
 
 /**
- * 选择生词加进哪个单词本：列出现有单词本，最后一项「新建单词本…」，选中后填名称。
- * 短文详情的「材料里的生词」与导入完成后的「整理成单词本」共用。
+ * 选择未收录词加进哪个单词本：列出现有单词本，最后一项「新建单词本…」，选中后填名称。
+ * 短文详情的「未收录词」与导入完成后的「将未收录词加入单词本」共用。
  */
 export const BookTargetPicker: React.FC<BookTargetPickerProps> = ({ value, onChange, defaultTitle, preferNew, disabled }) => {
   const [books, setBooks] = useState<{ id: number; title: string }[] | null>(null);
@@ -106,7 +106,7 @@ export async function resolveBookTarget(target: BookTarget, sourceLabel: string 
   const title = target.title.trim();
   const result = await wordBookService.createWordBook({
     title,
-    description: sourceLabel ? `从材料「${sourceLabel}」里整理的生词` : '从导入的材料里整理的生词',
+    description: sourceLabel ? `来自材料「${sourceLabel}」的词汇` : '来自导入材料的词汇',
     icon: 'bookmark',
     icon_color: normalizeBookColor(),
   });
@@ -117,5 +117,5 @@ export async function resolveBookTarget(target: BookTarget, sourceLabel: string 
 /** 材料名去掉后缀后的默认单词本名 */
 export const defaultBookTitle = (sourceLabel: string | null | undefined) => {
   const base = (sourceLabel ?? '').replace(/\.[A-Za-z0-9]{1,8}$/, '').trim();
-  return base && base !== '粘贴的文本' ? `${base} 生词` : '材料生词';
+  return base && base !== '粘贴的文本' ? `${base} 词汇` : '导入词汇';
 };

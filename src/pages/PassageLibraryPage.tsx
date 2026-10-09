@@ -22,15 +22,15 @@ export interface PassageLibraryPageProps {
 
 const ORIGINS = [
   ['all', '全部来源'],
-  ['generated', 'AI 写的'],
-  ['imported', '我的材料'],
+  ['generated', 'AI 生成'],
+  ['imported', '导入'],
 ] as const;
 
 const percent = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)}%`);
 
 /** 一种练习模式的提示行：次数 · 用时 */
 const modeHint = (label: string, m: PassageModeStatistics | undefined) =>
-  m && m.attempts > 0 ? `${label} ${m.attempts} 次 · ${formatDuration(m.totalTime)}` : `${label}还没练过`;
+  m && m.attempts > 0 ? `${label} ${m.attempts} 次 · ${formatDuration(m.totalTime)}` : `${label}未练习`;
 
 /**
  * 素材库 · 短文库：顶部统计（短文 / 题组 / 练习次数 / 阅读与听力正确率）+ 搜索 + 短文卡片网格。
@@ -61,7 +61,7 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
   const attempts = (stats?.reading.attempts ?? 0) + (stats?.listening.attempts ?? 0);
   const metrics = [
     { label: '短文', value: stats?.totalPassages ?? 0, unit: '篇', icon: FileText, hint: stats ? `练过 ${stats.passages} 篇` : undefined },
-    { label: '阅读理解题', value: stats?.totalSets ?? 0, unit: '套', icon: FileQuestion },
+    { label: '题组', value: stats?.totalSets ?? 0, unit: '个', icon: FileQuestion },
     { label: '练习次数', value: attempts, unit: '次', icon: Target, hint: attempts > 0 ? formatDuration((stats?.reading.totalTime ?? 0) + (stats?.listening.totalTime ?? 0)) : undefined },
     { label: '阅读正确率', value: percent(stats?.reading.objectiveAccuracy), icon: BookOpen, hint: modeHint('阅读', stats?.reading) },
     { label: '听力正确率', value: percent(stats?.listening.objectiveAccuracy), icon: Headphones, hint: modeHint('听力', stats?.listening) },
@@ -84,11 +84,11 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem onSelect={create}>
                 <Sparkles />
-                AI 写短文…
+                AI 生成短文…
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onNavigate?.('import-passage')}>
                 <FileUp />
-                从我的材料导入…
+                从文本导入…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

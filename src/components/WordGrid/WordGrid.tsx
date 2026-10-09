@@ -82,7 +82,7 @@ export const WordGrid: React.FC<WordGridProps> = ({ words, onWordToggle, onSelec
         </span>
         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onSelectAll(!allSelected)}>
           {allSelected ? <X /> : <CheckCheck />}
-          {allSelected ? '全不选' : '全选'}
+          {allSelected ? '取消全选' : '全选'}
         </Button>
         {onSelectByPartOfSpeech && Object.keys(posStats).length > 1 && (
           <div className="ml-auto flex flex-wrap items-center gap-1">

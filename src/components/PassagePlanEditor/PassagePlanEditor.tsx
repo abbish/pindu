@@ -38,7 +38,7 @@ const LENGTHS: { value: PassageLength; label: string }[] = [
   { value: 'long', label: '长' },
 ];
 const segmentItem = 'h-7 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm';
-const FEEDBACK_EXAMPLES = ['合成一篇', '拆成两篇', '情节再有趣一点', '换一个主角'];
+const FEEDBACK_EXAMPLES = ['合成一篇', '拆成两篇', '增强故事性', '换一个主角'];
 
 /**
  * 内容规划（新建短文最后一步）：AI 的说明 + 每篇的标题、构思、篇幅与用词（可改、可不生成），
@@ -55,7 +55,7 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
         <div className="flex items-start gap-3 rounded-xl border bg-accent/40 px-5 py-4">
           <Sparkles className="mt-0.5 size-5 shrink-0 text-primary" />
           <div className="min-w-0">
-            <div className="text-sm font-semibold">AI 的规划：{items.length} 篇</div>
+            <div className="text-sm font-semibold">生成方案（{items.length} 篇）</div>
             <p className="text-sm text-muted-foreground select-text">{note}</p>
           </div>
         </div>
@@ -66,7 +66,10 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
         return (
           <Card key={i} className={cn('gap-3 px-5 py-4', !item.include && 'opacity-60')}>
             <div className="flex items-center gap-3">
-              <Checkbox checked={item.include} onCheckedChange={(v) => update(i, { include: v === true })} disabled={locked} aria-label={`生成第 ${i + 1} 篇`} />
+              <label className="flex shrink-0 items-center gap-1.5 text-sm">
+                <Checkbox checked={item.include} onCheckedChange={(v) => update(i, { include: v === true })} disabled={locked} aria-label={`生成第 ${i + 1} 篇`} />
+                生成
+              </label>
               <span className="shrink-0 text-sm text-muted-foreground">第 {i + 1} 篇</span>
               <Input value={item.title} onChange={(e) => update(i, { title: e.target.value })} disabled={locked} aria-label="标题" className="h-8 flex-1 font-medium" />
               <ToggleGroup type="single" value={item.length} onValueChange={(v) => v && update(i, { length: v as PassageLength })} disabled={locked} className="rounded-lg bg-muted p-0.5" aria-label="篇幅">
@@ -78,12 +81,12 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
               </ToggleGroup>
               {status && (
                 <span className="flex shrink-0 items-center gap-1.5 text-sm">
-                  {status.state === 'skipped' && <span className="text-muted-foreground">不生成</span>}
+                  {status.state === 'skipped' && <span className="text-muted-foreground">已排除</span>}
                   {status.state === 'waiting' && <span className="text-muted-foreground">等待中</span>}
                   {status.state === 'running' && (
                     <>
                       <Loader2 className="size-4 animate-spin text-primary" />
-                      正在写
+                      生成中
                     </>
                   )}
                   {status.state === 'done' && (
@@ -109,13 +112,13 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
             </div>
             {status?.state === 'failed' && <p className="text-sm text-destructive">无法生成：{status.error}</p>}
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">故事构思</Label>
+              <Label className="text-xs text-muted-foreground">内容大纲</Label>
               <Textarea value={item.idea} onChange={(e) => update(i, { idea: e.target.value })} disabled={locked} rows={4} className="resize-none text-sm" />
             </div>
             <div className="flex flex-wrap items-center gap-1">
-              <span className="mr-1 text-xs text-muted-foreground">用到的词（{item.words.length}）</span>
+              <span className="mr-1 text-xs text-muted-foreground">目标词（{item.words.length}）</span>
               {item.words.map((w) => (
-                <Badge key={w.word} variant={w.required ? 'default' : 'secondary'} className={cn('font-normal', w.required && 'bg-accent text-accent-foreground')} title={w.required ? '必用词' : 'AI 按场景挑选'}>
+                <Badge key={w.word} variant={w.required ? 'default' : 'secondary'} className={cn('font-normal', w.required && 'bg-accent text-accent-foreground')} title={w.required ? '指定单词' : 'AI 选词'}>
                   {w.word}
                 </Badge>
               ))}
@@ -126,7 +129,7 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
 
       {statuses === null && (
         <Card className="gap-3 px-5 py-4">
-          <h2 className="text-sm font-semibold">重新规划</h2>
+          <h2 className="text-sm font-semibold">调整方案</h2>
           <div className="flex gap-2">
             <Input
               value={feedback}

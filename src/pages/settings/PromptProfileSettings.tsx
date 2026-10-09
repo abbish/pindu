@@ -65,8 +65,8 @@ const CUSTOM_TASKS: Option[] = [
   { value: 'extract', label: '提取单词' },
   { value: 'generate', label: '按意图生成单词' },
   { value: 'plan', label: '学习计划排序' },
-  { value: 'passage', label: '短文：写短文' },
-  { value: 'passage_questions', label: '短文：出阅读理解题' },
+  { value: 'passage', label: '短文：生成短文' },
+  { value: 'passage_questions', label: '短文：生成题组' },
   { value: 'passage_grade', label: '短文：开放题评分' },
 ];
 

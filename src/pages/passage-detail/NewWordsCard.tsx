@@ -20,8 +20,8 @@ export interface NewWordsCardProps {
 }
 
 /**
- * 导入材料的「生词」：AI 标出的重点词里还不在任何单词本的，勾选后加进现有单词本或新建一本（passage-import B5）。
- * 后端一步完成拼读分析与例句；没有生词时不显示。
+ * 导入材料的「未收录词」：AI 标出的重点词里还不在任何单词本的，勾选后加进现有单词本或新建一本（passage-import B5）。
+ * 后端一步完成拼读分析与例句；没有未收录词时不显示。
  */
 export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLabel, onAdded, onOpenBook }) => {
   const toast = useToast();
@@ -67,14 +67,14 @@ export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLab
     const result = await passageService.addWordsToBook({ passageId, bookId: book.bookId, words: [...picked] });
     setSaving(false);
     if (!result.success) {
-      setError({ title: '无法加入单词本', message: book.created ? `已新建「${book.title}」，可以直接重试加入。${result.error}` : result.error });
+      setError({ title: '无法加入单词本', message: book.created ? `已新建「${book.title}」，可重试加入。${result.error}` : result.error });
       if (book.created) setTarget({ kind: 'existing', bookId: book.bookId });
       return;
     }
     toast.showToast({
       type: 'success',
-      title: book.created ? `已新建「${book.title}」，加入 ${picked.size} 个词` : `已把 ${picked.size} 个词加入「${book.title}」`,
-      message: result.data.length < picked.size ? `其中 ${picked.size - result.data.length} 个本里已有，直接关联` : undefined,
+      title: book.created ? `已新建「${book.title}」并加入 ${picked.size} 词` : `已将 ${picked.size} 词加入「${book.title}」`,
+      message: result.data.length < picked.size ? `${picked.size - result.data.length} 个已在该单词本中` : undefined,
       action: onOpenBook ? { label: '打开单词本', onClick: () => onOpenBook(book.bookId) } : undefined,
     });
     setWords((prev) => prev?.filter((w) => !picked.has(w.word)) ?? null);
@@ -85,7 +85,7 @@ export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLab
 
   return (
     <Card className="gap-3 px-5 py-4">
-      <h2 className="text-sm font-semibold">材料里的生词</h2>
+      <h2 className="text-sm font-semibold">未收录词</h2>
       <ul className="max-h-60 space-y-0.5 overflow-y-auto">
         {words.map((w) => (
           <li key={w.word}>
@@ -102,9 +102,8 @@ export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLab
       <BookTargetPicker value={target} onChange={setTarget} defaultTitle={defaultBookTitle(sourceLabel)} disabled={saving} />
       <Button size="sm" onClick={add} disabled={saving || !isBookTargetReady(target) || picked.size === 0}>
         {saving ? <Loader2 className="animate-spin" /> : <Plus />}
-        {saving ? '正在加入…' : `${target?.kind === 'new' ? '新建并加入' : '加入'}${picked.size > 0 ? ` ${picked.size} 个词` : ''}`}
+        {saving ? '正在加入…' : `${target?.kind === 'new' ? '新建单词本并加入' : '加入单词本'}${picked.size > 0 ? `（${picked.size} 词）` : ''}`}
       </Button>
-      {saving && <p className="text-xs text-muted-foreground">正在补全音标、拼读和例句…</p>}
       {error && <InlineError title={error.title}>{error.message}</InlineError>}
     </Card>
   );

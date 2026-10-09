@@ -228,7 +228,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     const result = await wordBookService.updateWordBook(bookId, { description: value });
     setSceneSaving(false);
     if (!result.success) {
-      setError(`无法保存单词本场景：${result.error}`);
+      setError(`无法保存场景描述：${result.error}`);
       return false;
     }
     setScene(value);
@@ -271,7 +271,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       const next = toCandidates(result, existing);
       if (next.length === 0) {
         setPhase('source');
-        setError(source === 'ai' ? '没有生成新的单词，换个描述再试试' : '没有找到可学习的单词，试试“全部单词”或换一段文本');
+        setError(source === 'ai' ? '未生成新单词，请调整描述后重试' : '未找到可学习的单词，请改用“全部单词”或更换文本');
         return;
       }
       setCandidates(next);
@@ -352,7 +352,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       const tooLong = sceneDraft.trim().length > SCENE_MAX;
       return (
         <div className="space-y-2 rounded-lg border p-3">
-          <Label htmlFor="aw-scene">单词本场景</Label>
+          <Label htmlFor="aw-scene">场景描述</Label>
           <Textarea
             id="aw-scene"
             value={sceneDraft}
@@ -383,12 +383,12 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
         <MapPin className="size-4 shrink-0 text-muted-foreground" />
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
-          <span className="shrink-0 font-medium">单词本场景</span>
+          <span className="shrink-0 font-medium">场景描述</span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Info className="size-3.5 shrink-0 text-muted-foreground" aria-label="单词本场景的作用" />
+              <Info className="size-3.5 shrink-0 text-muted-foreground" aria-label="场景描述的作用" />
             </TooltipTrigger>
-            <TooltipContent>生成、释义、例句和讲解都按这个场景理解单词</TooltipContent>
+            <TooltipContent>AI 生成单词、释义、例句和讲解时参考此场景</TooltipContent>
           </Tooltip>
           <span className={cn('ml-1 truncate text-xs', scene ? 'text-foreground' : 'text-muted-foreground')} title={scene || undefined}>
             {scene || '未设置'}
@@ -412,14 +412,14 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
           <div className="flex flex-col gap-5">
             <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="单词来源">
               {sourceCard('ai', Sparkles, 'AI 生成')}
-              {sourceCard('text', FileUp, '从我的材料提取')}
+              {sourceCard('text', FileUp, '从文本提取')}
             </div>
             {sceneCard()}
 
             {source === 'ai' ? (
               <div className="flex flex-col gap-5">
                 <div className="space-y-2">
-                  <Label htmlFor="aw-intent">{scene ? '补充什么单词' : '想要什么单词'}</Label>
+                  <Label htmlFor="aw-intent">词汇需求</Label>
                   <div className="relative">
                     <Textarea
                       id="aw-intent"
@@ -440,7 +440,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                   {!scene && (
                     <label className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Checkbox checked={useIntentAsScene} onCheckedChange={(v) => setUseIntentAsScene(v === true)} />
-                      <span>同时设为单词本场景</span>
+                      <span>同时设为场景描述</span>
                     </label>
                   )}
                   <div className="flex flex-wrap gap-1.5">
@@ -484,7 +484,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                   <Label>提取范围</Label>
                   <ToggleGroup type="single" value={mode} onValueChange={(v) => v && setMode(v as WordExtractionMode)} className="rounded-lg bg-muted p-0.5" aria-label="提取范围">
                     <ToggleGroupItem value="focus" className={segmentItem}>
-                      值得学的词
+                      重点词
                     </ToggleGroupItem>
                     <ToggleGroupItem value="all" className={segmentItem}>
                       全部单词
@@ -581,7 +581,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
           <>
             <Button variant="ghost" className="mr-auto" onClick={() => setPhase('source')}>
               <ArrowLeft />
-              {source === 'ai' ? '修改描述' : '修改文本'}
+              上一步
             </Button>
             <Button variant="outline" onClick={requestClose}>
               取消

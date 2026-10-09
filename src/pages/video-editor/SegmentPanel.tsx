@@ -232,7 +232,7 @@ const TagNames: React.FC<{ value: string[]; options: string[]; onChange: (names:
       {value.map((t) => (
         <Badge key={t} variant="secondary" className="gap-1 pr-1">
           {t}
-          <button type="button" aria-label={`去掉 ${t}`} className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground" onClick={() => onChange(value.filter((v) => v !== t))}>
+          <button type="button" aria-label={`移除 ${t}`} className="rounded-sm p-0.5 text-muted-foreground hover:bg-background hover:text-foreground" onClick={() => onChange(value.filter((v) => v !== t))}>
             <X className="size-3" />
           </button>
         </Badge>

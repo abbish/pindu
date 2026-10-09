@@ -112,7 +112,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
   const aiFill = async () => {
     const w = values.word.trim();
     if (!w) {
-      setErrors({ word: '先填写单词' });
+      setErrors({ word: '请填写单词' });
       return;
     }
     setFilling(true);
@@ -132,7 +132,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
         explanation: prev.explanation || p.analysis_explanation,
         examples: prev.examples.some((e) => e.sentence.trim()) ? prev.examples : (p.examples ?? []),
       }));
-      toast.showSuccess('已补全空着的内容');
+      toast.showSuccess('已补全空白字段');
     } catch (err) {
       setSubmitError({ title: '无法 AI 补全', message: messageOf(err) ?? '请再试一次' });
     } finally {
@@ -144,7 +144,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
     e.preventDefault();
     const nextErrors: typeof errors = {};
     if (!values.word.trim()) nextErrors.word = '请填写单词';
-    if (!values.meaning.trim()) nextErrors.meaning = '请填写中文释义';
+    if (!values.meaning.trim()) nextErrors.meaning = '请填写释义';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -202,7 +202,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                   {errors.word && <p className="text-xs text-destructive">{errors.word}</p>}
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="wf-meaning">中文释义</Label>
+                  <Label htmlFor="wf-meaning">释义</Label>
                   <Input id="wf-meaning" value={values.meaning} onChange={(e) => set('meaning', e.target.value)} placeholder="例如：大象" aria-invalid={Boolean(errors.meaning)} />
                   {errors.meaning && <p className="text-xs text-destructive">{errors.meaning}</p>}
                 </div>
@@ -223,7 +223,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                 </div>
               </div>
               <div className="flex justify-end">
-                <Button type="button" size="sm" variant="outline" className="shrink-0" title="补全空着的音标、音节、拼读和例句，已填写的不改" onClick={aiFill} disabled={busy || !values.word.trim()}>
+                <Button type="button" size="sm" variant="outline" className="shrink-0" title="补全空白字段" onClick={aiFill} disabled={busy || !values.word.trim()}>
                   {filling ? <Loader2 className="animate-spin" /> : <Sparkles />}
                   {filling ? '正在补全…' : 'AI 补全'}
                 </Button>
@@ -245,7 +245,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="wf-seg">拼读块</Label>
+                  <Label htmlFor="wf-seg">拼读分段</Label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -260,7 +260,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                 </div>
                 <Input id="wf-seg" value={values.segments} onChange={(e) => set('segments', e.target.value)} placeholder="例如 el / e / ph / ant" className="font-mono placeholder:font-sans" />
                 {segmentPreview.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1" aria-label="拼读块预览">
+                  <div className="flex flex-wrap gap-1 pt-1" aria-label="拼读分段预览">
                     {segmentPreview.map((s, i) => (
                       <span key={`${s}-${i}`} className={cn('rounded-md px-2 py-0.5 font-mono text-sm', i % 2 === 0 ? 'bg-accent text-accent-foreground' : 'bg-muted')}>
                         {s}
@@ -275,14 +275,14 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="wf-exp">拼读讲解</Label>
-                <Textarea id="wf-exp" value={values.explanation} onChange={(e) => set('explanation', e.target.value)} placeholder="给学生看的拼读说明" className="min-h-20 resize-none" />
+                <Textarea id="wf-exp" value={values.explanation} onChange={(e) => set('explanation', e.target.value)} placeholder="拼读规则说明" className="min-h-20 resize-none" />
               </div>
             </section>
 
             {/* 例句 */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold" title="练习时先展示第一条">
+                <h3 className="text-sm font-semibold">
                   例句
                 </h3>
                 <Button type="button" size="sm" variant="outline" onClick={() => set('examples', [...values.examples, { sentence: '', translation: '' }])}>
@@ -299,7 +299,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                       <span className="mt-2 w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{i + 1}</span>
                       <div className="grid min-w-0 flex-1 gap-1.5">
                         <Input value={ex.sentence} onChange={(e) => setExample(i, { sentence: e.target.value })} placeholder="英文例句" aria-label={`例句 ${i + 1} 英文`} />
-                        <Input value={ex.translation ?? ''} onChange={(e) => setExample(i, { translation: e.target.value })} placeholder="中文翻译" aria-label={`例句 ${i + 1} 中文`} className="text-muted-foreground" />
+                        <Input value={ex.translation ?? ''} onChange={(e) => setExample(i, { translation: e.target.value })} placeholder="译文" aria-label={`例句 ${i + 1} 译文`} className="text-muted-foreground" />
                       </div>
                       <Button
                         type="button"

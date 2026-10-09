@@ -175,7 +175,7 @@ export const BatchTagButton: React.FC<{ kind: MaterialKind; ids: number[]; onDon
       toast.showError('无法修改标签', r.error);
       return;
     }
-    toast.showSuccess(mode === 'add' ? `已给 ${r.data} 个加上「${tag.name}」` : `已从 ${r.data} 个去掉「${tag.name}」`);
+    toast.showSuccess(mode === 'add' ? `已给 ${r.data} 个加上「${tag.name}」` : `已从 ${r.data} 个移除「${tag.name}」`);
     setOpen(false);
     setQuery('');
     onDone();
@@ -216,7 +216,7 @@ export const BatchTagButton: React.FC<{ kind: MaterialKind; ids: number[]; onDon
             </ToggleGroupItem>
             <ToggleGroupItem value="remove" className="h-7 flex-1 rounded-sm text-xs data-[state=on]:bg-background data-[state=on]:shadow-sm">
               <Minus />
-              去掉
+              移除
             </ToggleGroupItem>
           </ToggleGroup>
         </div>

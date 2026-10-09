@@ -35,7 +35,7 @@ export interface PassageListProps {
   bookId?: number;
   /** 按标题或目标词筛选 */
   query?: string;
-  /** 只看 AI 写的 / 导入的材料 */
+  /** 只看 AI 生成 / 导入的短文 */
   origin?: PassageOrigin;
   /** 只看带这个标签的 */
   tagId?: number;
@@ -43,7 +43,7 @@ export interface PassageListProps {
   sortBy?: string;
   /** 列表上方的工具栏；勾选短文后换成选择栏（与其它素材页一致） */
   toolbar?: React.ReactNode;
-  /** 导入我的材料（空状态的次要操作） */
+  /** 从文本导入（空状态的次要操作） */
   onImport?: () => void;
   /** 打开短文详情 */
   onOpen: (passageId: number) => void;
@@ -92,7 +92,7 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
               <Badge variant="outline" className="max-w-full font-normal" title={p.sourceLabel ?? undefined}>
                 {p.origin === 'video' ? <Clapperboard /> : <FileUp />}
                 <span className="truncate">
-                  {p.origin === 'video' ? '视频' : '我的材料'}
+                  {p.origin === 'video' ? '视频' : '导入'}
                   {p.sourceLabel ? ` · ${p.sourceLabel}` : ''}
                 </span>
               </Badge>
@@ -116,10 +116,10 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
             {p.targetWords.length > 12 && <span className="px-1 text-xs text-muted-foreground">+{p.targetWords.length - 12}</span>}
           </div>
           {job ? (
-            <JobProgress job={job} fallback="AI 正在出题" />
+            <JobProgress job={job} fallback="AI 正在生成题组" />
           ) : (
             <div className="text-xs text-muted-foreground">
-              {p.questionSets > 0 ? `${p.questionSets} 套阅读理解题` : '还没有阅读理解题'}
+              {p.questionSets > 0 ? `${p.questionSets} 个题组` : '还没有题组'}
               {p.lastAttempt && ` · 最近一次${MODE_LABEL[p.lastAttempt.mode]}：${scoreSummary(p.lastAttempt)}`}
             </div>
           )}
@@ -128,13 +128,13 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
   );
 };
 
-/** 正在写 / 导入的短文（还没入库）：和视频导入一样，先占一张卡片显示进度，写好一篇就出现在列表里 */
+/** 正在生成 / 导入的短文（还没入库）：和视频导入一样，先占一张卡片显示进度，写好一篇就出现在列表里 */
 const PendingPassageCard: React.FC<{ job: Job }> = ({ job }) => (
   <Card className="gap-3 border-dashed px-5 py-4">
     <div className="min-w-0">
       <div className="truncate text-[15px] font-semibold">{job.title}</div>
       <div className="mt-0.5 text-xs text-muted-foreground">
-        {job.kind === 'passage_import' ? '正在导入' : 'AI 正在写'}
+        {job.kind === 'passage_import' ? '正在导入' : '正在生成'}
         {job.total > 1 && ` · ${job.current}/${job.total} 篇`}
       </div>
     </div>
@@ -150,7 +150,7 @@ export const PASSAGE_SORTS: SortOption<PassageSummary>[] = [
   { value: 'recent', label: '最近添加', compare: byInstant((p) => p.createdAt) },
   { value: 'practiced', label: '最近练习', compare: byInstant((p) => p.lastAttempt?.completedAt) },
   { value: 'name', label: '标题', compare: byText((p) => p.title) },
-  { value: 'level', label: '难度由易到难', compare: byText((p) => p.level) },
+  { value: 'level', label: '难度', compare: byText((p) => p.level) },
   { value: 'attempts', label: '练习最多', compare: byNumber((p) => p.completedAttempts) },
 ];
 
@@ -230,13 +230,13 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
           {onCreate && (
             <Button onClick={onCreate}>
               <Sparkles />
-              AI 写短文
+              AI 生成短文
             </Button>
           )}
           {onImport && (
             <Button variant="outline" onClick={onImport}>
               <FileUp />
-              从我的材料导入
+              从文本导入
             </Button>
           )}
         </div>
@@ -248,11 +248,11 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
       return (
         <>
           {toolbar}
-          <EmptyState icon={<FileUp />} title="还没有导入的材料">
+          <EmptyState icon={<FileUp />} title="还没有导入的短文">
             {onImport && (
               <Button onClick={onImport}>
                 <FileUp />
-                从我的材料导入
+                从文本导入
               </Button>
             )}
           </EmptyState>
@@ -281,7 +281,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
         items={toDelete}
         onClose={() => setToDelete(null)}
         unit="篇短文"
-        description="短文、它的阅读理解题和练习记录都会删除；视频片段的视频也会删除，原始视频不受影响。没结束的计划还在用的短文不会删除。"
+        description="将同时删除题组与练习记录；视频片段的视频文件也会删除。未结束的学习计划中使用的短文不会删除。"
         nameOf={(p) => p.title}
         remove={(p) => passageService.deletePassage(p.id)}
         onDone={() => {

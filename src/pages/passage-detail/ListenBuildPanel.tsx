@@ -88,10 +88,10 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
       <div className="space-y-4 p-4">
         <div className="flex items-center gap-2 font-medium">
           <Trophy className="size-5 text-warning" />
-          听完了
+          完成
         </div>
         <div className="text-sm">
-          一次拼对 <span className="text-lg font-semibold tabular-nums">{first}</span> / {total} 句
+          首次正确 <span className="text-lg font-semibold tabular-nums">{first}</span> / {total} 句
         </div>
         <Progress value={(first / Math.max(1, total)) * 100} />
         {missed.length > 0 && (
@@ -99,7 +99,7 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
             {missed.map((i) => (
               <li key={i} className="rounded-md bg-muted px-2 py-1.5">
                 {sentences[i].en}
-                <span className="ml-1 text-xs text-muted-foreground">{results[i] === 'shown' ? '看了答案' : '重拼后对'}</span>
+                <span className="ml-1 text-xs text-muted-foreground">{results[i] === 'shown' ? '已看答案' : '重试后正确'}</span>
               </li>
             ))}
           </ul>
@@ -115,7 +115,7 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
               }}
             >
               <RotateCcw />
-              再练没拼对的 {missed.length} 句
+              重练错误的 {missed.length} 句
             </Button>
           )}
           <Button
@@ -127,11 +127,11 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
               onIndexChange(0);
             }}
           >
-            从头再来
+            重新开始
           </Button>
           {onPractice && (
             <Button variant="outline" onClick={onPractice}>
-              做听力题
+              听力练习
             </Button>
           )}
         </div>
@@ -147,7 +147,7 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
     <div className="space-y-4 p-4">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Headphones className="size-3.5" />
-        听一句，拼出来
+        听句排序
         <span className="ml-auto tabular-nums">
           {position + 1} / {order.length}
         </span>
@@ -166,7 +166,7 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
         {!done && (
           <Button variant="ghost" size="sm" className="ml-auto" onClick={reveal}>
             <Eye />
-            看答案
+            显示答案
           </Button>
         )}
       </div>
@@ -176,7 +176,7 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
         {done === 'shown' ? (
           <span className="text-[15px]">{sentence.en}</span>
         ) : picked.length === 0 ? (
-          <span className="self-center px-1 text-sm text-muted-foreground">按听到的顺序点下面的词</span>
+          <span className="self-center px-1 text-sm text-muted-foreground">按听到的顺序选择单词</span>
         ) : (
           picked.map((t, i) => (
             <button
@@ -222,10 +222,10 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
           <>
             <span className={cn('flex items-center gap-1 text-sm', done === 'shown' ? 'text-muted-foreground' : 'text-success')}>
               {done === 'shown' ? <Eye className="size-4" /> : <Check className="size-4" />}
-              {done === 'first' ? '一次拼对' : done === 'retry' ? '拼对了' : '看了答案'}
+              {done === 'first' ? '首次正确' : done === 'retry' ? '重试后正确' : '已看答案'}
             </span>
             <Button className="ml-auto" onClick={next}>
-              {position + 1 < order.length ? '下一句' : '看结果'}
+              {position + 1 < order.length ? '下一句' : '查看结果'}
               <ChevronRight />
             </Button>
           </>
@@ -238,7 +238,7 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
             {checked && !checked.every(Boolean) && (
               <span className="flex items-center gap-1 text-sm text-destructive">
                 <X className="size-4" />
-                不对，点红色的词撤回再试
+                有误，点击红色单词撤回
               </span>
             )}
             <Button className="ml-auto" onClick={check} disabled={picked.length === 0}>

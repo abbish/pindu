@@ -58,7 +58,7 @@ export const ExamplePanel: React.FC<ExamplePanelProps> = ({
         generating ? (
           <span className="inline-flex items-center gap-1">
             <PenLine className="size-3.5" />
-            {generating === 'append' ? '正在补充例句…' : '正在重写例句…'}
+            {generating === 'append' ? '正在补充例句…' : '正在重新生成例句…'}
           </span>
         ) : examples.length > 0 ? (
           `共 ${examples.length} 条例句`
@@ -94,7 +94,7 @@ export const ExamplePanel: React.FC<ExamplePanelProps> = ({
       {examples.length === 0 ? (
         <div className="flex flex-col items-center gap-1.5 py-8 text-center">
           {generating ? <Loader2 className="size-6 animate-spin text-primary" /> : <MessageSquareOff className="size-6 text-muted-foreground" />}
-          <p className="font-medium">{generating ? '正在写例句…' : '还没有例句'}</p>
+          <p className="font-medium">{generating ? '正在生成例句…' : '还没有例句'}</p>
         </div>
       ) : (
         <ol className={cn('flex flex-col gap-2', generating === 'replace' && 'opacity-50')}>
@@ -106,7 +106,7 @@ export const ExamplePanel: React.FC<ExamplePanelProps> = ({
                 <button
                   type="button"
                   onClick={() => onSelect(index)}
-                  title="朗读这条例句"
+                  title="朗读例句"
                   className={cn(
                     'flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50',
                     playing && 'border-primary bg-accent/40'
@@ -128,7 +128,7 @@ export const ExamplePanel: React.FC<ExamplePanelProps> = ({
           })}
           {generating === 'append' && (
             <li className="flex items-center gap-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> 正在写例句…
+              <Loader2 className="size-4 animate-spin" /> 正在生成例句…
             </li>
           )}
         </ol>

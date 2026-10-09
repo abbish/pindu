@@ -126,7 +126,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
         <div className="flex gap-1">
           <Toggle size="sm" pressed={autoRecord} onPressedChange={onAutoRecordChange} aria-label="播完原声自动录音" title="播完原声自动录音">
             <Wand2 />
-            自动录
+            自动录音
           </Toggle>
           <Toggle size="sm" pressed={loop} onPressedChange={onLoopChange} aria-label="单句循环">
             <Repeat />
@@ -152,7 +152,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
           <>
             <div className="flex items-center gap-2 text-xs font-medium">
               <span className="size-2 animate-pulse rounded-full bg-destructive" />
-              {recorder.heard ? '正在录音' : '请开始说'}
+              {recorder.heard ? '正在录音' : '请跟读'}
               <span className="ml-auto tabular-nums">{seconds(recorder.elapsedMs)}</span>
             </div>
             <Bars values={recorder.live} />
@@ -160,20 +160,20 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
         ) : arming ? (
           <div className="flex items-center gap-2 text-xs">
             <Loader2 className="size-3.5 animate-spin" />
-            准备麦克风…
+            正在准备麦克风…
           </div>
         ) : recorder.take ? (
           <>
             <div className="flex items-center gap-2 text-xs">
               我的录音
               <span className="ml-auto tabular-nums">
-                原声 {seconds(originalMs)} · 我 {seconds(recorder.take.durationMs)}
+                原声 {seconds(originalMs)} · 我的录音 {seconds(recorder.take.durationMs)}
               </span>
             </div>
             <Bars values={squeeze(recorder.take.peaks)} className="text-primary" />
           </>
         ) : (
-          <div className="text-xs">{autoRecord ? '听完原声会自动开始录音' : '听原声，然后点「录音」跟着说'}</div>
+          <div className="text-xs">{autoRecord ? '原声播放结束后自动录音' : '播放原声后点击「录音」跟读'}</div>
         )}
       </div>
 
@@ -202,7 +202,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
         <div className="space-y-1">
           <Button variant={mineProgress !== null ? 'secondary' : 'outline'} className="w-full" onClick={playMine} disabled={!recorder.take || recording}>
             {mineProgress !== null ? <Pause /> : <Play />}
-            我的
+            我的录音
           </Button>
           <Progress value={(mineProgress ?? 0) * 100} className={cn('h-1', mineProgress === null && 'invisible')} />
         </div>

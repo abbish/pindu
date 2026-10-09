@@ -313,7 +313,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
 
   const typeStats = statistics ?? { nouns: 0, verbs: 0, adjectives: 0, others: 0 };
   const metrics = [
-    { label: '总单词数', value: wordBook.total_words || 0, unit: '个' },
+    { label: '单词总数', value: wordBook.total_words || 0, unit: '个' },
     { label: '名词', value: typeStats.nouns, unit: '个' },
     { label: '动词', value: typeStats.verbs, unit: '个' },
     { label: '形容词', value: typeStats.adjectives, unit: '个' },
@@ -337,7 +337,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             </div>
             {wordBook.description && <p className="text-sm text-muted-foreground select-text">{wordBook.description}</p>}
             <p className="text-xs text-muted-foreground">
-              创建于 {formatDate(wordBook.created_at) || '未知'} · 更新于 {formatDate(wordBook.updated_at) || '未更新'}
+              创建于 {formatDate(wordBook.created_at) || '未知'} · 更新于 {formatDate(wordBook.updated_at) || '—'}
             </p>
           </div>
         </div>
@@ -400,7 +400,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
                 </Button>
                 <Button variant="outline" onClick={() => setAddWordsSource('text')}>
                   <FileUp />
-                  从我的材料提取
+                  从文本提取
                 </Button>
                 <Button variant="ghost" onClick={() => setWordForm({ word: null })}>
                   <PencilLine />
@@ -433,16 +433,16 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
                 <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuItem onSelect={() => setAddWordsSource('ai')}>
                     <Sparkles />
-                    AI 生成…
+                    AI 生成单词…
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setAddWordsSource('text')}>
                     <FileUp />
-                    从我的材料提取…
+                    从文本提取…
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={() => setWordForm({ word: null })}>
                     <PencilLine />
-                    手动添加一个单词…
+                    手动添加…
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -514,7 +514,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               {totalWords > 0 && (
                 <Button variant="outline" onClick={() => onNavigate?.('create-passage', { bookIds: [wordBook.id] })}>
                   <Plus />
-                  用这本单词写短文
+                  用本单词本生成短文
                 </Button>
               )}
             </div>

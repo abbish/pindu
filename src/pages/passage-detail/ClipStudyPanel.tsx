@@ -436,25 +436,25 @@ const PrefsPopover: React.FC<{ mode: Mode; prefs: ClipPrefs; onChange: (patch: P
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="both">双语</SelectItem>
-            <SelectItem value="en">只英文</SelectItem>
-            <SelectItem value="zh">只中文</SelectItem>
+            <SelectItem value="en">英文</SelectItem>
+            <SelectItem value="zh">中文</SelectItem>
             <SelectItem value="none">关闭</SelectItem>
           </SelectContent>
         </Select>
       </Row>
       {mode === 'study' && (
         <>
-          <Row label="右侧台词" htmlFor="cs-text">
+          <Row label="显示台词列表" htmlFor="cs-text">
             <Switch id="cs-text" checked={prefs.showText} onCheckedChange={(showText) => onChange({ showText })} />
           </Row>
-          <Row label="台词翻译">
+          <Row label="译文">
             <Select value={prefs.translation} onValueChange={(v) => onChange({ translation: v as TranslationMode })} disabled={!prefs.showText}>
               <SelectTrigger size="sm" className="w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部显示</SelectItem>
-                <SelectItem value="current">只当前句</SelectItem>
+                <SelectItem value="all">全部</SelectItem>
+                <SelectItem value="current">当前句</SelectItem>
                 <SelectItem value="off">不显示</SelectItem>
               </SelectContent>
             </Select>
