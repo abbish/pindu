@@ -16,12 +16,14 @@ export interface TargetWordProps {
   word?: Word;
   /** 读单词：slow 为慢速 */
   onSpeak: (word: string, slow: boolean) => void;
+  /** 打开完整单词卡（短文详情「目标词」页签） */
+  onOpenCard?: () => void;
 }
 
 /**
  * 正文里的目标词：点击弹出单词卡片（音标、释义、音节与拼读、讲解、例句），可以常速 / 慢速听单词。
  */
-export const TargetWord: React.FC<TargetWordProps> = ({ text, target, active, word, onSpeak }) => {
+export const TargetWord: React.FC<TargetWordProps> = ({ text, target, active, word, onSpeak, onOpenCard }) => {
   const example = word?.examples?.[0];
   return (
     <Popover>
@@ -71,7 +73,12 @@ export const TargetWord: React.FC<TargetWordProps> = ({ text, target, active, wo
             )}
           </div>
         ) : (
-          <p className="mt-3 text-sm text-muted-foreground">手动输入的词，没有拼读资料</p>
+          <p className="mt-3 text-sm text-muted-foreground">单词卡生成中</p>
+        )}
+        {onOpenCard && (
+          <Button variant="link" size="sm" className="mt-1 h-auto px-0" onClick={onOpenCard}>
+            查看单词卡
+          </Button>
         )}
       </PopoverContent>
     </Popover>

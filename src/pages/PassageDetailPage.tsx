@@ -370,13 +370,13 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         {clip && (
           <TabsContent value="video">
-            <ClipStudyPanel video={clip} sentences={passage.sentences} targetWords={passage.targetWords.map((w) => w.word)} onPractice={passage.questionSets.length > 0 ? () => setTab('sets') : undefined} />
+            <ClipStudyPanel video={clip} sentences={passage.sentences} passage={passage} onAddTarget={addTarget} onOpenWord={openWord} onPractice={passage.questionSets.length > 0 ? () => setTab('sets') : undefined} />
           </TabsContent>
         )}
 
         <TabsContent value="text">
           <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6">
-            <ReadAloudPanel passage={passage} onAddTarget={addTarget} />
+            <ReadAloudPanel passage={passage} onAddTarget={addTarget} onOpenWord={openWord} />
 
             <aside className="flex flex-col gap-4">
               <Card className="gap-3 px-5 py-4">

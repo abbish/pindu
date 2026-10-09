@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ear, Eye, Mic, Pause, Play, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,8 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { PassageReader, type TranslationMode } from '@/components/PassageReader';
+import { TargetWord } from '@/components/PassageReader/WordCard';
+import { SelectionAction } from '@/components/SelectionAction';
+import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { targetOf } from '@/utils/passage';
+import { useTargetWordInfo } from './useTargetWordInfo';
 import { cn } from '@/lib/utils';
-import type { PassageSentence } from '@/types/passage';
+import type { Passage, PassageSentence } from '@/types/passage';
 import type { PassageVideo } from '@/types/video';
 import { ListenBuildPanel } from './ListenBuildPanel';
 import { ShadowingPanel } from './ShadowingPanel';
@@ -51,8 +56,12 @@ function loadPrefs(): ClipPrefs {
 export interface ClipStudyPanelProps {
   video: PassageVideo;
   sentences: PassageSentence[];
-  /** 重点词（场景学习里标出） */
-  targetWords?: string[];
+  /** 短文（片段）：目标词的点词卡片与选词加入目标词用 */
+  passage: Pick<Passage, 'id' | 'targetWords'>;
+  /** 台词里选中一个词，加成目标词 */
+  onAddTarget?: (word: string) => void;
+  /** 打开这个目标词的完整单词卡 */
+  onOpenWord?: (word: string) => void;
   /** 有阅读理解题时「做听力题」 */
   onPractice?: () => void;
 }
@@ -68,7 +77,13 @@ const endOf = (s: PassageSentence | undefined) => s?.endMs ?? startOf(s);
  * - 听力：每句只听不看，用单词卡拼出听到的句子，拼对后画面才显示这句字幕（见 ListenBuildPanel）。
  * 「练习设置」里调画面字幕、台词显示、翻译、聚焦与自动暂停。
  */
-export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences, targetWords = [], onPractice }) => {
+/** 选中的文字是一个英文单词（可以加成目标词） */
+const SELECTABLE_WORD = /^[A-Za-z][A-Za-z'’-]{1,29}$/;
+
+export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences, passage, onAddTarget, onOpenWord, onPractice }) => {
+  const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
+  const wordInfo = useTargetWordInfo(passage);
+  const wordAudio = useAudioPlayer();
   const videoRef = useRef<HTMLVideoElement>(null);
   const textBox = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>('study');
@@ -292,6 +307,11 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       <Card className="absolute inset-0 flex flex-col gap-0 overflow-hidden p-0">
         {mode === 'study' && (
           <div ref={textBox} className="min-h-0 flex-1 overflow-y-auto p-3">
+            <SelectionAction
+              label="加入目标词"
+              accept={(text) => Boolean(onAddTarget) && SELECTABLE_WORD.test(text) && !targetOf(text, targetWords)}
+              onAction={(text) => onAddTarget?.(text)}
+            >
             <PassageReader
               scrollContainer={textBox}
               sentences={sentences}
@@ -307,7 +327,21 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
                 sentencePlay.current = false;
                 void videoRef.current?.play();
               }}
+              renderTarget={(text, target, active) => (
+                <TargetWord
+                  text={text}
+                  target={target}
+                  active={active}
+                  word={wordInfo.get(target.toLowerCase())}
+                  onSpeak={(w, slow) => {
+                    videoRef.current?.pause();
+                    wordAudio.playText(w, undefined, { style: 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {});
+                  }}
+                  onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined}
+                />
+              )}
             />
+            </SelectionAction>
           </div>
         )}
         {mode === 'shadow' && (

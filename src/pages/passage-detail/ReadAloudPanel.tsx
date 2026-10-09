@@ -11,13 +11,12 @@ import { PassageReader, type TranslationMode } from '@/components/PassageReader'
 import { TargetWord } from '@/components/PassageReader/WordCard';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { SelectionAction } from '@/components/SelectionAction';
+import { useTargetWordInfo } from './useTargetWordInfo';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { cn } from '@/lib/utils';
-import { passageService } from '@/services/passageService';
 import { targetOf, tokenize } from '@/utils/passage';
 import type { SpeechSpeed } from '@/services/ttsService';
 import type { Passage } from '@/types/passage';
-import type { Word } from '@/types';
 
 /** 朗读偏好（记住） */
 interface ReadAloudPrefs {
@@ -88,22 +87,17 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ la
 const SELECTABLE_WORD = /^[A-Za-z][A-Za-z'’-]{1,29}$/;
 
 /** onAddTarget：读的时候选中原文里的一个词，加成这篇的目标词 */
-export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: string) => void }> = ({ passage, onAddTarget }) => {
+export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: string) => void; onOpenWord?: (word: string) => void }> = ({ passage, onAddTarget, onOpenWord }) => {
   const [prefs, setPrefs] = useState<ReadAloudPrefs>(readPrefs);
   const [blind, setBlind] = useState(false);
   const [blindDone, setBlindDone] = useState(false);
   const [recall, setRecall] = useState<RecallState | null>(null);
-  const [details, setDetails] = useState<Map<string, Word>>(new Map());
+  const details = useTargetWordInfo(passage);
   const wordAudio = useAudioPlayer();
 
   const targets = useMemo(() => passage.targetWords.map((w) => w.word), [passage]);
   const texts = useMemo(() => passage.sentences.map((s) => s.en), [passage]);
 
-  useEffect(() => {
-    passageService.getPassageWords(passage.id).then((r) => {
-      if (r.success) setDetails(new Map(r.data.map((w) => [w.word.toLowerCase(), w])));
-    });
-  }, [passage.id]);
 
   const updatePrefs = (patch: Partial<ReadAloudPrefs>) => {
     const next = { ...prefs, ...patch };
@@ -380,7 +374,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
         renderSentence={renderRecallSentence}
         below={recallPanel}
         renderTarget={(text, target, active) => (
-          <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} onSpeak={(w, slow) => wordAudio.playText(w, undefined, { style: 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {})} />
+          <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} onSpeak={(w, slow) => wordAudio.playText(w, undefined, { style: 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {})} onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined} />
         )}
       />
       </SelectionAction>
