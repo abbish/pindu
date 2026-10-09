@@ -10,6 +10,9 @@ import { ListPagination, usePagination } from '@/components/ListPagination';
 import { PageError } from '@/components/PageError';
 import { cn } from '@/lib/utils';
 import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
+import { JobProgress, activeJobFor } from '@/components/Jobs';
+import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { isJobActive, type Job } from '@/types/job';
 import {
   BatchDeleteButton,
   BatchDeleteDialog,
@@ -62,7 +65,7 @@ export const SourceBadge: React.FC<{ source: PassageSource }> = ({ source }) => 
 );
 
 /** 短文卡片：整张可点进入详情（选择状态下点击即勾选）；⋯ 菜单与右键菜单是同一组操作，悬停左上角可勾选 */
-const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onOpen: () => void; onDelete: () => void }> = ({ passage: p, selection, onOpen, onDelete }) => {
+const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onOpen: () => void; onDelete: () => void; job?: Job }> = ({ passage: p, selection, onOpen, onDelete, job }) => {
   const checked = selection.selected.has(p.id);
   const actions: CardAction[] = [
     { label: '打开', icon: <FileText />, onSelect: onOpen },
@@ -112,14 +115,35 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
             ))}
             {p.targetWords.length > 12 && <span className="px-1 text-xs text-muted-foreground">+{p.targetWords.length - 12}</span>}
           </div>
-          <div className="text-xs text-muted-foreground">
-            {p.questionSets > 0 ? `${p.questionSets} 套阅读理解题` : '还没有阅读理解题'}
-            {p.lastAttempt && ` · 最近一次${MODE_LABEL[p.lastAttempt.mode]}：${scoreSummary(p.lastAttempt)}`}
-          </div>
+          {job ? (
+            <JobProgress job={job} fallback="AI 正在出题" />
+          ) : (
+            <div className="text-xs text-muted-foreground">
+              {p.questionSets > 0 ? `${p.questionSets} 套阅读理解题` : '还没有阅读理解题'}
+              {p.lastAttempt && ` · 最近一次${MODE_LABEL[p.lastAttempt.mode]}：${scoreSummary(p.lastAttempt)}`}
+            </div>
+          )}
         </Card>
     </CardMenu>
   );
 };
+
+/** 正在写 / 导入的短文（还没入库）：和视频导入一样，先占一张卡片显示进度，写好一篇就出现在列表里 */
+const PendingPassageCard: React.FC<{ job: Job }> = ({ job }) => (
+  <Card className="gap-3 border-dashed px-5 py-4">
+    <div className="min-w-0">
+      <div className="truncate text-[15px] font-semibold">{job.title}</div>
+      <div className="mt-0.5 text-xs text-muted-foreground">
+        {job.kind === 'passage_import' ? '正在导入' : 'AI 正在写'}
+        {job.total > 1 && ` · ${job.current}/${job.total} 篇`}
+      </div>
+    </div>
+    <JobProgress job={job} />
+  </Card>
+);
+
+/** 生成新短文的后台任务 */
+const CREATING_KINDS = ['passage_generate', 'passage_import'];
 
 /** 短文列表的排序项（片段同样适用：ClipSummary 继承 PassageSummary） */
 export const PASSAGE_SORTS: SortOption<PassageSummary>[] = [
@@ -135,6 +159,9 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   const [passages, setPassages] = useState<PassageSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<PassageSummary[] | null>(null);
+  const jobs = useJobs();
+  // 新写 / 导入的短文只在短文库首页显示占位（单词本、标签页里的列表不知道新短文归不归它）
+  const creating = bookId === undefined && tagId === undefined ? jobs.filter((j) => isJobActive(j) && CREATING_KINDS.includes(j.kind)) : [];
 
   const load = useCallback(async () => {
     setError(null);
@@ -150,6 +177,15 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   useEffect(() => {
     load();
   }, [load]);
+
+  // 写好 / 导入好一篇、出完题、任务结束时刷新（新短文出现、题组数变化）
+  const createdKey = creating.map((j) => `${j.id}:${j.current}`).join(',');
+  useEffect(() => {
+    if (createdKey) void load();
+  }, [createdKey, load]);
+  useOnJobFinished((job) => {
+    if ([...CREATING_KINDS, 'question_set'].includes(job.kind)) void load();
+  });
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -187,7 +223,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
       </>
     );
   }
-  if (passages?.length === 0) {
+  if (passages?.length === 0 && creating.length === 0) {
     return (
       <EmptyState icon={<FileText />} title="还没有短文" description={emptyDescription}>
         <div className="flex gap-2">
@@ -207,7 +243,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
       </EmptyState>
     );
   }
-  if (visible.length === 0) {
+  if (visible.length === 0 && creating.length === 0) {
     if (!query.trim() && tagId === undefined && origin === 'imported') {
       return (
         <>
@@ -235,8 +271,9 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
     <>
       {bar}
       <div ref={pager.anchorRef} className="grid scroll-mt-20 grid-cols-2 gap-3 xl:grid-cols-3">
+        {pager.page === 1 && creating.map((job) => <PendingPassageCard key={job.id} job={job} />)}
         {(pager.pageItems ?? []).map((p) => (
-          <PassageCard key={p.id} passage={p} selection={selection} onOpen={() => onOpen(p.id)} onDelete={() => setToDelete([p])} />
+          <PassageCard key={p.id} passage={p} selection={selection} onOpen={() => onOpen(p.id)} onDelete={() => setToDelete([p])} job={activeJobFor(jobs, ['question_set'], 'passageId', p.id)} />
         ))}
       </div>
       <ListPagination page={pager.page} pageSize={pager.pageSize} total={pager.total} onChange={pager.setPage} hideSinglePage unit="篇" />

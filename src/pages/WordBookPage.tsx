@@ -16,6 +16,8 @@ import { byInstant, byNumber, byText, sortItems, type SortOption } from '@/utils
 import { SortSelect, useSortPref } from '@/components/SortSelect';
 import type { WordBook as DbWordBook } from '@/types';
 import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
+import { activeJobFor } from '@/components/Jobs';
+import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { BatchDeleteButton, BatchDeleteDialog, BatchTagButton, SelectionBar, useSelection } from '@/components/MaterialSelection/MaterialSelection';
 import type { NavigateFn } from '@/navigation';
 import { PageError } from '@/components/PageError';
@@ -77,9 +79,11 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
   const defaultFilters: Filters = embedded ? { ...DEFAULT_FILTERS, tag: String(tagId) } : DEFAULT_FILTERS;
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sortBy, setSortBy] = useSortPref('word-books', SORT_OPTIONS);
+  const jobs = useJobs();
 
-  const loadWordBookData = useCallback(async (status: string) => {
-    setLoading(true);
+  /** silent：后台刷新，不显示加载骨架 */
+  const loadWordBookData = useCallback(async (status: string, silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
 
@@ -126,6 +130,11 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
     toast.showSuccess(title ? `已恢复「${title}」` : '已恢复单词本');
     loadWordBookData(filters.status);
   };
+
+  // 分析完单词数、词性变了：刷新（不打断正在看的列表）
+  useOnJobFinished((job) => {
+    if (job.kind === 'word_analysis') void loadWordBookData(filters.status, true);
+  });
 
   // 状态筛选走后端，变化时重新加载
   useEffect(() => {
@@ -266,6 +275,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
                     ]
               }
               select={book.deleted_at ? undefined : { checked: selection.selected.has(book.id), selecting: selection.selecting, onToggle: () => selection.toggle(book.id) }}
+              job={activeJobFor(jobs, ['word_analysis'], 'id', book.id)}
             />
           ))}
         </div>

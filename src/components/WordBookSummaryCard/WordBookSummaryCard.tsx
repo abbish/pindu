@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 import { formatRelativeDay, sameMinute } from '@/utils/datetime';
 import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import type { Tag } from '@/types/material';
+import type { Job } from '@/types/job';
+import { JobProgress } from '@/components/Jobs';
 import { CardMenu, CardMenuButton, SelectCheckbox, type CardAction } from '@/components/MaterialSelection/MaterialSelection';
 
 export interface WordBookSummaryCardProps {
@@ -42,6 +44,8 @@ export interface WordBookSummaryCardProps {
   actions?: CardAction[];
   /** 多选：勾选状态；不传则不能勾选（如已删除的） */
   select?: { checked: boolean; selecting: boolean; onToggle: () => void };
+  /** 正在跑的后台任务（AI 分析单词）：词性构成的位置换成进度 */
+  job?: Job;
 }
 
 const SEGMENTS = [
@@ -71,6 +75,7 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
   onRestore,
   actions,
   select,
+  job,
 }) => {
   const typedTotal = SEGMENTS.reduce((sum, s) => sum + wordTypes[s.key], 0);
   const neverUsed = !lastUsed || sameMinute(lastUsed, createdAt);
@@ -135,7 +140,9 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
       </div>
 
       <div className="space-y-1.5">
-        {typedTotal > 0 ? (
+        {job ? (
+          <JobProgress job={job} fallback="AI 正在分析单词" />
+        ) : typedTotal > 0 ? (
           <>
             <Tooltip>
               <TooltipTrigger asChild>

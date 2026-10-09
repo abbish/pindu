@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clapperboard, Film, Loader2, Pencil, Plus, Scissors, SearchX, Tags, Target, Trash2 } from 'lucide-react';
+import { Clapperboard, Film, Pencil, Plus, Scissors, SearchX, Tags, Target, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
 import {
@@ -26,7 +26,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
@@ -40,7 +39,7 @@ import { ImportVideoDialog } from '@/components/ImportVideoDialog';
 import { PageError } from '@/components/PageError';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { useToast } from '@/components/Toast/ToastContainer';
-import { jobPercent } from '@/components/Jobs';
+import { JobProgress } from '@/components/Jobs';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { videoService } from '@/services/videoService';
 import { formatBytes } from '@/utils/fileSize';
@@ -295,13 +294,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
                     <CardMenuButton actions={actions} />
                   </div>
                   {job ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Loader2 className="size-3 animate-spin" />
-                        {job.status === 'queued' ? '排队中' : (job.stage ?? STATUS_LABEL[video.status])}
-                      </div>
-                      <Progress value={jobPercent(job)} className="h-1" />
-                    </div>
+                    <JobProgress job={job} fallback={STATUS_LABEL[video.status]} />
                   ) : (
                     <div className="flex items-center gap-2">
                       <Badge variant={video.status === 'failed' || interrupted ? 'destructive' : video.status === 'done' ? 'default' : 'secondary'}>
