@@ -86,6 +86,11 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   const stopAt = useRef<number | null>(null);
   /** 这次播放是单句原声（跟读、听力用） */
   const sentencePlay = useRef(false);
+  /** 每句后暂停：正在播的那句（播过它的结尾就停）；播放中改开关也立刻生效 */
+  const pauseEachRef = useRef(false);
+  pauseEachRef.current = mode === 'study' && prefs.pauseEach;
+  const playingSentence = useRef<number | null>(null);
+  const [durationMs, setDurationMs] = useState(0);
 
   const updatePrefs = (patch: Partial<ClipPrefs>) =>
     setPrefs((p) => {
@@ -127,6 +132,17 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
             if (sentencePlay.current) setOriginalEnded((n) => n + 1);
             sentencePlay.current = false;
           }
+        } else if (pauseEachRef.current && !sentencePlay.current) {
+          const done = playingSentence.current;
+          if (done !== null && sentences[done] && t >= endOf(sentences[done])) {
+            // 播完这一句：停在句尾，下次播放从下一句开始
+            playingSentence.current = null;
+            v.pause();
+            v.currentTime = endOf(sentences[done]) / 1000;
+          } else {
+            const i = sentences.findIndex((x) => startOf(x) <= t && t < endOf(x));
+            if (i >= 0) playingSentence.current = i;
+          }
         }
         setNow(v.currentTime * 1000);
       }
@@ -140,6 +156,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
     const v = videoRef.current;
     if (!v) return;
     v.currentTime = ms / 1000;
+    playingSentence.current = null;
     setNow(ms);
   };
 
@@ -171,14 +188,9 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
     if (!v.paused) return pause();
     if (mode === 'shadow') return playSentence(current);
     if (mode === 'listen') return playSentence(current);
-    // 场景学习：每句后暂停时，播到当前（或下一句）句尾停
-    if (prefs.pauseEach) {
-      const t = v.currentTime * 1000;
-      const next = sentences.find((s) => endOf(s) > t + 80);
-      stopAt.current = next ? endOf(next) : null;
-    } else {
-      stopAt.current = null;
-    }
+    // 场景学习：每句后暂停由播放头跟踪（见上面的 tick）
+    stopAt.current = null;
+    playingSentence.current = null;
     sentencePlay.current = false;
     void v.play();
   };
@@ -200,7 +212,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       : null;
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_380px] items-start gap-6">
+    <div className="grid grid-cols-[minmax(0,1fr)_380px] items-stretch gap-6">
       <div className="flex flex-col gap-3">
         <div className="relative aspect-video overflow-hidden rounded-xl bg-black">
           <video
@@ -211,6 +223,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
             onSeeked={() => videoRef.current && setNow(videoRef.current.currentTime * 1000)}
+            onLoadedMetadata={(e) => setDurationMs(e.currentTarget.duration * 1000)}
             onClick={togglePlay}
             preload="auto"
           />
@@ -223,6 +236,20 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
             </div>
           )}
         </div>
+
+        <ClipTimeline
+          durationMs={durationMs || endOf(sentences[sentences.length - 1])}
+          nowMs={now}
+          sentences={sentences}
+          active={active}
+          onSeek={(ms) => {
+            seek(ms);
+            if (mode !== 'study') {
+              stopAt.current = null;
+              sentencePlay.current = false;
+            }
+          }}
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <ToggleGroup type="single" value={mode} onValueChange={(v) => v && changeMode(v as Mode)} variant="outline">
@@ -260,9 +287,11 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
         </div>
       </div>
 
-      <Card className="gap-0 overflow-hidden p-0">
+      {/* 右侧与左侧（视频 + 时间轴 + 控制栏）同高，内容多时在里面滚动 */}
+      <div className="relative min-h-[360px]">
+      <Card className="absolute inset-0 flex flex-col gap-0 overflow-hidden p-0">
         {mode === 'study' && (
-          <div ref={textBox} className="max-h-[560px] overflow-y-auto p-3">
+          <div ref={textBox} className="min-h-0 flex-1 overflow-y-auto p-3">
             <PassageReader
               scrollContainer={textBox}
               sentences={sentences}
@@ -273,7 +302,8 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               hidden={!prefs.showText}
               onPlaySentence={(i) => {
                 seek(startOf(sentences[i]));
-                stopAt.current = prefs.pauseEach ? endOf(sentences[i]) : null;
+                stopAt.current = null;
+                playingSentence.current = i;
                 sentencePlay.current = false;
                 void videoRef.current?.play();
               }}
@@ -281,6 +311,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
           </div>
         )}
         {mode === 'shadow' && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
           <ShadowingPanel
             sentence={sentences[current]}
             index={current}
@@ -299,8 +330,10 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               seek(startOf(sentences[i]));
             }}
           />
+          </div>
         )}
         {mode === 'listen' && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
           <ListenBuildPanel
             sentences={sentences}
             index={current}
@@ -313,8 +346,75 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
             onSolved={(i) => setSolved((s) => new Set(s).add(i))}
             onPractice={onPractice}
           />
+          </div>
         )}
       </Card>
+      </div>
+    </div>
+  );
+};
+
+const clock = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+/**
+ * 视频下方的时间轴：进度、当前 / 总时长；每句台词一小段（当前句高亮），点击或拖动跳转。
+ */
+const ClipTimeline: React.FC<{
+  durationMs: number;
+  nowMs: number;
+  sentences: PassageSentence[];
+  active: number;
+  onSeek: (ms: number) => void;
+}> = ({ durationMs, nowMs, sentences, active, onSeek }) => {
+  const track = useRef<HTMLDivElement>(null);
+  const total = Math.max(1, durationMs);
+  const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / total) * 100))}%`;
+  const at = (clientX: number) => {
+    const r = track.current?.getBoundingClientRect();
+    if (!r) return 0;
+    return Math.min(1, Math.max(0, (clientX - r.left) / r.width)) * total;
+  };
+  return (
+    <div className="flex items-center gap-3 select-none">
+      <span className="w-10 text-right text-xs text-muted-foreground tabular-nums">{clock(nowMs)}</span>
+      <div
+        ref={track}
+        role="slider"
+        tabIndex={0}
+        aria-label="播放进度"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(total / 1000)}
+        aria-valuenow={Math.round(nowMs / 1000)}
+        className="group relative h-5 flex-1 cursor-pointer outline-none"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          onSeek(at(e.clientX));
+        }}
+        onPointerMove={(e) => e.buttons === 1 && onSeek(at(e.clientX))}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') onSeek(Math.max(0, nowMs - 5000));
+          if (e.key === 'ArrowRight') onSeek(Math.min(total, nowMs + 5000));
+        }}
+      >
+        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-muted">
+          {sentences.map((s, i) => (
+            <span
+              key={i}
+              className={cn('absolute inset-y-0 bg-foreground/15', i === active && 'bg-primary/40')}
+              style={{ left: pct(startOf(s)), width: `calc(${pct(endOf(s) - startOf(s))} - 1px)` }}
+            />
+          ))}
+          <span className="absolute inset-y-0 left-0 bg-primary" style={{ width: pct(nowMs) }} />
+        </div>
+        <span
+          className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-primary shadow transition-transform group-hover:scale-125 group-focus-visible:ring-[3px] group-focus-visible:ring-ring/50"
+          style={{ left: pct(nowMs) }}
+        />
+      </div>
+      <span className="w-10 text-xs text-muted-foreground tabular-nums">{clock(total)}</span>
     </div>
   );
 };
