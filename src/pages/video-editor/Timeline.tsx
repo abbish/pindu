@@ -32,6 +32,12 @@ export interface TimelineProps {
   onEdgeDrag: (id: string, edge: 'start' | 'end', ms: number, done: boolean, free: boolean) => void;
   /** 在片段轨的空白处拖出一段 */
   onCreate: (startMs: number, endMs: number) => void;
+  /** 入点 / 出点（工具栏或 I / O 设的），在时间轴上标出 */
+  marks: { in: number | null; out: number | null };
+  /** 吸附打开时的字幕边界；拖动时贴近就显示对齐线（与父组件的吸附规则一致） */
+  snapTo: number[] | null;
+  /** 吸附距离（毫秒） */
+  snapWithinMs: number;
 }
 
 /** 刻度间隔：让相邻刻度相距 ≥ 80px */
@@ -64,7 +70,21 @@ export const Timeline: React.FC<TimelineProps> = ({
   onSelect,
   onEdgeDrag,
   onCreate,
+  marks,
+  snapTo,
+  snapWithinMs,
 }) => {
+  /** 正在拖动的位置贴近哪条字幕边界（显示对齐线） */
+  const [guide, setGuide] = useState<number | null>(null);
+  const snapPoint = useCallback(
+    (ms: number, free: boolean) => {
+      if (!snapTo || free) return null;
+      let best: number | null = null;
+      for (const b of snapTo) if (Math.abs(b - ms) <= snapWithinMs && (best === null || Math.abs(b - ms) < Math.abs(best - ms))) best = b;
+      return best;
+    },
+    [snapTo, snapWithinMs]
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState({ left: 0, width: 800 });
@@ -138,12 +158,14 @@ export const Timeline: React.FC<TimelineProps> = ({
     const xOf = (e: MouseEvent) => (el ? e.clientX - el.getBoundingClientRect().left + el.scrollLeft : 0);
     const move = (e: MouseEvent) => {
       const ms = toMs(xOf(e));
+      if (drag.kind !== 'scrub') setGuide(snapPoint(ms, e.altKey));
       if (drag.kind === 'edge') onEdgeDrag(drag.id, drag.edge, ms, false, e.altKey);
-      else if (drag.kind === 'create') setDrag({ ...drag, toMs: ms });
+      else if (drag.kind === 'create') setDrag({ ...drag, toMs: snapPoint(ms, e.altKey) ?? ms });
       else onSeek(ms);
     };
     const up = (e: MouseEvent) => {
       const ms = toMs(xOf(e));
+      setGuide(null);
       if (drag.kind === 'edge') onEdgeDrag(drag.id, drag.edge, ms, true, e.altKey);
       else if (drag.kind === 'create' && Math.abs(ms - drag.fromMs) > 300) onCreate(drag.fromMs, ms);
       setDrag(null);
@@ -154,7 +176,7 @@ export const Timeline: React.FC<TimelineProps> = ({
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
-  }, [drag, toMs, onEdgeDrag, onCreate, onSeek]);
+  }, [drag, toMs, onEdgeDrag, onCreate, onSeek, snapPoint]);
 
   const localX = (e: React.MouseEvent) => {
     const el = scrollRef.current!;
@@ -240,17 +262,24 @@ export const Timeline: React.FC<TimelineProps> = ({
           ))}
         </div>
 
-        {/* 片段轨：空白处拖动新建 */}
+        {/* 片段轨：空白处拖动新建（十字光标；起点也吸附到字幕边界） */}
         <div
-          className="absolute inset-x-0 border-t bg-[repeating-linear-gradient(135deg,transparent,transparent_6px,var(--color-muted)_6px,var(--color-muted)_7px)]"
+          className="absolute inset-x-0 cursor-crosshair border-t bg-[repeating-linear-gradient(135deg,transparent,transparent_6px,var(--color-muted)_6px,var(--color-muted)_7px)]"
           style={{ top: RULER_H + THUMB_H + WAVE_H + CUE_H, height: SEG_H }}
           onMouseDown={(e) => {
             if (e.button !== 0) return;
-            const ms = toMs(localX(e));
+            const raw = toMs(localX(e));
+            const ms = snapPoint(raw, e.altKey) ?? raw;
             onSelect(null);
+            setGuide(snapPoint(raw, e.altKey));
             setDrag({ kind: 'create', fromMs: ms, toMs: ms });
           }}
         >
+          {segments.length === 0 && !creating && (
+            <div className="pointer-events-none absolute top-0 flex h-full items-center px-3 text-xs text-muted-foreground" style={{ left: view.left }}>
+              在这里拖动新建片段
+            </div>
+          )}
           {segments.map((s, i) => {
             const selected = s.id === selectedId;
             return (
@@ -298,6 +327,27 @@ export const Timeline: React.FC<TimelineProps> = ({
             />
           )}
         </div>
+
+        {/* 入点 / 出点：之间高亮，两端小旗 */}
+        {marks.in !== null && marks.out !== null && (
+          <div
+            className="pointer-events-none absolute top-0 bottom-0 bg-primary/10"
+            style={{ left: toX(Math.min(marks.in, marks.out)), width: toX(Math.abs(marks.out - marks.in)) }}
+          />
+        )}
+        {(['in', 'out'] as const).map((k) => {
+          const at = marks[k];
+          return at === null ? null : (
+            <div key={k} className="pointer-events-none absolute top-0 bottom-0 w-px bg-primary" style={{ left: toX(at) }}>
+              <span className={cn('absolute top-0 rounded-sm bg-primary px-1 text-[10px] leading-4 text-primary-foreground', k === 'in' ? 'left-0' : 'right-0')}>
+                {k === 'in' ? '入' : '出'}
+              </span>
+            </div>
+          );
+        })}
+
+        {/* 吸附对齐线：拖动时贴到字幕边界 */}
+        {guide !== null && <div className="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-warning" style={{ left: toX(guide) }} />}
 
         {/* 播放头 */}
         <div className="pointer-events-none absolute top-0 bottom-0 w-px bg-destructive" style={{ left: toX(playheadMs) }}>

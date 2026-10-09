@@ -2,10 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowLeftToLine,
+  ArrowRightToLine,
   Check,
   CircleAlert,
   Loader2,
   Magnet,
+  Keyboard,
   Merge,
   Pause,
   Play,
@@ -16,13 +19,16 @@ import {
   Wand2,
   SkipBack,
   SkipForward,
+  SquarePlus,
   Trash2,
   Undo2,
   ZoomIn,
   ZoomOut,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Toggle } from '@/components/ui/toggle';
@@ -482,8 +488,10 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
           break;
         case 'n':
         case 'N':
-          if (marks.in !== null && marks.out !== null) createFrom(marks.in, marks.out);
-          else toast.showInfo('先用 I / O 设好入点和出点');
+          if (marks.in !== null && marks.out !== null) {
+            createFrom(Math.min(marks.in, marks.out), Math.max(marks.in, marks.out));
+            setMarks({ in: null, out: null });
+          } else toast.showInfo('先用 I / O 设好入点和出点');
           break;
         case 's':
         case 'S':
@@ -815,29 +823,49 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
                 onDelete={remove}
               />
             ) : (
-              <div className="space-y-4 text-sm">
-                <div className="font-medium text-muted-foreground">没有选中片段</div>
-                <div className="space-y-1.5 rounded-lg border p-3 text-xs text-muted-foreground">
-                  <div>入点：{marks.in === null ? '未设（按 I）' : formatClock(marks.in)}</div>
-                  <div>出点：{marks.out === null ? '未设（按 O）' : formatClock(marks.out)}</div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-1 w-full"
-                    disabled={marks.in === null || marks.out === null}
-                    onClick={() => marks.in !== null && marks.out !== null && createFrom(marks.in, marks.out)}
-                  >
-                    用入点和出点新建片段（N）
-                  </Button>
-                </div>
-                <ShortcutHelp />
-              </div>
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">选中一个片段</div>
             )}
           </aside>
         </div>
 
-        {/* 工具栏 */}
+        {/* 剪辑工具栏：手工划片段（入点 / 出点 / 新建）· 拆分 / 合并 / 删除 · 撤销 / 重做 · 吸附 · 快捷键 · 缩放 */}
         <div className="flex shrink-0 items-center gap-1 border-t px-3 py-1.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 tabular-nums" disabled={locked} onClick={() => setMarks((m) => ({ ...m, in: playhead }))}>
+                <ArrowRightToLine />
+                {marks.in === null ? '入点' : formatClock(marks.in)}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>把播放头位置设为入点（I）</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 tabular-nums" disabled={locked} onClick={() => setMarks((m) => ({ ...m, out: playhead }))}>
+                <ArrowLeftToLine />
+                {marks.out === null ? '出点' : formatClock(marks.out)}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>把播放头位置设为出点（O）</TooltipContent>
+          </Tooltip>
+          <ToolButton
+            label="用入点和出点新建片段（N）"
+            onClick={() => {
+              if (marks.in !== null && marks.out !== null) {
+                createFrom(Math.min(marks.in, marks.out), Math.max(marks.in, marks.out));
+                setMarks({ in: null, out: null });
+              }
+            }}
+            disabled={locked || marks.in === null || marks.out === null}
+          >
+            <SquarePlus />
+          </ToolButton>
+          {(marks.in !== null || marks.out !== null) && (
+            <ToolButton label="清除入点和出点" onClick={() => setMarks({ in: null, out: null })}>
+              <X />
+            </ToolButton>
+          )}
+          <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5" />
           <ToolButton label="拆分（S）" onClick={split} disabled={!segmentUnderPlayhead}>
             <Scissors />
           </ToolButton>
@@ -862,8 +890,18 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
                 吸附
               </Toggle>
             </TooltipTrigger>
-            <TooltipContent>拖动边界时对齐到字幕的开始 / 结束（按住 ⌥ 临时关闭）</TooltipContent>
+            <TooltipContent>拖动时对齐到字幕的开始 / 结束（按住 ⌥ 临时关闭）</TooltipContent>
           </Tooltip>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8" aria-label="快捷键">
+                <Keyboard />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-64">
+              <ShortcutHelp />
+            </PopoverContent>
+          </Popover>
           <div className="ml-auto flex w-56 items-center gap-2">
             <ZoomOut className="size-4 text-muted-foreground" />
             <Slider
@@ -895,6 +933,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
             onSelect={setSelectedId}
             onEdgeDrag={onEdgeDrag}
             onCreate={createFrom}
+            marks={marks}
+            snapTo={snap ? boundaries : null}
+            snapWithinMs={(SNAP_PX / zoom) * 1000}
           />
         </div>
       </div>
