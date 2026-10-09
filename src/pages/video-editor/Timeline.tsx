@@ -132,6 +132,31 @@ export const Timeline: React.FC<TimelineProps> = ({
     }
   });
 
+  // 选中片段：滚到它，居中显示（在时间轴上点选的已经在视野里，不动）
+  useEffect(() => {
+    const el = scrollRef.current;
+    const seg = segments.find((s) => s.id === selectedId);
+    if (!el || !seg) return;
+    const [l, r] = [toX(seg.startMs), toX(seg.endMs)];
+    if (l < el.scrollLeft || r > el.scrollLeft + el.clientWidth) {
+      el.scrollTo({ left: Math.max(0, (l + r) / 2 - el.clientWidth / 2), behavior: 'smooth' });
+    }
+    // 只在换选中片段时滚动
+  }, [selectedId]);
+
+  // 从别处跳转（片段列表、字幕、快捷键）让播放头跑出视野时：滚过去（拖动中、播放中由别的逻辑处理）
+  const lastPlayhead = useRef(playheadMs);
+  useEffect(() => {
+    const el = scrollRef.current;
+    const jumped = Math.abs(playheadMs - lastPlayhead.current) > 1000;
+    lastPlayhead.current = playheadMs;
+    if (!el || following || drag || !jumped) return;
+    const x = toX(playheadMs);
+    if (x < el.scrollLeft || x > el.scrollLeft + el.clientWidth - 40) {
+      el.scrollTo({ left: Math.max(0, x - el.clientWidth / 3), behavior: 'smooth' });
+    }
+  }, [playheadMs]);
+
   // 波形：只画可见部分
   useEffect(() => {
     const canvas = canvasRef.current;
