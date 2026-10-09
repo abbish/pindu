@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useState } from 'react';
-import { BookOpen, CalendarDays, Clapperboard, FileText, Home, ListChecks, Moon, Settings, Sun } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { BookOpen, CalendarDays, ChevronDown, ChevronUp, Clapperboard, FileText, Hash, Home, ListChecks, Moon, Settings, Sun } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -10,6 +10,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -30,6 +31,8 @@ import { useTheme } from '@/hooks/useTheme';
 import { PAGE_TITLE, TOP_LEVEL_OF, type NavigateFn, type PageKey, type TopLevelPage } from '@/navigation';
 import { JobIndicator } from '@/components/Jobs';
 import { UpdateBanner } from '../UpdateBanner';
+import { useOnJobFinished } from '@/hooks/useJobs';
+import { refreshTagUsage, tagTotal, useTagUsage } from '@/hooks/useTagUsage';
 
 export interface AppShellProps {
   /** 当前页面键（决定侧边栏高亮与顶栏标题） */
@@ -41,6 +44,8 @@ export interface AppShellProps {
    * 侧边栏高亮 section，面包屑为 section › trail… › 当前标题
    */
   parent?: { section: TopLevelPage; trail: { label: string; onClick: () => void }[] };
+  /** 正在看的标签（侧边栏「标签」分组高亮） */
+  activeTagId?: number;
   /** 页面内容（外壳只负责框架，内容区是唯一滚动区域） */
   children: React.ReactNode;
 }
@@ -68,6 +73,53 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
 
 const SIDEBAR_OPEN_KEY = 'sidebar-open';
 
+/** 「标签」分组默认显示几个（其余点「更多」展开） */
+const TAG_NAV_LIMIT = 8;
+
+/**
+ * 侧边栏「标签」分组：有素材的标签按素材数从多到少，点开是这个标签下的全部素材（标签页）。
+ * 换页、后台任务结束时重新读数量（素材增删、AI 打了新标签）；侧栏收起成图标时不显示。
+ */
+const TagNav: React.FC<{ page: PageKey; activeTagId?: number; onNavigate: NavigateFn }> = ({ page, activeTagId, onNavigate }) => {
+  const tags = useTagUsage();
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    void refreshTagUsage();
+  }, [page]);
+  useOnJobFinished(() => void refreshTagUsage());
+
+  const used = (tags ?? []).filter((t) => tagTotal(t) > 0).sort((a, b) => tagTotal(b) - tagTotal(a) || a.name.localeCompare(b.name, 'zh-Hans-CN'));
+  if (used.length === 0) return null;
+  const activeIndex = used.findIndex((t) => t.id === activeTagId);
+  const shown = expanded || activeIndex >= TAG_NAV_LIMIT ? used : used.slice(0, TAG_NAV_LIMIT);
+  return (
+    <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+      <SidebarGroupLabel>标签</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {shown.map((t) => (
+            <SidebarMenuItem key={t.id}>
+              <SidebarMenuButton isActive={page === 'tag' && t.id === activeTagId} onClick={() => onNavigate('tag', { tagId: t.id })}>
+                <Hash />
+                <span>{t.name}</span>
+              </SidebarMenuButton>
+              <SidebarMenuBadge className="text-muted-foreground">{tagTotal(t)}</SidebarMenuBadge>
+            </SidebarMenuItem>
+          ))}
+          {used.length > TAG_NAV_LIMIT && activeIndex < TAG_NAV_LIMIT && (
+            <SidebarMenuItem>
+              <SidebarMenuButton className="text-muted-foreground" onClick={() => setExpanded((v) => !v)}>
+                {expanded ? <ChevronUp /> : <ChevronDown />}
+                <span>{expanded ? '收起' : `更多（${used.length - TAG_NAV_LIMIT}）`}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+};
+
 function readSidebarOpen(): boolean {
   try {
     return localStorage.getItem(SIDEBAR_OPEN_KEY) !== 'false';
@@ -81,7 +133,7 @@ function readSidebarOpen(): boolean {
  * 外壳铺满窗口，只有内容区滚动；侧栏折叠状态重启后保持。
  * 主题切换与设置放在侧栏底部；系统日志在「设置 → 通用」里。
  */
-export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, children }) => {
+export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, activeTagId, children }) => {
   const [open, setOpen] = useState(readSidebarOpen);
   const { theme, toggleTheme } = useTheme();
   const active = parent?.section ?? TOP_LEVEL_OF[page];
@@ -147,6 +199,7 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ch
                 </SidebarGroupContent>
               </SidebarGroup>
             ))}
+            <TagNav page={page} activeTagId={activeTagId} onNavigate={onNavigate} />
           </SidebarContent>
 
           <SidebarFooter>

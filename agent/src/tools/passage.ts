@@ -47,6 +47,12 @@ const PassageParams = Type.Object({
     }),
   ),
   chosen_words: Type.Array(Type.String(), { description: "the words you chose from the candidate pool and used in the passage (exact spelling from the pool)" }),
+  tags: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "1-3 reusable Chinese tags for this passage (scene or topic, e.g. 出国旅行 / 点餐 / 校园生活), each at most 10 characters; reuse existing tag names from the user message when they fit",
+    }),
+  ),
 });
 export type PassageSubmission = Static<typeof PassageParams>;
 
@@ -303,6 +309,12 @@ const TranslationParams = Type.Object({
       meaning: Type.String({ description: "Chinese meaning in this text" }),
     }),
     { description: "5-12 key words when requested, otherwise an empty array" },
+  ),
+  tags: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "1-3 reusable Chinese tags for this passage (scene or topic, e.g. 出国旅行 / 点餐 / 校园生活), each at most 10 characters; reuse existing tag names from the user message when they fit",
+    }),
   ),
 });
 export type TranslationSubmission = Static<typeof TranslationParams>;

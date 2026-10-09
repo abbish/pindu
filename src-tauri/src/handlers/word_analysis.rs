@@ -24,6 +24,17 @@ fn word_extraction_service(app: &AppHandle) -> AppResult<WordExtractionService> 
     )
 }
 
+/// 给 AI 参考的已有标签名；读不到时不带（不影响提词）
+async fn known_tags(pool: &SqlitePool) -> Vec<String> {
+    crate::services::tag::TagService::new(Arc::new(pool.clone()))
+        .known_names()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("读取已有标签失败，AI 不参考已有标签：{e}");
+            Vec::new()
+        })
+}
+
 /// 批量拼读分析器（经 agent sidecar）
 fn phonics_analyzer(
     app: &AppHandle,
@@ -80,7 +91,14 @@ pub async fn extract_words_from_text(
         )));
     }
     let result = extraction
-        .extract(&model_config, &profile, &scene, &text, mode)
+        .extract(
+            &model_config,
+            &profile,
+            &scene,
+            &text,
+            mode,
+            &known_tags(&pool).await,
+        )
         .await?;
 
     logger.api_response(
@@ -150,7 +168,15 @@ pub async fn generate_words_from_intent(
     )
     .await?;
     let result = word_extraction_service(&app)?
-        .generate(&model_config, &profile, &scene, &intent, count, &existing)
+        .generate(
+            &model_config,
+            &profile,
+            &scene,
+            &intent,
+            count,
+            &existing,
+            &known_tags(&pool).await,
+        )
         .await;
     logger.api_response(
         "generate_words_from_intent",
@@ -237,6 +263,13 @@ pub async fn start_word_analysis(
             book_id: request.book_id,
             book_title: book.title.clone(),
             words,
+            tags: request
+                .tags
+                .as_ref()
+                .map(|t| {
+                    crate::services::tag::tags_from_submission(&serde_json::json!({ "tags": t }))
+                })
+                .unwrap_or_default(),
             batch_size: settings.batch_size as usize,
             concurrency: settings.max_concurrency as usize,
         };

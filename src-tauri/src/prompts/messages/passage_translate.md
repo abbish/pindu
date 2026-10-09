@@ -13,3 +13,6 @@
 {{/key_words}}
 
 {{sentences}}
+{{#tags}}
+已有的标签（合适就照抄名称复用）：{{tags}}
+{{/tags}}

@@ -36,6 +36,8 @@ pub struct WordExtractionResult {
     pub words: Vec<ExtractedWord>,
     pub total_count: usize,
     pub unique_count: usize,
+    /// AI 给这批单词（单词本）定的标签，加入单词本时一起打上
+    pub tags: Vec<String>,
 }
 
 /// 「分析并加入单词本」任务的请求（start_word_analysis）
@@ -47,6 +49,8 @@ pub struct StartWordAnalysisRequest {
     /// 生成 / 提取时定好的释义，与 words 一一对应（空字符串表示没有）
     pub meanings: Option<Vec<String>>,
     pub model_id: Option<i64>,
+    /// 生成 / 提取时 AI 给的标签，保存单词时给单词本加上
+    pub tags: Option<Vec<String>>,
 }
 
 /// 单个单词的分析状态（任务 detail 与结果里用）

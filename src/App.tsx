@@ -21,6 +21,7 @@ import { CreatePassagePage } from './pages/CreatePassagePage';
 import { ImportPassagePage } from './pages/ImportPassagePage';
 import { PassageDetailPage } from './pages/PassageDetailPage';
 import { VideoLibraryPage } from './pages/VideoLibraryPage';
+import { TagPage } from './pages/TagPage';
 import { VideoEditorPage } from './pages/video-editor/VideoEditorPage';
 import { FOCUS_PAGES, type NavigateFn, type PageKey, type Route, type RouteParams } from './navigation';
 
@@ -85,6 +86,8 @@ function App() {
         return <VideoLibraryPage key={JSON.stringify(route.params ?? {})} tab={route.params?.tab} videoId={route.params?.videoId} onNavigate={navigate} />;
       case 'video-editor':
         return <VideoEditorPage key={route.params?.videoId} videoId={route.params?.videoId} onNavigate={navigate} />;
+      case 'tag':
+        return <TagPage key={route.params?.tagId} tagId={route.params?.tagId} onNavigate={navigate} />;
       case 'calendar':
         return <CalendarPage onNavigate={navigate} />;
       case 'settings':
@@ -120,7 +123,7 @@ function App() {
           {FOCUS_PAGES.has(route.page) ? (
             renderPage()
           ) : (
-            <AppShell page={route.page} onNavigate={navigate} parent={shellParent}>
+            <AppShell page={route.page} onNavigate={navigate} parent={shellParent} activeTagId={route.page === 'tag' ? route.params?.tagId : undefined}>
               {renderPage()}
             </AppShell>
           )}

@@ -55,6 +55,8 @@ export interface VideoLibraryPageProps {
   /** 只看这个视频切出的片段 */
   videoId?: number;
   onNavigate?: NavigateFn;
+  /** 嵌在标签页里：只显示 tab 这一类、这个标签的（不显示页头、统计、页签与标签筛选） */
+  tagId?: number;
 }
 
 /** 这个视频正在跑的后台任务（导入 / 处理） */
@@ -81,7 +83,8 @@ const STATUS_LABEL: Record<Video['status'], string> = {
  * 「原始视频」是待加工的材料：导入视频与字幕 → 剪辑编辑器里规划切分 → 后台切成片段。
  * 原始视频卡片显示封面、时长、状态；导入 / 处理中的显示后台任务的进度。
  */
-export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initialTab, videoId, onNavigate }) => {
+export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initialTab, videoId, onNavigate, tagId }) => {
+  const embedded = tagId !== undefined;
   const [tab, setTab] = useState<'clips' | 'sources'>(initialTab ?? 'clips');
   const [videos, setVideos] = useState<Video[] | null>(null);
   const [clips, setClips] = useState<ClipSummary[] | null>(null);
@@ -91,7 +94,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
   const [renameText, setRenameText] = useState('');
   const [toDelete, setToDelete] = useState<Video[] | null>(null);
   const [sourceQuery, setSourceQuery] = useState('');
-  const [sourceTag, setSourceTag] = useState('all');
+  const [sourceTag, setSourceTag] = useState(embedded ? String(tagId) : 'all');
   const [sourceSort, setSourceSort] = useSortPref('videos', VIDEO_SORTS);
   const jobs = useJobs();
   const toast = useToast();
@@ -142,7 +145,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
     return sortItems(shown, VIDEO_SORTS, sourceSort);
   }, [videos, sourceQuery, sourceTag, sourceSort]);
   const selection = useSelection(useMemo(() => shownVideos.map((v) => v.id), [shownVideos]));
-  const pager = usePagination(videos === null ? null : shownVideos, { id: 'videos', resetKey: `${sourceQuery.trim()}|${sourceTag}|${sourceSort}` });
+  const pager = usePagination(videos === null ? null : shownVideos, { id: embedded ? `videos:tag${tagId}` : 'videos', resetKey: `${sourceQuery.trim()}|${sourceTag}|${sourceSort}` });
 
   const header = (
     <PageHeader
@@ -167,16 +170,16 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
   ];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
-      {header}
+    <div className={embedded ? 'flex flex-col gap-6' : 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7'}>
+      {!embedded && header}
 
-      <section aria-label="视频库统计" className="grid grid-cols-4 gap-3">
+      <section aria-label="视频库统计" className={cn('grid grid-cols-4 gap-3', embedded && 'hidden')}>
         {metrics.map((m) => (
           <MetricCard key={m.label} {...m} loading={videos === null && !loadError} />
         ))}
       </section>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'clips' | 'sources')}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'clips' | 'sources')} className={cn(embedded && 'hidden')}>
         <TabsList>
           <TabsTrigger value="clips">
             片段
@@ -192,7 +195,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
       {loadError ? (
         <PageError title="无法加载视频库" message={loadError} onRetry={load} />
       ) : tab === 'clips' ? (
-        <ClipGrid clips={clips} videos={videos ?? []} videoId={videoId} onOpen={(c) => onNavigate?.('passage-detail', { passageId: c.id, clip: true })} onGoSources={() => setTab('sources')} onTagsChanged={load} onOpenEditor={(id) => onNavigate?.('video-editor', { videoId: id })} />
+        <ClipGrid clips={clips} videos={videos ?? []} videoId={videoId} onOpen={(c) => onNavigate?.('passage-detail', { passageId: c.id, clip: true })} onGoSources={() => setTab('sources')} onTagsChanged={load} onOpenEditor={(id) => onNavigate?.('video-editor', { videoId: id })} tagId={tagId} />
       ) : videos === null ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {[0, 1, 2].map((i) => (
@@ -220,11 +223,11 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
             search={sourceQuery}
             onSearch={setSourceQuery}
             searchPlaceholder="搜索视频"
-            tag={{ kind: 'video', value: sourceTag, onChange: setSourceTag, onTagsChanged: load }}
-            activeCount={(sourceQuery ? 1 : 0) + (sourceTag !== 'all' ? 1 : 0)}
+            tag={embedded ? null : { kind: 'video', value: sourceTag, onChange: setSourceTag, onTagsChanged: load }}
+            activeCount={(sourceQuery ? 1 : 0) + (!embedded && sourceTag !== 'all' ? 1 : 0)}
             onReset={() => {
               setSourceQuery('');
-              setSourceTag('all');
+              if (!embedded) setSourceTag('all');
             }}
             countText={`共 ${shownVideos.length} 个`}
           >

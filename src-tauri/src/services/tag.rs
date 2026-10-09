@@ -14,6 +14,34 @@ pub struct TagService {
     repository: TagRepository,
 }
 
+/// AI 生成素材时给的标签最多几个
+pub const AI_TAGS_MAX: usize = 3;
+/// 发给 AI 参考的已有标签最多几个
+const KNOWN_TAGS_MAX: usize = 60;
+
+fn usage_total(t: &TagUsage) -> i64 {
+    t.word_books + t.passages + t.clips + t.videos
+}
+
+/// AI 工具参数里的 `tags` → 清理后的标签名：去掉不合格的、忽略大小写去重，最多 AI_TAGS_MAX 个
+pub fn tags_from_submission(details: &serde_json::Value) -> Vec<String> {
+    let mut tags: Vec<String> = Vec::new();
+    for name in details
+        .get("tags")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .filter_map(clean_name)
+    {
+        if tags.len() < AI_TAGS_MAX && !tags.iter().any(|t| t.to_lowercase() == name.to_lowercase())
+        {
+            tags.push(name);
+        }
+    }
+    tags
+}
+
 /// 清理标签名：去首尾空格、合并连续空白；空或超长返回 None
 pub fn clean_name(name: &str) -> Option<String> {
     let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -63,6 +91,33 @@ impl TagService {
             }
         }
         Ok(ids)
+    }
+
+    /// 给素材加上这些名字的标签（没有就新建，已有的不重复；不合格的名字跳过）。AI 生成素材时用
+    pub async fn add_names_conn(
+        &self,
+        conn: &mut SqliteConnection,
+        kind: MaterialKind,
+        ref_id: Id,
+        names: &[String],
+    ) -> AppResult<()> {
+        if names.is_empty() {
+            return Ok(());
+        }
+        let ids = self.ensure_names_conn(conn, names).await?;
+        self.repository.add_conn(conn, kind, ref_id, &ids).await
+    }
+
+    /// 给 AI 参考的已有标签名：用得多的在前，最多 KNOWN_TAGS_MAX 个
+    pub async fn known_names(&self) -> AppResult<Vec<String>> {
+        let mut tags = self.repository.find_all_with_usage().await?;
+        tags.retain(|t| usage_total(t) > 0);
+        tags.sort_by_key(|t| std::cmp::Reverse(usage_total(t)));
+        Ok(tags
+            .into_iter()
+            .take(KNOWN_TAGS_MAX)
+            .map(|t| t.tag.name)
+            .collect())
     }
 
     /// 改名：与另一个标签同名（忽略大小写）时合并进那个标签，返回最终的标签
@@ -147,6 +202,43 @@ impl TagService {
 mod tests {
     use super::*;
     use crate::test_support::memory_pool;
+
+    #[test]
+    fn ai_tags_are_cleaned_deduplicated_and_capped() {
+        let details = serde_json::json!({ "tags": [" 点餐 ", "TED", "ted", "", "一二三四五六七八九十一", "问路", "道歉", "面试"] });
+        assert_eq!(tags_from_submission(&details), vec!["点餐", "TED", "问路"]);
+        assert!(tags_from_submission(&serde_json::json!({})).is_empty());
+    }
+
+    #[tokio::test]
+    async fn ai_tags_are_added_to_material_and_known_names_by_usage() {
+        let pool = memory_pool().await;
+        let service = TagService::new(pool.clone());
+        let a = service.create_tag("旅行").await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        service
+            .add_names_conn(
+                &mut conn,
+                MaterialKind::Passage,
+                1,
+                &["点餐".to_string(), "旅行".to_string()],
+            )
+            .await
+            .unwrap();
+        service
+            .add_names_conn(&mut conn, MaterialKind::Video, 2, &["旅行".to_string()])
+            .await
+            .unwrap();
+        drop(conn);
+        let rows: Vec<(String, i64)> =
+            sqlx::query_as("SELECT kind, tag_id FROM material_tags ORDER BY kind, tag_id")
+                .fetch_all(pool.as_ref())
+                .await
+                .unwrap();
+        assert_eq!(rows.len(), 3);
+        assert!(rows.contains(&("video".to_string(), a.id)));
+        assert_eq!(service.known_names().await.unwrap(), vec!["旅行", "点餐"]);
+    }
 
     #[tokio::test]
     async fn creating_tags_validates_and_reuses_same_name() {

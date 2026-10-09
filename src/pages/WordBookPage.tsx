@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpen, Library, Pencil, Plus, SearchX, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
@@ -23,6 +24,8 @@ import { messageOf } from '@/utils/errorHandler';
 export interface WordBookPageProps {
   /** Navigation handler */
   onNavigate?: NavigateFn;
+  /** 嵌在标签页里：只列这个标签的单词本（不显示页头、统计与标签筛选） */
+  tagId?: number;
 }
 
 interface BookItem extends DbWordBook {
@@ -62,7 +65,8 @@ interface PageData {
  * 单词本列表（shadcn，外壳由 AppShell 提供）：统计 + 搜索 / 主题 / 状态 / 排序 + 单词本卡片。
  * 功能清单见 .claude/work/ui-shadcn-migration/feature-inventory.md §5。
  */
-export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
+export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId }) => {
+  const embedded = tagId !== undefined;
   const toast = useToast();
   const [creatingBook, setCreatingBook] = useState(false);
   const [editingBook, setEditingBook] = useState<DbWordBook | null>(null);
@@ -70,7 +74,8 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
   const [data, setData] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const defaultFilters: Filters = embedded ? { ...DEFAULT_FILTERS, tag: String(tagId) } : DEFAULT_FILTERS;
+  const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sortBy, setSortBy] = useSortPref('word-books', SORT_OPTIONS);
 
   const loadWordBookData = useCallback(async (status: string) => {
@@ -142,10 +147,10 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
   }, [data, filters, sortBy]);
   // 已删除的单词本只能恢复，不参与勾选
   const selection = useSelection(useMemo(() => filteredBooks.filter((b) => !b.deleted_at).map((b) => b.id), [filteredBooks]));
-  const pager = usePagination(loading ? null : filteredBooks, { id: 'word-books', resetKey: `${JSON.stringify(filters)}|${sortBy}` });
+  const pager = usePagination(loading ? null : filteredBooks, { id: embedded ? `word-books:tag${tagId}` : 'word-books', resetKey: `${JSON.stringify(filters)}|${sortBy}` });
 
   const activeFilterCount =
-    (filters.searchTerm ? 1 : 0) + (filters.tag !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
+    (filters.searchTerm ? 1 : 0) + (!embedded && filters.tag !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
   const isFiltering = Boolean(filters.searchTerm) || filters.tag !== 'all' || filters.status !== 'all';
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => setFilters((f) => ({ ...f, [key]: value }));
 
@@ -167,18 +172,18 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
 
   if (error && !data) {
     return (
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
-        <PageHeader title="我的单词本" actions={createAction} />
+      <div className={embedded ? 'flex flex-col gap-6' : 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7'}>
+        {!embedded && <PageHeader title="我的单词本" actions={createAction} />}
         <PageError title="无法加载单词本" message={error} onRetry={() => loadWordBookData(filters.status)} />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
-      <PageHeader title="我的单词本" actions={createAction} />
+    <div className={embedded ? 'flex flex-col gap-6' : 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7'}>
+      {!embedded && <PageHeader title="我的单词本" actions={createAction} />}
 
-      <section aria-label="单词本统计" className="grid grid-cols-5 gap-3">
+      <section aria-label="单词本统计" className={cn('grid grid-cols-5 gap-3', embedded && 'hidden')}>
         {metrics.map((m) => (
           <MetricCard key={m.label} {...m} loading={loading && !data} />
         ))}
@@ -194,9 +199,9 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
         search={filters.searchTerm}
         onSearch={(v) => setFilter('searchTerm', v)}
         searchPlaceholder="搜索单词本"
-        tag={{ kind: 'word_book', value: filters.tag, onChange: (v) => setFilter('tag', v), onTagsChanged: () => loadWordBookData(filters.status) }}
+        tag={embedded ? null : { kind: 'word_book', value: filters.tag, onChange: (v) => setFilter('tag', v), onTagsChanged: () => loadWordBookData(filters.status) }}
         activeCount={activeFilterCount}
-        onReset={() => setFilters(DEFAULT_FILTERS)}
+        onReset={() => setFilters(defaultFilters)}
         countText={loading ? undefined : `共 ${filteredBooks.length} 本`}
       >
         <Select value={filters.status} onValueChange={(v) => setFilter('status', v)}>

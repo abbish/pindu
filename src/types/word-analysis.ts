@@ -20,11 +20,15 @@ export interface WordExtractionResult {
   words: ExtractedWord[];
   totalCount: number;
   uniqueCount: number;
+  /** AI 给这批单词（单词本）定的标签，加入单词本时一起打上 */
+  tags: string[];
 }
 
 /** 「分析并加入单词本」任务的请求（start_word_analysis） */
 export interface StartWordAnalysisRequest {
   bookId: number;
+  /** 生成 / 提取时 AI 给的标签，保存单词时给单词本加上 */
+  tags?: string[];
   words: string[];
   /** 生成 / 提取时定好的释义，与 words 一一对应（空字符串表示没有） */
   meanings?: string[];

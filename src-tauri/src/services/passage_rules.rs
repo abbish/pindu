@@ -289,6 +289,8 @@ pub struct GeneratedPassage {
     /// 必用词 + AI 实际挑选并用到的词
     pub target_words: Vec<PassageTargetWord>,
     pub word_count: usize,
+    /// AI 给的标签名（入库时给短文加上；不是 AI 写的为空）
+    pub tags: Vec<String>,
 }
 
 /// `submit_passage` 的参数 → 合格的短文。必用词都要出现；AI 挑的词只接受候选池里、且确实用在正文里的，最多 `ai_pick` 个
@@ -369,6 +371,7 @@ pub fn passage_from_submission(
         sentences,
         target_words: targets,
         word_count,
+        tags: crate::services::tag::tags_from_submission(details),
     })
 }
 
@@ -767,6 +770,8 @@ pub struct Translation {
     pub level: String,
     /// （原形, 中文意思）：在原文里出现过、去重，最多 MAX_KEY_WORDS 个
     pub key_words: Vec<(String, String)>,
+    /// AI 给的标签名
+    pub tags: Vec<String>,
 }
 
 /// `submit_translation` 的参数 → 校正后的翻译：每句都要有译文；水平夹到 a1–b2；
@@ -824,6 +829,7 @@ pub fn translation_from_submission(
         title: text(details, "title"),
         level,
         key_words: words,
+        tags: crate::services::tag::tags_from_submission(details),
     })
 }
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { BookOpen, ChevronDown, FileQuestion, FileText, FileUp, Headphones, Plus, Sparkles, Target } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
@@ -15,6 +16,8 @@ import type { NavigateFn } from '../navigation';
 
 export interface PassageLibraryPageProps {
   onNavigate?: NavigateFn;
+  /** 嵌在标签页里：只列这个标签的短文（不显示页头、统计与标签筛选） */
+  tagId?: number;
 }
 
 const ORIGINS = [
@@ -33,10 +36,11 @@ const modeHint = (label: string, m: PassageModeStatistics | undefined) =>
  * 素材库 · 短文库：顶部统计（短文 / 题组 / 练习次数 / 阅读与听力正确率）+ 搜索 + 短文卡片网格。
  * 统计与单词练习口径独立；次要数据，加载失败时静默（不挡住列表）。
  */
-export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNavigate }) => {
+export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNavigate, tagId }) => {
+  const embedded = tagId !== undefined;
   const [query, setQuery] = useState('');
   const [origin, setOrigin] = useState<PassageOrigin | 'all'>('all');
-  const [tag, setTag] = useState('all');
+  const [tag, setTag] = useState(embedded ? String(tagId) : 'all');
   const [sortBy, setSortBy] = useSortPref('passages', PASSAGE_SORTS);
   /** 管理标签后重新加载列表（卡片上的标签名变了） */
   const [listVersion, setListVersion] = useState(0);
@@ -64,7 +68,8 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
   ];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7">
+    <div className={embedded ? 'flex flex-col gap-6' : 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7'}>
+      {!embedded && (
       <PageHeader
         title="短文库"
         actions={
@@ -89,8 +94,9 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
           </DropdownMenu>
         }
       />
+      )}
 
-      <section aria-label="短文统计" className="grid grid-cols-5 gap-3">
+      <section aria-label="短文统计" className={cn('grid grid-cols-5 gap-3', embedded && 'hidden')}>
         {metrics.map((m) => (
           <MetricCard key={m.label} {...m} loading={loadingStats} />
         ))}
@@ -105,11 +111,11 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
           search={query}
           onSearch={setQuery}
           searchPlaceholder="搜索标题或单词"
-          tag={{ kind: 'passage', value: tag, onChange: setTag, onTagsChanged: () => setListVersion((v) => v + 1) }}
-          activeCount={(query ? 1 : 0) + (tag !== 'all' ? 1 : 0) + (origin !== 'all' ? 1 : 0)}
+          tag={embedded ? null : { kind: 'passage', value: tag, onChange: setTag, onTagsChanged: () => setListVersion((v) => v + 1) }}
+          activeCount={(query ? 1 : 0) + (!embedded && tag !== 'all' ? 1 : 0) + (origin !== 'all' ? 1 : 0)}
           onReset={() => {
             setQuery('');
-            setTag('all');
+            if (!embedded) setTag('all');
             setOrigin('all');
           }}
         >

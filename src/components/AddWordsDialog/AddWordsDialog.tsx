@@ -116,6 +116,8 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const [fileName, setFileName] = useState<string | null>(null);
   const [mode, setMode] = useState<WordExtractionMode>('focus');
   const [candidates, setCandidates] = useState<ExtractedWord[]>([]);
+  /** 生成 / 提取时 AI 给的标签，分析保存时给单词本加上 */
+  const [aiTags, setAiTags] = useState<string[]>([]);
   /** 分析任务 id 与结果 */
   const [jobId, setJobId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<WordAnalysisOutcome | null>(null);
@@ -265,6 +267,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
         return;
       }
       setCandidates(next);
+      setAiTags(result.tags ?? []);
       setPhase('select');
     } catch (err) {
       if (run !== runRef.current) return;
@@ -286,6 +289,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       bookId,
       words,
       meanings: words.map((w) => meaningOf.get(w.toLowerCase()) ?? ''),
+      tags: aiTags,
     });
     if (!started.success) {
       setError(errorText(started.error, '无法开始拼读分析'));

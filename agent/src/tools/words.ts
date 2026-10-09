@@ -29,6 +29,12 @@ export const submitWordsTool = defineTool({
         translation: Type.String({ description: "concise common Chinese meaning, 1-3 characters" }),
       }),
     ),
+    tags: Type.Optional(
+      Type.Array(Type.String(), {
+        description:
+          "1-3 reusable Chinese tags (scene or topic, e.g. 出国旅行 / 点餐 / 动物), each at most 10 characters; reuse existing tag names from the user message when they fit",
+      }),
+    ),
   }),
   async execute(_toolCallId, params) {
     return {
@@ -50,6 +56,12 @@ export const submitGeneratedWordsTool = defineTool({
         word: Type.String({ description: "one English word in dictionary form (no phrases): lowercase, except proper nouns keep their capital letter" }),
         pos: Type.String({ description: "part of speech abbreviation: n. v. adj. adv. prep. conj. pron. int. num." }),
         translation: Type.String({ description: "concise Chinese meaning in this topic, 2-4 characters" }),
+      }),
+    ),
+    tags: Type.Optional(
+      Type.Array(Type.String(), {
+        description:
+          "1-3 reusable Chinese tags (scene or topic, e.g. 出国旅行 / 点餐 / 动物), each at most 10 characters; reuse existing tag names from the user message when they fit",
       }),
     ),
   }),

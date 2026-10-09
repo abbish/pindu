@@ -271,6 +271,7 @@ mod tests {
                 sentences: text(0, "", sentences, &[]).sentences,
                 target_words: text(0, "", &[], targets).target_words,
                 word_count: 1,
+                tags: Vec::new(),
             },
         )
         .await

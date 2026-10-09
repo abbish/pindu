@@ -264,6 +264,8 @@ impl VideoProcessJob {
                     title: Some(title.as_str()).filter(|t| !t.is_empty()),
                     sentences: &english,
                     key_words: key_words.is_empty(),
+                    // 片段的标签来自规划，这里不需要
+                    tags: &[],
                 },
                 &self.logger,
                 || ctx.is_cancelled(),
@@ -334,6 +336,7 @@ impl VideoProcessJob {
                 sentences,
                 target_words: targets,
                 word_count,
+                tags: Vec::new(),
             },
         )
         .await?;
@@ -450,6 +453,7 @@ mod tests {
                 sentences: clip_sentences(&[cue(0, 1000, "Hi", "嗨")], &seg(0, 2000)),
                 target_words: vec![],
                 word_count: 1,
+                tags: Vec::new(),
             },
         )
         .await

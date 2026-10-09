@@ -26,6 +26,8 @@ pub struct WordAnalysisJob {
     pub book_id: i64,
     pub book_title: String,
     pub words: Vec<String>,
+    /// 生成 / 提取时 AI 给的标签，保存后给单词本加上
+    pub tags: Vec<String>,
     pub batch_size: usize,
     pub concurrency: usize,
 }
@@ -133,6 +135,7 @@ impl WordAnalysisJob {
                 tag_ids: None,
             })
             .await?;
+        self.add_tags().await;
         self.logger.info(
             "WORD_ANALYSIS",
             &format!(
@@ -144,6 +147,32 @@ impl WordAnalysisJob {
             ),
         );
         Ok(self.outcome(saved.added_count, saved.updated_count, failed))
+    }
+
+    /// 给单词本加上 AI 定的标签（已有的不重复）；失败只记 WARN，单词已经保存
+    async fn add_tags(&self) {
+        if self.tags.is_empty() {
+            return;
+        }
+        let result = async {
+            let mut conn = self.pool.acquire().await?;
+            crate::services::tag::TagService::new(self.pool.clone())
+                .add_names_conn(
+                    &mut conn,
+                    crate::types::material::MaterialKind::WordBook,
+                    self.book_id,
+                    &self.tags,
+                )
+                .await
+        }
+        .await;
+        if let Err(e) = result {
+            self.logger.warn(
+                "WORD_ANALYSIS",
+                &format!("单词本 {} 加 AI 标签失败：{e}", self.book_id),
+                None,
+            );
+        }
     }
 
     fn outcome(

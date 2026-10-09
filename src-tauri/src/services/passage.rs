@@ -630,6 +630,9 @@ impl PassageService {
         let (min_words, max_words) = passage_rules::length_range(&level, &length);
         let model = self.model().await?;
         let pick_prefs = Self::pick_preferences(request, ai_pick);
+        let known_tags = crate::services::tag::TagService::new(self.pool.clone())
+            .known_names()
+            .await?;
         let generated = tasks::generate_passage(
             paths,
             &model,
@@ -644,6 +647,7 @@ impl PassageService {
                 pick_prefs: &pick_prefs,
                 min_words,
                 max_words,
+                tags: &known_tags,
             },
             &self.logger,
         )
@@ -668,6 +672,14 @@ impl PassageService {
             &generated,
         )
         .await?;
+        crate::services::tag::TagService::new(self.pool.clone())
+            .add_names_conn(
+                &mut tx,
+                crate::types::material::MaterialKind::Passage,
+                id,
+                &generated.tags,
+            )
+            .await?;
         tx.commit().await?;
         self.get(id).await
     }
@@ -1122,6 +1134,7 @@ pub(crate) mod tests {
                 sentences: sentences(),
                 target_words: vec![],
                 word_count: 21,
+                tags: Vec::new(),
             },
         )
         .await
@@ -1148,6 +1161,7 @@ pub(crate) mod tests {
                 word(None, "fly", true),
             ],
             word_count: 21,
+            tags: Vec::new(),
         };
         let sources = vec![PassageSource {
             kind: "book".into(),

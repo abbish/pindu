@@ -36,6 +36,8 @@ export interface RouteParams {
   videos: { tab?: 'clips' | 'sources'; videoId?: number } | undefined;
   /** 剪辑编辑器：预览、调整切分规划（整窗页面） */
   'video-editor': { videoId: number };
+  /** 标签：这个标签下的全部素材（侧边栏「标签」分组） */
+  tag: { tagId: number };
   calendar: undefined;
   settings: undefined;
 }
@@ -46,7 +48,7 @@ export type PageKey = keyof RouteParams;
 export type PassagePracticeReturn = 'plan-detail' | 'home' | 'calendar';
 
 /** 顶部导航中的一级页面 */
-export type TopLevelPage = 'home' | 'plans' | 'wordbooks' | 'passages' | 'videos' | 'calendar' | 'settings';
+export type TopLevelPage = 'home' | 'plans' | 'wordbooks' | 'passages' | 'videos' | 'tag' | 'calendar' | 'settings';
 
 /** 从计划进入素材页面时带上的计划（面包屑显示「计划 › 计划名 › …」） */
 export interface PlanContext {
@@ -83,6 +85,7 @@ export const TOP_LEVEL_OF: Record<PageKey, TopLevelPage> = {
   'passage-practice': 'passages',
   videos: 'videos',
   'video-editor': 'videos',
+  tag: 'tag',
   calendar: 'calendar',
   settings: 'settings',
 };
@@ -104,6 +107,7 @@ export const PAGE_TITLE: Record<PageKey, string> = {
   'passage-practice': '短文练习',
   videos: '视频库',
   'video-editor': '剪辑编辑器',
+  tag: '标签',
   calendar: '学习日历',
   settings: '设置',
 };

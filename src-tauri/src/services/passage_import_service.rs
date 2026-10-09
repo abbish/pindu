@@ -169,6 +169,9 @@ impl PassageImportService {
         let model = AgentSettingsService::new(self.pool.clone(), self.logger.clone())
             .model_for(AgentTaskKind::Passage, None)
             .await?;
+        let known_tags = crate::services::tag::TagService::new(self.pool.clone())
+            .known_names()
+            .await?;
         let translation = tasks::translate_passage(
             paths,
             &model,
@@ -177,6 +180,7 @@ impl PassageImportService {
                 title,
                 sentences: &sentences,
                 key_words: request.ai_key_words,
+                tags: &known_tags,
             },
             &self.logger,
             cancelled,
@@ -246,9 +250,18 @@ impl PassageImportService {
                 sentences: saved_sentences,
                 target_words: targets,
                 word_count,
+                tags: Vec::new(),
             },
         )
         .await?;
+        crate::services::tag::TagService::new(self.pool.clone())
+            .add_names_conn(
+                &mut tx,
+                crate::types::material::MaterialKind::Passage,
+                id,
+                &translation.tags,
+            )
+            .await?;
         tx.commit().await?;
         self.repository
             .find(id)

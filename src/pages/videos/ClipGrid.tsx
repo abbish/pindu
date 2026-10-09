@@ -42,6 +42,8 @@ export interface ClipGridProps {
   onTagsChanged?: () => void;
   /** 在剪辑编辑器里打开来源视频 */
   onOpenEditor?: (videoId: number) => void;
+  /** 嵌在标签页里：只看这个标签的片段（不显示标签筛选） */
+  tagId?: number;
 }
 
 const LEVELS = ['a1', 'a2', 'b1', 'b2'];
@@ -63,9 +65,10 @@ const ENGLISH = /^[a-z][a-z' -]*$/i;
  * 视频库「片段」：切出来的短片是主要素材。可按标签、来源视频、难度筛选；搜索除了标题、重点词与标签，
  * 输入英文词时还会找字幕里出现过它的片段（跨视频看同一个词的真实场景），卡片上显示出现的那句。
  */
-export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOpen, onGoSources, onTagsChanged, onOpenEditor }) => {
+export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOpen, onGoSources, onTagsChanged, onOpenEditor, tagId }) => {
+  const fixedTag = tagId !== undefined;
   const [query, setQuery] = useState('');
-  const [tag, setTag] = useState('all');
+  const [tag, setTag] = useState(fixedTag ? String(tagId) : 'all');
   const [video, setVideo] = useState(videoId ? String(videoId) : 'all');
   const [level, setLevel] = useState('all');
   const [sortBy, setSortBy] = useSortPref('clips', CLIP_SORTS);
@@ -105,10 +108,10 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
   }, [clips, query, tag, video, level, subtitleHits, sortBy]);
 
   const selection = useSelection(useMemo(() => (visible ?? []).map((c) => c.id), [visible]));
-  const pager = usePagination(visible, { id: 'clips', resetKey: `${query.trim()}|${tag}|${video}|${level}|${sortBy}` });
+  const pager = usePagination(visible, { id: fixedTag ? `clips:tag${tagId}` : 'clips', resetKey: `${query.trim()}|${tag}|${video}|${level}|${sortBy}` });
   const pickedClips = (visible ?? []).filter((c) => selection.selected.has(c.id));
   const sourceVideos = videos.filter((v) => v.clipCount > 0);
-  const active = (query ? 1 : 0) + (tag !== 'all' ? 1 : 0) + (video !== 'all' ? 1 : 0) + (level !== 'all' ? 1 : 0);
+  const active = (query ? 1 : 0) + (!fixedTag && tag !== 'all' ? 1 : 0) + (video !== 'all' ? 1 : 0) + (level !== 'all' ? 1 : 0);
 
   if (clips !== null && clips.length === 0) {
     return (
@@ -138,11 +141,11 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
         search={query}
         onSearch={setQuery}
         searchPlaceholder="搜索标题、标签或英文词"
-        tag={{ kind: 'clip', value: tag, onChange: setTag, onTagsChanged }}
+        tag={fixedTag ? null : { kind: 'clip', value: tag, onChange: setTag, onTagsChanged }}
         activeCount={active}
         onReset={() => {
           setQuery('');
-          setTag('all');
+          if (!fixedTag) setTag('all');
           setVideo('all');
           setLevel('all');
         }}

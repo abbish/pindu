@@ -200,6 +200,7 @@ pub async fn run_task_cancellable(
 }
 
 /// 通过 agent 提词
+#[allow(clippy::too_many_arguments)]
 pub async fn extract_words(
     paths: &AgentPaths,
     model: &AIModelConfig,
@@ -207,6 +208,7 @@ pub async fn extract_words(
     scene: &str,
     text: &str,
     mode: &str,
+    known_tags: &[String],
     logger: &Logger,
 ) -> AppResult<WordExtractionResult> {
     let TaskRun {
@@ -219,7 +221,11 @@ pub async fn extract_words(
         model,
         &prompts::message(
             MessageTemplate::ExtractWords,
-            &[("scene", scene), ("text", text)],
+            &[
+                ("scene", scene),
+                ("text", text),
+                ("tags", &known_tags.join("、")),
+            ],
         ),
         logger,
         |_| {},
@@ -230,6 +236,7 @@ pub async fn extract_words(
         .ok_or_else(|| AppError::ExternalServiceError("模型没有提交单词列表".to_string()))?;
 
     let words = words_from_submission(&submission.details, text, mode);
+    let tags = crate::services::tag::tags_from_submission(&submission.details);
     logger.info(
         "AGENT",
         &format!(
@@ -248,6 +255,7 @@ pub async fn extract_words(
         words,
         total_count: count,
         unique_count: count,
+        tags,
     })
 }
 
@@ -320,6 +328,7 @@ pub async fn generate_words(
     intent: &str,
     count: usize,
     existing: &HashSet<String>,
+    known_tags: &[String],
     logger: &Logger,
 ) -> AppResult<WordExtractionResult> {
     let mut list: Vec<&str> = existing.iter().map(String::as_str).collect();
@@ -331,6 +340,7 @@ pub async fn generate_words(
             ("intent", intent.trim()),
             ("count", &count.to_string()),
             ("existing", &list.join(", ")),
+            ("tags", &known_tags.join("、")),
         ],
     );
     let TaskRun {
@@ -350,6 +360,7 @@ pub async fn generate_words(
         .last_successful_call("submit_generated_words")
         .ok_or_else(|| AppError::ExternalServiceError("模型没有提交单词列表".to_string()))?;
     let words = generated_from_submission(&submission.details, existing, count);
+    let tags = crate::services::tag::tags_from_submission(&submission.details);
     logger.info(
         "AGENT",
         &format!(
@@ -373,6 +384,7 @@ pub async fn generate_words(
         words,
         total_count: count,
         unique_count: count,
+        tags,
     })
 }
 
@@ -1041,6 +1053,8 @@ pub struct PassageSpec<'a> {
     pub pick_prefs: &'a str,
     pub min_words: usize,
     pub max_words: usize,
+    /// 已有的标签名（让 AI 优先复用）
+    pub tags: &'a [String],
 }
 
 pub fn passage_message(spec: &PassageSpec) -> String {
@@ -1069,6 +1083,7 @@ pub fn passage_message(spec: &PassageSpec) -> String {
             ("pick_prefs", spec.pick_prefs),
             ("min_words", &spec.min_words.to_string()),
             ("max_words", &spec.max_words.to_string()),
+            ("tags", &spec.tags.join("、")),
         ],
     )
 }
@@ -1370,6 +1385,8 @@ pub struct TranslateSpec<'a> {
     pub sentences: &'a [String],
     /// 要不要挑重点词
     pub key_words: bool,
+    /// 已有的标签名（让 AI 优先复用）
+    pub tags: &'a [String],
 }
 
 pub fn passage_translate_message(spec: &TranslateSpec) -> String {
@@ -1386,6 +1403,7 @@ pub fn passage_translate_message(spec: &TranslateSpec) -> String {
             ("title", title.unwrap_or("").trim()),
             ("key_words", if key_words { "yes" } else { "" }),
             ("sentences", &numbered.join("\n")),
+            ("tags", &spec.tags.join("、")),
         ],
     )
 }
@@ -1916,6 +1934,7 @@ mod tests {
             "",
             text,
             "focus",
+            &[],
             &logger,
         )
         .await
@@ -2209,6 +2228,7 @@ mod tests {
                 title: None,
                 sentences: &sentences,
                 key_words: true,
+                tags: &[],
             },
             &logger,
             || false,
@@ -2293,6 +2313,7 @@ mod tests {
                 pick_prefs: "挑词偏好：优先日常生活中常用的高频词。",
                 min_words: 60,
                 max_words: 100,
+                tags: &[],
             },
             &logger,
         )

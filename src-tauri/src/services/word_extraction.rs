@@ -29,11 +29,23 @@ impl WordExtractionService {
         scene: &str,
         text: &str,
         mode: &str,
+        known_tags: &[String],
     ) -> AppResult<WordExtractionResult> {
-        tasks::extract_words(&self.paths, model, profile, scene, text, mode, &self.logger).await
+        tasks::extract_words(
+            &self.paths,
+            model,
+            profile,
+            scene,
+            text,
+            mode,
+            known_tags,
+            &self.logger,
+        )
+        .await
     }
 
     /// 按学习意图生成单词（避开 `existing` 中的已有单词，小写）
+    #[allow(clippy::too_many_arguments)]
     pub async fn generate(
         &self,
         model: &AIModelConfig,
@@ -42,6 +54,7 @@ impl WordExtractionService {
         intent: &str,
         count: usize,
         existing: &std::collections::HashSet<String>,
+        known_tags: &[String],
     ) -> AppResult<WordExtractionResult> {
         tasks::generate_words(
             &self.paths,
@@ -51,6 +64,7 @@ impl WordExtractionService {
             intent,
             count,
             existing,
+            known_tags,
             &self.logger,
         )
         .await
