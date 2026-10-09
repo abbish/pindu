@@ -20,6 +20,7 @@ import { useJob, waitForJob } from '@/hooks/useJobs';
 import { jobService } from '@/services/jobService';
 import { jobErrorText } from '@/components/Jobs';
 import { addLocalDays, localToday } from '@/utils/datetime';
+import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { CONSOLIDATION_DAYS, DAILY_NEW_WORDS_OPTIONS, DEFAULT_DAILY_NEW_WORDS, estimatePlan } from '@/utils/planParams';
 import type { ApiResult, PracticeContent, StudyPlanAIResult } from '@/types';
 import type { PlanPassageCandidate } from '@/types/passage';
@@ -75,6 +76,14 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
   const [selectedBooks, setSelectedBooks] = useState<number[]>([]);
   const [dailyNewWords, setDailyNewWords] = useState(DEFAULT_DAILY_NEW_WORDS);
   const [useAi, setUseAi] = useState(true);
+  // 每天新词数、短文间隔、AI 排序的默认值来自「设置 → 素材」
+  const materialSettings = useMaterialSettings();
+  useEffect(() => {
+    if (!materialSettings) return;
+    setDailyNewWords(materialSettings.planDailyNewWords);
+    setPassageInterval(materialSettings.planPassageIntervalDays);
+    setUseAi(materialSettings.planAiOrder);
+  }, [materialSettings]);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');

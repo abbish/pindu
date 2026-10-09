@@ -206,6 +206,8 @@ pub fn run() {
                 get_tags,
                 create_tag,
                 set_material_tags,
+                get_material_settings,
+                save_material_settings,
                 update_material_tags,
                 rename_tag,
                 delete_tag,

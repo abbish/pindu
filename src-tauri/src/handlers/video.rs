@@ -147,7 +147,11 @@ pub async fn start_video_import(
             },
             move |ctx| import.run(ctx),
         );
-        // 同时在 AI 队列里整理整部字幕（断句、补中文，与转码并行）；没配好 AI 时不影响导入，编辑器里可以再整理
+        // 同时在 AI 队列里整理整部字幕（断句、补中文，与转码并行）；没配好 AI 时不影响导入，规划 / 切分前会再整理。
+        // 设置里关掉时不在导入时整理
+        if crate::services::material_settings::load(pool.inner())
+            .await?
+            .video_auto_prepare
         {
             if let Err(e) = spawn_translate(&app, video_id, &title, None).await {
                 logger.warn(
@@ -467,10 +471,7 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
                 pool_arc.clone(),
                 logger_arc.clone(),
             )
-            .model_for(
-                crate::services::agent_settings::AgentTaskKind::Passage,
-                None,
-            )
+            .model_for(crate::services::agent_settings::AgentTaskKind::Video, None)
             .await?,
             profile: crate::services::prompt_profile::PromptProfileService::load(pool.inner())
                 .await?,
@@ -541,10 +542,7 @@ pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<S
                 pool_arc.clone(),
                 logger_arc.clone(),
             )
-            .model_for(
-                crate::services::agent_settings::AgentTaskKind::Passage,
-                None,
-            )
+            .model_for(crate::services::agent_settings::AgentTaskKind::Video, None)
             .await?,
             profile: crate::services::prompt_profile::PromptProfileService::load(pool.inner())
                 .await?,
@@ -649,10 +647,7 @@ pub async fn suggest_video_requirements(
         let logger_arc = Arc::new(logger.inner().clone());
         let model =
             crate::services::agent_settings::AgentSettingsService::new(pool_arc, logger_arc)
-                .model_for(
-                    crate::services::agent_settings::AgentTaskKind::Passage,
-                    None,
-                )
+                .model_for(crate::services::agent_settings::AgentTaskKind::Video, None)
                 .await?;
         let profile =
             crate::services::prompt_profile::PromptProfileService::load(pool.inner()).await?;
@@ -788,10 +783,7 @@ async fn spawn_translate(
             pool_arc.clone(),
             logger_arc.clone(),
         )
-        .model_for(
-            crate::services::agent_settings::AgentTaskKind::Passage,
-            None,
-        )
+        .model_for(crate::services::agent_settings::AgentTaskKind::Video, None)
         .await?,
         profile: crate::services::prompt_profile::PromptProfileService::load(pool.inner()).await?,
         paths: super::agent_paths(app)?,

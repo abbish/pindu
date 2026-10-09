@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { passageService } from '@/services/passageService';
 import { DIFFICULTY_LABEL } from '@/utils/passage';
 import type { QuestionDifficulty, QuestionSetSpec } from '@/types/passage';
@@ -50,12 +51,16 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const materialSettings = useMaterialSettings();
   useEffect(() => {
     if (!isOpen) return;
-    setSpec(defaultSpec(level));
+    // 题量按短文水平；难度可在「设置 → 素材」固定
+    const spec = defaultSpec(level);
+    const difficulty = materialSettings?.questionDifficulty;
+    setSpec(difficulty && difficulty !== 'auto' ? { ...spec, difficulty } : spec);
     setName('');
     setError(null);
-  }, [isOpen, level]);
+  }, [isOpen, level, materialSettings]);
 
   const total = spec.cloze + spec.choice + spec.trueFalse + spec.open;
 

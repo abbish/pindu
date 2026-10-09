@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { loadMaterialSettings } from '@/hooks/useMaterialSettings';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,6 +21,16 @@ export interface AutoSplitDialogProps {
 export const AutoSplitDialog: React.FC<AutoSplitDialogProps> = ({ open, onOpenChange, cues, durationMs, hasSegments, onApply }) => {
   const [minSec, setMinSec] = useState(30);
   const [maxSec, setMaxSec] = useState(120);
+  // 每段时长默认值来自「设置 → 素材」
+  useEffect(() => {
+    if (!open) return;
+    void loadMaterialSettings().then((st) => {
+      if (st) {
+        setMinSec(st.videoMinSeconds);
+        setMaxSec(st.videoMaxSeconds);
+      }
+    });
+  }, [open]);
   const valid = minSec >= 5 && maxSec >= minSec && maxSec <= 900;
   const preview = valid ? autoSplit(cues, durationMs, { minMs: minSec * 1000, maxMs: maxSec * 1000 }).length : 0;
 

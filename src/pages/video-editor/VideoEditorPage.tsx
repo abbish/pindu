@@ -12,6 +12,8 @@ import {
   Redo2,
   Repeat,
   Scissors,
+  Sparkles,
+  Wand2,
   SkipBack,
   SkipForward,
   Trash2,
@@ -37,6 +39,7 @@ import type { NavigateFn } from '@/navigation';
 import type { VideoDetail, VideoPlan, VideoPlanInfo, VideoSegment } from '@/types/video';
 import { AiPlanDialog } from './AiPlanDialog';
 import { PlanMenu } from './EditorMenus';
+import { NewPlanDialog, type NewPlanStart } from './NewPlanDialog';
 import { AutoSplitDialog } from './AutoSplitDialog';
 import { EditorBusyDialog } from './EditorBusyDialog';
 import { SegmentPanel } from './SegmentPanel';
@@ -128,6 +131,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   const [autoSplitOpen, setAutoSplitOpen] = useState(false);
   const [mediaError, setMediaError] = useState(false);
   const [aiPlanOpen, setAiPlanOpen] = useState(false);
+  const [newPlanOpen, setNewPlanOpen] = useState(false);
   // 这个视频正在跑的规划 / 切分任务（离开编辑器再回来也能看到）
   const jobs = useJobs();
   const activeJob = (kind: string) =>
@@ -553,16 +557,21 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   const thumbOf = (s: VideoSegment) => segmentThumb(detail.thumbs, detail.thumbIntervalMs, s);
   const currentPlan = detail.plans.find((x) => x.id === planId);
   const cutCount = (p: VideoPlanInfo) => p.plan.segments.filter((sg) => clipOf(sg)).length;
-  const createPlan = async (copy: boolean) => {
+  /** 新建规划，然后直接进入选的下一步 */
+  const createPlan = async (name: string, start: NewPlanStart) => {
+    const copy = start === 'copy';
     if (planId && copy) await videoService.savePlan(planId, plan);
-    const r = await videoService.createPlan(detail.video.id, copy && currentPlan ? `${currentPlan.name} 副本` : undefined, copy ? (planId ?? undefined) : undefined);
+    const r = await videoService.createPlan(detail.video.id, name, copy ? (planId ?? undefined) : undefined);
     if (!r.success) {
       toast.showError('无法新建规划', r.error);
       return;
     }
+    setNewPlanOpen(false);
     const plans = [...detail.plans.map((x) => (x.id === planId ? { ...x, plan } : x)), r.data];
     setDetail({ ...detail, plans });
     switchTo(r.data.id, plans);
+    if (start === 'ai') setAiPlanOpen(true);
+    if (start === 'auto') setAutoSplitOpen(true);
   };
   const renamePlan = async (name: string) => {
     if (!planId) return false;
@@ -624,11 +633,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
               clipCount={detail.clips.length}
               disabled={locked}
               onSwitch={(id) => switchTo(id)}
-              onCreate={createPlan}
+              onCreate={() => setNewPlanOpen(true)}
               onRename={renamePlan}
               onDelete={deletePlan}
-              onAiPlan={() => setAiPlanOpen(true)}
-              onAutoSplit={() => setAutoSplitOpen(true)}
               onViewClips={() => onNavigate?.('videos', { tab: 'clips', videoId: detail.video.id })}
             />
             <Button size="sm" onClick={startProcessing} disabled={locked || pendingCount === 0 || saveState === 'saving'}>
@@ -641,11 +648,17 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
         {/* 主区：片段列表 · 播放器 · 片段属性 */}
         <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_360px]">
           <aside className="flex min-h-0 flex-col border-r">
-            <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs text-muted-foreground">
-              <span className="min-w-0 truncate">
+            <div className="flex items-center justify-between gap-1 py-1.5 pr-1.5 pl-3 text-xs text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate">
                 {detail.plans.length > 1 && <span className="font-medium text-foreground">{currentPlan?.name} · </span>}
                 {segments.length} 段 · 共 {formatClock(totalMs, false)}
               </span>
+              <ToolButton label="AI 规划" onClick={() => setAiPlanOpen(true)} disabled={locked}>
+                <Sparkles />
+              </ToolButton>
+              <ToolButton label="按字幕自动切分" onClick={() => setAutoSplitOpen(true)} disabled={locked}>
+                <Wand2 />
+              </ToolButton>
               {problemCount > 0 && (
                 <span className="flex items-center gap-1 text-warning">
                   <AlertTriangle className="size-3" />
@@ -655,7 +668,17 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
               {segments.length === 0 ? (
-                <p className="px-2 py-6 text-center text-xs text-muted-foreground">还没有片段</p>
+                <div className="flex flex-col gap-2 px-2 py-6">
+                  <Button onClick={() => setAiPlanOpen(true)} disabled={locked}>
+                    <Sparkles />
+                    AI 规划
+                  </Button>
+                  <Button variant="outline" onClick={() => setAutoSplitOpen(true)} disabled={locked}>
+                    <Wand2 />
+                    按字幕自动切分
+                  </Button>
+                  <p className="pt-1 text-center text-xs text-muted-foreground">也可以在时间轴上拖出片段</p>
+                </div>
               ) : (
                 segments.map((s, i) => (
                   <button
@@ -876,6 +899,13 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
         </div>
       </div>
 
+      <NewPlanDialog
+        open={newPlanOpen}
+        onOpenChange={setNewPlanOpen}
+        defaultName={`规划 ${detail.plans.length + 1}`}
+        canCopy={segments.length > 0}
+        onConfirm={createPlan}
+      />
       <EditorBusyDialog job={busyJob} onStop={(job) => jobService.cancel(job.id)} onBackground={back} />
       <AiPlanDialog
         open={aiPlanOpen}

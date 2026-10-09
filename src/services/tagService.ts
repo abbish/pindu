@@ -1,6 +1,6 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '@/types';
-import type { MaterialKind, Tag, TagUsage, WordMaterial, WordMaterialCount } from '@/types/material';
+import type { MaterialKind, MaterialSettings, Tag, TagUsage, WordMaterial, WordMaterialCount } from '@/types/material';
 
 /** 素材关联：标签（单词本 / 短文 / 视频共用）与单词 ↔ 素材 */
 class TagService extends BaseService {
@@ -32,6 +32,15 @@ class TagService extends BaseService {
   /** 整体设置一个素材的标签 */
   async setMaterialTags(kind: MaterialKind, refId: number, tagIds: number[]): Promise<ApiResult<Tag[]>> {
     return this.executeWithLoading(() => this.client.invoke<Tag[]>('set_material_tags', { kind, refId, tagIds }));
+  }
+
+  /** 素材处理的默认值（「设置 → 素材」） */
+  async getMaterialSettings(): Promise<ApiResult<MaterialSettings>> {
+    return this.executeWithLoading(() => this.client.invoke<MaterialSettings>('get_material_settings'));
+  }
+
+  async saveMaterialSettings(settings: MaterialSettings): Promise<ApiResult<MaterialSettings>> {
+    return this.executeWithLoading(() => this.client.invoke<MaterialSettings>('save_material_settings', { settings }));
   }
 
   /** 一个词出现在哪些短文 / 视频切片里（重点词在前） */

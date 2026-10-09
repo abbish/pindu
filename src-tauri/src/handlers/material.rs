@@ -101,6 +101,29 @@ pub async fn set_material_tags(
     super::finish(&logger, "set_material_tags", result)
 }
 
+/// 素材处理的默认值（「设置 → 素材」）
+#[tauri::command]
+pub async fn get_material_settings(
+    app: AppHandle,
+) -> AppResult<crate::services::material_settings::MaterialSettings> {
+    let logger = app.state::<Logger>();
+    logger.api_request("get_material_settings", None);
+    let result = crate::services::material_settings::load(app.state::<SqlitePool>().inner()).await;
+    super::finish(&logger, "get_material_settings", result)
+}
+
+#[tauri::command]
+pub async fn save_material_settings(
+    app: AppHandle,
+    settings: crate::services::material_settings::MaterialSettings,
+) -> AppResult<crate::services::material_settings::MaterialSettings> {
+    let logger = app.state::<Logger>();
+    logger.api_request("save_material_settings", Some(&format!("{settings:?}")));
+    let result =
+        crate::services::material_settings::save(app.state::<SqlitePool>().inner(), settings).await;
+    super::finish(&logger, "save_material_settings", result)
+}
+
 /// 一个词出现在哪些短文 / 视频切片里（重点词在前）
 #[tauri::command]
 pub async fn get_word_materials(

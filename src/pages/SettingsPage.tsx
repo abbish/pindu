@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Bot, Database, Search, Settings2, Sparkles, Volume2, type LucideIcon } from 'lucide-react';
+import { Bot, Database, Library, Search, Settings2, Sparkles, Volume2, type LucideIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '../navigation';
@@ -7,6 +7,7 @@ import { AIModelSettings } from './settings/AIModelSettings';
 import { TTSSettings } from './settings/TTSSettings';
 import { AgentSettings } from './settings/AgentSettings';
 import { GeneralSettings } from './settings/GeneralSettings';
+import { MaterialSettings } from './settings/MaterialSettings';
 import { DataManagementSettings } from './settings/DataManagementSettings';
 
 export interface SettingsPageProps {
@@ -14,7 +15,7 @@ export interface SettingsPageProps {
   onNavigate?: NavigateFn;
 }
 
-type SettingsKey = 'general' | 'ai-models' | 'agent' | 'tts' | 'data-management';
+type SettingsKey = 'general' | 'materials' | 'ai-models' | 'agent' | 'tts' | 'data-management';
 
 interface NavItem {
   key: SettingsKey;
@@ -29,7 +30,15 @@ const STORAGE_KEY = 'settings.activePanel';
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: '偏好设置',
-    items: [{ key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '系统日志', '诊断'] }],
+    items: [
+      { key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '系统日志', '诊断'] },
+      {
+        key: 'materials',
+        label: '素材',
+        icon: Library,
+        keywords: ['单词本', '短文', '视频', '学习计划', '默认', '篇幅', '挑词', '拆篇', '阅读理解', '字幕', '每段时长', '每天新词', '间隔', 'ffmpeg', '视频组件'],
+      },
+    ],
   },
   {
     title: 'AI 与语音',
@@ -124,6 +133,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = () => {
       <div className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-10 py-9">
           {active === 'general' && <GeneralSettings />}
+          {active === 'materials' && <MaterialSettings />}
           {active === 'ai-models' && <AIModelSettings />}
           {active === 'agent' && <AgentSettings />}
           {active === 'tts' && <TTSSettings />}

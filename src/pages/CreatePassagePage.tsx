@@ -17,6 +17,7 @@ import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { PassagePlanEditor, type EditablePlanItem, type PlanItemStatus } from '@/components/PassagePlanEditor';
 import { Stepper } from '@/components/Stepper/Stepper';
 import { cn } from '@/lib/utils';
+import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { passageService } from '@/services/passageService';
 import { studyService } from '@/services/studyService';
 import { wordBookService } from '@/services/wordbookService';
@@ -60,30 +61,14 @@ const FREQUENCIES: { value: PickFrequency | 'any'; label: string }[] = [
 ];
 
 type PickMode = 'ai' | 'manual';
-/** AI 挑词的条件（记住上次的设置） */
+/** AI 挑词的条件（默认值来自「设置 → 素材」） */
 interface PickPrefs {
   count: number;
   difficulty: PickDifficulty | 'any';
   frequency: PickFrequency | 'any';
   statuses: PickStatus[];
 }
-const PICK_PREFS_KEY = 'create-passage-pick';
 const DEFAULT_PREFS: PickPrefs = { count: 10, difficulty: 'medium', frequency: 'common', statuses: [] };
-
-function loadPrefs(): PickPrefs {
-  try {
-    const saved = JSON.parse(localStorage.getItem(PICK_PREFS_KEY) ?? 'null') as Partial<PickPrefs> | null;
-    if (!saved) return DEFAULT_PREFS;
-    return {
-      count: AI_PICK_OPTIONS.includes(saved.count ?? 0) ? saved.count! : DEFAULT_PREFS.count,
-      difficulty: DIFFICULTIES.some((d) => d.value === saved.difficulty) ? saved.difficulty! : DEFAULT_PREFS.difficulty,
-      frequency: FREQUENCIES.some((f) => f.value === saved.frequency) ? saved.frequency! : DEFAULT_PREFS.frequency,
-      statuses: (saved.statuses ?? []).filter((st) => PICK_STATUSES.some((p) => p.value === st)),
-    };
-  } catch {
-    return DEFAULT_PREFS;
-  }
-}
 
 const matchesStatuses = (filter: PickStatus[], c: PassageWordCandidate) => filter.length === 0 || filter.some((f) => c.statuses.includes(f));
 /** 候选词表格里的学习情况标签 */
@@ -181,7 +166,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   const [onlySelected, setOnlySelected] = useState(false);
   const [extraWords, setExtraWords] = useState<string[]>([]);
   const [extraDraft, setExtraDraft] = useState('');
-  const [prefs, setPrefs] = useState<PickPrefs>(loadPrefs);
+  const [prefs, setPrefs] = useState<PickPrefs>(DEFAULT_PREFS);
   /** 选词方式；用户没选过时按来源里的词数决定 */
   const [pickMode, setPickMode] = useState<PickMode>(initial?.wordIds?.length ? 'manual' : 'ai');
   const [modeChosen, setModeChosen] = useState(Boolean(initial?.wordIds?.length));
@@ -276,16 +261,19 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     for (const c of candidates ?? []) for (const st of c.statuses) counts[st] += 1;
     return counts;
   }, [candidates]);
-  const updatePrefs = (patch: Partial<PickPrefs>) =>
-    setPrefs((prev) => {
-      const next = { ...prev, ...patch };
-      try {
-        localStorage.setItem(PICK_PREFS_KEY, JSON.stringify(next));
-      } catch {
-        // 存储不可用时只是下次不记得条件
-      }
-      return next;
-    });
+  const updatePrefs = (patch: Partial<PickPrefs>) => setPrefs((prev) => ({ ...prev, ...patch }));
+  // 挑词条件与篇幅的默认值来自「设置 → 素材」
+  const materialSettings = useMaterialSettings();
+  useEffect(() => {
+    if (!materialSettings) return;
+    setPrefs((p) => ({
+      ...p,
+      count: AI_PICK_OPTIONS.includes(materialSettings.passagePickCount) ? materialSettings.passagePickCount : p.count,
+      difficulty: materialSettings.passagePickDifficulty,
+      frequency: materialSettings.passagePickFrequency,
+    }));
+    setLength(materialSettings.passageLength);
+  }, [materialSettings]);
   const chooseMode = (mode: PickMode) => {
     setPickMode(mode);
     setModeChosen(true);

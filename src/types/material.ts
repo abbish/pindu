@@ -60,3 +60,32 @@ export interface WordMaterialCount {
   /** 出现过的视频切片 */
   clips: number;
 }
+
+/** 素材处理的默认值（「设置 → 素材」）；各页面打开时以它为默认，当次仍可修改 */
+export interface MaterialSettings {
+  /** 单词本：AI 生成单词的数量 */
+  wordAiCount: number;
+  /** 单词本：从材料提取单词 focus 重点词 / all 全部 */
+  wordExtractMode: 'focus' | 'all';
+  /** 短文：AI 写短文的篇幅 */
+  passageLength: 'short' | 'standard' | 'long';
+  /** 短文：AI 挑词的数量 / 难度 / 常用程度 */
+  passagePickCount: number;
+  passagePickDifficulty: 'easy' | 'medium' | 'hard' | 'any';
+  passagePickFrequency: 'common' | 'advanced' | 'any';
+  /** 短文：导入材料每篇大约多少词 */
+  importTargetWords: number;
+  /** 短文：导入材料时让 AI 挑重点词 */
+  importKeyWords: boolean;
+  /** 阅读理解题难度：auto 按短文水平 */
+  questionDifficulty: 'auto' | 'basic' | 'standard' | 'advanced';
+  /** 视频：导入时自动整理字幕（断句、补中文） */
+  videoAutoPrepare: boolean;
+  /** 视频：切分每段时长（秒） */
+  videoMinSeconds: number;
+  videoMaxSeconds: number;
+  /** 学习计划：每天新词数 / 短文间隔天数 / 用 AI 排学习顺序 */
+  planDailyNewWords: number;
+  planPassageIntervalDays: number;
+  planAiOrder: boolean;
+}

@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Stepper } from '@/components/Stepper/Stepper';
 import { MaterialInput } from '@/components/MaterialInput';
 import { WordGrid, type ExtractedWord } from '@/components/WordGrid';
+import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { jobErrorText } from '@/components/Jobs';
 import { useJob } from '@/hooks/useJobs';
@@ -129,6 +130,13 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const [sceneSaving, setSceneSaving] = useState(false);
   /** 场景为空时，把这次的描述同时设为单词本场景 */
   const [useIntentAsScene, setUseIntentAsScene] = useState(true);
+  // 生成数量与提取方式的默认值来自「设置 → 素材」
+  const materialSettings = useMaterialSettings();
+  useEffect(() => {
+    if (!materialSettings) return;
+    setCount(materialSettings.wordAiCount);
+    setMode(materialSettings.wordExtractMode);
+  }, [materialSettings]);
 
   /** 每次生成 / 提取 / 分析的序号：关闭或重来后，迟到的旧结果不再写回 */
   const runRef = useRef(0);

@@ -22,10 +22,11 @@ pub enum AgentTaskKind {
     Tutor,
     Examples,
     Passage,
+    Video,
 }
 
 impl AgentTaskKind {
-    pub const ALL: [AgentTaskKind; 7] = [
+    pub const ALL: [AgentTaskKind; 8] = [
         AgentTaskKind::Extract,
         AgentTaskKind::Phonics,
         AgentTaskKind::Examples,
@@ -33,6 +34,7 @@ impl AgentTaskKind {
         AgentTaskKind::Explain,
         AgentTaskKind::Tutor,
         AgentTaskKind::Passage,
+        AgentTaskKind::Video,
     ];
 
     pub fn key(self) -> &'static str {
@@ -44,6 +46,7 @@ impl AgentTaskKind {
             AgentTaskKind::Tutor => "tutor",
             AgentTaskKind::Examples => "examples",
             AgentTaskKind::Passage => "passage",
+            AgentTaskKind::Video => "video",
         }
     }
 
@@ -60,6 +63,7 @@ impl AgentTaskKind {
             AgentTaskKind::Tutor => "AI 老师答疑",
             AgentTaskKind::Examples => "例句补充",
             AgentTaskKind::Passage => "短文库",
+            AgentTaskKind::Video => "视频库",
         }
     }
 
@@ -74,6 +78,7 @@ impl AgentTaskKind {
             AgentTaskKind::Explain => "练习时的单词深度讲解；建议用能力强的模型",
             AgentTaskKind::Tutor => "练习时向 AI 老师提问；回答要快，可用速度快、价格低的模型",
             AgentTaskKind::Passage => "写阅读短文、出阅读理解题、给开放题评分；建议用能力强的模型",
+            AgentTaskKind::Video => "整理字幕、规划切分视频；没有单独设置时用「短文库」的模型",
         }
     }
 
@@ -246,9 +251,15 @@ impl AgentSettingsService {
         if explicit.is_some() {
             return models.get_model_config(explicit).await;
         }
-        let configured = SettingsRepository::get(&self.pool, &task.setting_key())
+        let mut configured = SettingsRepository::get(&self.pool, &task.setting_key())
             .await?
             .and_then(|v| v.parse::<i64>().ok());
+        // 视频没有单独设置时沿用短文库的（视频功能早先用的就是它）
+        if configured.is_none() && task == AgentTaskKind::Video {
+            configured = SettingsRepository::get(&self.pool, &AgentTaskKind::Passage.setting_key())
+                .await?
+                .and_then(|v| v.parse::<i64>().ok());
+        }
         if let Some(id) = configured {
             match models.get_model_config(Some(id)).await {
                 Ok(model) => return Ok(model),

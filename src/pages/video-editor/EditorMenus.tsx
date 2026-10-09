@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ChevronDown, Clapperboard, Copy, Layers, Pencil, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { Check, ChevronDown, Clapperboard, Layers, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +24,7 @@ import type { VideoPlanInfo } from '@/types/video';
 
 /**
  * 剪辑编辑器顶栏的「规划」菜单（旁边是主按钮「开始切分」）：一个视频可以按不同主题 / 意图规划多批——
- * 切换、新建、复制、改名、删除规划，以及在当前规划里 AI 规划 / 按字幕自动切分、查看切出的片段。
+ * 切换、新建（新建对话框里选怎么开始）、改名、删除规划，查看切出的片段。AI 规划 / 自动切分在片段列表顶部。
  * 字幕整理（断句、补中文）是内部步骤：导入时、AI 规划与切分前自动完成，不做成用户操作。
  */
 
@@ -37,11 +37,10 @@ export interface PlanMenuProps {
   clipCount: number;
   disabled?: boolean;
   onSwitch: (id: number) => void;
-  onCreate: (copy: boolean) => void;
+  /** 新建规划（打开新建对话框） */
+  onCreate: () => void;
   onRename: (name: string) => Promise<boolean>;
   onDelete: () => void;
-  onAiPlan: () => void;
-  onAutoSplit: () => void;
   onViewClips: () => void;
 }
 
@@ -55,8 +54,6 @@ export const PlanMenu: React.FC<PlanMenuProps> = ({
   onCreate,
   onRename,
   onDelete,
-  onAiPlan,
-  onAutoSplit,
   onViewClips,
 }) => {
   const current = plans.find((p) => p.id === currentId);
@@ -89,23 +86,11 @@ export const PlanMenu: React.FC<PlanMenuProps> = ({
               </span>
             </DropdownMenuItem>
           ))}
-          <DropdownMenuItem onSelect={() => onCreate(false)}>
+          <DropdownMenuItem onSelect={onCreate}>
             <Plus />
-            新建规划
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onCreate(true)} disabled={!current || current.plan.segments.length === 0}>
-            <Copy />
-            复制当前规划
+            新建规划…
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={onAiPlan}>
-            <Sparkles />
-            AI 规划…
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onAutoSplit}>
-            <Wand2 />
-            按字幕自动切分…
-          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
               setName(current?.name ?? '');

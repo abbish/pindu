@@ -13,9 +13,6 @@ import { useTheme, type ThemePreference } from '@/hooks/useTheme';
 import { updater, useUpdater } from '@/hooks/useUpdater';
 import { useCheckForUpdates } from '@/components/UpdateBanner';
 import { dataManagementService } from '../../services/dataManagementService';
-import { videoService } from '../../services/videoService';
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
-import type { MediaToolsStatus } from '@/types/video';
 
 const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }[] = [
   { value: 'system', label: '跟随系统', icon: Monitor },
@@ -24,7 +21,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }
 ];
 
 /**
- * 设置「通用」：外观（主题）、更新（版本与自动检查）、视频组件（自带的不可用时才显示）与诊断（系统日志）。
+ * 设置「通用」：外观（主题）、更新（版本与自动检查）与诊断（系统日志）。视频组件在「素材」里。
  */
 /** 日志记录级别：选中的级别及更严重的才写入日志 */
 const LOG_LEVELS = [
@@ -53,23 +50,6 @@ export const GeneralSettings: React.FC = () => {
   useEffect(() => {
     getVersion().then(setVersion, () => setVersion(''));
   }, []);
-  const [media, setMedia] = useState<MediaToolsStatus | null>(null);
-  useEffect(() => {
-    videoService.getMediaToolsStatus().then((r) => r.success && setMedia(r.data));
-  }, []);
-  const pickMediaDir = async () => {
-    const dir = await openFileDialog({ directory: true, multiple: false, title: '选择 ffmpeg 和 ffprobe 所在的文件夹' });
-    if (typeof dir !== 'string') return;
-    const result = await videoService.setFfmpegDir(dir);
-    if (result.success) setMedia(result.data);
-    else toast.showError('无法使用这个文件夹', result.error);
-  };
-  const resetMediaDir = async () => {
-    const result = await videoService.setFfmpegDir(null);
-    if (result.success) setMedia(result.data);
-    else toast.showError('无法改用自带的视频组件', result.error);
-  };
-
   return (
     <SettingsPanel title="通用">
       <SettingsSection title="外观">
@@ -106,25 +86,6 @@ export const GeneralSettings: React.FC = () => {
           <Switch checked={autoCheck} onCheckedChange={updater.setAutoCheck} aria-label="自动检查更新" />
         </SettingsRow>
       </SettingsSection>
-
-      {/* 自带的能用时不显示；不可用或改用了别的 ffmpeg 时才需要 */}
-      {media && !(media.available && media.builtIn) && (
-        <SettingsSection title="视频组件">
-          <SettingsRow label="ffmpeg" description={media.available ? (media.dir ?? undefined) : '没有找到'}>
-            <div className="flex gap-2">
-              {media.available && (
-                <Button variant="ghost" size="sm" onClick={resetMediaDir}>
-                  用自带的
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={pickMediaDir}>
-                <FolderOpen />
-                选择文件夹
-              </Button>
-            </div>
-          </SettingsRow>
-        </SettingsSection>
-      )}
 
       <SettingsSection title="诊断">
         <SettingsRow label="记录级别" description="只记录选中级别及更严重的日志">

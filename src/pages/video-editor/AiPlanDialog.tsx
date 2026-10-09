@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { loadMaterialSettings } from '@/hooks/useMaterialSettings';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -65,6 +66,13 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
 
   useEffect(() => {
     if (!open) return;
+    // 每段时长默认值来自「设置 → 素材」
+    void loadMaterialSettings().then((st) => {
+      if (st) {
+        setMinSec(st.videoMinSeconds);
+        setMaxSec(st.videoMaxSeconds);
+      }
+    });
     setText(requirements);
     setFeedback('');
     setError(null);

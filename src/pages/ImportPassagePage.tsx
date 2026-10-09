@@ -27,6 +27,7 @@ import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { Stepper } from '@/components/Stepper/Stepper';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { cn } from '@/lib/utils';
+import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { passageService } from '@/services/passageService';
 import { wordBookService } from '@/services/wordbookService';
 import { jobService } from '@/services/jobService';
@@ -85,6 +86,13 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
   const [books, setBooks] = useState<{ id: number; title: string; words: number }[] | null>(null);
   const [bookIds, setBookIds] = useState<number[]>([]);
   const [aiKeyWords, setAiKeyWords] = useState(true);
+  // 拆篇长度与挑重点词的默认值来自「设置 → 素材」
+  const materialSettings = useMaterialSettings();
+  useEffect(() => {
+    if (!materialSettings) return;
+    setTargetWords(materialSettings.importTargetWords);
+    setAiKeyWords(materialSettings.importKeyWords);
+  }, [materialSettings]);
 
   // ③ 导入
   /** 导入的后台任务：每次提交导入哪几篇（预览里的序号）；重试没导入的是新的一次 */
