@@ -15,7 +15,6 @@ fn row_to_tag(row: &sqlx::sqlite::SqliteRow) -> Tag {
     Tag {
         id: row.get("id"),
         name: row.get("name"),
-        icon: row.get("icon"),
     }
 }
 
@@ -27,7 +26,7 @@ impl TagRepository {
     /// 全部标签与各类素材的数量（单词本不算已删除的），按名称排序
     pub async fn find_all_with_usage(&self) -> AppResult<Vec<TagUsage>> {
         let rows = sqlx::query(
-            "SELECT t.id, t.name, t.icon,
+            "SELECT t.id, t.name,
                     (SELECT COUNT(*) FROM material_tags m JOIN word_books b ON b.id = m.ref_id
                       WHERE m.tag_id = t.id AND m.kind = 'word_book' AND b.deleted_at IS NULL) AS word_books,
                     (SELECT COUNT(*) FROM material_tags m WHERE m.tag_id = t.id AND m.kind = 'passage'
@@ -58,7 +57,7 @@ impl TagRepository {
         conn: &mut SqliteConnection,
         name: &str,
     ) -> AppResult<Option<Tag>> {
-        let row = sqlx::query("SELECT id, name, icon FROM tags WHERE name = TRIM(?)")
+        let row = sqlx::query("SELECT id, name FROM tags WHERE name = TRIM(?)")
             .bind(name)
             .fetch_optional(&mut *conn)
             .await?;
@@ -66,31 +65,24 @@ impl TagRepository {
     }
 
     /// 新建标签（调用方已确认不重名）
-    pub async fn insert_conn(
-        &self,
-        conn: &mut SqliteConnection,
-        name: &str,
-        icon: Option<&str>,
-    ) -> AppResult<Tag> {
+    pub async fn insert_conn(&self, conn: &mut SqliteConnection, name: &str) -> AppResult<Tag> {
         let id = sqlx::query(
-            "INSERT INTO tags (name, icon, created_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+            "INSERT INTO tags (name, created_at) VALUES (?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
         )
         .bind(name)
-        .bind(icon)
         .execute(&mut *conn)
         .await?
         .last_insert_rowid();
         Ok(Tag {
             id,
             name: name.to_string(),
-            icon: icon.map(str::to_string),
         })
     }
 
     /// 一个素材的标签
     pub async fn tags_of(&self, kind: MaterialKind, ref_id: Id) -> AppResult<Vec<Tag>> {
         let rows = sqlx::query(
-            "SELECT t.id, t.name, t.icon FROM material_tags m JOIN tags t ON t.id = m.tag_id
+            "SELECT t.id, t.name FROM material_tags m JOIN tags t ON t.id = m.tag_id
              WHERE m.kind = ? AND m.ref_id = ? ORDER BY t.name COLLATE NOCASE",
         )
         .bind(kind.as_str())
@@ -103,7 +95,7 @@ impl TagRepository {
     /// 某类素材全部的标签：ref_id → 标签（列表页一次查出）
     pub async fn tags_of_kind(&self, kind: MaterialKind) -> AppResult<HashMap<Id, Vec<Tag>>> {
         let rows = sqlx::query(
-            "SELECT m.ref_id, t.id, t.name, t.icon FROM material_tags m JOIN tags t ON t.id = m.tag_id
+            "SELECT m.ref_id, t.id, t.name FROM material_tags m JOIN tags t ON t.id = m.tag_id
              WHERE m.kind = ? ORDER BY m.ref_id, t.name COLLATE NOCASE",
         )
         .bind(kind.as_str())
@@ -175,7 +167,7 @@ impl TagRepository {
     }
 
     pub async fn find_conn(&self, conn: &mut SqliteConnection, id: Id) -> AppResult<Option<Tag>> {
-        let row = sqlx::query("SELECT id, name, icon FROM tags WHERE id = ?")
+        let row = sqlx::query("SELECT id, name FROM tags WHERE id = ?")
             .bind(id)
             .fetch_optional(&mut *conn)
             .await?;
@@ -276,18 +268,15 @@ mod migration_060_tests {
             .unwrap();
         MIGRATOR.run(&pool).await.unwrap();
 
-        let tags: Vec<(i64, String, Option<String>)> =
-            sqlx::query_as("SELECT id, name, icon FROM tags WHERE id >= 100 ORDER BY id")
+        let tags: Vec<(i64, String)> =
+            sqlx::query_as("SELECT id, name FROM tags WHERE id >= 100 ORDER BY id")
                 .fetch_all(&pool)
                 .await
                 .unwrap();
-        // 同名（忽略大小写）的两个主题合成一个，保留 id 小的；名字去掉首尾空格；空图标为 NULL
+        // 同名（忽略大小写）的两个主题合成一个，保留 id 小的；名字去掉首尾空格（图标在 062 去掉）
         assert_eq!(
             tags,
-            vec![
-                (100, "自驾旅行".to_string(), Some("✈️".to_string())),
-                (101, "TED".to_string(), None)
-            ]
+            vec![(100, "自驾旅行".to_string()), (101, "TED".to_string())]
         );
         let linked: Vec<i64> = sqlx::query_scalar(
             "SELECT tag_id FROM material_tags WHERE kind = 'word_book' AND ref_id = 900 ORDER BY tag_id",

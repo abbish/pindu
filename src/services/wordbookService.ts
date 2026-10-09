@@ -115,6 +115,7 @@ export class WordBookService extends BaseService {
         pageSize: pagination?.page_size,
         searchTerm: query?.keyword,
         partOfSpeech: query?.part_of_speech,
+        sortBy: query?.sortBy,
       });
     });
   }

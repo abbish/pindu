@@ -90,7 +90,6 @@ export const TagFilter: React.FC<{ kind: MaterialListKind; value: string; onChan
         <SelectItem value="all">所有标签</SelectItem>
         {tags?.map((t) => (
           <SelectItem key={t.id} value={String(t.id)}>
-            {t.icon && <span aria-hidden="true">{t.icon}</span>}
             {t.name}
             <span className="text-muted-foreground tabular-nums">{COUNT_OF[kind](t)}</span>
           </SelectItem>
@@ -118,7 +117,6 @@ export const TagChips: React.FC<{ tags: { id: number; name: string; icon?: strin
     <div className="flex flex-wrap gap-1">
       {tags.slice(0, limit).map((t) => (
         <Badge key={t.id} variant="outline" className="font-normal">
-          {t.icon && <span aria-hidden="true">{t.icon}</span>}
           {t.name}
         </Badge>
       ))}

@@ -133,7 +133,6 @@ export const TagManagerDialog: React.FC<TagManagerDialogProps> = ({ open, onOpen
                     <>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm">
-                          {t.icon && <span aria-hidden="true">{t.icon} </span>}
                           {t.name}
                         </div>
                         <div className="text-xs text-muted-foreground tabular-nums">{usageText(t)}</div>

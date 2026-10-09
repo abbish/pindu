@@ -17,6 +17,7 @@ pub async fn get_words_by_book(
     page_size: Option<u32>,
     search_term: Option<String>,
     part_of_speech: Option<String>,
+    sort_by: Option<String>,
 ) -> AppResult<PaginatedResponse<Word>> {
     use crate::services::word::WordService;
 
@@ -29,8 +30,8 @@ pub async fn get_words_by_book(
     logger.api_request(
         "get_words_by_book",
         Some(&format!(
-            "book_id: {}, page: {}, page_size: {}, search_term: {:?}, part_of_speech: {:?}",
-            book_id, page, page_size, search_term, part_of_speech
+            "book_id: {}, page: {}, page_size: {}, search_term: {:?}, part_of_speech: {:?}, sort_by: {:?}",
+            book_id, page, page_size, search_term, part_of_speech, sort_by
         )),
     );
 
@@ -40,7 +41,14 @@ pub async fn get_words_by_book(
     );
 
     match service
-        .get_words_by_book(book_id, page, page_size, search_term, part_of_speech)
+        .get_words_by_book(
+            book_id,
+            page,
+            page_size,
+            search_term,
+            part_of_speech,
+            sort_by.as_deref(),
+        )
         .await
     {
         Ok(result) => {

@@ -162,6 +162,8 @@ export interface WordQuery {
   difficulty_level?: number;
   category_id?: Id;
   part_of_speech?: string;
+  /** word 字母顺序（默认）/ newest 最近添加 / oldest 最早添加 */
+  sortBy?: 'word' | 'newest' | 'oldest';
 }
 
 /// 单词本统计

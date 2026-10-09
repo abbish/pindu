@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
-import { PassageList } from '@/components/PassageList';
+import { PASSAGE_SORTS, PassageList } from '@/components/PassageList';
+import { SortSelect, useSortPref } from '@/components/SortSelect';
 import { passageService } from '@/services/passageService';
 import { formatDuration } from '@/utils/datetime';
 import type { PassageModeStatistics, PassageOrigin, PassageStatistics } from '@/types/passage';
@@ -36,6 +37,7 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
   const [query, setQuery] = useState('');
   const [origin, setOrigin] = useState<PassageOrigin | 'all'>('all');
   const [tag, setTag] = useState('all');
+  const [sortBy, setSortBy] = useSortPref('passages', PASSAGE_SORTS);
   /** 管理标签后重新加载列表（卡片上的标签名变了） */
   const [listVersion, setListVersion] = useState(0);
   const [stats, setStats] = useState<PassageStatistics | null>(null);
@@ -123,9 +125,10 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
               ))}
             </SelectContent>
           </Select>
+          <SortSelect value={sortBy} options={PASSAGE_SORTS} onChange={setSortBy} />
         </MaterialToolbar>
         }
-        query={query} origin={origin === 'all' ? undefined : origin} tagId={tag === 'all' ? undefined : Number(tag)} onCreate={create} onImport={() => onNavigate?.('import-passage')} onCountChange={loadStats} onOpen={(passageId) => onNavigate?.('passage-detail', { passageId })} />
+        query={query} origin={origin === 'all' ? undefined : origin} tagId={tag === 'all' ? undefined : Number(tag)} sortBy={sortBy} onCreate={create} onImport={() => onNavigate?.('import-passage')} onCountChange={loadStats} onOpen={(passageId) => onNavigate?.('passage-detail', { passageId })} />
     </div>
   );
 };

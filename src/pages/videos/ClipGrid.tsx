@@ -20,6 +20,9 @@ import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { PASSAGE_SORTS } from '@/components/PassageList';
+import { SortSelect, useSortPref } from '@/components/SortSelect';
+import { byNumber, byText, sortItems, type SortOption } from '@/utils/sorting';
 import { ListPagination, usePagination } from '@/components/ListPagination';
 import { MaterialToolbar, TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import { tagService } from '@/services/tagService';
@@ -42,6 +45,17 @@ export interface ClipGridProps {
 }
 
 const LEVELS = ['a1', 'a2', 'b1', 'b2'];
+
+const CLIP_SORTS: SortOption<ClipSummary>[] = [
+  ...PASSAGE_SORTS.slice(0, 1),
+  {
+    value: 'video',
+    label: '按视频顺序',
+    compare: (a, b) => byText<ClipSummary>((c) => c.videoTitle)(a, b) || a.videoId - b.videoId || a.startMs - b.startMs,
+  },
+  ...PASSAGE_SORTS.slice(1),
+  { value: 'long', label: '时长最长', compare: byNumber((c) => c.endMs - c.startMs) },
+];
 /** 像英文单词 / 短语时，也到字幕里找 */
 const ENGLISH = /^[a-z][a-z' -]*$/i;
 
@@ -54,6 +68,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
   const [tag, setTag] = useState('all');
   const [video, setVideo] = useState(videoId ? String(videoId) : 'all');
   const [level, setLevel] = useState('all');
+  const [sortBy, setSortBy] = useSortPref('clips', CLIP_SORTS);
   /** 字幕里出现了搜索词的片段：passageId → 那一句 */
   const [subtitleHits, setSubtitleHits] = useState<Map<number, string>>(new Map());
   const [playlist, setPlaylist] = useState<ClipSummary[] | null>(null);
@@ -75,7 +90,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
   const visible = useMemo(() => {
     if (!clips) return null;
     const q = query.trim().toLowerCase();
-    return clips.filter(
+    const shown = clips.filter(
       (c) =>
         (tag === 'all' || c.tags.some((t) => String(t.id) === tag)) &&
         (video === 'all' || String(c.videoId) === video) &&
@@ -86,10 +101,11 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
           c.tags.some((t) => t.name.toLowerCase().includes(q)) ||
           subtitleHits.has(c.id))
     );
-  }, [clips, query, tag, video, level, subtitleHits]);
+    return sortItems(shown, CLIP_SORTS, sortBy);
+  }, [clips, query, tag, video, level, subtitleHits, sortBy]);
 
   const selection = useSelection(useMemo(() => (visible ?? []).map((c) => c.id), [visible]));
-  const pager = usePagination(visible, { id: 'clips', resetKey: `${query.trim()}|${tag}|${video}|${level}` });
+  const pager = usePagination(visible, { id: 'clips', resetKey: `${query.trim()}|${tag}|${video}|${level}|${sortBy}` });
   const pickedClips = (visible ?? []).filter((c) => selection.selected.has(c.id));
   const sourceVideos = videos.filter((v) => v.clipCount > 0);
   const active = (query ? 1 : 0) + (tag !== 'all' ? 1 : 0) + (video !== 'all' ? 1 : 0) + (level !== 'all' ? 1 : 0);
@@ -166,6 +182,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
             ))}
           </SelectContent>
         </Select>
+        <SortSelect value={sortBy} options={CLIP_SORTS} onChange={setSortBy} />
       </MaterialToolbar>
       )}
 

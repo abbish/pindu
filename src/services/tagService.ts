@@ -10,8 +10,8 @@ class TagService extends BaseService {
   }
 
   /** 新建标签（同名已存在时返回已有的） */
-  async createTag(name: string, icon?: string): Promise<ApiResult<Tag>> {
-    return this.executeWithLoading(() => this.client.invoke<Tag>('create_tag', { name, icon }));
+  async createTag(name: string): Promise<ApiResult<Tag>> {
+    return this.executeWithLoading(() => this.client.invoke<Tag>('create_tag', { name }));
   }
 
   /** 改名；与另一个标签同名时合并进那个标签，返回最终的标签 */

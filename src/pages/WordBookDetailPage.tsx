@@ -2,6 +2,7 @@ import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { WordMaterialsSheet } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
 import { tagService } from '@/services/tagService';
 import type { WordMaterialCount } from '@/types/material';
+import type { WordQuery } from '@/types/wordbook';
 import { ChevronDown, FileUp, ListChecks, Loader2, MoreHorizontal, Pencil, PencilLine, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,8 @@ import { WordBookFormDialog } from '@/components/WordBookFormDialog/WordBookForm
 import { WordFormDialog } from '@/components/WordFormDialog/WordFormDialog';
 import { BatchDeleteModal } from '@/components/BatchDeleteModal';
 import { AddWordsDialog, type AddWordsSource } from '@/components/AddWordsDialog/AddWordsDialog';
-import { PassageList } from '@/components/PassageList';
+import { PASSAGE_SORTS, PassageList } from '@/components/PassageList';
+import { SortSelect, useSortPref } from '@/components/SortSelect';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { WordBookIcon } from '@/components/WordBookIcon/WordBookIcon';
@@ -68,6 +70,12 @@ const toRow = (word: Word): WordListDetail => ({
 });
 
 const PAGE_SIZE = 20;
+
+const WORD_SORTS = [
+  { value: 'word', label: '字母顺序' },
+  { value: 'newest', label: '最近添加' },
+  { value: 'oldest', label: '最早添加' },
+];
 
 export interface WordBookDetailPageProps {
   /** 单词本ID */
@@ -109,11 +117,16 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
   const [materials, setMaterials] = useState<Map<number, WordMaterialCount>>(new Map());
   const [materialsOf, setMaterialsOf] = useState<{ id: number; word: string } | null>(null);
   const [passageCount, setPassageCount] = useState<number | null>(null);
+  const [passageSort, setPassageSort] = useSortPref('passages', PASSAGE_SORTS);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
 
   usePageTitle(wordBook?.title);
+
+  // 单词排序（后端排）：记在本机；用 ref 让 loadWords 不随排序重建
+  const [wordSort, setWordSortPref] = useSortPref('words', WORD_SORTS);
+  const wordSortRef = useRef(wordSort);
 
   // 快速翻页时只采用最后一次请求的结果
   const wordsRequest = useRef(0);
@@ -122,7 +135,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
       if (!id) return;
       const seq = ++wordsRequest.current;
       setWordsLoading(true);
-      const result = await wordBookService.getWordsByBookId(id, undefined, { page, page_size: PAGE_SIZE });
+      const result = await wordBookService.getWordsByBookId(id, { sortBy: wordSortRef.current as WordQuery['sortBy'] }, { page, page_size: PAGE_SIZE });
       if (seq !== wordsRequest.current) return;
       if (result.success) {
         // 删掉最后一页的全部单词后，这一页已经不存在：退回到现在的最后一页
@@ -318,7 +331,6 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               <h1 className="truncate text-2xl font-semibold tracking-tight">{wordBook.title}</h1>
               {wordBook.tags.map((tag) => (
                 <Badge key={tag.id} variant="secondary">
-                  {tag.icon && <span aria-hidden="true">{tag.icon}</span>}
                   {tag.name}
                 </Badge>
               ))}
@@ -437,6 +449,19 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             }
             loading={wordsLoading}
             pagination={{ current: currentPage, pageSize: PAGE_SIZE, total: totalWords, onChange: loadWords }}
+            toolbarExtra={
+              totalWords > 1 && (
+                <SortSelect
+                  value={wordSort}
+                  options={WORD_SORTS}
+                  onChange={(v) => {
+                    setWordSortPref(v);
+                    wordSortRef.current = v;
+                    void loadWords(1);
+                  }}
+                />
+              )
+            }
           />
           )}
         </TabsContent>
@@ -484,7 +509,8 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
         {/* forceMount：页签计数在首次打开前也能显示 */}
         <TabsContent value="passages" forceMount className="data-[state=inactive]:hidden">
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-end gap-4">
+            <div className="flex items-center justify-end gap-2">
+              {(passageCount ?? 0) > 1 && <SortSelect value={passageSort} options={PASSAGE_SORTS} onChange={setPassageSort} className="mr-auto" />}
               {totalWords > 0 && (
                 <Button variant="outline" onClick={() => onNavigate?.('create-passage', { bookIds: [wordBook.id] })}>
                   <Plus />
@@ -494,6 +520,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             </div>
             <PassageList
               bookId={wordBook.id}
+              sortBy={passageSort}
               onOpen={(passageId) => onNavigate?.('passage-detail', { passageId })}
               onCountChange={setPassageCount}
             />

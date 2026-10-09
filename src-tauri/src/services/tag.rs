@@ -33,17 +33,14 @@ impl TagService {
     }
 
     /// 新建标签：名称 1–10 个字；同名（忽略大小写）已存在时直接返回已有的
-    pub async fn create_tag(&self, name: &str, icon: Option<&str>) -> AppResult<Tag> {
+    pub async fn create_tag(&self, name: &str) -> AppResult<Tag> {
         let name = clean_name(name).ok_or_else(|| {
             AppError::ValidationError(format!("标签名称需要 1–{TAG_NAME_MAX} 个字"))
         })?;
-        let icon = icon
-            .map(str::trim)
-            .filter(|s| !s.is_empty() && s.chars().count() <= 4);
         let mut tx = self.repository.begin().await?;
         let tag = match self.repository.find_by_name_conn(&mut tx, &name).await? {
             Some(existing) => existing,
-            None => self.repository.insert_conn(&mut tx, &name, icon).await?,
+            None => self.repository.insert_conn(&mut tx, &name).await?,
         };
         tx.commit().await?;
         Ok(tag)
@@ -59,7 +56,7 @@ impl TagService {
         for name in names.iter().filter_map(|n| clean_name(n)) {
             let tag = match self.repository.find_by_name_conn(conn, &name).await? {
                 Some(t) => t,
-                None => self.repository.insert_conn(conn, &name, None).await?,
+                None => self.repository.insert_conn(conn, &name).await?,
             };
             if !ids.contains(&tag.id) {
                 ids.push(tag.id);
@@ -155,19 +152,14 @@ mod tests {
     async fn creating_tags_validates_and_reuses_same_name() {
         let pool = memory_pool().await;
         let service = TagService::new(pool.clone());
-        assert!(service.create_tag("  ", None).await.is_err());
-        assert!(service
-            .create_tag("一二三四五六七八九十一", None)
-            .await
-            .is_err());
+        assert!(service.create_tag("  ").await.is_err());
+        assert!(service.create_tag("一二三四五六七八九十一").await.is_err());
 
-        let tag = service.create_tag(" 演讲 ", Some("🎤")).await.unwrap();
+        let tag = service.create_tag(" 演讲 ").await.unwrap();
         assert_eq!(tag.name, "演讲");
-        assert_eq!(tag.icon.as_deref(), Some("🎤"));
-        assert_eq!(service.create_tag("演讲", None).await.unwrap().id, tag.id);
-        let ted = service.create_tag("TED", None).await.unwrap();
-        assert_eq!(ted.icon, None);
-        assert_eq!(service.create_tag("ted", None).await.unwrap().id, ted.id);
+        assert_eq!(service.create_tag("演讲").await.unwrap().id, tag.id);
+        let ted = service.create_tag("TED").await.unwrap();
+        assert_eq!(service.create_tag("ted").await.unwrap().id, ted.id);
         crate::time::assert_instants_canonical(&pool).await;
     }
 
@@ -233,8 +225,8 @@ mod tests {
             .fetch_one(pool.as_ref())
             .await
             .unwrap();
-        let a = service.create_tag("点餐", None).await.unwrap();
-        let b = service.create_tag("餐厅点餐", None).await.unwrap();
+        let a = service.create_tag("点餐").await.unwrap();
+        let b = service.create_tag("餐厅点餐").await.unwrap();
         service
             .set_material_tags(MaterialKind::WordBook, book, &[a.id, b.id])
             .await
@@ -275,8 +267,8 @@ mod tests {
             .fetch_one(pool.as_ref())
             .await
             .unwrap();
-        let a = service.create_tag("点餐", None).await.unwrap();
-        let b = service.create_tag("旅行学习", None).await.unwrap();
+        let a = service.create_tag("点餐").await.unwrap();
+        let b = service.create_tag("旅行学习").await.unwrap();
         let n = service
             .update_material_tags(MaterialKind::WordBook, &[book, 99_999], &[a.id, b.id], &[])
             .await

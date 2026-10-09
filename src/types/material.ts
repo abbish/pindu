@@ -5,8 +5,6 @@ import type { Id } from './common';
 export interface Tag {
   id: Id;
   name: string;
-  /** 图标（emoji；旧「主题」迁来的有，新建的可以没有） */
-  icon: string | null;
 }
 
 /** 标签与各类素材的数量 */

@@ -63,7 +63,6 @@ export const TagPicker: React.FC<TagPickerProps> = ({ tags, value, onChange, onC
             ) : (
               selected.map((tag) => (
                 <Badge key={tag.id} variant="secondary" className="gap-1 pr-1">
-                  {tag.icon && <span aria-hidden="true">{tag.icon}</span>}
                   {tag.name}
                   <span
                     role="button"
@@ -107,9 +106,6 @@ export const TagPicker: React.FC<TagPickerProps> = ({ tags, value, onChange, onC
                 const checked = value.includes(tag.id);
                 return (
                   <CommandItem key={tag.id} value={tag.name} onSelect={() => toggle(tag.id)}>
-                    <span aria-hidden="true" className="w-5 text-center">
-                      {tag.icon}
-                    </span>
                     {tag.name}
                     <Check className={cn('ml-auto size-4', checked ? 'opacity-100' : 'opacity-0')} />
                   </CommandItem>

@@ -1,1 +1,1 @@
-export { PassageList, SourceBadge, type PassageListProps } from './PassageList';
+export { PASSAGE_SORTS, PassageList, SourceBadge, type PassageListProps } from './PassageList';

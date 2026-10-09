@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { byInstant, byNumber, byText, sortItems, type SortOption } from '@/utils/sorting';
 import { ListPagination, usePagination } from '@/components/ListPagination';
 import { PageError } from '@/components/PageError';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,8 @@ export interface PassageListProps {
   origin?: PassageOrigin;
   /** 只看带这个标签的 */
   tagId?: number;
+  /** 排序项（PASSAGE_SORTS 的 value），默认最近添加 */
+  sortBy?: string;
   /** 列表上方的工具栏；勾选短文后换成选择栏（与其它素材页一致） */
   toolbar?: React.ReactNode;
   /** 导入我的材料（空状态的次要操作） */
@@ -118,8 +121,17 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
   );
 };
 
-/** 短文卡片网格（短文库、单词本「短文」页签共用）：加载 / 空 / 错误三态，删除确认 */
-export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', origin, tagId, toolbar, onOpen, onCreate, onImport, onCountChange, emptyDescription }) => {
+/** 短文列表的排序项（片段同样适用：ClipSummary 继承 PassageSummary） */
+export const PASSAGE_SORTS: SortOption<PassageSummary>[] = [
+  { value: 'recent', label: '最近添加', compare: byInstant((p) => p.createdAt) },
+  { value: 'practiced', label: '最近练习', compare: byInstant((p) => p.lastAttempt?.completedAt) },
+  { value: 'name', label: '标题', compare: byText((p) => p.title) },
+  { value: 'level', label: '难度由易到难', compare: byText((p) => p.level) },
+  { value: 'attempts', label: '练习最多', compare: byNumber((p) => p.completedAttempts) },
+];
+
+/** 短文卡片网格（短文库、单词本「短文」页签共用）：加载 / 空 / 错误三态，删除确认；排序由页面控制（sortBy） */
+export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', origin, tagId, sortBy = 'recent', toolbar, onOpen, onCreate, onImport, onCountChange, emptyDescription }) => {
   const [passages, setPassages] = useState<PassageSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<PassageSummary[] | null>(null);
@@ -142,16 +154,17 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!passages) return passages;
-    return passages.filter(
+    const shown = passages.filter(
       (p) =>
         (!origin || p.origin === origin) &&
         (tagId === undefined || p.tags.some((t) => t.id === tagId)) &&
         (!q || p.title.toLowerCase().includes(q) || p.targetWords.some((w) => w.word.toLowerCase().includes(q)) || p.tags.some((t) => t.name.toLowerCase().includes(q)))
     );
-  }, [passages, query, origin, tagId]);
+    return sortItems(shown, PASSAGE_SORTS, sortBy);
+  }, [passages, query, origin, tagId, sortBy]);
 
   const selection = useSelection(useMemo(() => (visible ?? []).map((p) => p.id), [visible]));
-  const pager = usePagination(visible, { id: `passages:${bookId ?? 'all'}`, resetKey: `${query.trim()}|${origin ?? ''}|${tagId ?? ''}` });
+  const pager = usePagination(visible, { id: `passages:${bookId ?? 'all'}`, resetKey: `${query.trim()}|${origin ?? ''}|${tagId ?? ''}|${sortBy}` });
   const bar = selection.selecting ? (
     <SelectionBar selection={selection} unit="篇短文">
       <BatchTagButton kind="passage" ids={selection.ids} onDone={load} />

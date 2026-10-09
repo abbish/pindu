@@ -7,8 +7,6 @@ use serde::{Deserialize, Serialize};
 pub struct Tag {
     pub id: Id,
     pub name: String,
-    /// 图标（emoji；旧「主题」迁来的有，新建的可以没有）
-    pub icon: Option<String>,
 }
 
 /// 标签与各类素材的数量（标签管理、筛选用）

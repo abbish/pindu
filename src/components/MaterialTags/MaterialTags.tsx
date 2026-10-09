@@ -65,7 +65,6 @@ export const MaterialTags: React.FC<MaterialTagsProps> = ({ kind, refId, tags, o
     <div className="flex flex-wrap items-center gap-1">
       {value.map((t) => (
         <Badge key={t.id} variant="outline" className="gap-1 pr-1 font-normal">
-          {t.icon && <span aria-hidden="true">{t.icon}</span>}
           {t.name}
           <button type="button" aria-label={`去掉 ${t.name}`} className="rounded-sm p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => toggle(t)} disabled={saving}>
             <X className="size-3" />
@@ -94,7 +93,6 @@ export const MaterialTags: React.FC<MaterialTagsProps> = ({ kind, refId, tags, o
                   <CommandGroup>
                     {all.map((t) => (
                       <CommandItem key={t.id} value={t.name} onSelect={() => toggle(t)}>
-                        {t.icon && <span aria-hidden="true">{t.icon}</span>}
                         {t.name}
                         <Check className={cn('ml-auto size-4', value.some((v) => v.id === t.id) ? 'opacity-100' : 'opacity-0')} />
                       </CommandItem>

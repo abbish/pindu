@@ -33,6 +33,8 @@ import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { MaterialTags } from '@/components/MaterialTags/MaterialTags';
 import { ClipGrid } from './videos/ClipGrid';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { SortSelect, useSortPref } from '@/components/SortSelect';
+import { byInstant, byNumber, byText, type SortOption, sortItems } from '@/utils/sorting';
 import { ListPagination, usePagination } from '@/components/ListPagination';
 import { ImportVideoDialog } from '@/components/ImportVideoDialog';
 import { PageError } from '@/components/PageError';
@@ -59,6 +61,13 @@ export interface VideoLibraryPageProps {
 const jobOf = (jobs: Job[], videoId: number) =>
   jobs.find((j) => isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId);
 
+const VIDEO_SORTS: SortOption<Video>[] = [
+  { value: 'recent', label: '最近导入', compare: byInstant((v) => v.createdAt) },
+  { value: 'name', label: '名称', compare: byText((v) => v.title) },
+  { value: 'long', label: '时长最长', compare: byNumber((v) => v.durationMs) },
+  { value: 'clips', label: '片段最多', compare: byNumber((v) => v.clipCount) },
+];
+
 const STATUS_LABEL: Record<Video['status'], string> = {
   importing: '导入中',
   ready: '待切分',
@@ -83,6 +92,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
   const [toDelete, setToDelete] = useState<Video[] | null>(null);
   const [sourceQuery, setSourceQuery] = useState('');
   const [sourceTag, setSourceTag] = useState('all');
+  const [sourceSort, setSourceSort] = useSortPref('videos', VIDEO_SORTS);
   const jobs = useJobs();
   const toast = useToast();
 
@@ -124,14 +134,15 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
 
   const shownVideos = useMemo(() => {
     const q = sourceQuery.trim().toLowerCase();
-    return (videos ?? []).filter(
+    const shown = (videos ?? []).filter(
       (v) =>
         (sourceTag === 'all' || v.tags.some((t) => String(t.id) === sourceTag)) &&
         (!q || v.title.toLowerCase().includes(q) || v.sourceName.toLowerCase().includes(q) || v.tags.some((t) => t.name.toLowerCase().includes(q)))
     );
-  }, [videos, sourceQuery, sourceTag]);
+    return sortItems(shown, VIDEO_SORTS, sourceSort);
+  }, [videos, sourceQuery, sourceTag, sourceSort]);
   const selection = useSelection(useMemo(() => shownVideos.map((v) => v.id), [shownVideos]));
-  const pager = usePagination(videos === null ? null : shownVideos, { id: 'videos', resetKey: `${sourceQuery.trim()}|${sourceTag}` });
+  const pager = usePagination(videos === null ? null : shownVideos, { id: 'videos', resetKey: `${sourceQuery.trim()}|${sourceTag}|${sourceSort}` });
 
   const header = (
     <PageHeader
@@ -216,7 +227,9 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
               setSourceTag('all');
             }}
             countText={`共 ${shownVideos.length} 个`}
-          />
+          >
+            <SortSelect value={sourceSort} options={VIDEO_SORTS} onChange={setSourceSort} />
+          </MaterialToolbar>
         )}
         {shownVideos.length === 0 && <EmptyState icon={<SearchX />} title="没有匹配的视频" />}
         <div ref={pager.anchorRef} className="grid scroll-mt-20 grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">

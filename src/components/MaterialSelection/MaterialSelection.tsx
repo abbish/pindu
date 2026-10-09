@@ -234,7 +234,6 @@ export const BatchTagButton: React.FC<{ kind: MaterialKind; ids: number[]; onDon
                 <CommandGroup>
                   {tags.map((t) => (
                     <CommandItem key={t.id} value={t.name} onSelect={() => apply(t)} disabled={busy}>
-                      {t.icon && <span aria-hidden="true">{t.icon}</span>}
                       {t.name}
                     </CommandItem>
                   ))}

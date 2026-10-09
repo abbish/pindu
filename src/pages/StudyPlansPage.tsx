@@ -17,6 +17,8 @@ import type { NavigateFn } from '@/navigation';
 import type { StudyPlanWithProgress, UnifiedStudyPlanStatus } from '@/types';
 import { PLAN_STATUS } from '@/types/study';
 import { PageError } from '@/components/PageError';
+import { SortSelect, useSortPref } from '@/components/SortSelect';
+import { byInstant, byNumber, byText, sortItems, type SortOption } from '@/utils/sorting';
 
 export interface StudyPlansPageProps {
   /** Navigation handler */
@@ -29,6 +31,14 @@ type StatusFilter = 'all' | UnifiedStudyPlanStatus;
 const GROUPS: { status: UnifiedStudyPlanStatus; label: string }[] = (
   ['Active', 'Pending', 'Paused', 'Draft', 'Completed', 'Terminated'] as const
 ).map((status) => ({ status, label: PLAN_STATUS[status].label }));
+
+/** 计划排序（「全部」视图里在每个状态分组内排） */
+const PLAN_SORTS: SortOption<StudyPlanWithProgress>[] = [
+  { value: 'recent', label: '最近创建', compare: byInstant((p) => p.created_at) },
+  { value: 'start', label: '最近开始', compare: (a, b) => byText<StudyPlanWithProgress>((p) => p.start_date ?? '')(b, a) },
+  { value: 'name', label: '名称', compare: byText((p) => p.name) },
+  { value: 'progress', label: '进度最高', compare: byNumber((p) => p.progress_percentage) },
+];
 
 const FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: '全部' },
@@ -54,15 +64,16 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
     return { schedules: schedules.success ? schedules.data : [], passages: passages.success ? passages.data : [] };
   });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [sortBy, setSortBy] = useSortPref('plans', PLAN_SORTS);
 
   const byStatus = useMemo(() => {
     const map = new Map<UnifiedStudyPlanStatus, StudyPlanWithProgress[]>();
-    for (const plan of studyPlans ?? []) {
+    for (const plan of sortItems(studyPlans ?? [], PLAN_SORTS, sortBy)) {
       const status = plan.unified_status as UnifiedStudyPlanStatus;
       map.set(status, [...(map.get(status) ?? []), plan]);
     }
     return map;
-  }, [studyPlans]);
+  }, [studyPlans, sortBy]);
   const countOf = (filter: StatusFilter) =>
     filter === 'all'
       ? (studyPlans ?? []).filter((p) => p.unified_status !== 'Deleted').length
@@ -173,6 +184,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
         ))}
       </section>
 
+      <div className="flex items-center justify-between gap-2">
       <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
         <TabsList>
           {FILTERS.map((f) => (
@@ -183,6 +195,8 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
           ))}
         </TabsList>
       </Tabs>
+        <SortSelect value={sortBy} options={PLAN_SORTS} onChange={setSortBy} />
+      </div>
 
       {renderContent()}
     </div>

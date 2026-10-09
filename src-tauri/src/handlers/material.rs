@@ -24,10 +24,10 @@ pub async fn get_tags(app: AppHandle) -> AppResult<Vec<TagUsage>> {
 
 /// 新建标签（名称 1–10 个字，同名已存在时返回已有的）
 #[tauri::command]
-pub async fn create_tag(app: AppHandle, name: String, icon: Option<String>) -> AppResult<Tag> {
+pub async fn create_tag(app: AppHandle, name: String) -> AppResult<Tag> {
     let logger = app.state::<Logger>();
     logger.api_request("create_tag", Some(&format!("name: {name}")));
-    let result = service(&app).create_tag(&name, icon.as_deref()).await;
+    let result = service(&app).create_tag(&name).await;
     super::finish(&logger, "create_tag", result)
 }
 

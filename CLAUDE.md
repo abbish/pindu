@@ -86,7 +86,7 @@ src-tauri/
 ├── src/media.rs              ffmpeg / ffprobe 调用唯一 owner：定位、读取信息、转码与精确切分（进度 + 取消）、波形峰值、缩略图
 ├── src/jobs.rs               后台任务唯一 owner：提交即返回 jobId，agent / media 两条队列，进度与结果经 `job-updated` 事件推送；只放内存（见 §4.4）
 ├── src/prompts/agent/*.md    agent 任务提示词，include_str! 编译进二进制（见 §6）
-├── migrations/001..061_*.sql
+├── migrations/001..062_*.sql
 └── src/test_support.rs       #[cfg(test)] 内存库与种子数据
 
 scripts/ffmpeg/                随应用分发的 ffmpeg：sources.json（版本 + sha256）、build.sh（LGPL 最小配置）、prepare.mjs（→ src-tauri/binaries/ffmpeg-<triple>）；许可证随包分发在 src-tauri/licenses/
@@ -156,8 +156,8 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 启动流程（owner `startup.rs`）：`AppDirs::resolve`（发布版 `<系统数据目录>/com.redlark.pindu-app/`；debug 构建 `com.redlark.pindu-app-dev/`；环境变量 `PINDU_DATA_DIR` 覆盖）→ `connect(<数据目录>/vocabulary.db)` → 对账 `_sqlx_migrations`（上次升级未完成、数据库来自更新的版本、已执行迁移被改过 → 不动数据、返回 `StartupFailure`）→ 有待执行迁移时先 `VACUUM INTO` 备份到 `backups/`（保留 5 份；备份失败不升级）→ `MIGRATOR.run` → `app.manage(pool)`。窗口立即显示 `index.html` 里的启动画面（样式内联在 index.html，前端代码加载前就能画出；`utils/bootSplash.ts` 更新进度、就绪后淡出），数据库在后台打开，阶段（opening / backing_up / upgrading / ready / failed）记在 `startup::StartupState`，`StartupGate` 轮询 `get_startup_status` 显示进度。任何失败都不 panic、不建新库：前端 `StartupGate` 只显示错误页；命令入口（`lib.rs` 的 invoke_handler → `startup::command_guard`）在数据库没打开时拒绝需要数据库的命令（返回 `DATABASE_ERROR`），只放行错误页、日志、更新与退出用的命令（`AVAILABLE_WITHOUT_DATABASE`）。`delete_database_and_restart` 删除前也先备份。发布版用 `tauri-plugin-single-instance` 保证只运行一个实例。
 外键是开启的（sqlx 默认 `foreign_keys = ON`），schema 中的 `ON DELETE CASCADE` 生效：删除计划/日程会连带删除单词关联、练习会话与作答记录。
 
-当前有效表（迁移 001–061 之后）：
-`word_books` · `words` · `word_examples`（单词例句，一对多，`sort_order` 0 为最简单的一句；`words.example_sentence/translation` 为 040 遗留列，041 起不再读写） · `tags` / `material_tags`（素材共用标签：kind word_book / passage / video + ref_id，删除素材时触发器清理；060 由 theme_tags 迁来）· `study_plans` · `study_plan_words` · `study_plan_schedules` · `study_plan_schedule_words` · `study_plan_status_history` · `study_sessions` · `study_statistics`(遗留) · `study_timer_records` · `study_pause_records` · `practice_sessions` · `word_practice_records` · `practice_pause_records` · `ai_providers` · `ai_models` · `app_settings`（键值设置：AI 任务模型、批量参数、学习者档案）· `tts_cache` · `volcengine_tts_config` · `elevenlabs_config`(遗留，035 起不再读写) · `categories`(001 遗留) · `passages`（短文，独立素材：正文 + 逐句翻译（句子带 paragraph 段落标记）+ 目标词；`origin` generated AI 写的 / imported 导入的材料，`source_label` 文件名，057）· `passage_sources`（来源：单词本 / 计划，`ref_id` 无外键，删来源不删短文）· `passage_question_sets`（阅读理解题组，一篇短文可多套）· `passage_questions`（挂题组）· `passage_attempts`（按题组作答，口径独立于单词练习）· `study_plan_passages`（计划里的短文任务：短文 + 题组（空 = 只朗读）+ reading / listening + 排期日期 + 完成时刻，056；`study_plans.practice_content` words / passages / both、`passage_interval_days`）。`videos`（视频库：文件在 `<数据目录>/videos/<id>/`，表里只存文件名；`cues` 带时间的字幕 JSON、`plan` 已不用（061 迁到 video_plans）、`plan_suggestions` AI 规划的要求建议、`status` importing / ready / processing / done / failed，059）· `video_plans`（一个视频多个切分规划：名字 + 草稿 JSON，061）· `video_clips`（切出的短片，一段对应一篇短文，`passage_id` 级联，`plan_id` 来自哪个规划（删规划置空）；短文句子 JSON 带 `startMs` / `endMs`，相对短片开头）。`passage_words`（短文词索引：每篇的小写词形 + 目标词 key，写短文时同事务维护，旧数据查询时补齐；单词 ↔ 素材查询只走它，060）。`videos.subtitle_offset_ms` 字幕纠偏（060，`VideoRow::cues()` 唯一换算点）。切片短文的来源「视频」由 video_clips 推导，不写 origin；界面上切片只在视频库，短文库与短文统计不含切片（`PassageRepository::list` 默认排除），两者在学习计划里组合。`word_explanations`（讲解缓存）已在 058 删除：讲解每次实时生成（D31）。
+当前有效表（迁移 001–062 之后）：
+`word_books` · `words` · `word_examples`（单词例句，一对多，`sort_order` 0 为最简单的一句；`words.example_sentence/translation` 为 040 遗留列，041 起不再读写） · `tags` / `material_tags`（素材共用标签：kind word_book / passage / video + ref_id，删除素材时触发器清理；060 由 theme_tags 迁来，062 去掉图标，标签只有名字）· `study_plans` · `study_plan_words` · `study_plan_schedules` · `study_plan_schedule_words` · `study_plan_status_history` · `study_sessions` · `study_statistics`(遗留) · `study_timer_records` · `study_pause_records` · `practice_sessions` · `word_practice_records` · `practice_pause_records` · `ai_providers` · `ai_models` · `app_settings`（键值设置：AI 任务模型、批量参数、学习者档案）· `tts_cache` · `volcengine_tts_config` · `elevenlabs_config`(遗留，035 起不再读写) · `categories`(001 遗留) · `passages`（短文，独立素材：正文 + 逐句翻译（句子带 paragraph 段落标记）+ 目标词；`origin` generated AI 写的 / imported 导入的材料，`source_label` 文件名，057）· `passage_sources`（来源：单词本 / 计划，`ref_id` 无外键，删来源不删短文）· `passage_question_sets`（阅读理解题组，一篇短文可多套）· `passage_questions`（挂题组）· `passage_attempts`（按题组作答，口径独立于单词练习）· `study_plan_passages`（计划里的短文任务：短文 + 题组（空 = 只朗读）+ reading / listening + 排期日期 + 完成时刻，056；`study_plans.practice_content` words / passages / both、`passage_interval_days`）。`videos`（视频库：文件在 `<数据目录>/videos/<id>/`，表里只存文件名；`cues` 带时间的字幕 JSON、`plan` 已不用（061 迁到 video_plans）、`plan_suggestions` AI 规划的要求建议、`status` importing / ready / processing / done / failed，059）· `video_plans`（一个视频多个切分规划：名字 + 草稿 JSON，061）· `video_clips`（切出的短片，一段对应一篇短文，`passage_id` 级联，`plan_id` 来自哪个规划（删规划置空）；短文句子 JSON 带 `startMs` / `endMs`，相对短片开头）。`passage_words`（短文词索引：每篇的小写词形 + 目标词 key，写短文时同事务维护，旧数据查询时补齐；单词 ↔ 素材查询只走它，060）。`videos.subtitle_offset_ms` 字幕纠偏（060，`VideoRow::cues()` 唯一换算点）。切片短文的来源「视频」由 video_clips 推导，不写 origin；界面上切片只在视频库，短文库与短文统计不含切片（`PassageRepository::list` 默认排除），两者在学习计划里组合。`word_explanations`（讲解缓存）已在 058 删除：讲解每次实时生成（D31）。
 `tts_providers` / `tts_voices` 已在 030 删除；TTS 自 035 起为火山引擎豆包（单行配置 `volcengine_tts_config`，鉴权 API Key 或 AppID+Access Token，资源 ID 为空时按音色推断）。性能索引见 032；033 刷新种子模型（只改仍为种子原值的行）；036 把种子提供商收敛为 OpenRouter / MiniMax / 月之暗面 / DeepSeek（034 的火山方舟仅在未配置时移除）。
 
 **单词本生命周期**：状态只有 `normal`（正式）/ `draft`（草稿，不能用于计划）；删除为软删除（`deleted_at`），在列表“已删除”里可恢复（`restore_word_book`）。被草稿 / 待开始 / 进行中 / 已暂停的计划使用时不能删除或转草稿。列表的单词数与关联计划数在查询时实时计算。删除单词会在同一事务里把它从所有计划移除并重算日程计数（`services/word.rs::delete_word`）。
@@ -245,7 +245,7 @@ export const fooService = new FooService();
 ## 7. 开发规范（硬性）
 
 ### 7.1 数据库迁移
-1. **只增不改**：任何表结构变更都新建 `NNN_description.sql`，序号连续（下一号 062），绝不修改已有迁移。
+1. **只增不改**：任何表结构变更都新建 `NNN_description.sql`，序号连续（下一号 063），绝不修改已有迁移。
 2. **禁止删库重建**解决问题；向前兼容现有数据（SQLite 改列需走 建新表 → 拷数据 → drop → rename 模式，参考 020/023/031）。
 3. 新增迁移后在 Repository 里补对应字段映射，并同步 `types/*.rs` 与 `src/types/*.ts`。
 4. 怎样在 SQLite + sqlx 上做到以上三条（重建表模式、兼容已有数据、空库/真实库双验证）以 `.claude/skills/deliver-backend-rust/references/sqlx-migration-standards.md` 为准。`.claude/hooks/guard-migrations.sh` 会拦截对已有迁移文件的编辑。
@@ -294,7 +294,7 @@ export const fooService = new FooService();
 1. `repositories/xxx_repository.rs` 加查询方法 → 2. `services/xxx.rs` 加业务方法 → 3. `handlers/xxx.rs` 加 `#[tauri::command]` → 4. `lib.rs` `generate_handler!` 注册 → 5. `src/types/*.ts` 补类型 → 6. `src/services/xxxService.ts` 加方法 → 7. 页面/组件调用并处理 `success === false`。
 
 **改表结构**
-`migrations/062_*.sql` → Repository 映射 → `types/*.rs` → `src/types/*.ts` → 受影响的 Service/组件。
+`migrations/063_*.sql` → Repository 映射 → `types/*.rs` → `src/types/*.ts` → 受影响的 Service/组件。
 
 **改 AI 行为**
 `src-tauri/src/prompts/agent/*.md`（提示词）/ `agent/src/tools/*.ts`（工具与校验）→ `agent::tasks` 的结果校正 → `npm run agent:build` + 重新编译 → `agent/eval/` 前后对比 + 设置页「测试」与真实 Provider 验证 → 在 DECISIONS.md 追加决策。

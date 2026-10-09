@@ -11,7 +11,8 @@ import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { WordBookSummaryCard } from '@/components/WordBookSummaryCard/WordBookSummaryCard';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { wordBookService } from '@/services/wordbookService';
-import { instantMs } from '@/utils/datetime';
+import { byInstant, byNumber, byText, sortItems, type SortOption } from '@/utils/sorting';
+import { SortSelect, useSortPref } from '@/components/SortSelect';
 import type { WordBook as DbWordBook } from '@/types';
 import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
 import { BatchDeleteButton, BatchDeleteDialog, BatchTagButton, SelectionBar, useSelection } from '@/components/MaterialSelection/MaterialSelection';
@@ -35,11 +36,9 @@ interface Filters {
   tag: string;
   /** 状态（后端过滤），'all' 为不限 */
   status: string;
-  /** 排序 */
-  sortBy: string;
 }
 
-const DEFAULT_FILTERS: Filters = { searchTerm: '', tag: 'all', status: 'all', sortBy: 'default' };
+const DEFAULT_FILTERS: Filters = { searchTerm: '', tag: 'all', status: 'all' };
 
 const STATUS_OPTIONS = [
   { value: 'all', label: '所有状态' },
@@ -47,10 +46,11 @@ const STATUS_OPTIONS = [
   { value: 'deleted', label: '已删除' },
 ];
 
-const SORT_OPTIONS = [
-  { value: 'default', label: '默认排序' },
-  { value: 'created_time', label: '按创建时间' },
-  { value: 'word_count', label: '按单词数量' },
+const SORT_OPTIONS: SortOption<BookItem>[] = [
+  { value: 'recent', label: '最近创建', compare: byInstant((b) => b.created_at) },
+  { value: 'used', label: '最近使用', compare: byInstant((b) => b.last_used) },
+  { value: 'name', label: '名称', compare: byText((b) => b.title) },
+  { value: 'words', label: '单词最多', compare: byNumber((b) => b.total_words) },
 ];
 
 interface PageData {
@@ -71,6 +71,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [sortBy, setSortBy] = useSortPref('word-books', SORT_OPTIONS);
 
   const loadWordBookData = useCallback(async (status: string) => {
     setLoading(true);
@@ -137,19 +138,14 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
       const tagId = Number(filters.tag);
       books = books.filter((b) => b.tags.some((t) => t.id === tagId));
     }
-    if (filters.sortBy === 'created_time') {
-      books.sort((a, b) => instantMs(b.created_at) - instantMs(a.created_at));
-    } else if (filters.sortBy === 'word_count') {
-      books.sort((a, b) => b.total_words - a.total_words);
-    }
-    return books;
-  }, [data, filters]);
+    return sortItems(books, SORT_OPTIONS, sortBy);
+  }, [data, filters, sortBy]);
   // 已删除的单词本只能恢复，不参与勾选
   const selection = useSelection(useMemo(() => filteredBooks.filter((b) => !b.deleted_at).map((b) => b.id), [filteredBooks]));
-  const pager = usePagination(loading ? null : filteredBooks, { id: 'word-books', resetKey: JSON.stringify(filters) });
+  const pager = usePagination(loading ? null : filteredBooks, { id: 'word-books', resetKey: `${JSON.stringify(filters)}|${sortBy}` });
 
   const activeFilterCount =
-    (filters.searchTerm ? 1 : 0) + (filters.tag !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0) + (filters.sortBy !== 'default' ? 1 : 0);
+    (filters.searchTerm ? 1 : 0) + (filters.tag !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
   const isFiltering = Boolean(filters.searchTerm) || filters.tag !== 'all' || filters.status !== 'all';
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => setFilters((f) => ({ ...f, [key]: value }));
 
@@ -213,16 +209,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate }) => {
             ))}
           </SelectContent>
         </Select>
-        <Select value={filters.sortBy} onValueChange={(v) => setFilter('sortBy', v)}>
-          <SelectTrigger className="w-36" aria-label="排序">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SORT_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SortSelect value={sortBy} options={SORT_OPTIONS} onChange={setSortBy} />
       </MaterialToolbar>
       )}
 

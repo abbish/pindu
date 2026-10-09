@@ -463,7 +463,7 @@ impl WordRepository {
             > 0)
     }
 
-    /// 分页查询单词本中的单词
+    /// 分页查询单词本中的单词；sort_by：word 字母顺序（默认）/ newest 最近添加 / oldest 最早添加
     pub async fn find_by_book_paginated(
         &self,
         book_id: Id,
@@ -471,6 +471,7 @@ impl WordRepository {
         page_size: u32,
         search_term: Option<&str>,
         part_of_speech: Option<&str>,
+        sort_by: Option<&str>,
     ) -> AppResult<(Vec<Word>, u32)> {
         let offset = (page - 1) * page_size;
 
@@ -490,6 +491,11 @@ impl WordRepository {
         }
 
         let where_clause = where_conditions.join(" AND ");
+        let order_by = match sort_by {
+            Some("newest") => "id DESC",
+            Some("oldest") => "id",
+            _ => "word COLLATE NOCASE, id",
+        };
 
         // 构建查询
         let query = format!(
@@ -500,11 +506,10 @@ impl WordRepository {
                 pos_abbreviation, pos_english, pos_chinese, phonics_rule,
                 analysis_explanation, created_at, updated_at
             FROM words
-            WHERE {}
-            ORDER BY word
+            WHERE {where_clause}
+            ORDER BY {order_by}
             LIMIT ? OFFSET ?
-            "#,
-            where_clause
+            "#
         );
 
         let mut query_builder = sqlx::query(&query).bind(book_id);

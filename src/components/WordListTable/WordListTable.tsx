@@ -101,6 +101,8 @@ export interface WordListTableProps {
   materials?: Map<number, WordMaterialCount>;
   /** 点数量：看这个词出现在哪些素材里 */
   onOpenMaterials?: (word: WordDetail) => void;
+  /** 工具栏里「添加单词」前面的控件（如排序） */
+  toolbarExtra?: React.ReactNode;
 }
 
 /** 词性 → 配色（语义 token；中文名见 utils/partOfSpeech） */
@@ -131,6 +133,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
   readonly = false,
   materials,
   onOpenMaterials,
+  toolbarExtra,
 }) => {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // 勾选只针对当前页：换页、刷新、筛选后清空，避免计数包含看不见的其它页
@@ -229,6 +232,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
             <span className="text-sm text-muted-foreground tabular-nums">共 {total} 个单词</span>
           </div>
         )}
+        {toolbarExtra}
         {addAction ??
           (onAddWords && (
             <Button onClick={onAddWords}>
