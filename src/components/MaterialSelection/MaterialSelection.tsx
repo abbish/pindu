@@ -88,16 +88,26 @@ export const SelectionBar: React.FC<{ selection: Selection; unit: string; childr
   </div>
 );
 
-/** 卡片左上角的勾选框：选择状态下一直显示，否则悬停显示 */
-export const SelectCheckbox: React.FC<{ checked: boolean; selecting: boolean; onToggle: () => void; label: string; className?: string }> = ({
+/**
+ * 卡片的勾选框：选择状态下一直显示，否则悬停显示。
+ * 默认叠在卡片左上角（用于有缩略图的卡片：叠在图上）；`inline` 放在标题行里（纯文字卡片，放在 ⋯ 旁边，
+ * 不挡标题；隐藏时也占着位置，出现时标题不跳动）。
+ */
+export const SelectCheckbox: React.FC<{ checked: boolean; selecting: boolean; onToggle: () => void; label: string; className?: string; inline?: boolean }> = ({
   checked,
   selecting,
   onToggle,
   label,
   className,
+  inline = false,
 }) => (
   <span
-    className={cn('absolute top-2 left-2 z-10 rounded-sm bg-background/90 p-0.5 shadow-xs transition-opacity', selecting || checked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100', className)}
+    className={cn(
+      'transition-opacity',
+      inline ? 'flex size-7 shrink-0 items-center justify-center' : 'absolute top-2 left-2 z-10 rounded-sm bg-background/90 p-0.5 shadow-xs',
+      selecting || checked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100',
+      className
+    )}
     onClick={(e) => e.stopPropagation()}
   >
     <Checkbox checked={checked} onCheckedChange={onToggle} aria-label={label} className="block" />

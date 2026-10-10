@@ -77,7 +77,6 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
           className={cn('group relative cursor-default gap-3 px-5 py-4 transition-colors select-none hover:border-ring/60', checked && 'border-primary ring-2 ring-primary/30')}
           onClick={() => (selection.selecting ? selection.toggle(p.id) : onOpen())}
         >
-          <SelectCheckbox checked={checked} selecting={selection.selecting} onToggle={() => selection.toggle(p.id)} label={`选择「${p.title}」`} className="top-1.5 left-1.5" />
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
               <div className="truncate text-[15px] font-semibold">{p.title}</div>
@@ -85,7 +84,10 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
                 {LEVEL_LABEL[p.level] ?? p.level} · {p.wordCount} 词 · {formatRelative(p.createdAt)}
               </div>
             </div>
-            <CardMenuButton actions={actions} className="size-8" />
+            <div className="-mt-1 -mr-2 flex shrink-0 items-center">
+              <SelectCheckbox inline checked={checked} selecting={selection.selecting} onToggle={() => selection.toggle(p.id)} label={`选择「${p.title}」`} />
+              <CardMenuButton actions={actions} />
+            </div>
           </div>
           {p.origin !== 'generated' ? (
             <div className="flex flex-wrap gap-1">

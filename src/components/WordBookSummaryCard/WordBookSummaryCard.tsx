@@ -86,7 +86,6 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
       className={cn('group relative gap-4 p-4 transition-colors hover:border-ring/60', status === 'deleted' && 'opacity-70', select?.checked && 'border-primary ring-2 ring-primary/30')}
       onClick={() => (select?.selecting ? select.onToggle() : onOpen())}
     >
-      {select && <SelectCheckbox checked={select.checked} selecting={select.selecting} onToggle={select.onToggle} label={`选择「${title}」`} className="top-1.5 left-1.5" />}
       <div className="flex items-start gap-3">
         <WordBookIcon icon={icon} color={iconColor} />
         <div className="min-w-0 flex-1">
@@ -116,7 +115,12 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
                 恢复
               </Button>
             )}
-            {actions && status !== 'deleted' && <CardMenuButton actions={actions} className="ml-auto shrink-0" />}
+            {status !== 'deleted' && (select || actions) && (
+              <div className="-my-1 ml-auto flex shrink-0 items-center">
+                {select && <SelectCheckbox inline checked={select.checked} selecting={select.selecting} onToggle={select.onToggle} label={`选择「${title}」`} />}
+                {actions && <CardMenuButton actions={actions} className="shrink-0" />}
+              </div>
+            )}
           </div>
           <p className={cn('truncate text-sm', description ? 'text-muted-foreground' : 'text-muted-foreground/60')}>
             {description || '暂无描述'}
