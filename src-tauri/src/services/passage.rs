@@ -749,7 +749,7 @@ impl PassageService {
         let known_tags = crate::services::tag::TagService::new(self.pool.clone())
             .known_names()
             .await?;
-        let generated = tasks::generate_passage(
+        let mut generated = tasks::generate_passage(
             paths,
             &model,
             &profile,
@@ -768,6 +768,10 @@ impl PassageService {
             &self.logger,
         )
         .await?;
+        // 内容规划里的标题是用户确认（可能改过）的，以它为准
+        if !title.is_empty() {
+            generated.title = title.clone();
+        }
         let fingerprint = crate::prompts::fingerprint(&crate::prompts::system_prompt(
             crate::prompts::PromptTask::Passage,
             &profile,
