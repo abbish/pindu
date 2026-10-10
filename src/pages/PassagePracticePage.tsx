@@ -70,7 +70,10 @@ const questionDomId = (id: number) => `passage-question-${id}`;
 
 const NO_SENTENCES: PassageSentence[] = [];
 
-/** 逐句听：连播 / 暂停、上一句 / 下一句、重听本句；答题时不显示原文。视频切片用原声，其余用合成语音 */
+/**
+ * 逐句听（播放条）：上一句 / 播放·暂停 / 下一句 → 句子进度（每段一句，可点哪句听哪句）→ 重听本句、慢速。
+ * 答题时不显示原文。视频切片用原声，其余用合成语音。
+ */
 const ListeningPlayer: React.FC<{ texts: string[]; clip?: { url: string; sentences: PassageSentence[] } }> = ({ texts, clip }) => {
   const [slow, setSlow] = useState(false);
   const tts = useSentencePlayer(texts, { speed: slow ? 'slow' : 'normal' });
@@ -79,31 +82,40 @@ const ListeningPlayer: React.FC<{ texts: string[]; clip?: { url: string; sentenc
   const current = player.current ?? 0;
   const go = (delta: number) => player.play(Math.min(texts.length - 1, Math.max(0, current + delta)), true);
   return (
-    <div className="flex flex-col items-center gap-4 rounded-xl border bg-muted/30 px-6 py-6 select-none">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Headphones className="size-4" />第 {current + 1} / {texts.length} 句{player.loading && <Loader2 className="size-3.5 animate-spin" />}
-      </div>
-      <div className="flex gap-1" aria-hidden>
-        {texts.map((_, i) => (
-          <span key={i} className={cn('h-1.5 w-6 rounded-full', i < current ? 'bg-primary/40' : i === current ? 'bg-primary' : 'bg-border')} />
-        ))}
-      </div>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="icon" aria-label="上一句" onClick={() => go(-1)} disabled={current === 0}>
+    <div className="flex items-center gap-3 select-none">
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon" aria-label="上一句" onClick={() => go(-1)} disabled={current === 0}>
           <ChevronLeft />
         </Button>
-        <Button size="lg" className="min-w-36" onClick={() => (player.playing ? player.stop() : player.play(current))}>
-          {player.playing ? <Pause /> : <Play />}
-          {player.playing ? '暂停' : current === 0 ? '播放全文' : '从这句继续'}
+        <Button size="icon" className="size-10 rounded-full" aria-label={player.playing ? '暂停' : '播放'} onClick={() => (player.playing ? player.stop() : player.play(current))}>
+          {player.loading ? <Loader2 className="animate-spin" /> : player.playing ? <Pause /> : <Play />}
         </Button>
-        <Button variant="outline" size="icon" aria-label="下一句" onClick={() => go(1)} disabled={current >= texts.length - 1}>
+        <Button variant="ghost" size="icon" aria-label="下一句" onClick={() => go(1)} disabled={current >= texts.length - 1}>
           <ChevronRight />
         </Button>
-        <Button variant="ghost" onClick={() => player.play(current, true)}>
+      </div>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Headphones className="size-3.5" />第 {current + 1} / {texts.length} 句
+        </div>
+        <div className="flex gap-1">
+          {texts.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              aria-label={`听第 ${i + 1} 句`}
+              onClick={() => player.play(i, true)}
+              className={cn('h-2 flex-1 rounded-full transition-colors hover:bg-primary/70', i < current ? 'bg-primary/40' : i === current ? 'bg-primary' : 'bg-border')}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="sm" onClick={() => player.play(current, true)}>
           <RotateCcw />
           重听本句
         </Button>
-        <Button variant={slow ? 'secondary' : 'ghost'} onClick={() => setSlow((v) => !v)} aria-pressed={slow}>
+        <Button variant={slow ? 'secondary' : 'ghost'} size="sm" onClick={() => setSlow((v) => !v)} aria-pressed={slow}>
           <Snail />
           慢速
         </Button>
@@ -512,6 +524,45 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
   };
 
   const showText = mode === 'reading' || finished;
+  /** 听力作答中（不看原文）：单栏布局 */
+  const listeningOnly = mode === 'listening' && !showText;
+
+  const questionsSection = (
+        <section className="flex flex-col gap-3">
+          {otherQuestions.map((q, i) => (
+            <QuestionItem
+              key={q.id}
+              id={questionDomId(q.id)}
+              index={i + 1}
+              question={q}
+              value={valueOf(q)}
+              result={finished ? resultOf(q.id) : undefined}
+              missing={isMissing(q.id)}
+              onChange={(v) => setAnswer(q.id, v)}
+            />
+          ))}
+          {otherQuestions.length === 0 && (
+            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">请在原文中作答</p>
+          )}
+          {showMissing && !finished && answered < total && (
+            <InlineError title={`还有 ${total - answered} 题未作答`}>
+              请完成标红的题目后提交
+            </InlineError>
+          )}
+          {submitError && <InlineError title={submitError.title}>{submitError.message}</InlineError>}
+          {!finished && (
+            <div className="flex items-center justify-end gap-3 pt-1">
+              <span className="text-sm text-muted-foreground tabular-nums">
+                已答 {answered} / {total}
+              </span>
+              <Button size="lg" onClick={submit} disabled={submitting}>
+                {submitting && <Loader2 className="animate-spin" />}
+                {submitting ? '正在判分…' : '提交'}
+              </Button>
+            </div>
+          )}
+        </section>
+  );
 
   return frame(
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-8 py-6">
@@ -550,6 +601,34 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
         </Card>
       )}
 
+      {listeningOnly ? (
+        // 听力作答：单栏居中，播放条吸顶（随时能听），下沿是题号（已答点亮，点击跳到该题）
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+          <div className="sticky top-0 z-10 space-y-3 rounded-xl border bg-card/95 p-3 shadow-sm backdrop-blur">
+            <ListeningPlayer texts={texts} clip={clipUrl && passage ? { url: clipUrl, sentences: passage.sentences } : undefined} />
+            {otherQuestions.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5 border-t pt-2.5">
+                {otherQuestions.map((q, i) => (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => document.getElementById(questionDomId(q.id))?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                    className={cn(
+                      'size-7 rounded-full border text-xs tabular-nums transition-colors hover:border-primary',
+                      valueOf(q) ? 'border-primary bg-primary text-primary-foreground' : 'bg-background text-muted-foreground',
+                      isMissing(q.id) && 'border-destructive text-destructive'
+                    )}
+                    aria-label={`第 ${i + 1} 题${valueOf(q) ? '（已作答）' : ''}`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {questionsSection}
+        </div>
+      ) : (
       <div className="grid grid-cols-2 items-start gap-6">
         <section className="sticky top-0 flex flex-col gap-4 rounded-xl border bg-card p-6">
           <div className="flex items-center gap-2 select-none">
@@ -564,7 +643,6 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
               </div>
             )}
           </div>
-          {mode === 'listening' && <ListeningPlayer texts={texts} clip={clipUrl && passage ? { url: clipUrl, sentences: passage.sentences } : undefined} />}
           {showText && <PassageReader sentences={passage.sentences} translation={showZh ? 'all' : 'off'} renderSentence={mode === 'reading' ? renderSentence : undefined} />}
           {mode === 'reading' && !finished && clozeQuestions.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 border-t pt-3 select-none">
@@ -578,41 +656,9 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
           )}
         </section>
 
-        <section className="flex flex-col gap-3">
-          {otherQuestions.map((q, i) => (
-            <QuestionItem
-              key={q.id}
-              id={questionDomId(q.id)}
-              index={i + 1}
-              question={q}
-              value={valueOf(q)}
-              result={finished ? resultOf(q.id) : undefined}
-              missing={isMissing(q.id)}
-              onChange={(v) => setAnswer(q.id, v)}
-            />
-          ))}
-          {otherQuestions.length === 0 && (
-            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">请在原文中作答</p>
-          )}
-          {showMissing && !finished && answered < total && (
-            <InlineError title={`还有 ${total - answered} 题未作答`}>
-              请完成标红的题目后提交
-            </InlineError>
-          )}
-          {submitError && <InlineError title={submitError.title}>{submitError.message}</InlineError>}
-          {!finished && (
-            <div className="flex items-center justify-end gap-3 pt-1">
-              <span className="text-sm text-muted-foreground tabular-nums">
-                已答 {answered} / {total}
-              </span>
-              <Button size="lg" onClick={submit} disabled={submitting}>
-                {submitting && <Loader2 className="animate-spin" />}
-                {submitting ? '正在判分…' : '提交'}
-              </Button>
-            </div>
-          )}
-        </section>
+        {questionsSection}
       </div>
+      )}
 
       <AlertDialog open={confirmExit} onOpenChange={setConfirmExit}>
         <AlertDialogContent>
