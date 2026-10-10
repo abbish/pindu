@@ -252,8 +252,19 @@ impl VideoProcessJob {
             || seg.key_words.is_empty();
         let mut title = seg.title.trim().to_string();
         let mut level = seg.level.clone();
-        let mut key_words: Vec<(String, Option<String>)> =
-            seg.key_words.iter().map(|w| (w.clone(), None)).collect();
+        // （词, 释义, 词组在字幕里的写法）
+        let mut key_words: Vec<(String, Option<String>, Vec<String>)> = seg
+            .key_words
+            .iter()
+            .map(|w| {
+                let forms = seg
+                    .key_word_forms
+                    .get(&w.to_lowercase())
+                    .cloned()
+                    .unwrap_or_default();
+                (w.clone(), None, forms)
+            })
+            .collect();
         if needs_ai {
             let english: Vec<String> = sentences.iter().map(|s| s.en.clone()).collect();
             let translation = tasks::translate_passage(
@@ -286,7 +297,7 @@ impl VideoProcessJob {
                 key_words = translation
                     .key_words
                     .into_iter()
-                    .map(|(w, m)| (w, Some(m)))
+                    .map(|(w, m, forms)| (w, Some(m), forms))
                     .collect();
             }
         }
@@ -299,15 +310,16 @@ impl VideoProcessJob {
             "b2".to_string()
         };
         let repo = PassageRepository::new(self.pool.clone());
-        let texts: Vec<String> = key_words.iter().map(|(w, _)| w.clone()).collect();
+        let texts: Vec<String> = key_words.iter().map(|(w, _, _)| w.clone()).collect();
         let known = repo.word_ids_by_text(&texts).await?;
         let targets: Vec<PassageTargetWord> = key_words
             .into_iter()
-            .map(|(word, meaning)| PassageTargetWord {
+            .map(|(word, meaning, forms)| PassageTargetWord {
                 word_id: known.get(&word.to_lowercase()).copied(),
                 word,
                 required: false,
                 meaning: meaning.filter(|m| !m.trim().is_empty()),
+                forms,
             })
             .collect();
         let word_count = english_word_count(&sentences);
@@ -582,6 +594,7 @@ mod real_tests {
             level: "a2".into(),
             focus: "f".into(),
             key_words: vec!["menu".into()],
+            key_word_forms: Default::default(),
             tags: vec!["点餐".into()],
         };
         let plan = crate::types::video::VideoPlan {

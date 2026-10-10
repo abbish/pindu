@@ -17,7 +17,7 @@ use crate::types::passage::{PassagePlan, PassageSentence, PassageTargetWord, Que
 use crate::types::word_analysis::{ExtractedWord, PhonicsWord, WordExtractionResult};
 use crate::types::wordbook::{ChatTurn, Word, WordExample};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 /// 重点模式排除的基础功能词（与旧提示词的过滤清单一致）
@@ -30,23 +30,6 @@ pub const FOCUS_STOPWORDS: &[&str] = &[
     "too", "also", "only", "just", "now", "here", "there", "one", "two", "three", "four", "five",
     "six", "seven", "eight", "nine", "ten",
 ];
-
-/// 确定性分词计数（与 agent/src/tools/tokenize.ts 同规则：小写、仅字母、长度 2–20、丢弃与数字粘连的片段）
-pub fn tokenize_words(text: &str) -> BTreeMap<String, i32> {
-    let mut counts = BTreeMap::new();
-    let lower = text.to_lowercase();
-    for raw in lower.split(|c: char| !c.is_ascii_alphanumeric()) {
-        if raw.is_empty()
-            || raw.chars().any(|c| c.is_ascii_digit())
-            || raw.len() < 2
-            || raw.len() > 20
-        {
-            continue;
-        }
-        *counts.entry(raw.to_string()).or_insert(0) += 1;
-    }
-    counts
-}
 
 pub fn extract_words_task(profile: &PromptProfile, mode: &str) -> AgentTask {
     let rules = prompts::extract_mode_rules(mode, FOCUS_STOPWORDS);
@@ -64,7 +47,6 @@ pub fn extract_words_task(profile: &PromptProfile, mode: &str) -> AgentTask {
 
 /// 把 `submit_words` 的参数转成结果：只保留原文中真实出现的词，频率以确定性分词为准，重点模式再次过滤功能词
 pub fn words_from_submission(details: &Value, text: &str, mode: &str) -> Vec<ExtractedWord> {
-    let counts = tokenize_words(text);
     // 原文中以全小写出现过的词（用于判断模型给出的首字母大写是否可信）
     let lowercase_in_text: HashSet<String> = text
         .split(|c: char| !c.is_ascii_alphanumeric())
@@ -84,22 +66,31 @@ pub fn words_from_submission(details: &Value, text: &str, mode: &str) -> Vec<Ext
         };
         let normalized = crate::types::wordbook::normalize_vocab(word);
         let key = normalized.to_lowercase();
-        // 词组（D45）：原文里出现过（可变形、可拆开）才保留，频率为出现次数
+        // 原文里出现过才保留（防止模型编造），频率为出现次数：单词按词形库认各种形式（ran 算 run），
+        // 词组按 AI 标注的写法（uses，核对过的）或连着出现（D45 / D47）
+        let tokens: Vec<&str> = crate::services::passage_rules::words_of(text).collect();
         let frequency = if crate::services::passage_rules::is_phrase(&key) {
             if !crate::services::passage_rules::valid_vocab(&key) {
                 continue;
             }
-            let tokens: Vec<&str> = crate::services::passage_rules::words_of(text).collect();
-            match crate::services::passage_rules::phrase_spans(&tokens, &key).len() {
-                0 => continue,
-                n => n as i32,
-            }
+            let uses: Vec<Value> = item
+                .get("uses")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|t| serde_json::json!({ "phrase": key, "text": t }))
+                .collect();
+            let forms = crate::services::passage_rules::annotated_forms(&uses, text, &key);
+            crate::lemma::phrase_spans(&tokens, &key, &forms).len() as i32
         } else {
-            let Some(&frequency) = counts.get(&key) else {
-                continue; // 原文中不存在：丢弃（防止模型编造）
-            };
-            frequency
+            tokens
+                .iter()
+                .filter(|t| crate::lemma::is_form_of(t, &key))
+                .count() as i32
         };
+        if frequency == 0 {
+            continue;
+        }
         if mode == "focus" && FOCUS_STOPWORDS.contains(&key.as_str()) {
             continue;
         }
@@ -1991,26 +1982,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn tokenizer_matches_sidecar_rules() {
-        let counts = tokenize_words("Tom has a kite. TOM runs on May 12th at 9:00, don't stop!");
-        let expected: BTreeMap<String, i32> = [
-            ("tom", 2),
-            ("has", 1),
-            ("kite", 1),
-            ("runs", 1),
-            ("on", 1),
-            ("may", 1),
-            ("at", 1),
-            ("don", 1),
-            ("stop", 1),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect();
-        assert_eq!(counts, expected);
-    }
-
-    #[test]
     fn submission_is_grounded_in_text_and_frequencies_are_deterministic() {
         let text = "The cat sat on the mat. The cat is happy.";
         let details = json!({ "words": [
@@ -2452,6 +2423,7 @@ mod tests {
             word: w.to_string(),
             required: false,
             meaning: None,
+            forms: Vec::new(),
         };
         let required: Vec<PassageTargetWord> = ["passport", "customs", "luggage"]
             .iter()

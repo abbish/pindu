@@ -146,8 +146,12 @@ test('用词判断与 Rust 同规则：不规则动词、词组变形与拆开�
   assert.ok(uses(tok('Tom bought a cake.'), 'buy'));
   assert.ok(uses(tok('She made a decision.'), 'make a decision'));
   assert.ok(!uses(tok('She made a big decision.'), 'make a decision'));
-  assert.ok(uses(tok('Please pick it up.'), 'pick up'));
+  // 拆开的写法要标注（phrase_uses），且写法要和词组对得上、原样出现在正文里
+  assert.ok(!uses(tok('Please pick it up.'), 'pick up'));
+  assert.ok(uses(tok('Please pick it up.'), 'pick up', [{ phrase: 'pick up', text: 'pick it up' }]));
+  assert.ok(!uses(tok('Please pick it up.'), 'pick up', [{ phrase: 'pick up', text: 'put it down' }]));
   assert.ok(!uses(tok('He looked carefully after it.'), 'look after'));
+  assert.ok(uses(tok('He looked carefully after it.'), 'look after', [{ phrase: 'look after', text: 'looked carefully after' }]));
   assert.ok(uses(tok('Take care of my sister.'), 'take care of sb'));
   assert.ok(uses(tok('A well-known fact.'), 'well-known'));
   assert.ok(uses(tok('The constructor works.'), 'constructor'));

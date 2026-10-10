@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScanText, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { activeWordIndex, targetSpans, tokenize, type TargetSpan } from '@/utils/passage';
+import { activeWordIndex, targetSpans, tokenize, type TargetForms, type TargetSpan } from '@/utils/passage';
 import type { WordTiming } from '@/services/ttsService';
 import type { PassageSentence } from '@/types/passage';
 
@@ -14,6 +14,8 @@ export interface PassageReaderProps {
   translation?: TranslationMode;
   /** 目标词：加粗标出、可点击（renderTarget）、读到时提示 */
   highlight?: string[];
+  /** 目标词组在原文里的写法（拆开用的词组按它标出，见 formsOf） */
+  highlightForms?: TargetForms;
   /** 正在朗读的句子（放大、逐词高亮） */
   current?: number | null;
   /** 「当前句翻译」显示哪一句（暂停后仍显示刚读的那句；默认同 current） */
@@ -54,7 +56,8 @@ const LiveSentence: React.FC<{
   words?: WordTiming[] | null;
   timeNowMs?: () => number | null;
   renderTarget?: PassageReaderProps['renderTarget'];
-}> = ({ text, targets, words, timeNowMs, renderTarget }) => {
+  forms?: TargetForms;
+}> = ({ text, targets, words, timeNowMs, renderTarget, forms }) => {
   const tokens = useMemo(() => tokenize(text), [text]);
   const wordCount = tokens.filter((t) => t.kind === 'word').length;
   const [active, setActive] = useState<number | null>(null);
@@ -74,12 +77,12 @@ const LiveSentence: React.FC<{
     return () => cancelAnimationFrame(frame);
   }, [words, timeNowMs, wordCount]);
 
-  return <>{renderTokens(tokens, targets, active, renderTarget)}</>;
+  return <>{renderTokens(tokens, targets, active, renderTarget, forms)}</>;
 };
 
-function renderTokens(tokens: ReturnType<typeof tokenize>, targets: string[], active: number | null, renderTarget?: PassageReaderProps['renderTarget']) {
+function renderTokens(tokens: ReturnType<typeof tokenize>, targets: string[], active: number | null, renderTarget?: PassageReaderProps['renderTarget'], forms?: TargetForms) {
   // 目标词片段（词组覆盖多个单词，整体标出、整体可点）
-  const spans = targets.length ? targetSpans(tokens, targets) : new Map<number, TargetSpan>();
+  const spans = targets.length ? targetSpans(tokens, targets, forms) : new Map<number, TargetSpan>();
   const out: React.ReactNode[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
@@ -140,6 +143,7 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
   sentences,
   translation = 'off',
   highlight = [],
+  highlightForms,
   current,
   focus,
   words,
@@ -190,9 +194,9 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
         } else if (custom !== undefined) {
           body = custom;
         } else if (active) {
-          body = <LiveSentence text={s.en} targets={highlight} words={words} timeNowMs={timeNowMs} renderTarget={renderTarget} />;
+          body = <LiveSentence text={s.en} targets={highlight} words={words} timeNowMs={timeNowMs} renderTarget={renderTarget} forms={highlightForms} />;
         } else {
-          body = renderTokens(tokenize(s.en), highlight, null, renderTarget);
+          body = renderTokens(tokenize(s.en), highlight, null, renderTarget, highlightForms);
         }
         return (
           <div

@@ -4,6 +4,7 @@
  */
 import type { PassageAttempt, PassageAttemptBrief, PassageMode, PickDifficulty, PickFrequency, PickStatus, PlanWordScope, QuestionDifficulty, QuestionSetSpec } from '../types/passage';
 import { isFormOf } from '../../shared/lemma/morphy';
+import { isPhrasePart, phraseSpans } from '../../shared/lemma/phrase';
 
 /** 练习方式文案（唯一 owner） */
 export const MODE_LABEL: Record<PassageMode, string> = { reading: '阅读', listening: '听力' };
@@ -133,61 +134,20 @@ export const targetOf = (token: string, targets: string[]) => targets.filter((t)
 /** 带空格的是词组 */
 export const isPhrase = (text: string) => /\s/.test(text.trim());
 
-/** 词组里代表某人 / 某物的占位词：对应 1–3 个任意词 */
-const PLACEHOLDERS = new Set(['sb', 'sth', 'somebody', 'something', 'someone', "one's", "sb's", 'oneself']);
-/** 可拆开的两词短语动词的小品词：中间允许插入 1–3 个词（pick it up） */
-const PARTICLES = new Set(['up', 'down', 'out', 'off', 'on', 'in', 'away', 'back', 'over', 'around', 'about', 'through', 'along', 'aside']);
+/** 词组的位置与「是不是词组本身的词」：共用实现见 shared/lemma/phrase.ts（标注的写法 + 连着出现可变形，D47） */
+export { phraseSpans, isPhrasePart };
 
-function matchFrom(words: string[], i: number, parts: string[], k: number): number | null {
-  if (k === parts.length) return i;
-  const part = parts[k];
-  if (PLACEHOLDERS.has(part)) {
-    for (let n = 1; n <= 3 && i + n <= words.length; n++) {
-      const end = matchFrom(words, i + n, parts, k + 1);
-      if (end !== null) return end;
-    }
-    return null;
-  }
-  if (i < words.length && isFormOf(words[i], part)) {
-    const end = matchFrom(words, i + 1, parts, k + 1);
-    if (end !== null) return end;
-  }
-  if (k === 1 && parts.length === 2 && PARTICLES.has(part)) {
-    for (let skip = 1; skip <= 3 && i + skip < words.length; skip++) {
-      if (words[i + skip].toLowerCase() === part) return i + skip + 1;
-    }
-  }
-  return null;
-}
-
-/** 词组在一串单词里出现的位置（[开始, 结束)，不重叠）：每个词可变形，可拆开的短语动词中间可插入宾语，占位词对应 1–3 个词 */
-export function phraseSpans(words: string[], phrase: string): [number, number][] {
-  const parts = phrase.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const spans: [number, number][] = [];
-  if (parts.length === 0) return spans;
-  for (let i = 0; i < words.length; ) {
-    const end = matchFrom(words, i, parts, 0);
-    if (end !== null && end > i) {
-      spans.push([i, end]);
-      i = end;
-    } else i += 1;
-  }
-  return spans;
-}
-
-/** 这个词是不是词组本身的一部分（不是插入的宾语或占位词对应的词） */
-export const isPhrasePart = (word: string, phrase: string) =>
-  phrase
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .some((p) => !PLACEHOLDERS.has(p) && isFormOf(word, p));
-
-/** 一句话里是否用到了这个单词或词组（含变形） */
-export const textUses = (text: string, target: string) => {
+/** 一句话里是否用到了这个单词或词组（含变形；词组可带上标注的写法 forms） */
+export const textUses = (text: string, target: string, forms: string[] = []) => {
   const words = tokenize(text).flatMap((t) => (t.kind === 'word' ? [t.text] : []));
-  return isPhrase(target) ? phraseSpans(words, target).length > 0 : words.some((w) => isFormOf(w, target));
+  return isPhrase(target) ? phraseSpans(words, target, forms).length > 0 : words.some((w) => isFormOf(w, target));
 };
+
+/** 目标词 → 标注的写法（词组在原文里的实际写法，见 PassageTargetWord.forms） */
+export type TargetForms = Record<string, string[] | undefined>;
+/** 从短文的目标词取出标注的写法 */
+export const formsOf = (targets: { word: string; forms?: string[] }[]): TargetForms =>
+  Object.fromEntries(targets.filter((t) => t.forms?.length).map((t) => [t.word.toLowerCase(), t.forms]));
 
 /** 一句话里目标词的位置：单词序号 → 所在片段（词组覆盖多个单词，先匹配词组再匹配单词） */
 export interface TargetSpan {
@@ -196,12 +156,12 @@ export interface TargetSpan {
   start: number;
   end: number;
 }
-export function targetSpans(tokens: Token[], targets: string[]): Map<number, TargetSpan> {
+export function targetSpans(tokens: Token[], targets: string[], forms: TargetForms = {}): Map<number, TargetSpan> {
   const words = tokens.flatMap((t) => (t.kind === 'word' ? [t.text] : []));
   const out = new Map<number, TargetSpan>();
   const phrases = targets.filter(isPhrase).sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length);
   for (const p of phrases) {
-    for (const [start, end] of phraseSpans(words, p)) {
+    for (const [start, end] of phraseSpans(words, p, forms[p.toLowerCase()] ?? [])) {
       let free = true;
       for (let i = start; i < end; i++) if (out.has(i)) free = false;
       if (!free) continue;
@@ -237,12 +197,12 @@ export function activeWordIndex(timings: { startMs: number; endMs: number }[] | 
 export type BlankPart = { kind: 'text'; text: string } | { kind: 'blank'; answer: string; target: string };
 
 /**
- * 一句话里的目标词挖空（听后回忆等）：单词逐个挖；词组在原文里连着出现时整体挖成一个空（gave up），
- * 中间插了宾语或占位词对应的词时（pick it up）不挖，保留原文。
+ * 一句话里的目标词挖空（听后回忆等）：单词逐个挖；词组整体挖成一个空（gave up；标注过的拆开写法 picked it up 也整段挖），
+ * 词组记号对应的词（take care of my sister 里的 my sister）在片段里时不挖，保留原文。
  */
-export function recallBlanks(sentence: string, targets: string[]): BlankPart[] {
+export function recallBlanks(sentence: string, targets: string[], forms: TargetForms = {}): BlankPart[] {
   const tokens = tokenize(sentence);
-  const spans = targetSpans(tokens, targets);
+  const spans = targetSpans(tokens, targets, forms);
   const parts: BlankPart[] = [];
   const pushText = (text: string) => {
     const last = parts[parts.length - 1];
@@ -273,7 +233,9 @@ export function recallBlanks(sentence: string, targets: string[]): BlankPart[] {
     }
     const trailing = text.match(/[^A-Za-z]+$/)?.[0] ?? '';
     const core = trailing ? text.slice(0, text.length - trailing.length) : text;
-    if (words.every((w) => isPhrasePart(w, span.target))) parts.push({ kind: 'blank', answer: core, target: span.target });
+    // 标注过的写法整段挖空（picked it up）；规则匹配到的片段里有记号对应的词（take care of my sister）时不挖
+    const annotated = (forms[span.target.toLowerCase()] ?? []).some((f) => f.toLowerCase() === core.toLowerCase());
+    if (annotated || words.every((w) => isPhrasePart(w, span.target))) parts.push({ kind: 'blank', answer: core, target: span.target });
     else pushText(core);
     if (trailing) pushText(trailing);
     i = j - 1;

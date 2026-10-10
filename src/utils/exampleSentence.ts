@@ -44,13 +44,17 @@ export function maskExampleSentence(sentence: string, word: string): string {
     .join('');
 }
 
-/** 词组：词组里的每个词都是目标（可变形、可拆开，插入的宾语与空格不算） */
+/**
+ * 词组：词组里的每个词都是目标（可变形，插入的宾语与空格不算）。连着出现时按片段标出；
+ * 例句里拆开用（pick it up）而没有标注写法时，句中凡是词组本身的词（词形库判断）都标出——
+ * 例句就是为这个词组写的，宁可多遮，练习里不能露出答案（D47）。
+ */
 function splitByPhrase(sentence: string, phrase: string): SentencePart[] {
   const tokens = tokenize(sentence);
   const spans = targetSpans(tokens, [phrase]);
   const parts: SentencePart[] = [];
   for (const t of tokens) {
-    const isTarget = t.kind === 'word' && spans.has(t.index) && isPhrasePart(t.text, phrase);
+    const isTarget = t.kind === 'word' && (spans.size === 0 || spans.has(t.index)) && isPhrasePart(t.text, phrase);
     const prev = parts[parts.length - 1];
     if (prev && prev.isTarget === isTarget && !isTarget) prev.text += t.text;
     else parts.push({ text: t.text, isTarget });

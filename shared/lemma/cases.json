@@ -1,15 +1,289 @@
 {
-  "forms": [
-    ["went", "go"], ["gone", "go"], ["bought", "buy"], ["studied", "study"], ["studies", "study"], ["studying", "study"],
-    ["children", "child"], ["mice", "mouse"], ["wolves", "wolf"], ["geese", "goose"], ["better", "good"],
-    ["making", "make"], ["stopped", "stop"], ["bigger", "big"], ["fossils", "fossil"], ["gave", "give"],
-    ["picked", "pick"], ["leaves", "leaf"], ["leaves", "leave"], ["dying", "die"], ["lying", "lie"],
-    ["written", "write"], ["swam", "swim"], ["analyses", "analysis"], ["was", "be"], ["is", "be"],
-    ["boxes", "box"], ["churches", "church"], ["women", "woman"], ["tickets", "ticket"],
-    ["Elephants", "elephant"], ["constructor", "constructor"], ["dinos", "dino"], ["Mali", "mali"]
+ "forms": [
+  [
+   "went",
+   "go"
   ],
-  "not_forms": [
-    ["pass", "passport"], ["passport", "pass"], ["kind", "kid"], ["went", "want"], ["constructors", "toString"],
-    ["bed", "be"], ["customs", "custom"], ["red", "re"], ["sing", "s"]
+  [
+   "gone",
+   "go"
+  ],
+  [
+   "bought",
+   "buy"
+  ],
+  [
+   "studied",
+   "study"
+  ],
+  [
+   "studies",
+   "study"
+  ],
+  [
+   "studying",
+   "study"
+  ],
+  [
+   "children",
+   "child"
+  ],
+  [
+   "mice",
+   "mouse"
+  ],
+  [
+   "wolves",
+   "wolf"
+  ],
+  [
+   "geese",
+   "goose"
+  ],
+  [
+   "better",
+   "good"
+  ],
+  [
+   "making",
+   "make"
+  ],
+  [
+   "stopped",
+   "stop"
+  ],
+  [
+   "bigger",
+   "big"
+  ],
+  [
+   "fossils",
+   "fossil"
+  ],
+  [
+   "gave",
+   "give"
+  ],
+  [
+   "picked",
+   "pick"
+  ],
+  [
+   "leaves",
+   "leaf"
+  ],
+  [
+   "leaves",
+   "leave"
+  ],
+  [
+   "dying",
+   "die"
+  ],
+  [
+   "lying",
+   "lie"
+  ],
+  [
+   "written",
+   "write"
+  ],
+  [
+   "swam",
+   "swim"
+  ],
+  [
+   "analyses",
+   "analysis"
+  ],
+  [
+   "was",
+   "be"
+  ],
+  [
+   "is",
+   "be"
+  ],
+  [
+   "boxes",
+   "box"
+  ],
+  [
+   "churches",
+   "church"
+  ],
+  [
+   "women",
+   "woman"
+  ],
+  [
+   "tickets",
+   "ticket"
+  ],
+  [
+   "Elephants",
+   "elephant"
+  ],
+  [
+   "constructor",
+   "constructor"
+  ],
+  [
+   "dinos",
+   "dino"
+  ],
+  [
+   "Mali",
+   "mali"
   ]
+ ],
+ "not_forms": [
+  [
+   "pass",
+   "passport"
+  ],
+  [
+   "passport",
+   "pass"
+  ],
+  [
+   "kind",
+   "kid"
+  ],
+  [
+   "went",
+   "want"
+  ],
+  [
+   "constructors",
+   "toString"
+  ],
+  [
+   "bed",
+   "be"
+  ],
+  [
+   "customs",
+   "custom"
+  ],
+  [
+   "red",
+   "re"
+  ],
+  [
+   "sing",
+   "s"
+  ]
+ ],
+ "phrases": [
+  [
+   "She gave up smoking.",
+   "give up",
+   [],
+   true
+  ],
+  [
+   "He is giving up.",
+   "give up",
+   [],
+   true
+  ],
+  [
+   "Please pick it up.",
+   "pick up",
+   [],
+   false
+  ],
+  [
+   "Please pick it up.",
+   "pick up",
+   [
+    "pick it up"
+   ],
+   true
+  ],
+  [
+   "Please pick it up.",
+   "pick up",
+   [
+    "put it down"
+   ],
+   false
+  ],
+  [
+   "They made a decision.",
+   "make a decision",
+   [],
+   true
+  ],
+  [
+   "They made a big decision.",
+   "make a decision",
+   [],
+   false
+  ],
+  [
+   "Take care of my sister.",
+   "take care of sb",
+   [],
+   true
+  ],
+  [
+   "It broke the ice.",
+   "break the ice",
+   [],
+   true
+  ],
+  [
+   "The ice broke.",
+   "break the ice",
+   [],
+   false
+  ],
+  [
+   "Give me the cup.",
+   "give up",
+   [],
+   false
+  ],
+  [
+   "A well-known fact.",
+   "well-known",
+   [],
+   true
+  ],
+  [
+   "A well-known fact.",
+   "a well-known fact",
+   [],
+   true
+  ]
+ ],
+ "forms_check": [
+  [
+   "picked it up",
+   "pick up",
+   true
+  ],
+  [
+   "looked carefully after",
+   "look after",
+   true
+  ],
+  [
+   "put it down",
+   "pick up",
+   false
+  ],
+  [
+   "took good care of her",
+   "take care of sb",
+   true
+  ],
+  [
+   "up",
+   "give up",
+   false
+  ]
+ ]
 }

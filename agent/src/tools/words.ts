@@ -27,6 +27,7 @@ export const submitWordsTool = defineTool({
         frequency: Type.Integer({ minimum: 1, description: "taken from tokenize_text (phrases: how many times it appears)" }),
         pos: Type.String({ description: "part of speech abbreviation: n. v. adj. adv. prep. conj. pron. art. int. det." }),
         translation: Type.String({ description: "concise common Chinese meaning, 1-3 characters" }),
+        uses: Type.Optional(Type.Array(Type.String(), { description: "for a phrase: how it is written in the text, copied exactly (e.g. picked them up); one entry per distinct writing" })),
       }),
     ),
     tags: Type.Optional(

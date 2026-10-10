@@ -64,10 +64,10 @@ export const studyInfoFromCard = (c: WordCard): StudyWordInfo => ({
   phrase: c.kind === 'phrase' || /\s/.test(c.word.trim()) ? { type: c.phraseType || undefined, separable: c.separable } : undefined,
 });
 
-/** 句子里把这个单词或词组（含变形、拆开用）标出来 */
-export const Highlighted: React.FC<{ text: string; word: string }> = ({ text, word }) => {
+/** 句子里把这个单词或词组（含变形；拆开用的按标注的写法 forms）标出来 */
+export const Highlighted: React.FC<{ text: string; word: string; forms?: string[] }> = ({ text, word, forms }) => {
   const tokens = tokenize(text);
-  const spans = targetSpans(tokens, [word]);
+  const spans = targetSpans(tokens, [word], forms ? { [word.toLowerCase()]: forms } : {});
   return (
     <>
       {tokens.map((t, i) => {
@@ -106,12 +106,12 @@ export const StudySection: React.FC<{ title: string; children: React.ReactNode }
 );
 
 /** 可以点着听的一句（英文里标出这个词 + 译文） */
-export const StudySentence: React.FC<{ en: string; zh: string; word: string; onPlay: () => void }> = ({ en, zh, word, onPlay }) => (
+export const StudySentence: React.FC<{ en: string; zh: string; word: string; forms?: string[]; onPlay: () => void }> = ({ en, zh, word, forms, onPlay }) => (
   <button type="button" onClick={onPlay} className="group flex items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted">
     <Volume2 className="mt-1 size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
     <span className="min-w-0">
       <span className="block">
-        <Highlighted text={en} word={word} />
+        <Highlighted text={en} word={word} forms={forms} />
       </span>
       <span className="block text-sm text-muted-foreground">{zh}</span>
     </span>

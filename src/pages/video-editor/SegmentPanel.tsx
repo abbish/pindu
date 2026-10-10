@@ -125,7 +125,7 @@ export const SegmentPanel: React.FC<SegmentPanelProps> = (props) => {
                   </span>
                   <span className="min-w-0 flex-1 select-text">
                     <span className="block text-sm leading-snug">
-                      {splitByKeyWords(c.en, segment.keyWords).map((p, i) =>
+                      {splitByKeyWords(c.en, segment.keyWords, segment.keyWordForms).map((p, i) =>
                         p.key ? (
                           <mark key={i} className="rounded-sm bg-primary/15 px-0.5 font-medium text-foreground">
                             {p.text}

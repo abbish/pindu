@@ -163,6 +163,7 @@ mod tests {
             word: w.into(),
             required: false,
             meaning: None,
+            forms: Vec::new(),
         };
         let e = index_entries(
             &[

@@ -44,6 +44,9 @@ struct SubmittedSegment {
     focus: String,
     #[serde(default)]
     key_words: Vec<String>,
+    /// 词组在字幕里的写法 [{phrase, text}]
+    #[serde(default)]
+    phrase_uses: Vec<serde_json::Value>,
     #[serde(default)]
     tags: Vec<String>,
 }
@@ -93,20 +96,31 @@ pub fn segments_from_submission(
             let covered = &cues[first - 1..last];
             let text = covered
                 .iter()
-                .map(|c| c.en.to_lowercase())
+                .map(|c| c.en.as_str())
                 .collect::<Vec<_>>()
                 .join(" ");
+            // 重点词要在这段字幕里用到（单词按词形库；词组按标注的写法或连着出现，D47）
             let mut key_words: Vec<String> = Vec::new();
+            let mut key_word_forms = std::collections::HashMap::new();
             for word in &s.key_words {
-                let word = word.trim();
-                if !word.is_empty()
-                    && text.contains(&word.to_lowercase())
-                    && !key_words.iter().any(|k| k.eq_ignore_ascii_case(word))
-                {
-                    key_words.push(word.to_string());
+                let word = crate::types::wordbook::normalize_vocab(word);
+                if word.is_empty() || key_words.iter().any(|k| k.eq_ignore_ascii_case(&word)) {
+                    continue;
+                }
+                let forms = if crate::services::passage_rules::is_phrase(&word) {
+                    crate::services::passage_rules::annotated_forms(&s.phrase_uses, &text, &word)
+                } else {
+                    Vec::new()
+                };
+                if crate::services::passage_rules::text_uses_forms(&text, &word, &forms) {
+                    if !forms.is_empty() {
+                        key_word_forms.insert(word.to_lowercase(), forms);
+                    }
+                    key_words.push(word);
                 }
             }
             key_words.truncate(MAX_KEY_WORDS);
+            key_word_forms.retain(|k, _| key_words.iter().any(|w| w.eq_ignore_ascii_case(k)));
             let mut tags: Vec<String> = Vec::new();
             for tag in s
                 .tags
@@ -132,6 +146,7 @@ pub fn segments_from_submission(
                 },
                 focus: s.focus.trim().chars().take(300).collect(),
                 key_words,
+                key_word_forms,
                 tags,
             }
         })

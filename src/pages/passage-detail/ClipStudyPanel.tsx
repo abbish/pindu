@@ -11,7 +11,7 @@ import { PassageReader, type TranslationMode } from '@/components/PassageReader'
 import { TargetWord } from '@/components/PassageReader/WordCard';
 import { SelectionAction } from '@/components/SelectionAction';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
-import { canAddTarget } from '@/utils/passage';
+import { canAddTarget, formsOf } from '@/utils/passage';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { cn } from '@/lib/utils';
 import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
@@ -60,7 +60,7 @@ export interface ClipStudyPanelProps {
   /** 短文（片段）：目标词的点词卡片与选词加入目标词用 */
   passage: Pick<Passage, 'id' | 'targetWords'>;
   /** 台词里选中一个词，加成目标词 */
-  onAddTarget?: (word: string, stay?: boolean) => void;
+  onAddTarget?: (word: string, stay?: boolean, form?: string) => void;
   /** 打开这个目标词的完整单词卡 */
   onOpenWord?: (word: string) => void;
   /** 有阅读理解题时「做听力题」 */
@@ -83,6 +83,8 @@ const endOf = (s: PassageSentence | undefined) => s?.endMs ?? startOf(s);
 
 export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences, passage, onAddTarget, onOpenWord, onPractice }) => {
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
+  /** 目标词组在台词里的写法 */
+  const forms = useMemo(() => formsOf(passage.targetWords), [passage.targetWords]);
   /** 正在看分析的台词 */
   const [analyzing, setAnalyzing] = useState<number | null>(null);
   const wordInfo = useTargetWordInfo(passage);
@@ -327,6 +329,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               current={active >= 0 ? active : null}
               translation={prefs.translation}
               highlight={targetWords}
+              highlightForms={forms}
               focusBlur={prefs.focusBlur}
               hidden={!prefs.showText}
               onPlaySentence={(i) => {
@@ -394,7 +397,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       </Card>
       </div>
       {analyzing !== null && (
-        <SentenceAnalysisPanel passageId={passage.id} sentences={sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targetWords} onAddTarget={onAddTarget && ((w) => onAddTarget(w, true))} onClose={() => setAnalyzing(null)} />
+        <SentenceAnalysisPanel passageId={passage.id} sentences={sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targetWords} onAddTarget={onAddTarget && ((w, form) => onAddTarget(w, true, form))} onClose={() => setAnalyzing(null)} />
       )}
     </div>
   );

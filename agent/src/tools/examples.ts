@@ -13,8 +13,9 @@ export const submitExamplesTool = defineTool({
     word: Type.String(),
     examples: Type.Array(
       Type.Object({
-        sentence: Type.String({ description: "short, simple English sentence for kids containing the word" }),
+        sentence: Type.String({ description: "short, simple English sentence containing the word" }),
         translation: Type.String({ description: "natural Chinese translation of the sentence" }),
+      uses: Type.Optional(Type.String({ description: "for a phrase used in a split or changed form: how it is written in this sentence, copied exactly (e.g. gave it up)" })),
       }),
       { description: "5-8 NEW example sentences in different everyday scenes, simplest first" },
     ),

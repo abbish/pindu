@@ -2,7 +2,7 @@
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import { isFormOf } from "../../../shared/lemma/morphy.ts";
+import { annotatedForms, usesWord } from "../../../shared/lemma/phrase.ts";
 
 /** 规则名称表（与提示词一致，格式「专业术语 | 直观描述」） */
 export const PHONICS_RULES = [
@@ -40,8 +40,9 @@ const PhonicsEntry = Type.Object({
   analysis_explanation: Type.String({ description: "1-3 sentences in Chinese explaining the rule for this word" }),
   examples: Type.Array(
     Type.Object({
-      sentence: Type.String({ description: "short, simple English sentence for kids containing the word in the given meaning" }),
+      sentence: Type.String({ description: "short, simple English sentence containing the word in the given meaning" }),
       translation: Type.String({ description: "natural Chinese translation of the sentence" }),
+      uses: Type.Optional(Type.String({ description: "for a phrase used in a split or changed form: how it is written in this sentence, copied exactly (e.g. gave it up)" })),
     }),
     { description: "5-8 example sentences in different everyday scenes; the first one is the simplest" },
   ),
@@ -55,42 +56,16 @@ export const EXAMPLE_MAX_WORDS = 12;
 export const EXAMPLES_MIN = 5;
 export const EXAMPLES_MAX = 8;
 
-/** 词组里代表某人 / 某物的占位词（例句里换成具体的词） */
-const PLACEHOLDERS = new Set(["sb", "sth", "somebody", "something", "someone", "one's", "sb's", "oneself"]);
-
-/** 一个词是否是 word 的某种形式（词形库 shared/lemma，D47；所有格 's 先去掉） */
-const tokenIsForm = (token: string, word: string) => isFormOf(token.replace(/'s$/, ""), word);
-
-/** 例句中是否出现该单词或词组（允许常见词形变化；词组的各个词按顺序出现、中间可插入少量词，占位词不要求） */
-export function sentenceContainsWord(sentence: string, word: string): boolean {
-  const tokens = sentence.toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) ?? [];
-  const parts = word.toLowerCase().trim().split(/\s+/).filter(p => !PLACEHOLDERS.has(p));
-  if (parts.length > 1) {
-    for (let start = 0; start < tokens.length; start++) {
-      if (!tokenIsForm(tokens[start], parts[0])) continue;
-      let i = start + 1;
-      let ok = true;
-      for (const p of parts.slice(1)) {
-        let found = -1;
-        for (let j = i; j < Math.min(tokens.length, i + 4); j++) if (tokenIsForm(tokens[j], p)) { found = j; break; }
-        if (found < 0) { ok = false; break; }
-        i = found + 1;
-      }
-      if (ok) return true;
-    }
-    return false;
-  }
-  const w = word.toLowerCase();
-  const stems = [w];
-  if (/[ey]$/.test(w) && w.length > 2) stems.push(w.slice(0, -1));
-  return tokens.some(t => {
-    const bare = t.replace(/'s$/, "");
-    return stems.some(stem => bare.startsWith(stem) && bare.length - w.length <= 4);
-  });
+/** 例句中是否用到该单词或词组（与前端、Rust 同一实现 shared/lemma：单词按词形库；词组连着出现可变形，
+ * 拆开用时按例句标注的写法 uses 核对，D47）。所有格 's 先去掉 */
+export function sentenceContainsWord(sentence: string, word: string, uses?: string): boolean {
+  const tokens = (sentence.match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g) ?? []).map(t => t.replace(/['’]s$/i, ""));
+  const forms = uses ? annotatedForms(tokens, word, [{ phrase: word, text: uses }]) : [];
+  return usesWord(tokens, word, forms);
 }
 
 /** 单条例句检查：有内容、长度适中、是完整句子、包含该单词，并有中文翻译 */
-function sentenceProblems(sentence: string, translation: string, word: string, where: string): string[] {
+function sentenceProblems(sentence: string, translation: string, word: string, where: string, uses?: string): string[] {
   const problems: string[] = [];
   if (!sentence) return [`${where} sentence 不能为空`];
   const count = sentence.split(/\s+/).length;
@@ -101,8 +76,8 @@ function sentenceProblems(sentence: string, translation: string, word: string, w
     problems.push(`${where} 应以大写字母开头、以 . ! ? 结尾`);
   }
   if (/[^\x20-\x7E’]/.test(sentence)) problems.push(`${where} 只能包含英文字符`);
-  if (!sentenceContainsWord(sentence, word)) {
-    problems.push(`${where} 必须包含单词或词组 ${word} 本身（尽量用原形）`);
+  if (!sentenceContainsWord(sentence, word, uses)) {
+    problems.push(`${where} 必须包含单词或词组 ${word} 本身（尽量用原形；词组拆开用时在 uses 里照抄它在句中的写法）`);
   }
   if (!/[\u4e00-\u9fff]/.test(translation)) problems.push(`${where} translation 需为该句的中文翻译`);
   return problems;
@@ -111,7 +86,7 @@ function sentenceProblems(sentence: string, translation: string, word: string, w
 /** 例句组检查：条数、逐条格式、不重复（拼读分析与例句生成共用） */
 export function examplesProblems(
   rawWord: string,
-  examples: { sentence: string; translation: string }[],
+  examples: { sentence: string; translation: string; uses?: string }[],
   label: string,
 ): string[] {
   const word = rawWord.trim();
@@ -123,7 +98,7 @@ export function examplesProblems(
   examples.forEach((e, i) => {
     const sentence = e.sentence.trim();
     const where = `${label} examples[${i + 1}]`;
-    problems.push(...sentenceProblems(sentence, e.translation, word, where));
+    problems.push(...sentenceProblems(sentence, e.translation, word, where, e.uses));
     const key = sentence.toLowerCase();
     if (sentence && seen.has(key)) problems.push(`${where} 与前面的例句重复`);
     seen.add(key);

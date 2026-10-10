@@ -21,6 +21,8 @@ export interface PassageTargetWord {
   required: boolean;
   /** AI 重点词的中文释义（导入材料时给出；其它为 null） */
   meaning: string | null;
+  /** 词组在原文里的实际写法（AI 标注或划选的原文；高亮、挖空按它定位）。单词与没有标注的不返回 */
+  forms?: string[];
 }
 
 /**

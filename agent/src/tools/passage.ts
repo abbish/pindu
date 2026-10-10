@@ -3,48 +3,16 @@
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { isFormOf } from "../../../shared/lemma/morphy.ts";
+import { annotatedForms, usesWord, type PhraseUse } from "../../../shared/lemma/phrase.ts";
 import { Type, type Static } from "typebox";
 
 /** token 是否是 word 本身或它的某种形式（词形库 shared/lemma：WordNet 词典 + morphy，与前端、Rust 同一份数据，D47） */
 export const inflectionMatches = (token: string, word: string): boolean => isFormOf(token, word);
 
 const wordsOf = (text: string) => (text.match(/[A-Za-z']+/g) ?? []).map(w => w.replace(/^'+|'+$/g, "")).filter(Boolean);
-/** 词组里代表某人 / 某物的占位词：对应 1–3 个任意词 */
-const PLACEHOLDERS = new Set(["sb", "sth", "somebody", "something", "someone", "one's", "sb's", "oneself"]);
-/** 可拆开的两词短语动词的小品词：中间允许插入 1–3 个词（pick it up） */
-const PARTICLES = new Set(["up", "down", "out", "off", "on", "in", "away", "back", "over", "around", "about", "through", "along", "aside"]);
-const isForm = (t: string, p: string) => isFormOf(t, p);
-
-/** 从 tokens[i] 起匹配 parts[k..]，返回结束位置（与 Rust passage_rules::phrase_match_from、前端 utils/passage.ts 同规则） */
-function matchFrom(tokens: string[], i: number, parts: string[], k: number): number | null {
-  if (k === parts.length) return i;
-  const part = parts[k];
-  if (PLACEHOLDERS.has(part)) {
-    for (let n = 1; n <= 3 && i + n <= tokens.length; n++) {
-      const end = matchFrom(tokens, i + n, parts, k + 1);
-      if (end !== null) return end;
-    }
-    return null;
-  }
-  if (i < tokens.length && isForm(tokens[i], part)) {
-    const end = matchFrom(tokens, i + 1, parts, k + 1);
-    if (end !== null) return end;
-  }
-  if (k === 1 && parts.length === 2 && PARTICLES.has(part)) {
-    for (let skip = 1; skip <= 3 && i + skip < tokens.length; skip++) {
-      if (tokens[i + skip].toLowerCase() === part) return i + skip + 1;
-    }
-  }
-  return null;
-}
-
-/** 正文是否用到这个单词或词组（与 Rust passage_rules::text_uses 同规则：单词含变形与不规则动词；词组与连字符词按片段匹配） */
-export const uses = (tokens: string[], word: string) => {
-  const w = word.trim().toLowerCase();
-  if (!/[\s-]/.test(w)) return tokens.some(t => isForm(t, w));
-  const parts = w.split(/[\s-]+/).filter(Boolean);
-  return tokens.some((_, start) => matchFrom(tokens, start, parts, 0) !== null);
-};
+/** 正文是否用到这个单词或词组（与前端、Rust 同一实现 shared/lemma/phrase.ts：单词按词形库；词组按标注的写法或连着出现，D47） */
+export const uses = (tokens: string[], word: string, phraseUses: PhraseUse[] = []) =>
+  usesWord(tokens, word, annotatedForms(tokens, word, phraseUses));
 const fail = (problems: string[]) => {
   throw new Error(`提交未通过校验（${problems.length} 处），请修正后重新提交：\n- ${problems.join("\n- ")}`);
 };
@@ -73,6 +41,15 @@ const PassageParams = Type.Object({
     }),
   ),
   chosen_words: Type.Array(Type.String(), { description: "the words you chose from the candidate pool and used in the passage (exact spelling from the pool)" }),
+  phrase_uses: Type.Optional(
+    Type.Array(
+      Type.Object({
+        phrase: Type.String({ description: "a multi-word target phrase exactly as listed (e.g. pick up, take care of sb)" }),
+        text: Type.String({ description: "how it is written in the passage, copied exactly (e.g. picked it up, took good care of her)" }),
+      }),
+      { description: "for every multi-word target phrase you used, how it is written in the passage; one entry per distinct writing" },
+    ),
+  ),
   tags: Type.Optional(
     Type.Array(Type.String(), {
       description:
@@ -95,10 +72,11 @@ export function passageProblems(p: PassageSubmission): string[] {
     if (!s.zh.trim()) problems.push(`sentences[${i + 1}].zh 缺少中文翻译`);
   });
   const tokens = p.sentences.flatMap(s => wordsOf(s.en));
-  const missing = p.required_words.filter(w => w.trim() && !uses(tokens, w));
-  if (missing.length > 0) problems.push(`正文没有用到这些必用词：${missing.join(", ")}（每个都要用上）`);
+  const phraseUses = p.phrase_uses ?? [];
+  const missing = p.required_words.filter(w => w.trim() && !uses(tokens, w, phraseUses));
+  if (missing.length > 0) problems.push(`正文没有用到这些必用词：${missing.join(", ")}（每个都要用上；词组拆开用时在 phrase_uses 里写明它在正文中的写法）`);
   if (p.chosen_words.length > p.ai_pick) problems.push(`chosen_words 最多 ${p.ai_pick} 个（当前 ${p.chosen_words.length} 个）`);
-  const unused = p.chosen_words.filter(w => !uses(tokens, w));
+  const unused = p.chosen_words.filter(w => !uses(tokens, w, phraseUses));
   if (unused.length > 0) problems.push(`chosen_words 里这些词没有出现在正文中：${unused.join(", ")}`);
   // 篇幅只是长度与丰富程度的参考：只拦明显没写完整的短文，不按区间退回（避免为凑字数改写出模式化的句子）
   const count = tokens.length;
@@ -331,8 +309,9 @@ const TranslationParams = Type.Object({
   level: Type.String({ description: "CEFR level: a1, a2, b1 or b2" }),
   key_words: Type.Array(
     Type.Object({
-      word: Type.String({ description: "base form of a word that appears in the text" }),
+      word: Type.String({ description: "base form of a word or phrase that appears in the text (e.g. give up)" }),
       meaning: Type.String({ description: "Chinese meaning in this text" }),
+      uses: Type.Optional(Type.Array(Type.String(), { description: "for a phrase: how it is written in the text, copied exactly (e.g. gave it up); one entry per distinct writing" })),
     }),
     { description: "5-12 key words when requested, otherwise an empty array" },
   ),

@@ -14,7 +14,7 @@ import { SelectionAction } from '@/components/SelectionAction';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { cn } from '@/lib/utils';
-import { canAddTarget, recallBlanks } from '@/utils/passage';
+import { canAddTarget, formsOf, recallBlanks } from '@/utils/passage';
 import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
 import type { SpeechSpeed } from '@/services/ttsService';
 import type { Passage } from '@/types/passage';
@@ -88,7 +88,7 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ la
 /** 选中的文字是一个英文单词或 2–6 个词的词组（可以加成目标词） */
 
 /** onAddTarget：读的时候选中原文里的一个词，加成这篇的目标词 */
-export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: string, stay?: boolean) => void; onOpenWord?: (word: string) => void }> = ({ passage, onAddTarget, onOpenWord }) => {
+export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: string, stay?: boolean, form?: string) => void; onOpenWord?: (word: string) => void }> = ({ passage, onAddTarget, onOpenWord }) => {
   const [prefs, setPrefs] = useState<ReadAloudPrefs>(readPrefs);
   const [blind, setBlind] = useState(false);
   const [blindDone, setBlindDone] = useState(false);
@@ -97,6 +97,8 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
   const wordAudio = useAudioPlayer();
 
   const targets = useMemo(() => passage.targetWords.map((w) => w.word), [passage]);
+  /** 目标词组在原文里的写法（拆开用的词组按它标出、挖空） */
+  const forms = useMemo(() => formsOf(passage.targetWords), [passage]);
   const texts = useMemo(() => passage.sentences.map((s) => s.en), [passage]);
   /** 正在看分析的句子 */
   const [analyzing, setAnalyzing] = useState<number | null>(null);
@@ -122,7 +124,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
   const afterSentence = useCallback(
     (index: number) => {
       if (!recallRef.current) return;
-      const blanks = recallBlanks(texts[index], targets).flatMap((p) => (p.kind === 'blank' ? [p] : []));
+      const blanks = recallBlanks(texts[index], targets, forms).flatMap((p) => (p.kind === 'blank' ? [p] : []));
       const answers = blanks.map((b) => b.answer);
       if (answers.length === 0) return;
       const used = new Set(blanks.map((b) => b.target.toLowerCase()));
@@ -131,7 +133,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
         setRecall({ index, answers, filled: [], bank: shuffle([...new Set(answers), ...distractors]), wrong: null, revealed: false, resolve });
       });
     },
-    [texts, targets]
+    [texts, targets, forms]
   );
 
   const player = useSentencePlayer(texts, {
@@ -217,7 +219,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
   const renderRecallSentence = (index: number) => {
     if (!recall || recall.index !== index) return undefined;
     let blank = 0;
-    return recallBlanks(texts[index], targets).map((t, i) => {
+    return recallBlanks(texts[index], targets, forms).map((t, i) => {
       if (t.kind === 'text') return <React.Fragment key={i}>{t.text}</React.Fragment>;
       const n = blank++;
       const value = recall.filled[n];
@@ -369,6 +371,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
         sentences={passage.sentences}
         translation={prefs.translation}
         highlight={prefs.highlight || recall ? targets : []}
+        highlightForms={forms}
         current={player.playing || recall ? player.current : null}
         focus={player.current}
         words={player.words}
@@ -389,7 +392,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
       />
       </SelectionAction>
       {analyzing !== null && (
-        <SentenceAnalysisPanel passageId={passage.id} sentences={passage.sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targets} onAddTarget={onAddTarget && ((w) => onAddTarget(w, true))} onClose={() => setAnalyzing(null)} />
+        <SentenceAnalysisPanel passageId={passage.id} sentences={passage.sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targets} onAddTarget={onAddTarget && ((w, form) => onAddTarget(w, true, form))} onClose={() => setAnalyzing(null)} />
       )}
     </Card>
   );

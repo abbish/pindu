@@ -60,11 +60,6 @@ pub fn validate_spec(spec: &QuestionSetSpec) -> Result<(), String> {
     Ok(())
 }
 
-/// `token` 是否是 `word` 本身或它的某种形式（词形库 [`crate::lemma`]：WordNet 词典 + morphy，D47）
-pub fn inflection_matches(token: &str, word: &str) -> bool {
-    crate::lemma::is_form_of(token, word)
-}
-
 /// 一个单词可能的原形（词形库还原，不含它自己）
 pub fn base_candidates(token: &str) -> Vec<String> {
     let t = token.trim().to_lowercase();
@@ -93,7 +88,7 @@ pub fn text_uses(text: &str, word: &str) -> bool {
         let tokens: Vec<&str> = words_of(text).collect();
         return !phrase_spans(&tokens, word).is_empty();
     }
-    words_of(text).any(|t| token_is_form(t, word))
+    words_of(text).any(|t| crate::lemma::is_form_of(t, word))
 }
 
 /// 带空格的是词组
@@ -101,78 +96,41 @@ pub fn is_phrase(text: &str) -> bool {
     text.trim().contains(char::is_whitespace)
 }
 
-/// 词组里代表「某人 / 某物」的占位词：在文本里对应 1–3 个任意词（take care of sb → take care of my sister）
-const PHRASE_PLACEHOLDERS: [&str; 8] = [
-    "sb",
-    "sth",
-    "somebody",
-    "something",
-    "someone",
-    "one's",
-    "sb's",
-    "oneself",
-];
-/// 可拆开的短语动词的小品词：两词短语动词中间允许插入 1–3 个词（pick up → pick it up）
-const PARTICLES: [&str; 14] = [
-    "up", "down", "out", "off", "on", "in", "away", "back", "over", "around", "about", "through",
-    "along", "aside",
-];
-
-/// 一个词是否是 part 的某种形式（规则屈折 + 不规则动词）
-fn token_is_form(token: &str, part: &str) -> bool {
-    crate::lemma::is_form_of(token, part)
-}
-
-/// 从 tokens[i] 起匹配 parts[k..]，返回匹配结束的位置（不含）
-fn phrase_match_from(tokens: &[&str], i: usize, parts: &[String], k: usize) -> Option<usize> {
-    if k == parts.len() {
-        return Some(i);
-    }
-    let part = parts[k].as_str();
-    if PHRASE_PLACEHOLDERS.contains(&part) {
-        return (1..=3)
-            .filter(|n| i + n <= tokens.len())
-            .find_map(|n| phrase_match_from(tokens, i + n, parts, k + 1));
-    }
-    if i < tokens.len() && token_is_form(tokens[i], part) {
-        if let Some(end) = phrase_match_from(tokens, i + 1, parts, k + 1) {
-            return Some(end);
+/// 提交里标注的词组写法（`[{phrase, text}]`，D47）：只保留属于这个词组、和词组对得上、并且原样出现在文本里的
+pub fn annotated_forms(uses: &[Value], text: &str, phrase: &str) -> Vec<String> {
+    let tokens: Vec<&str> = words_of(text).collect();
+    let mut out: Vec<String> = Vec::new();
+    for u in uses {
+        let form = crate::types::wordbook::normalize_vocab(
+            u.get("text").and_then(Value::as_str).unwrap_or_default(),
+        );
+        let owner = u.get("phrase").and_then(Value::as_str).unwrap_or_default();
+        if form.is_empty()
+            || !owner.trim().eq_ignore_ascii_case(phrase.trim())
+            || !crate::lemma::form_matches_phrase(&form, phrase)
+            || crate::lemma::phrase_spans(&tokens, "", std::slice::from_ref(&form)).is_empty()
+            || out.iter().any(|f| f.eq_ignore_ascii_case(&form))
+        {
+            continue;
         }
+        out.push(form);
     }
-    // 可拆开的两词短语动词：动词和小品词之间可以插入宾语（pick it up）
-    if k == 1 && parts.len() == 2 && PARTICLES.contains(&part) {
-        return (1..=3)
-            .filter(|skip| i + skip < tokens.len())
-            .find(|skip| tokens[i + skip].eq_ignore_ascii_case(part))
-            .map(|skip| i + skip + 1);
-    }
-    None
+    out
 }
 
-/// 词组在一串单词里出现的位置（[开始, 结束)，不重叠）：每个词允许屈折变化（gave up、made a decision），
-/// 可拆开的短语动词中间允许插入宾语，占位词（sb / sth / one's）对应 1–3 个词
+/// 文本是否用到这个单词或词组（词组可带标注的写法）
+pub fn text_uses_forms(text: &str, word: &str, forms: &[String]) -> bool {
+    if forms.is_empty() {
+        return text_uses(text, word);
+    }
+    let tokens: Vec<&str> = words_of(text).collect();
+    !crate::lemma::phrase_spans(&tokens, word, forms).is_empty()
+}
+
+/// 词组在一串单词里出现的位置（[开始, 结束)，不重叠）：各词连着出现、每个词可以是任意词形
+/// （gave up、made a decision）；拆开用的写法只认标注过的（见 [`crate::lemma::phrase_spans`]，D47）
 pub fn phrase_spans(tokens: &[&str], phrase: &str) -> Vec<(usize, usize)> {
-    // 连字符词（well-known）与分词一致，拆成两个词
-    let parts: Vec<String> = phrase
-        .split(|c: char| c.is_whitespace() || c == '-')
-        .filter(|p| !p.is_empty())
-        .map(|p| p.to_lowercase())
-        .collect();
-    if parts.is_empty() {
-        return Vec::new();
-    }
-    let mut spans = Vec::new();
-    let mut i = 0;
-    while i < tokens.len() {
-        match phrase_match_from(tokens, i, &parts, 0) {
-            Some(end) if end > i => {
-                spans.push((i, end));
-                i = end;
-            }
-            _ => i += 1,
-        }
-    }
-    spans
+    crate::lemma::phrase_spans(tokens, phrase, &[])
 }
 
 /// 选词填空词库：答案（去重）+ 干扰词（不与答案重复，最多 3 个），按 `seed` 确定性打乱
@@ -406,9 +364,23 @@ pub fn passage_from_submission(
         .map(|s| s.en.as_str())
         .collect::<Vec<_>>()
         .join(" ");
+    // 词组在正文里的写法（AI 标注，核对过的才用）
+    let uses: Vec<Value> = details
+        .get("phrase_uses")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let with_forms = |w: &PassageTargetWord| PassageTargetWord {
+        forms: if is_phrase(&w.word) {
+            annotated_forms(&uses, &plain, &w.word)
+        } else {
+            Vec::new()
+        },
+        ..w.clone()
+    };
     let missing: Vec<&str> = required
         .iter()
-        .filter(|w| !text_uses(&plain, &w.word))
+        .filter(|w| !text_uses_forms(&plain, &w.word, &with_forms(w).forms))
         .map(|w| w.word.as_str())
         .collect();
     if !missing.is_empty() {
@@ -423,7 +395,7 @@ pub fn passage_from_submission(
         .iter()
         .map(|w| PassageTargetWord {
             required: true,
-            ..w.clone()
+            ..with_forms(w)
         })
         .collect();
     let mut seen: HashSet<String> = targets.iter().map(|w| w.word.to_lowercase()).collect();
@@ -435,10 +407,12 @@ pub fn passage_from_submission(
         let Some(word) = pool.iter().find(|w| w.word.eq_ignore_ascii_case(&chosen)) else {
             continue;
         };
-        if text_uses(&plain, &word.word) && seen.insert(word.word.to_lowercase()) {
+        let word = with_forms(word);
+        if text_uses_forms(&plain, &word.word, &word.forms) && seen.insert(word.word.to_lowercase())
+        {
             targets.push(PassageTargetWord {
                 required: false,
-                ..word.clone()
+                ..word
             });
             picked += 1;
         }
@@ -521,6 +495,7 @@ pub fn plan_from_submission(
                         word: w.trim().to_string(),
                         required: false,
                         meaning: None,
+                        forms: Vec::new(),
                     });
                 }
             }
@@ -791,11 +766,6 @@ pub fn grade_cloze_questions(
         .collect()
 }
 
-/// 文本里是否出现了某个词（含各种词形）；与 [`text_uses`] 相同
-pub fn text_uses_any_form(text: &str, word: &str) -> bool {
-    text_uses(text, word)
-}
-
 /// 导入材料的翻译结果（英文原文不经模型，以导入请求的句子为准）
 #[derive(Debug, Clone, PartialEq)]
 pub struct Translation {
@@ -803,8 +773,8 @@ pub struct Translation {
     pub zh: Vec<String>,
     pub title: String,
     pub level: String,
-    /// （原形, 中文意思）：在原文里出现过、去重，最多 MAX_KEY_WORDS 个
-    pub key_words: Vec<(String, String)>,
+    /// （原形, 中文意思, 词组在原文里的写法）：在原文里出现过、去重，最多 MAX_KEY_WORDS 个
+    pub key_words: Vec<(String, String, Vec<String>)>,
     /// AI 给的标签名
     pub tags: Vec<String>,
 }
@@ -838,7 +808,7 @@ pub fn translation_from_submission(
         "b2".to_string()
     };
     let full = sentences.join(" ");
-    let mut words: Vec<(String, String)> = Vec::new();
+    let mut words: Vec<(String, String, Vec<String>)> = Vec::new();
     if key_words {
         for item in details
             .get("key_words")
@@ -848,12 +818,25 @@ pub fn translation_from_submission(
         {
             let word = crate::types::wordbook::normalize_vocab(&text(item, "word"));
             let meaning = text(item, "meaning");
+            // 词组在原文里的写法（AI 标注，核对过的才用，D47）
+            let uses: Vec<Value> = item
+                .get("uses")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|t| serde_json::json!({ "phrase": word, "text": t }))
+                .collect();
+            let forms = if is_phrase(&word) {
+                annotated_forms(&uses, &full, &word)
+            } else {
+                Vec::new()
+            };
             // 单词或词组（D45）
             let valid = valid_vocab(&word)
-                && text_uses_any_form(&full, &word)
-                && !words.iter().any(|(w, _)| w.eq_ignore_ascii_case(&word));
+                && text_uses_forms(&full, &word, &forms)
+                && !words.iter().any(|(w, _, _)| w.eq_ignore_ascii_case(&word));
             if valid && words.len() < MAX_KEY_WORDS {
-                words.push((word, meaning));
+                words.push((word, meaning, forms));
             }
         }
     }
@@ -871,13 +854,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn phrases_match_inflected_separable_and_placeholder_forms() {
+    fn phrases_match_inflected_and_notation_forms() {
         let toks = |t: &'static str| words_of(t).collect::<Vec<_>>();
         assert!(text_uses("She gave up smoking.", "give up"));
         assert!(text_uses("He is giving up.", "give up"));
-        assert!(text_uses("Please pick it up.", "pick up"));
-        assert!(text_uses("Pick the red box up now.", "pick up"));
-        assert!(!text_uses("Pick a very big red box up.", "pick up"));
+        // 拆开用的写法只认标注过的（D47），不靠规则猜
+        assert!(!text_uses("Please pick it up.", "pick up"));
         assert!(text_uses("They made a decision.", "make a decision"));
         assert!(text_uses(
             "I take care of my little sister.",
@@ -890,7 +872,7 @@ mod tests {
             phrase_spans(&toks("look after it and look after him"), "look after"),
             vec![(0, 2), (4, 6)]
         );
-        assert!(text_uses_any_form("We gave up.", "give up"));
+        assert!(text_uses("We gave up.", "give up"));
     }
     use crate::types::common::Id;
     use serde_json::json;
@@ -918,7 +900,7 @@ mod tests {
         assert_eq!(
             t.key_words
                 .iter()
-                .map(|(w, _)| w.as_str())
+                .map(|(w, _, _)| w.as_str())
                 .collect::<Vec<_>>(),
             ["run", "hungry"]
         );
@@ -938,6 +920,7 @@ mod tests {
             word: word.into(),
             required: false,
             meaning: None,
+            forms: Vec::new(),
         }
     }
 
@@ -980,14 +963,14 @@ mod tests {
             ("Passport", "passport"),
             ("bigger", "big"),
         ] {
-            assert!(inflection_matches(t, w), "{t} ~ {w}");
+            assert!(crate::lemma::is_form_of(t, w), "{t} ~ {w}");
         }
         for (t, w) in [
             ("cat", "car"),
             ("gates", "gatekeeper"),
             ("pass", "passport"),
         ] {
-            assert!(!inflection_matches(t, w), "{t} !~ {w}");
+            assert!(!crate::lemma::is_form_of(t, w), "{t} !~ {w}");
         }
     }
 
@@ -1295,5 +1278,27 @@ mod tests {
         assert!(text_uses("It is a well-known fact.", "a well-known fact"));
         assert!(text_uses("She made a decision.", "make a decision"));
         assert!(!text_uses("It is known.", "well-known"));
+    }
+
+    #[test]
+    fn passage_phrases_use_annotated_forms() {
+        let required = vec![PassageTargetWord {
+            word_id: None,
+            word: "pick up".into(),
+            required: true,
+            meaning: None,
+            forms: Vec::new(),
+        }];
+        let sentences = json!([
+            {"en": "Tom saw a little red ball on the floor of the big kitchen.", "zh": "汤姆看到厨房地上有个小红球。"},
+            {"en": "He picked it up and put it in the box near the door.", "zh": "他把它捡起来放进门边的盒子里。"},
+            {"en": "Then his mother smiled and gave him a cookie for helping.", "zh": "妈妈笑了，给了他一块饼干。"}
+        ]);
+        let without = json!({"title": "The Ball", "sentences": sentences, "chosen_words": []});
+        assert!(passage_from_submission(&without, &required, &[], 0).is_err());
+        let with = json!({"title": "The Ball", "sentences": sentences, "chosen_words": [],
+            "phrase_uses": [{"phrase": "pick up", "text": "picked it up"}, {"phrase": "pick up", "text": "put it down"}]});
+        let p = passage_from_submission(&with, &required, &[], 0).unwrap();
+        assert_eq!(p.target_words[0].forms, vec!["picked it up".to_string()]);
     }
 }

@@ -316,6 +316,7 @@ impl PassageService {
                         word: word.clone(),
                         required: true,
                         meaning: None,
+                        forms: Vec::new(),
                     });
                     books.extend(*book);
                 }
@@ -342,6 +343,7 @@ impl PassageService {
                         .get(&word.to_lowercase())
                         .map(|m| m.trim().to_string())
                         .filter(|m| !m.is_empty()),
+                    forms: Vec::new(),
                 });
             }
         }
@@ -359,6 +361,7 @@ impl PassageService {
                     word: c.word,
                     required: false,
                     meaning: None,
+                    forms: Vec::new(),
                 })
                 .collect()
         } else {
@@ -549,6 +552,7 @@ impl PassageService {
                     word,
                     required: w.required,
                     meaning: w.meaning.clone().filter(|m| !m.trim().is_empty()),
+                    forms: Vec::new(),
                 });
             }
         }
@@ -1207,6 +1211,7 @@ pub(crate) mod tests {
             word: w.into(),
             required,
             meaning: None,
+            forms: Vec::new(),
         };
         let generated = GeneratedPassage {
             title: "At the Airport".into(),
@@ -1663,6 +1668,7 @@ pub(crate) mod tests {
             word: word.into(),
             required,
             meaning: None,
+            forms: Vec::new(),
         };
         let item = crate::types::passage::PassagePlanItem {
             title: "At the Airport".into(),

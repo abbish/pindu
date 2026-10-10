@@ -3,6 +3,7 @@
  * 片段按开始时间排序、互不重叠；片段之间可以有空隙（不要的部分）。时间单位都是毫秒。
  */
 import type { Cue, VideoPlan, VideoSegment } from '../../types/video';
+import { targetSpans, tokenize, type TargetForms } from '../../utils/passage';
 
 /** 片段最短 */
 export const MIN_SEGMENT_MS = 1000;
@@ -72,6 +73,7 @@ export function mergeWithNext(plan: VideoPlan, id: string): VideoPlan {
     endMs: b.endMs,
     focus: [a.focus, b.focus].filter(Boolean).join('；'),
     keyWords: [...new Set([...a.keyWords, ...b.keyWords])],
+    keyWordForms: { ...b.keyWordForms, ...a.keyWordForms },
     tags: [...new Set([...(a.tags ?? []), ...(b.tags ?? [])])],
   };
   return { ...plan, segments: [...segments.slice(0, i), merged, ...segments.slice(i + 2)] };
@@ -243,27 +245,25 @@ export function nearestCue(cues: Cue[], t: number): Cue | undefined {
   return best;
 }
 
-/** 重点词的常见变形（复数、过去式、-ing），用来在句子里标出 */
-function wordForms(word: string): string[] {
-  const w = word.toLowerCase();
-  const stem = w.endsWith('e') ? w.slice(0, -1) : w.endsWith('y') ? w.slice(0, -1) + 'i' : w;
-  return [w, `${w}s`, `${w}es`, `${w}d`, `${w}ed`, `${stem}ed`, `${stem}es`, `${w}ing`, `${w.endsWith('e') ? w.slice(0, -1) : w}ing`];
-}
-
-/** 把句子按重点词切开（忽略大小写，整词匹配，短语按原样匹配） */
-export function splitByKeyWords(text: string, keyWords: string[]): { text: string; key: boolean }[] {
-  const forms = [...new Set(keyWords.filter((k) => k.trim()).flatMap((k) => (k.includes(' ') ? [k.toLowerCase()] : wordForms(k.trim()))))]
-    .sort((a, b) => b.length - a.length)
-    .map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  if (forms.length === 0) return [{ text, key: false }];
-  const re = new RegExp(`\\b(${forms.join('|')})\\b`, 'gi');
+/** 把句子按重点词切开：单词按词形库认各种形式，词组按标注的写法或连着出现（与原文高亮同一规则，D47） */
+export function splitByKeyWords(text: string, keyWords: string[], forms: TargetForms = {}): { text: string; key: boolean }[] {
+  const tokens = tokenize(text);
+  const spans = targetSpans(tokens, keyWords.filter((k) => k.trim()), forms);
   const parts: { text: string; key: boolean }[] = [];
-  let last = 0;
-  for (const m of text.matchAll(re)) {
-    if (m.index > last) parts.push({ text: text.slice(last, m.index), key: false });
-    parts.push({ text: m[0], key: true });
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) parts.push({ text: text.slice(last), key: false });
+  const push = (t: string, key: boolean) => {
+    const last = parts[parts.length - 1];
+    if (last && last.key === key) last.text += t;
+    else parts.push({ text: t, key });
+  };
+  tokens.forEach((t, i) => {
+    if (t.kind === 'word') return push(t.text, spans.has(t.index));
+    // 空格、标点：夹在同一个词组片段中间时一起标出（gave up 中间的空格）
+    const prev = tokens.slice(0, i).reverse().find((x) => x.kind === 'word');
+    const next = tokens.slice(i + 1).find((x) => x.kind === 'word');
+    const a = prev?.kind === 'word' ? spans.get(prev.index) : undefined;
+    const b = next?.kind === 'word' ? spans.get(next.index) : undefined;
+    const inside = a !== undefined && b !== undefined && a.start === b.start && a.target === b.target;
+    push(t.text, inside);
+  });
   return parts;
 }

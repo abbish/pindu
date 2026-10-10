@@ -23,8 +23,8 @@ export interface SentenceAnalysisPanelProps {
   onIndexChange: (index: number) => void;
   /** 这篇的目标词（已是目标词的词组不再显示「加入目标词」） */
   targets: string[];
-  /** 把词组加成这篇的目标词；不传则不显示按钮 */
-  onAddTarget?: (word: string) => void;
+  /** 把词组加成这篇的目标词（form：它在原句里的写法）；不传则不显示按钮 */
+  onAddTarget?: (word: string, form?: string) => void;
   onClose: () => void;
 }
 
@@ -178,7 +178,7 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 const AnalysisView: React.FC<{
   analysis: SentenceAnalysis;
   isTarget: (word: string) => boolean;
-  onAddTarget?: (word: string) => void;
+  onAddTarget?: (word: string, form?: string) => void;
   onRefresh: () => void;
   refreshing: boolean;
 }> = ({ analysis: a, isTarget, onAddTarget, onRefresh, refreshing }) => (
@@ -245,7 +245,7 @@ const AnalysisView: React.FC<{
                 <Badge variant="secondary">目标词</Badge>
               ) : (
                 onAddTarget && (
-                  <Button variant="outline" size="sm" className="h-7" onClick={() => onAddTarget(p.base)}>
+                  <Button variant="outline" size="sm" className="h-7" onClick={() => onAddTarget(p.base, p.text)}>
                     <Plus />
                     加入目标词
                   </Button>

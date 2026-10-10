@@ -103,7 +103,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
     return () => window.removeEventListener('keydown', onKey);
   }, [words.length]);
 
-  const sentences = useMemo(() => (current ? passage.sentences.filter((s) => textUses(s.en, current.word)) : []), [passage.sentences, current]);
+  const sentences = useMemo(() => (current ? passage.sentences.filter((s) => textUses(s.en, current.word, current.forms)) : []), [passage.sentences, current]);
 
   if (words.length === 0) return <p className="py-10 text-center text-sm text-muted-foreground">这篇短文没有目标词</p>;
 
@@ -180,7 +180,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
             <StudySection title="本文中">
               <div className="flex flex-col gap-1.5">
                 {sentences.map((s, i) => (
-                  <StudySentence key={i} en={s.en} zh={s.zh} word={current.word} onPlay={() => audio.playText(s.en, undefined, { style: 'sentence' }).catch(() => {})} />
+                  <StudySentence key={i} en={s.en} zh={s.zh} word={current.word} forms={current.forms} onPlay={() => audio.playText(s.en, undefined, { style: 'sentence' }).catch(() => {})} />
                 ))}
               </div>
             </StudySection>

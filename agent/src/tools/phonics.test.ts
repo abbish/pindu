@@ -73,13 +73,15 @@ test('词组：不要求音节与拼读规则，要求词组类型；例句里�
     { sentence: 'Never give up on your dream.', translation: '永远不要放弃梦想。' },
     { sentence: 'She gave up chocolate.', translation: '她戒了巧克力。' },
     { sentence: 'He is giving up his seat.', translation: '他正在让座。' },
-    { sentence: 'They gave it up last year.', translation: '他们去年放弃了。' },
+    { sentence: 'They gave it up last year.', translation: '他们去年放弃了。', uses: 'gave it up' },
     { sentence: 'Do not give up so soon.', translation: '别这么快放弃。' },
   ];
   const phrase = entry({ word: 'give up', syllables: '', phonics_rule: '', ipa: '/ɡɪv ʌp/', phrase_type: 'phrasal_verb', separable: true, examples: phraseExamples });
   assert.deepEqual(validatePhonics([phrase]), []);
   assert.ok(validatePhonics([{ ...phrase, phrase_type: undefined }]).some((p) => p.includes('phrase_type')));
-  assert.ok(sentenceContainsWord('They gave it up.', 'give up'));
+  // 拆开用的写法要在 uses 里标注
+  assert.ok(!sentenceContainsWord('They gave it up.', 'give up'));
+  assert.ok(sentenceContainsWord('They gave it up.', 'give up', 'gave it up'));
   assert.ok(sentenceContainsWord('I take care of my cat.', 'take care of sb'));
   assert.ok(!sentenceContainsWord('Give me the cup.', 'give up'));
 });

@@ -149,6 +149,7 @@ impl PassageImportService {
                         word: c.word,
                         required: true,
                         meaning: Some(c.meaning).filter(|m| !m.trim().is_empty()),
+                        forms: Vec::new(),
                     });
                     matched += 1;
                 }
@@ -195,10 +196,10 @@ impl PassageImportService {
         let key_texts: Vec<String> = translation
             .key_words
             .iter()
-            .map(|(w, _)| w.clone())
+            .map(|(w, _, _)| w.clone())
             .collect();
         let known = self.repository.word_ids_by_text(&key_texts).await?;
-        for (word, meaning) in &translation.key_words {
+        for (word, meaning, forms) in &translation.key_words {
             if targets.iter().any(|t| t.word.eq_ignore_ascii_case(word)) {
                 continue;
             }
@@ -207,6 +208,7 @@ impl PassageImportService {
                 word: word.clone(),
                 required: false,
                 meaning: Some(meaning.clone()).filter(|m| !m.trim().is_empty()),
+                forms: forms.clone(),
             });
         }
 

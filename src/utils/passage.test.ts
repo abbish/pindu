@@ -57,8 +57,9 @@ test('逐词高亮按播放时间定位，停顿里保持上一个词，词数�
 test('词组：变形、可拆开、占位词，与后端同规则', () => {
   const words = (s: string) => tokenize(s).flatMap((t) => (t.kind === 'word' ? [t.text] : []));
   assert.ok(textUses('She gave up smoking.', 'give up'));
-  assert.ok(textUses('Please pick it up.', 'pick up'));
-  assert.ok(!textUses('Pick a very big red box up.', 'pick up'));
+  // 拆开用的写法只认标注过的（D47）
+  assert.ok(!textUses('Please pick it up.', 'pick up'));
+  assert.ok(textUses('Please pick it up.', 'pick up', ['pick it up']));
   assert.ok(textUses('They made a decision.', 'make a decision'));
   assert.ok(textUses('I take care of my little sister.', 'take care of sb'));
   assert.ok(!textUses('The ice broke.', 'break the ice'));
@@ -77,6 +78,11 @@ test('挖空：单词逐个挖，连着出现的词组整体挖，拆开用的�
   const blanks = (s: string, t: string[]) => recallBlanks(s, t).flatMap((p) => (p.kind === 'blank' ? [p.answer] : []));
   assert.deepEqual(blanks('She gave up her toys.', ['give up', 'toy']), ['gave up', 'toys']);
   assert.deepEqual(blanks('Please pick it up.', ['pick up']), []);
+  // 标注了拆开的写法：整段挖空
+  assert.deepEqual(
+    recallBlanks('Please pick it up.', ['pick up'], { 'pick up': ['pick it up'] }).flatMap((p) => (p.kind === 'blank' ? [p.answer] : [])),
+    ['pick it up']
+  );
   assert.equal(recallBlanks('She gave up.', ['give up']).map((p) => (p.kind === 'text' ? p.text : '_')).join(''), 'She _.');
 });
 

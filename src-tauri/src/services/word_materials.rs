@@ -225,6 +225,7 @@ mod tests {
                     word: w.to_string(),
                     required: false,
                     meaning: None,
+                    forms: Vec::new(),
                 })
                 .collect(),
         }

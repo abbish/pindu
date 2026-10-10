@@ -106,6 +106,9 @@ pub struct VideoSegment {
     pub focus: String,
     #[serde(default)]
     pub key_words: Vec<String>,
+    /// 重点词里的词组在字幕里的写法（小写词组 → 写法，AI 规划时标注，D47）；切分时存进短文目标词
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub key_word_forms: std::collections::HashMap<String, Vec<String>>,
     /// 标签名（素材共用标签，切分时写进切片短文的标签）
     #[serde(default)]
     pub tags: Vec<String>,

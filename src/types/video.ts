@@ -57,6 +57,8 @@ export interface VideoSegment {
   /** 学习重点 */
   focus: string;
   keyWords: string[];
+  /** 重点词里的词组在字幕里的写法（小写词组 → 写法，AI 规划时标注） */
+  keyWordForms?: Record<string, string[]>;
   /** 标签名（切分时写进切片的标签） */
   tags?: string[];
 }

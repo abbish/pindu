@@ -121,7 +121,7 @@ pub fn analysis_from_submission(
         .take(MAX_GRAMMAR)
         .collect();
 
-    // 词组：原形是合法的多词词组，且原句里用到了它（可变形、可拆开）
+    // 词组：原形是合法的多词词组，且原句里用到了它（可变形；拆开用的按 AI 给的原句写法核对，D47）
     let mut phrases: Vec<SentencePhrase> = Vec::new();
     for p in list(details, "phrases") {
         let base = crate::types::wordbook::normalize_vocab(&text(&p, "base")).to_lowercase();
@@ -129,7 +129,15 @@ pub fn analysis_from_submission(
         if meaning.is_empty()
             || !passage_rules::is_phrase(&base)
             || !passage_rules::valid_vocab(&base)
-            || !passage_rules::text_uses(sentence, &base)
+            || !passage_rules::text_uses_forms(
+                sentence,
+                &base,
+                &passage_rules::annotated_forms(
+                    &[serde_json::json!({ "phrase": base, "text": t })],
+                    sentence,
+                    &base,
+                ),
+            )
             || phrases.iter().any(|x| x.base == base)
         {
             continue;

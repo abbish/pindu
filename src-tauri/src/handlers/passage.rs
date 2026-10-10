@@ -408,13 +408,16 @@ pub async fn add_passage_target_word(
     app: AppHandle,
     passage_id: i64,
     word: String,
+    form: Option<String>,
 ) -> AppResult<crate::types::passage::Passage> {
     let logger = app.state::<Logger>();
     logger.api_request(
         "add_passage_target_word",
         Some(&format!("passage {passage_id} word {word}")),
     );
-    let result = word_cards(&app).add_target_word(passage_id, &word).await;
+    let result = word_cards(&app)
+        .add_target_word(passage_id, &word, form.as_deref())
+        .await;
     finish(&logger, "add_passage_target_word", result)
 }
 

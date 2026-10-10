@@ -118,8 +118,14 @@ impl WordCardService {
     }
 
     /// 读原文时把一个词加成目标词（指定单词）：必须是英文单词、正文里出现过（含变形）、还不是目标词；
-    /// 词汇本里有的关联 wordId。返回更新后的短文
-    pub async fn add_target_word(&self, passage_id: Id, word: &str) -> AppResult<Passage> {
+    /// 词汇本里有的关联 wordId。`form`：词组在原文里的写法（句子分析里给出的，如 picked it up）；
+    /// 不传时选中的文字本身就是写法。返回更新后的短文
+    pub async fn add_target_word(
+        &self,
+        passage_id: Id,
+        word: &str,
+        form: Option<&str>,
+    ) -> AppResult<Passage> {
         let normalized = crate::types::wordbook::normalize_vocab(
             word.trim_matches(|c: char| !c.is_ascii_alphabetic()),
         );
@@ -134,7 +140,17 @@ impl WordCardService {
             .map(|s| s.en.as_str())
             .collect::<Vec<_>>()
             .join(" ");
-        if !passage_rules::text_uses_any_form(&text, word) {
+        // 词组的写法：给了就核对（和词组对得上、原样在文中），没给就是选中的文字本身
+        let forms: Vec<String> = match form {
+            Some(f) if passage_rules::is_phrase(word) => passage_rules::annotated_forms(
+                &[serde_json::json!({ "phrase": word, "text": f })],
+                &text,
+                word,
+            ),
+            _ if passage_rules::is_phrase(word) => vec![word.to_string()],
+            _ => Vec::new(),
+        };
+        if !passage_rules::text_uses_forms(&text, word, &forms) {
             return Err(AppError::ValidationError(format!(
                 "「{word}」不在这篇短文里"
             )));
@@ -175,6 +191,7 @@ impl WordCardService {
             word: stored,
             required: true,
             meaning: None,
+            forms,
         });
         repository
             .update_target_words(passage_id, &passage.target_words)
@@ -316,15 +333,24 @@ mod tests {
         .unwrap();
         tx.commit().await.unwrap();
         let service = WordCardService::new(pool.clone(), test_logger());
-        assert!(service.add_target_word(id, "two words").await.is_err());
-        assert!(service.add_target_word(id, "volcano").await.is_err());
-        let passage = service.add_target_word(id, " fossils, ").await.unwrap();
+        assert!(service
+            .add_target_word(id, "two words", None)
+            .await
+            .is_err());
+        assert!(service.add_target_word(id, "volcano", None).await.is_err());
+        let passage = service
+            .add_target_word(id, " fossils, ", None)
+            .await
+            .unwrap();
         let added = passage.target_words.last().unwrap();
         assert_eq!(added.word, "fossils");
         assert!(added.required && added.word_id.is_none());
-        assert!(service.add_target_word(id, "Fossils").await.is_err());
+        assert!(service.add_target_word(id, "Fossils", None).await.is_err());
         // 专有名词保留大写
-        let passage = service.add_target_word(id, "tyrannosaurus").await.unwrap();
+        let passage = service
+            .add_target_word(id, "tyrannosaurus", None)
+            .await
+            .unwrap();
         assert_eq!(passage.target_words.last().unwrap().word, "Tyrannosaurus");
 
         let (_, missing) = service.missing(id).await.unwrap();
@@ -339,8 +365,14 @@ mod tests {
             vec!["Tyrannosaurus"]
         );
         // 词组：正文里出现（可变形）就能加，与单词不互相判重
-        let passage = service.add_target_word(id, "study  fossil").await.unwrap();
+        let passage = service
+            .add_target_word(id, "study  fossil", None)
+            .await
+            .unwrap();
         assert_eq!(passage.target_words.last().unwrap().word, "study fossil");
-        assert!(service.add_target_word(id, "study fossil").await.is_err());
+        assert!(service
+            .add_target_word(id, "study fossil", None)
+            .await
+            .is_err());
     }
 }

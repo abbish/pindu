@@ -17,6 +17,15 @@ const VideoPlanParams = Type.Object({
       level: Type.String({ description: "CEFR level: a1, a2, b1, b2 or c1" }),
       focus: Type.String({ description: "one Chinese sentence: what this segment is good for learning" }),
       key_words: Type.Array(Type.String(), { description: "3-8 key words or phrases that appear in this segment's subtitles, base form" }),
+      phrase_uses: Type.Optional(
+        Type.Array(
+          Type.Object({
+            phrase: Type.String({ description: "a phrase from key_words, as listed there" }),
+            text: Type.String({ description: "how it is written in the subtitles, copied exactly (e.g. picked it up)" }),
+          }),
+          { description: "for every phrase in key_words, how it is written in this segment's subtitles" },
+        ),
+      ),
       tags: Type.Array(Type.String(), { description: "1-3 reusable Chinese tags (scene type, communicative function or language point), each at most 10 characters; pick from the existing tags listed in the user message first; create a new tag only when none fits, and never a synonym or a broader/narrower variant of an existing one (existing 旅行 → use 旅行, not 出国旅行)" }),
     }),
     { description: "segments in order, not overlapping; empty only when nothing in the given subtitles suits the learner" },

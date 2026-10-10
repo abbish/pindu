@@ -32,6 +32,10 @@ pub struct PassageTargetWord {
     /// 中文释义（导入材料时 AI 挑的重点词带上；其余为空）
     #[serde(default)]
     pub meaning: Option<String>,
+    /// 词组在原文里的实际写法（picked it up）：AI 写短文 / 导入 / 视频规划时标注，或读原文时划选的原文；
+    /// 高亮、挖空按它定位（D47）。单词与没有标注的为空
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forms: Vec<String>,
 }
 
 /// 短文的来源（创建时的快照）。kind：book 词汇本 / plan 学习计划
