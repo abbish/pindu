@@ -39,7 +39,7 @@ export const AiTeacherPanel: React.FC<AiTeacherPanelProps> = ({ word, wordId, on
           <X />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 p-4">
+      <div className="min-h-0 flex-1 pt-4 pb-4">
         <WordExplanationView key={wordId} wordId={wordId} word={word} active fill />
       </div>
     </Card>,

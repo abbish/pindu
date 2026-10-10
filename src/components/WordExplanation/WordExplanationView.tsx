@@ -214,7 +214,8 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
 
   return (
     <div className={cn('flex flex-col gap-3', fill && 'h-full min-h-0')}>
-      <div className={cn('flex min-h-40 flex-col gap-3 overflow-y-auto pr-1', fill ? 'min-h-0 flex-1' : 'max-h-[56vh]')} ref={bodyRef}>
+      {/* 面板里滚动区域占满宽度、内容两侧留白：滚动条落在留白里，不压在消息上 */}
+      <div className={cn('flex min-h-40 flex-col gap-3 overflow-y-auto', fill ? 'min-h-0 flex-1 px-4' : 'max-h-[56vh] pr-2')} ref={bodyRef}>
         {/* 老师先打个招呼，等学生提问；「讲讲这个词」的讲解按提出的位置插在对话里 */}
         {teacher(`我们来聊聊 **${word}**。想从哪里开始？`, 'greeting')}
         {thread()}
@@ -222,7 +223,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
       </div>
 
       {/* 推荐追问与提问 */}
-      <div className="space-y-2">
+      <div className={cn('space-y-2', fill && 'px-4')}>
         {chat.pendingText === null && state.status !== 'generating' && suggestions.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {suggestions.map((sug) => (
