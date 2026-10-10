@@ -58,8 +58,8 @@ const TUTOR_STYLES: Option[] = [
 ];
 /** 可以写补充要求的任务（key 与后端 PromptTask 一致） */
 const CUSTOM_TASKS: Option[] = [
-  { value: 'explain', label: 'AI 讲解' },
-  { value: 'tutor', label: 'AI 老师答疑' },
+  { value: 'explain', label: 'AI 老师 · 讲解单词' },
+  { value: 'tutor', label: 'AI 老师 · 回答提问' },
   { value: 'examples', label: '例句补充' },
   { value: 'phonics', label: '拼读分析' },
   { value: 'extract', label: '提取单词' },
@@ -235,16 +235,13 @@ export const PromptProfileSettings: React.FC = () => {
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title="AI 讲解">
+      <SettingsSection title="AI 老师">
         <SettingsRow label="讲解详略">
           <OptionSelect label="讲解详略" value={profile.explainLength} options={LENGTHS} disabled={saving} onChange={(v) => save({ explainLength: v })} />
         </SettingsRow>
         <SettingsRow label="记忆方法">
           <OptionSelect label="记忆方法" value={profile.memoryMethod} options={MEMORY_METHODS} disabled={saving} onChange={(v) => save({ memoryMethod: v })} />
         </SettingsRow>
-      </SettingsSection>
-
-      <SettingsSection title="AI 老师">
         <SettingsRow label="称呼">
           <Input
             value={tutorNameDraft}

@@ -38,7 +38,7 @@ export interface WordSidePanelProps {
 /** 各例句显示方式下给学生的说明 */
 const TABS: { key: WordSideTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'examples', label: '例句', icon: Quote },
-  { key: 'explanation', label: 'AI 讲解', icon: GraduationCap },
+  { key: 'explanation', label: 'AI 老师', icon: GraduationCap },
   { key: 'scenes', label: '场景', icon: Clapperboard },
 ];
 
@@ -117,7 +117,7 @@ export const WordSidePanel: React.FC<WordSidePanelProps> = ({
       {tab !== 'examples' && explanationLocked && (
         <div role="tabpanel" className="flex flex-col items-center gap-2 py-10 text-center">
           <Lock className="size-6 text-muted-foreground" />
-          <p className="font-medium">写完这一题再看{tab === 'scenes' ? '场景' : '讲解'}</p>
+          <p className="font-medium">{tab === 'scenes' ? '写完这一题再看场景' : '写完这一题再问 AI 老师'}</p>
         </div>
       )}
     </Card>

@@ -177,7 +177,7 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
             </TabsTrigger>
             <TabsTrigger value="explanation">
               <GraduationCap />
-              AI 讲解
+              AI 老师
             </TabsTrigger>
             <TabsTrigger value="materials">
               <Clapperboard />
@@ -196,7 +196,7 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
             )}
           </TabsContent>
           <TabsContent value="explanation">
-            <WordExplanationView wordId={aiWordId} active autoGenerate={false} />
+            <WordExplanationView wordId={aiWordId} active autoGenerate />
           </TabsContent>
           <TabsContent value="materials" className="max-h-[60vh] overflow-y-auto">
             <WordMaterialsList word={display} wordId={wordId} onOpenPassage={onOpenPassage} />
