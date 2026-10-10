@@ -199,6 +199,6 @@ docs/           设计文档、发布流程、日志与命名规范、README 截
    ```
 
 5. 修改架构、命令或目录时，同步更新 `CLAUDE.md` 的对应章节。
-6. 用户可感知的改动（新功能、行为变化、问题修复），在 `docs/releases/UNRELEASED.md` 中添加一条说明，发布时将汇总为该版本的更新说明。
+6. 用户可感知的改动（新功能、行为变化、问题修复），在 `docs/releases/UNRELEASED.md` 中添加一条说明，发布时将汇总为该版本的更新说明。说明面向普通用户：写用户能感知的变化，不写文件路径、组件名、实现机制等技术细节（规约见 `.claude/skills/sdd-work/references/user-facing-writing.md`）。
 
 提交即表示你同意以 [MIT 许可证](./LICENSE) 发布你的贡献。

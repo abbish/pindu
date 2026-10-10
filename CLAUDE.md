@@ -285,6 +285,9 @@ export const fooService = new FooService();
 - “今天”按本机本地日期：后端只经 `time::local_today()`（一次请求取一次），前端 `useToday()` / `localToday()`；禁止截取 UTC 字符串当日期、禁止 `new Date('YYYY-MM-DD')`。
 - 前端解析与展示只经 `src/utils/datetime.ts`（ESLint 强制）；后端取时只经 `src-tauri/src/time.rs`（`scripts/check-time.py` 棘轮，基线 `.time-baseline.json`），写入时刻显式绑定（INSERT 列出全部时刻列，不依赖旧格式的列 DEFAULT）；写入路径的测试末尾调用 `time::assert_instants_canonical`。
 
+### 7.6 面向用户的内容
+用户是学英语的普通人，不是计算机从业者。界面文案、提示与报错、更新说明（`docs/releases/`，同时显示在应用「更新内容」里）、用户文档（README 的功能 / 安装 / 隐私部分、INSTALL.md）只写用户能感知的变化和要做的事，不写路径、数据库、签名、组件与依赖名、内部流程、构建与测试过程；唯一例外是用户必须亲自操作的步骤。规约 owner：`.claude/skills/sdd-work/references/user-facing-writing.md`（界面细则另见 `ui-interaction-patterns.md` §6–7）。
+
 ## 8. 已知债务 / 注意事项
 
 

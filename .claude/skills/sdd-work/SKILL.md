@@ -13,6 +13,7 @@ description: "统一开发入口：用户要端到端推进 RedLark 的新功能
 - 需要跨批次或跨会话恢复时，读 `../harness-context-memory/references/work-item-contract.md`。
 - 工作触达 `src-tauri/src/prompts/*.md`、AI 输出解析或分析进度时，同时读 `../deliver-ai-prompt/SKILL.md`。
 - 工作触达表结构时，先看 `../deliver-backend-rust/references/sqlx-migration-standards.md` 的“Plan”节判断迁移批次形状。
+- 工作要写用户会看到的内容（界面文案、更新说明、用户文档）时，读 `references/user-facing-writing.md`：用户是普通学习者，只写他能感知的变化和要做的事，不写技术细节。
 
 ## 输入
 
@@ -53,7 +54,7 @@ description: "统一开发入口：用户要端到端推进 RedLark 的新功能
 
 每个改动在 Shape 时就判断它对发布的影响，到收口时兑现，这样发版时不用再翻提交历史：
 
-- **用户可见**（新功能、行为变化、修复用户碰到的问题）：验收通过后，在 `docs/releases/UNRELEASED.md` 加一行，写用户能看懂的话（不写内部实现）；发版时它就是这一版的更新说明。纯重构、测试、文档、开发工具类改动不记。
+- **用户可见**（新功能、行为变化、修复用户碰到的问题）：验收通过后，在 `docs/releases/UNRELEASED.md` 加一行，按 `references/user-facing-writing.md` 写普通用户能看懂的话（不写路径、组件、机制等技术细节）；发版时它就是这一版的更新说明。纯重构、测试、文档、开发工具类改动不记。
 - **数据**：要加迁移的，遵守 `CLAUDE.md` §7.1（只增、登记 `migrations.lock`、能在上一版的真实数据上升级）；不能为了省事改已发布的迁移。
 - **升级与更新链路**：触达 identifier、数据目录、启动升级、更新配置或打包发版的，验收必须走 `../sdd-verify/references/release-and-update-verification.md`。
 - **提交与 CI**：按批次提交到 `main`（作者与署名遵循仓库约定），推送后看 CI（`gh run list --branch main`）；CI 不绿就算没完成。

@@ -30,7 +30,7 @@ disable-model-invocation: true
    - `python3 scripts/check-release-invariants.py` 通过：identifier、库文件名、更新公钥与地址不变，迁移只增且都已登记。
    - `git diff <上个标签>..HEAD --stat src-tauri/migrations/` 只有新增；有新增时，`startup::tests` 的升级用例通过，并用上一版的真实库副本启动一次（`PINDU_DATA_DIR` 指向副本），确认先备份再升级、数据都在。
    - 改动涉及更新或发版链路时，已按 `release-and-update-verification.md` 实测并留了证据。
-3. **定稿发布说明**：把 `docs/releases/UNRELEASED.md` 的内容整理成 `docs/releases/vX.Y.Z.md`，用作者口吻、面向用户写（改了什么、有什么要注意），然后清空 UNRELEASED.md，只留标题。这份说明会出现在 Release 页面和应用的「更新内容」弹窗里。
+3. **定稿发布说明**：把 `docs/releases/UNRELEASED.md` 的内容整理成 `docs/releases/vX.Y.Z.md`，用作者口吻、面向普通用户写（改了什么、有什么要注意），措辞按 `../sdd-work/references/user-facing-writing.md`：不写路径、数据库、签名、组件名、构建与测试过程，发布前逐条自查；然后清空 UNRELEASED.md，只留标题。这份说明会出现在 Release 页面和应用的「更新内容」弹窗里。
 4. **改版本号并提交**：`npm version X.Y.Z --no-git-tag-version`（同时改 `package.json` 和 `package-lock.json`；`tauri.conf.json` 引用 `package.json`，`Cargo.toml` 的版本不影响应用），提交 `release: vX.Y.Z` 并推送 `main`，等这次推送的 CI 变绿。
 5. **打标签**（问用户确认后再执行）：`git tag -a vX.Y.Z -m "拼读 vX.Y.Z" && git push origin vX.Y.Z`。构建会在三个系统上各跑一次，大约 15–20 分钟，用后台任务等结果，不要轮询。
 6. **检查 Release 草稿**：
@@ -53,7 +53,7 @@ disable-model-invocation: true
 - 不在发布流程里顺手改功能或修 bug；发现问题就停下回 `sdd-work`，修好后从第 2 步重来。
 - 打标签、公开发布前都先问用户；删除或挪动已推送的标签由用户亲自执行。
 - 私钥只存在于 GitHub Secrets 和维护者的离线备份里：不读取、不打印、不复制私钥文件内容。
-- 某个平台没有实际运行验证过时，在交付物和发布说明里写明「未验证」，不笼统说「全平台可用」。
+- 某个平台没有实际运行验证过时，交付物里写明「未验证」；发布说明里用用户的话提醒（如「Windows 和 Linux 版本这次测试得较少，遇到问题欢迎反馈」），不写「构建通过」「未实际运行验证」这类工程说法，也不笼统说「全平台可用」。
 - 提交作者和署名遵循仓库约定（见 `CLAUDE.md` 与记忆中的提交规则）。
 
 ## 输出形态
