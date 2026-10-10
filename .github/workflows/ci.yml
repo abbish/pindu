@@ -20,16 +20,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: |
             package-lock.json
             agent/package-lock.json
 
+      # 版本与组件见 rust-toolchain.toml（与本地一致）
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+        run: rustup toolchain install && rustc --version
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2

@@ -17,7 +17,7 @@
 | AI | 内置 agent harness：pi（`@earendil-works/pi-coding-agent`，RPC sidecar `redlark-agent`，bun 单文件） |
 | 数据库 | SQLite，文件 `<数据目录>/vocabulary.db`（数据目录见 §4.3），启动时先备份再跑 `src-tauri/migrations/` |
 | 外部服务 | OpenAI 兼容接口（AI 分析/规划；种子提供商 OpenRouter / MiniMax / 月之暗面 / DeepSeek，均可「同步模型」读取 `/models`）· 火山引擎豆包语音合成（TTS，V3 HTTP 单向流式，带 SHA256 音频缓存）· ffmpeg / ffprobe（视频库：转码、精确切分、波形与缩略图；最小 LGPL 版随应用分发（externalBin，`scripts/ffmpeg/` 从固定版本源码编译），查找顺序见 `media.rs`） |
-| 包管理 | npm（有 package-lock.json）+ Cargo |
+| 包管理 | npm（有 package-lock.json）+ Cargo；工具链版本本地与 CI 一致：Rust 见 `rust-toolchain.toml`，Node 见 `.nvmrc`，升级只改这两处 |
 
 **无路由库、无状态管理库**；UI 组件库唯一选择是 shadcn/ui（源码在 `src/components/ui/`，不引入其它 UI 库）。页面切换靠 `App.tsx` 里的 `currentPage` 字符串 + `pageParams`。
 

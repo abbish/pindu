@@ -16,7 +16,7 @@
 
 | 系统 | 需要安装 |
 |---|---|
-| 全部 | [Git](https://git-scm.com)、[Node.js](https://nodejs.org) 22.18 或更高（推荐 24 LTS）、[Rust](https://rustup.rs)（stable）、Python 3、bash |
+| 全部 | [Git](https://git-scm.com)、[Node.js](https://nodejs.org)（版本见 `.nvmrc`）、[rustup](https://rustup.rs)（Rust 版本见 `rust-toolchain.toml`，首次编译时自动安装）、Python 3、bash |
 | macOS | Xcode 命令行工具：`xcode-select --install` |
 | Windows | [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/)（勾选「使用 C++ 的桌面开发」）、WebView2（Windows 10/11 通常已自带）、Git Bash 或 WSL（用于运行 `npm run verify`） |
 | Linux | WebKitGTK 4.1 等系统库，见下文 |
@@ -25,9 +25,11 @@
 
 | 工具 | 用途 |
 |---|---|
-| Node.js 22.18+ | 前端与 agent 的测试使用 `node --test` 直接运行 `.ts` 文件，依赖 Node 内置的类型剥离 |
+| Node.js | 前端与 agent 的测试使用 `node --test` 直接运行 `.ts` 文件，依赖 Node 内置的类型剥离 |
 | Python 3 | `npm run verify` 中的 SQL、IPC 契约、类型同步等静态检查 |
 | bash | 运行 `npm run verify` |
+
+本地与 CI 使用同一套版本：Rust 由仓库根目录的 `rust-toolchain.toml` 指定，Node.js 由 `.nvmrc` 指定（可用 nvm / fnm 等自动切换），npm 依赖与 Bun 由 `package.json` 与锁文件固定。升级工具链时只改这些文件，CI 随之生效。
 
 内置 AI 助手由 [Bun](https://bun.sh) 编译为单个可执行文件。Bun 作为 npm 依赖自动下载，无需单独安装。
 

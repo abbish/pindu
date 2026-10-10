@@ -64,13 +64,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
           cache: npm
 
+      # 版本见 rust-toolchain.toml（与本地、CI 检查一致）；交叉编译目标加在这个版本上
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust-targets }}
+        shell: bash
+        run: |
+          rustup toolchain install
+          if [ -n "${{ matrix.rust-targets }}" ]; then rustup target add $(echo "${{ matrix.rust-targets }}" | tr ',' ' '); fi
+          rustc --version
 
       - name: Install Linux system libraries
         if: runner.os == 'Linux'
