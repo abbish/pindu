@@ -48,7 +48,8 @@ export const TagPicker: React.FC<TagPickerProps> = ({ tags, value, onChange, onC
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // modal：在弹窗（Dialog）里用时，第一次点外面就能关闭（非模态时会被弹窗的焦点锁拉回来，闪一下不关）
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <button
           id={id}

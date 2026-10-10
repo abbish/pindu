@@ -21,7 +21,8 @@ export interface WordBookIconPickerProps {
 export const WordBookIconPicker: React.FC<WordBookIconPickerProps> = ({ icon, color, onChange, className }) => {
   const current = normalizeBookColor(color);
   return (
-    <Popover>
+    // modal：在弹窗里用时第一次点外面就能关闭
+    <Popover modal>
       <PopoverTrigger asChild>
         <button
           type="button"
