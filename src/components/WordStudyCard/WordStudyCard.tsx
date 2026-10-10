@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Clapperboard, Quote, Snail, Volume2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote, Snail, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AiTeacherEntry, AiTeacherSheet } from '@/components/AiTeacher';
+import { AiTeacherPanel } from '@/components/AiTeacher';
 import { WordMaterialsList } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { parsePhonicsSegments } from '@/utils/phonics';
@@ -112,20 +113,23 @@ export interface WordStudyCardProps {
 }
 
 /**
- * 单词卡（单词本、短文与视频片段的目标词共用）：单词、音标与常速 / 慢速发音、词性与释义 → AI 老师入口（右侧对话面板）→
+ * 单词卡（单词本、短文与视频片段的目标词共用）：单词、音标、常速 / 慢速发音与 AI 老师（右侧与卡片等高的对话面板）、词性与释义 →
  * 拼读分段与规则 → 附加内容（如本文中的句子）→ 例句 / 其他素材 → 上一个 / 下一个。
  */
 export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loading, badge, actions, progress, children, aiWordId, wordId, onOpenPassage, nav }) => {
   const audio = useAudioPlayer();
   /** AI 老师的对话面板（换词时保持打开，老师跟着讲新的词） */
   const [teacherOpen, setTeacherOpen] = useState(false);
+  const teacherAvailable = aiWordId !== null && Boolean(info);
+  const showTeacher = teacherOpen && teacherAvailable;
   const speak = (text: string, style: 'word' | 'sentence', slow = false) => audio.playText(text, undefined, { style, speed: slow ? 'slow' : 'normal' }).catch(() => {});
   const display = info?.word ?? word;
   const segments = info?.segments ?? (info?.syllables ? [info.syllables] : undefined);
   const hasPhonics = Boolean(segments?.length || info?.phonicsRule || info?.explanation);
 
   return (
-    <Card className="gap-6 px-6 py-5">
+    <div className="flex items-stretch gap-4">
+    <Card className={cn('min-w-0 flex-1 gap-6 px-6 py-5', showTeacher && 'min-h-[480px]')}>
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-baseline gap-3">
@@ -146,11 +150,20 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
         <Button variant="outline" size="icon" aria-label="慢速发音" onClick={() => speak(display, 'word', true)}>
           <Snail />
         </Button>
+        {teacherAvailable && (
+          <Button
+            variant={showTeacher ? 'default' : 'outline'}
+            size="icon"
+            aria-label="AI 老师"
+            aria-pressed={showTeacher}
+            title="AI 老师"
+            onClick={() => setTeacherOpen((v) => !v)}
+          >
+            <GraduationCap />
+          </Button>
+        )}
         {actions}
       </header>
-
-      {aiWordId !== null && info && <AiTeacherEntry word={display} open={teacherOpen} onOpen={() => setTeacherOpen(true)} />}
-      {aiWordId !== null && info && <AiTeacherSheet open={teacherOpen} onOpenChange={setTeacherOpen} word={display} wordId={aiWordId} />}
 
       {progress}
       {loading ? (
@@ -218,5 +231,7 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
         </footer>
       )}
     </Card>
+    {showTeacher && aiWordId !== null && <AiTeacherPanel word={display} wordId={aiWordId} onClose={() => setTeacherOpen(false)} />}
+    </div>
   );
 };
