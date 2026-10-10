@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { CheckCircle2, CircleAlert, Loader2, Pencil, Play } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, CircleAlert, Loader2, Pencil } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +21,9 @@ import { ttsService, type TTSVoice, type TtsCacheStats, type TtsConfig, type Upd
 import { formatBytes } from '@/utils/fileSize';
 import { TtsConfigModal } from './TtsConfigModal';
 import { TtsStyleSection } from './TtsStyleSection';
+import { VoiceSelector } from '@/components/VoiceSelector';
+import { Input } from '@/components/ui/input';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 /** 试听文本：短句（含数字），按句子朗读的风格读，贴近练习与短文的实际用法 */
 const PREVIEW_TEXT = 'The elephant is a very large animal. It can eat 150 kilograms of food a day.';
@@ -34,13 +37,15 @@ export const TTSSettings: React.FC = () => {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [config, setConfig] = useState<TtsConfig | null>(null);
   const [voices, setVoices] = useState<TTSVoice[]>([]);
-  const [defaultVoice, setDefaultVoice] = useState<TTSVoice | null>(null);
   const [saving, setSaving] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
   const [cacheLoading, setCacheLoading] = useState(false);
   const [cacheStats, setCacheStats] = useState<TtsCacheStats | null>(null);
-  const [testingVoiceId, setTestingVoiceId] = useState<string | undefined>();
   const [showEdit, setShowEdit] = useState(false);
+  /** 音色筛选：全部 / 女声 / 男声 */
+  const [gender, setGender] = useState<'all' | 'female' | 'male'>('all');
+  /** 用其他音色 ID（不在预置列表里） */
+  const [customVoice, setCustomVoice] = useState('');
+  const [showCustomVoice, setShowCustomVoice] = useState(false);
 
   // 确认对话框状态
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -71,20 +76,47 @@ export const TTSSettings: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [configResult, voicesResult, defaultVoiceResult] = await Promise.all([
-      ttsService.getTtsConfig(),
-      ttsService.getTTSVoices(),
-      ttsService.getDefaultTTSVoice()
-    ]);
+    const [configResult, voicesResult] = await Promise.all([ttsService.getTtsConfig(), ttsService.getTTSVoices()]);
     if (configResult.success) setConfig(configResult.data);
     setLoadError(configResult.success ? null : configResult.error);
     setVoices(voicesResult.success ? voicesResult.data : []);
-    setDefaultVoice(defaultVoiceResult.success ? defaultVoiceResult.data : null);
     setLoading(false);
   };
 
-  const playAudio = (audioUrl: string) => {
-    new Audio(audioUrl).play().catch(() => toast.showError('无法播放试听', '音频没能开始播放，请再试一次'));
+  /**
+   * 试听：整页只有一个播放器。点新的试听先停掉正在播的；再点正在播的那个就停止。
+   * key = 'style'（朗读风格的试听）或音色 ID
+   */
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previewRun = useRef(0);
+  const [preview, setPreview] = useState<{ key: string; state: 'loading' | 'playing' } | null>(null);
+  const stopPreview = () => {
+    previewRun.current += 1;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setPreview(null);
+  };
+  useEffect(() => () => stopPreview(), []);
+  const togglePreview = async (key: string, text: string, voiceId?: string) => {
+    if (preview?.key === key) return stopPreview();
+    stopPreview();
+    const run = previewRun.current;
+    setPreview({ key, state: 'loading' });
+    const result = await ttsService.textToSpeech({ text, voiceId, style: 'sentence', useCache: false });
+    if (run !== previewRun.current) return;
+    if (!result.success) {
+      setPreview(null);
+      return toast.showError('无法试听', result.error);
+    }
+    const audio = new Audio(result.data.audioUrl);
+    audioRef.current = audio;
+    audio.onended = () => run === previewRun.current && setPreview(null);
+    setPreview({ key, state: 'playing' });
+    audio.play().catch(() => {
+      if (run !== previewRun.current) return;
+      setPreview(null);
+      toast.showError('无法播放试听', '音频没能开始播放，请再试一次');
+    });
   };
 
   const handleSave = async (request: UpdateTtsConfigRequest) => {
@@ -105,29 +137,20 @@ export const TTSSettings: React.FC = () => {
     await loadData();
   };
 
-  // 用当前保存的配置试听默认音色（不走缓存，确保反映最新配置）
-  const handlePreview = async () => {
-    setPreviewing(true);
-    const result = await ttsService.textToSpeech({ text: PREVIEW_TEXT, style: 'sentence', useCache: false });
-    setPreviewing(false);
-    if (result.success) {
-      playAudio(result.data.audioUrl);
-    } else {
-      toast.showError('无法试听', result.error);
-    }
+  /** 直接在页面上改的设置（音色、语速）：立即保存 */
+  const quickSave = async (request: UpdateTtsConfigRequest, done: string) => {
+    const result = await ttsService.updateTtsConfig(request);
+    if (!result.success) return toast.showError('无法保存', result.error);
+    toast.showSuccess(done);
+    await loadData();
+  };
+  const chooseVoice = (voiceId: string) => {
+    if (!config || voiceId === config.defaultVoiceId) return;
+    const name = voices.find((v) => v.voiceId === voiceId)?.displayName ?? voiceId;
+    void quickSave({ defaultVoiceId: voiceId }, `已换成 ${name}`);
   };
 
-  // 弹窗内试听指定音色
-  const handleVoiceTest = async (voiceId: string) => {
-    setTestingVoiceId(voiceId);
-    const result = await ttsService.textToSpeech({ text: PREVIEW_TEXT, voiceId, style: 'sentence', useCache: false });
-    setTestingVoiceId(undefined);
-    if (result.success) {
-      playAudio(result.data.audioUrl);
-    } else {
-      toast.showError('无法试听', result.error);
-    }
-  };
+  const handleVoiceTest = (voiceId: string) => void togglePreview(voiceId, PREVIEW_TEXT, voiceId);
 
   // 清理缓存：olderThanDays = 30 只清很久没用的；0 = 全部清空
   const handleClearTTSCache = (olderThanDays: number) => {
@@ -178,6 +201,30 @@ export const TTSSettings: React.FC = () => {
       ? `AppID ${config.appId || '未填写'} · Access Token ${config.accessKeyPreview ?? ''}••••`
       : '未设置';
 
+  /** 豆包语音连接（鉴权、资源、音质）：不常改、含密钥，在弹窗里编辑 */
+  const connection = (
+    <SettingsSection
+      title="豆包语音连接"
+      description={config.configured ? undefined : '填写火山引擎的 API Key 后即可使用'}
+      actions={
+        <Button variant={config.configured ? 'outline' : 'default'} size="sm" onClick={() => setShowEdit(true)} disabled={saving}>
+          <Pencil />
+          {config.configured ? '编辑…' : '设置连接'}
+        </Button>
+      }
+    >
+      <SettingsRow label="鉴权">
+        <span className={cn('font-mono text-xs select-text', !config.hasApiKey && !config.hasAccessKey && 'text-warning')}>{authText}</span>
+      </SettingsRow>
+      <SettingsRow label="资源 ID">
+        <span className="font-mono text-xs select-text">{config.resourceId ? config.effectiveResourceId : `自动 · ${config.effectiveResourceId}`}</span>
+      </SettingsRow>
+      <SettingsRow label="音质">
+        <span className="text-sm tabular-nums">{config.sampleRate / 1000}kHz MP3</span>
+      </SettingsRow>
+    </SettingsSection>
+  );
+
   return (
     <SettingsPanel
       title={title}
@@ -193,38 +240,69 @@ export const TTSSettings: React.FC = () => {
         )
       }
     >
+      {!config.configured && connection}
+
       <SettingsSection
-        title="豆包语音"
+        title="音色"
+        description={config.configured ? '单词和句子朗读用的声音，点一下就换；▶ 试听' : '先完成下方的豆包语音连接，才能试听和使用'}
         actions={
-          <Button variant="outline" size="sm" onClick={() => setShowEdit(true)} disabled={saving}>
-            <Pencil />
-            编辑配置…
-          </Button>
+          <ToggleGroup type="single" value={gender} onValueChange={(v) => v && setGender(v as typeof gender)} className="rounded-lg bg-muted p-0.5" aria-label="按性别筛选">
+            {(['all', 'female', 'male'] as const).map((g) => (
+              <ToggleGroupItem key={g} value={g} className="h-7 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm">
+                {g === 'all' ? '全部' : g === 'female' ? '女声' : '男声'}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         }
       >
-        <SettingsRow label="鉴权">
-          <span className={cn('font-mono text-xs select-text', !config.hasApiKey && !config.hasAccessKey && 'text-warning')}>{authText}</span>
-        </SettingsRow>
-        <SettingsRow label="默认音色">
-          <span className="text-sm">{defaultVoice ? defaultVoice.displayName : config.defaultVoiceId}</span>
-        </SettingsRow>
-        <SettingsRow label="资源 ID">
-          <span className="font-mono text-xs select-text">{config.resourceId ? config.effectiveResourceId : `自动 · ${config.effectiveResourceId}`}</span>
-        </SettingsRow>
-        <SettingsRow label="语速与音质">
-          <span className="text-sm tabular-nums">
-            {(1 + config.speechRate / 100).toFixed(1)}× · {config.sampleRate / 1000}kHz MP3
-          </span>
-        </SettingsRow>
-        <SettingsRow label="试听">
-          <Button variant="outline" size="sm" onClick={handlePreview} disabled={previewing || !config.configured}>
-            {previewing ? <Loader2 className="animate-spin" /> : <Play />}
-            试听
-          </Button>
-        </SettingsRow>
+        <div className="space-y-3 px-4 py-3">
+          <VoiceSelector
+            voices={voices.filter((v) => gender === 'all' || v.gender === gender)}
+            selectedVoiceId={config.defaultVoiceId}
+            onVoiceSelect={chooseVoice}
+            onVoiceTest={handleVoiceTest}
+            testingVoiceId={preview?.state === 'loading' ? preview.key : undefined}
+            playingVoiceId={preview?.state === 'playing' ? preview.key : undefined}
+            disabled={!config.configured}
+          />
+          {!voices.some((v) => v.voiceId === config.defaultVoiceId) && (
+            <p className="text-sm">
+              正在用：<span className="font-mono text-xs">{config.defaultVoiceId}</span>
+            </p>
+          )}
+          {showCustomVoice ? (
+            <div className="flex gap-2">
+              <Input value={customVoice} onChange={(e) => setCustomVoice(e.target.value)} placeholder="其他音色 ID，例如 en_female_xxx_uranus_bigtts" className="font-mono" aria-label="其他音色 ID" />
+              <Button
+                variant="outline"
+                disabled={!customVoice.trim()}
+                onClick={() => {
+                  void quickSave({ defaultVoiceId: customVoice.trim() }, '已换成这个音色');
+                  setShowCustomVoice(false);
+                  setCustomVoice('');
+                }}
+              >
+                使用
+              </Button>
+            </div>
+          ) : (
+            <Button variant="link" size="sm" className="h-auto p-0 text-muted-foreground" onClick={() => setShowCustomVoice(true)} disabled={!config.configured}>
+              使用其他音色 ID…
+            </Button>
+          )}
+        </div>
       </SettingsSection>
 
-      <TtsStyleSection resourceId={config.effectiveResourceId} canPreview={config.configured} onPlay={playAudio} />
+      <TtsStyleSection
+        resourceId={config.effectiveResourceId}
+        canPreview={config.configured}
+        previewState={preview?.key === 'style' ? preview.state : 'idle'}
+        onTogglePreview={(text) => void togglePreview('style', text)}
+        speechRate={config.speechRate}
+        onSpeechRateCommit={(rate) => void quickSave({ speechRate: rate }, `语速改为 ${(1 + rate / 100).toFixed(1)}×`)}
+      />
+
+      {config.configured && connection}
 
       <SettingsSection title="缓存">
         <SettingsRow
@@ -266,16 +344,13 @@ export const TTSSettings: React.FC = () => {
       <TtsConfigModal
         isOpen={showEdit}
         config={config}
-        voices={voices}
         saving={saving}
-        testingVoiceId={testingVoiceId}
         onClose={() => {
           setShowEdit(false);
           setSaveError(null);
         }}
         onSave={handleSave}
         saveError={saveError}
-        onVoiceTest={handleVoiceTest}
       />
 
       <AlertDialog open={confirmDialog.isOpen} onOpenChange={(open) => !open && setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}>

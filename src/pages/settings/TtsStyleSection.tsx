@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, Play } from 'lucide-react';
+import { Loader2, Play, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -29,18 +29,25 @@ export interface TtsStyleSectionProps {
   resourceId: string;
   /** 已配置好鉴权，可以试听 */
   canPreview: boolean;
-  onPlay: (audioUrl: string) => void;
+  /** 试听状态（整页共用一个播放器） */
+  previewState: 'idle' | 'loading' | 'playing';
+  /** 开始 / 停止试听 */
+  onTogglePreview: (text: string) => void;
+  /** 语速 [-50, 100]（存在豆包配置里） */
+  speechRate: number;
+  onSpeechRateCommit: (rate: number) => void;
 }
 
 /**
  * 「设置 → 语音合成 → 朗读风格」：句子的语气预设（或自定义）、音调、音量；改了立即保存，可以直接试听。
  * 单词发音始终是平稳的示范语气，不受风格影响。
  */
-export const TtsStyleSection: React.FC<TtsStyleSectionProps> = ({ resourceId, canPreview, onPlay }) => {
+export const TtsStyleSection: React.FC<TtsStyleSectionProps> = ({ resourceId, canPreview, previewState, onTogglePreview, speechRate, onSpeechRateCommit }) => {
+  const [rate, setRate] = useState(speechRate ?? 0);
+  useEffect(() => setRate(speechRate ?? 0), [speechRate]);
   const toast = useToast();
   const [prefs, setPrefs] = useState<TtsPreferences | null>(null);
   const [customDraft, setCustomDraft] = useState('');
-  const [previewing, setPreviewing] = useState(false);
   /** 最近保存成功的值（保存失败时退回） */
   const savedRef = useRef<TtsPreferences | null>(null);
 
@@ -66,14 +73,6 @@ export const TtsStyleSection: React.FC<TtsStyleSectionProps> = ({ resourceId, ca
     return true;
   };
 
-  const preview = async () => {
-    setPreviewing(true);
-    const r = await ttsService.textToSpeech({ text: STYLE_PREVIEW, style: 'sentence', useCache: false });
-    setPreviewing(false);
-    if (r.success) onPlay(r.data.audioUrl);
-    else toast.showError('无法试听', r.error);
-  };
-
   if (!prefs) {
     return (
       <SettingsSection title="朗读风格">
@@ -94,9 +93,9 @@ export const TtsStyleSection: React.FC<TtsStyleSectionProps> = ({ resourceId, ca
       title="朗读风格"
       description={supportsStyle ? '句子朗读的语气；单词发音始终是平稳的示范语气' : '当前音色不支持朗读风格，换用 2.0 音色才会生效；音调和音量照样有效'}
       actions={
-        <Button variant="outline" size="sm" onClick={preview} disabled={previewing || !canPreview}>
-          {previewing ? <Loader2 className="animate-spin" /> : <Play />}
-          试听
+        <Button variant="outline" size="sm" onClick={() => onTogglePreview(STYLE_PREVIEW)} disabled={!canPreview}>
+          {previewState === 'loading' ? <Loader2 className="animate-spin" /> : previewState === 'playing' ? <Square className="fill-current" /> : <Play />}
+          {previewState === 'idle' ? '试听' : previewState === 'loading' ? '合成中…' : '停止'}
         </Button>
       }
     >
@@ -134,6 +133,18 @@ export const TtsStyleSection: React.FC<TtsStyleSectionProps> = ({ resourceId, ca
           </div>
         )}
       </div>
+      <SettingsRow label="语速" description={`${(1 + rate / 100).toFixed(1)}×`}>
+        <Slider
+          className="w-56"
+          min={-50}
+          max={100}
+          step={10}
+          value={[rate]}
+          onValueChange={([v]) => setRate(v)}
+          onValueCommit={([v]) => onSpeechRateCommit(v)}
+          aria-label="语速"
+        />
+      </SettingsRow>
       <SettingsRow label="音调" description={prefs.pitch === 0 ? '音色本来的音调' : prefs.pitch > 0 ? `升高 ${prefs.pitch}` : `降低 ${-prefs.pitch}`}>
         <Slider
           className="w-56"

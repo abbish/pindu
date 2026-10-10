@@ -1,5 +1,5 @@
 import React from 'react';
-import { Globe, Loader2, Play } from 'lucide-react';
+import { Globe, Loader2, Play, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +30,8 @@ export interface VoiceSelectorProps {
   onVoiceTest: (voiceId: string) => void;
   /** 是否正在试听 */
   testingVoiceId?: string;
+  /** 正在播放试听的音色（按钮变成「停止」） */
+  playingVoiceId?: string;
   /** 是否禁用 */
   disabled?: boolean;
   /** 标题 */
@@ -47,6 +49,7 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   onVoiceSelect,
   onVoiceTest,
   testingVoiceId,
+  playingVoiceId,
   disabled = false,
   title = "选择默认语音",
   description
@@ -66,11 +69,13 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
 
   return (
     <div className="space-y-2">
-      <div>
-        <div className="text-sm font-medium">{title}</div>
-        {description && <p className="text-xs text-muted-foreground">{description}</p>}
-      </div>
-      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={title}>
+      {(title || description) && (
+        <div>
+          {title && <div className="text-sm font-medium">{title}</div>}
+          {description && <p className="text-xs text-muted-foreground">{description}</p>}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-3" role="radiogroup" aria-label={title ?? '音色'}>
         {voices.map((voice) => {
           const isSelected = selectedVoiceId === voice.voiceId;
           const isTesting = testingVoiceId === voice.voiceId;
@@ -99,10 +104,10 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
                     size="sm"
                     className="h-7 shrink-0"
                     onClick={(e) => handleVoiceTest(e, voice.voiceId)}
-                    disabled={disabled || isTesting}
+                    disabled={disabled}
                   >
-                    {isTesting ? <Loader2 className="animate-spin" /> : <Play />}
-                    {isTesting ? '试听中' : '试听'}
+                    {isTesting ? <Loader2 className="animate-spin" /> : playingVoiceId === voice.voiceId ? <Square className="fill-current" /> : <Play />}
+                    {isTesting ? '合成中…' : playingVoiceId === voice.voiceId ? '停止' : '试听'}
                   </Button>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
