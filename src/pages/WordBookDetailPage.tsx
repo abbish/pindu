@@ -44,7 +44,9 @@ import { WordCardsView } from './wordbook-detail/WordCardsView';
 import { usePageTitle } from '@/components/AppShell/pageTitle';
 import { wordBookService } from '@/services';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
-import { useOnJobFinished } from '@/hooks/useJobs';
+import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { activeJobFor } from '@/components/Jobs';
+import { BatchAnalysisPanel } from '@/components/AddWordsDialog/BatchAnalysisPanel';
 import { formatDate } from '@/utils/datetime';
 import { getStatusDisplay } from '@/types/study';
 import {
@@ -242,6 +244,10 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
   const refreshAfterWordChange = async () => {
     await Promise.all([loadWords(currentPage), loadStatistics(), loadWordBook()]);
   };
+
+  /** 这本词汇本正在进行的「分析并加入词汇本」任务：在单词页签里就地显示进度 */
+  const jobs = useJobs();
+  const analysisJob = wordBook ? activeJobFor(jobs, ['word_analysis'], 'id', wordBook.id) : undefined;
 
   // 「分析并加入词汇本」是后台任务：这本词汇本的任务结束时刷新（弹窗关了也一样）
   useOnJobFinished((job) => {
@@ -486,7 +492,13 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
         </TabsList>
 
         <TabsContent value="words">
-          {bookTotal === 0 && !wordsLoading && wordKind === 'all' ? (
+          {/* 正在分析要加入的单词：先显示进度（完成后单词出现在下面的列表里） */}
+          {analysisJob && (
+            <Card className="mb-4 gap-0 px-5 py-3">
+              <BatchAnalysisPanel job={analysisJob} actions={{ stop: true }} />
+            </Card>
+          )}
+          {bookTotal === 0 && !wordsLoading && wordKind === 'all' && analysisJob ? null : bookTotal === 0 && !wordsLoading && wordKind === 'all' ? (
             <EmptyState
               icon={<Sparkles />}
               title="这个词汇本还没有单词"

@@ -27,13 +27,15 @@ const ICON_CLASS: Record<WordState, string> = {
 export interface BatchAnalysisPanelProps {
   /** 「分析并加入词汇本」任务（逐词状态在 job.detail） */
   job: Job | undefined;
+  /** 进度面板上的操作（如「停止」）；弹窗里由弹窗底部提供，不传 */
+  actions?: React.ComponentProps<typeof JobPanel>['actions'];
 }
 
 /**
  * 批量拼读分析进度（只负责展示；停止 / 在后台继续在弹窗底部操作栏）：
  * 统一的任务进度面板（已分析数、预计剩余）→ 状态图例（计数）→ 单词状态（悬停看失败原因）。
  */
-export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job }) => {
+export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job, actions }) => {
   const words = (job?.detail as WordAnalysisDetail | null)?.words ?? [];
   const counts = STATE_ORDER.reduce<Record<WordState, number>>(
     (acc, s) => ({ ...acc, [s]: words.filter((w) => w.status === s).length }),
@@ -51,6 +53,7 @@ export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job }) =
         title="AI 正在分析单词"
         count={total > 0 ? `${done} / ${total}` : undefined}
         extra={remaining !== null ? `预计还需 ${formatDuration(remaining * 1000)}` : undefined}
+        actions={actions}
       >
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {STATE_ORDER.map((s) => (
