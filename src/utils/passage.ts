@@ -131,8 +131,183 @@ export function tokenize(sentence: string): Token[] {
   return tokens;
 }
 
-/** 这个词对应哪个目标词（含变形）；不是目标词返回 null */
-export const targetOf = (token: string, targets: string[]) => targets.find((t) => inflectionMatches(token, t)) ?? null;
+/** 这个词对应哪个目标词（含变形）；不是目标词返回 null。词组请用 targetSpans / textUses */
+export const targetOf = (token: string, targets: string[]) => targets.filter((t) => !isPhrase(t)).find((t) => inflectionMatches(token, t)) ?? null;
+
+// ==================== 词组（D45，与后端 passage_rules::phrase_spans 同规则） ====================
+
+/** 带空格的是词组 */
+export const isPhrase = (text: string) => /\s/.test(text.trim());
+
+/** 不规则动词的变形（与后端 IRREGULAR_VERBS 同一张表） */
+const IRREGULAR_VERBS: Record<string, string[]> = {
+  be: ['am', 'is', 'are', 'was', 'were', 'been'],
+  become: ['became'],
+  begin: ['began', 'begun'],
+  break: ['broke', 'broken'],
+  bring: ['brought'],
+  build: ['built'],
+  buy: ['bought'],
+  catch: ['caught'],
+  choose: ['chose', 'chosen'],
+  come: ['came'],
+  dig: ['dug'],
+  do: ['did', 'done', 'does'],
+  draw: ['drew', 'drawn'],
+  drink: ['drank', 'drunk'],
+  drive: ['drove', 'driven'],
+  eat: ['ate', 'eaten'],
+  fall: ['fell', 'fallen'],
+  feed: ['fed'],
+  feel: ['felt'],
+  fight: ['fought'],
+  find: ['found'],
+  fly: ['flew', 'flown', 'flies'],
+  forget: ['forgot', 'forgotten'],
+  freeze: ['froze', 'frozen'],
+  get: ['got', 'gotten'],
+  give: ['gave', 'given'],
+  go: ['went', 'gone', 'goes'],
+  grow: ['grew', 'grown'],
+  hang: ['hung'],
+  have: ['has', 'had'],
+  hear: ['heard'],
+  hide: ['hid', 'hidden'],
+  hold: ['held'],
+  keep: ['kept'],
+  know: ['knew', 'known'],
+  lead: ['led'],
+  leave: ['left'],
+  lend: ['lent'],
+  lie: ['lay', 'lain'],
+  lose: ['lost'],
+  make: ['made'],
+  mean: ['meant'],
+  meet: ['met'],
+  pay: ['paid'],
+  ride: ['rode', 'ridden'],
+  ring: ['rang', 'rung'],
+  rise: ['rose', 'risen'],
+  run: ['ran'],
+  say: ['said'],
+  see: ['saw', 'seen'],
+  sell: ['sold'],
+  send: ['sent'],
+  shake: ['shook', 'shaken'],
+  shine: ['shone'],
+  shoot: ['shot'],
+  sing: ['sang', 'sung'],
+  sink: ['sank', 'sunk'],
+  sit: ['sat'],
+  sleep: ['slept'],
+  slide: ['slid'],
+  speak: ['spoke', 'spoken'],
+  spend: ['spent'],
+  stand: ['stood'],
+  steal: ['stole', 'stolen'],
+  stick: ['stuck'],
+  sting: ['stung'],
+  swim: ['swam', 'swum'],
+  swing: ['swung'],
+  take: ['took', 'taken'],
+  teach: ['taught'],
+  tear: ['tore', 'torn'],
+  tell: ['told'],
+  think: ['thought'],
+  throw: ['threw', 'thrown'],
+  understand: ['understood'],
+  wake: ['woke', 'woken'],
+  wear: ['wore', 'worn'],
+  weep: ['wept'],
+  win: ['won'],
+  write: ['wrote', 'written'],
+};
+/** 词组里代表某人 / 某物的占位词：对应 1–3 个任意词 */
+const PLACEHOLDERS = new Set(['sb', 'sth', 'somebody', 'something', 'someone', "one's", "sb's", 'oneself']);
+/** 可拆开的两词短语动词的小品词：中间允许插入 1–3 个词（pick it up） */
+const PARTICLES = new Set(['up', 'down', 'out', 'off', 'on', 'in', 'away', 'back', 'over', 'around', 'about', 'through', 'along', 'aside']);
+
+const isFormOf = (token: string, part: string) =>
+  inflectionMatches(token, part) || (IRREGULAR_VERBS[part.toLowerCase()] ?? []).includes(token.toLowerCase());
+
+function matchFrom(words: string[], i: number, parts: string[], k: number): number | null {
+  if (k === parts.length) return i;
+  const part = parts[k];
+  if (PLACEHOLDERS.has(part)) {
+    for (let n = 1; n <= 3 && i + n <= words.length; n++) {
+      const end = matchFrom(words, i + n, parts, k + 1);
+      if (end !== null) return end;
+    }
+    return null;
+  }
+  if (i < words.length && isFormOf(words[i], part)) {
+    const end = matchFrom(words, i + 1, parts, k + 1);
+    if (end !== null) return end;
+  }
+  if (k === 1 && parts.length === 2 && PARTICLES.has(part)) {
+    for (let skip = 1; skip <= 3 && i + skip < words.length; skip++) {
+      if (words[i + skip].toLowerCase() === part) return i + skip + 1;
+    }
+  }
+  return null;
+}
+
+/** 词组在一串单词里出现的位置（[开始, 结束)，不重叠）：每个词可变形，可拆开的短语动词中间可插入宾语，占位词对应 1–3 个词 */
+export function phraseSpans(words: string[], phrase: string): [number, number][] {
+  const parts = phrase.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const spans: [number, number][] = [];
+  if (parts.length === 0) return spans;
+  for (let i = 0; i < words.length; ) {
+    const end = matchFrom(words, i, parts, 0);
+    if (end !== null && end > i) {
+      spans.push([i, end]);
+      i = end;
+    } else i += 1;
+  }
+  return spans;
+}
+
+/** 这个词是不是词组本身的一部分（不是插入的宾语或占位词对应的词） */
+export const isPhrasePart = (word: string, phrase: string) =>
+  phrase
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .some((p) => !PLACEHOLDERS.has(p) && isFormOf(word, p));
+
+/** 一句话里是否用到了这个单词或词组（含变形） */
+export const textUses = (text: string, target: string) => {
+  const words = tokenize(text).flatMap((t) => (t.kind === 'word' ? [t.text] : []));
+  return isPhrase(target) ? phraseSpans(words, target).length > 0 : words.some((w) => isFormOf(w, target));
+};
+
+/** 一句话里目标词的位置：单词序号 → 所在片段（词组覆盖多个单词，先匹配词组再匹配单词） */
+export interface TargetSpan {
+  target: string;
+  /** 片段起止的单词序号 [start, end) */
+  start: number;
+  end: number;
+}
+export function targetSpans(tokens: Token[], targets: string[]): Map<number, TargetSpan> {
+  const words = tokens.flatMap((t) => (t.kind === 'word' ? [t.text] : []));
+  const out = new Map<number, TargetSpan>();
+  const phrases = targets.filter(isPhrase).sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length);
+  for (const p of phrases) {
+    for (const [start, end] of phraseSpans(words, p)) {
+      let free = true;
+      for (let i = start; i < end; i++) if (out.has(i)) free = false;
+      if (!free) continue;
+      for (let i = start; i < end; i++) out.set(i, { target: p, start, end });
+    }
+  }
+  const singles = targets.filter((t) => !isPhrase(t));
+  words.forEach((w, i) => {
+    if (out.has(i)) return;
+    const t = singles.find((s) => isFormOf(w, s));
+    if (t) out.set(i, { target: t, start: i, end: i + 1 });
+  });
+  return out;
+}
 
 /**
  * 逐词高亮：当前播放时间落在第几个词。`timings` 是语音服务给的逐词时间（与句中单词按顺序对应）；

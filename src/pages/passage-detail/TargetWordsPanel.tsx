@@ -8,7 +8,7 @@ import { useJob, useOnJobFinished } from '@/hooks/useJobs';
 import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
 import { cardWordId } from '@/services/wordExplanationService';
-import { targetOf, tokenize } from '@/utils/passage';
+import { textUses } from '@/utils/passage';
 import { isJobActive } from '@/types/job';
 import type { Word } from '@/types';
 import type { WordCard } from '@/types/material';
@@ -87,7 +87,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
     return () => window.removeEventListener('keydown', onKey);
   }, [words.length]);
 
-  const sentences = useMemo(() => (current ? passage.sentences.filter((s) => tokenize(s.en).some((t) => t.kind === 'word' && targetOf(t.text, [current.word]))) : []), [passage.sentences, current]);
+  const sentences = useMemo(() => (current ? passage.sentences.filter((s) => textUses(s.en, current.word)) : []), [passage.sentences, current]);
 
   if (words.length === 0) return <p className="py-10 text-center text-sm text-muted-foreground">这篇短文没有目标词</p>;
 

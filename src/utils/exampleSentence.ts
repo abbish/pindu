@@ -1,3 +1,5 @@
+import { isPhrase, isPhrasePart, targetSpans, tokenize } from './passage';
+
 /** 例句片段：`isTarget` 为该单词（或其常见词形）出现的位置 */
 export interface SentencePart {
   text: string;
@@ -11,6 +13,7 @@ export interface SentencePart {
 export function splitExampleSentence(sentence: string, word: string): SentencePart[] {
   const w = word.trim().toLowerCase();
   if (!w) return [{ text: sentence, isTarget: false }];
+  if (isPhrase(w)) return splitByPhrase(sentence, w);
   const stems = [w];
   if (/[ey]$/.test(w) && w.length > 2) stems.push(w.slice(0, -1));
   const isTarget = (token: string) => {
@@ -39,4 +42,18 @@ export function maskExampleSentence(sentence: string, word: string): string {
   return splitExampleSentence(sentence, word)
     .map(p => (p.isTarget ? '_'.repeat(Math.max(3, p.text.length)) : p.text))
     .join('');
+}
+
+/** 词组：词组里的每个词都是目标（可变形、可拆开，插入的宾语与空格不算） */
+function splitByPhrase(sentence: string, phrase: string): SentencePart[] {
+  const tokens = tokenize(sentence);
+  const spans = targetSpans(tokens, [phrase]);
+  const parts: SentencePart[] = [];
+  for (const t of tokens) {
+    const isTarget = t.kind === 'word' && spans.has(t.index) && isPhrasePart(t.text, phrase);
+    const prev = parts[parts.length - 1];
+    if (prev && prev.isTarget === isTarget && !isTarget) prev.text += t.text;
+    else parts.push({ text: t.text, isTarget });
+  }
+  return parts;
 }

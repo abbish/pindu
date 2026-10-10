@@ -8,7 +8,7 @@ import { AiTeacherPanel } from '@/components/AiTeacher';
 import { WordMaterialsList } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { parsePhonicsSegments } from '@/utils/phonics';
-import { targetOf, tokenize } from '@/utils/passage';
+import { isPhrase, isPhrasePart, targetSpans, tokenize } from '@/utils/passage';
 import type { Word } from '@/types';
 import type { WordCard } from '@/types/material';
 
@@ -51,20 +51,38 @@ export const studyInfoFromCard = (c: WordCard): StudyWordInfo => ({
   examples: c.examples,
 });
 
-/** 句子里把这个词（含变形）标出来 */
-export const Highlighted: React.FC<{ text: string; word: string }> = ({ text, word }) => (
-  <>
-    {tokenize(text).map((t, i) =>
-      t.kind === 'word' && targetOf(t.text, [word]) ? (
-        <mark key={i} className="rounded-sm bg-warning-soft px-0.5 font-semibold text-foreground">
-          {t.text}
-        </mark>
-      ) : (
-        <React.Fragment key={i}>{t.text}</React.Fragment>
-      )
-    )}
-  </>
-);
+/** 句子里把这个单词或词组（含变形、拆开用）标出来 */
+export const Highlighted: React.FC<{ text: string; word: string }> = ({ text, word }) => {
+  const tokens = tokenize(text);
+  const spans = targetSpans(tokens, [word]);
+  return (
+    <>
+      {tokens.map((t, i) => {
+        if (t.kind === 'word' && spans.has(t.index) && (!isPhrase(word) || isPhrasePart(t.text, word))) {
+          return (
+            <mark key={i} className="rounded-sm bg-warning-soft px-0.5 font-semibold text-foreground">
+              {t.text}
+            </mark>
+          );
+        }
+        // 词组中间的空格也一起标出，读起来是一整块
+        const prev = tokens[i - 1];
+        const next = tokens[i + 1];
+        const part = (x: typeof prev) => x?.kind === 'word' && (!isPhrase(word) || isPhrasePart(x.text, word));
+        const a = prev?.kind === 'word' && part(prev) ? spans.get(prev.index) : undefined;
+        const b = next?.kind === 'word' && part(next) ? spans.get(next.index) : undefined;
+        const inside = t.kind === 'other' && a !== undefined && b !== undefined && a.start === b.start;
+        return inside ? (
+          <mark key={i} className="bg-warning-soft">
+            {t.text}
+          </mark>
+        ) : (
+          <React.Fragment key={i}>{t.text}</React.Fragment>
+        );
+      })}
+    </>
+  );
+};
 
 /** 单词卡上的一节（拼读 / 本文中 …） */
 export const StudySection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (

@@ -11,7 +11,7 @@ import { PassageReader, type TranslationMode } from '@/components/PassageReader'
 import { TargetWord } from '@/components/PassageReader/WordCard';
 import { SelectionAction } from '@/components/SelectionAction';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
-import { targetOf } from '@/utils/passage';
+import { isPhrase, targetOf } from '@/utils/passage';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { cn } from '@/lib/utils';
 import type { Passage, PassageSentence } from '@/types/passage';
@@ -78,7 +78,8 @@ const endOf = (s: PassageSentence | undefined) => s?.endMs ?? startOf(s);
  * 「练习设置」里调画面字幕、台词显示、翻译、聚焦与自动暂停。
  */
 /** 选中的文字是一个英文单词（可以加成目标词） */
-const SELECTABLE_WORD = /^[A-Za-z][A-Za-z'’-]{1,29}$/;
+/** 选中的文字是一个英文单词或 2–6 个词的词组（可以加成目标词） */
+const SELECTABLE_WORD = /^[A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){0,5}$/;
 
 export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences, passage, onAddTarget, onOpenWord, onPractice }) => {
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
@@ -309,7 +310,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
           <div ref={textBox} className="min-h-0 flex-1 overflow-y-auto p-3">
             <SelectionAction
               label="加入目标词"
-              accept={(text) => Boolean(onAddTarget) && SELECTABLE_WORD.test(text) && !targetOf(text, targetWords)}
+              accept={(text) => Boolean(onAddTarget) && SELECTABLE_WORD.test(text) && text.length <= 60 && !targetWords.some((t) => t.toLowerCase() === text.toLowerCase()) && !(!isPhrase(text) && targetOf(text, targetWords))}
               onAction={(text) => onAddTarget?.(text)}
             >
             <PassageReader

@@ -23,3 +23,8 @@ test('不误伤相近的词', () => {
   assert.equal(maskExampleSentence('A category of cap.', 'cat'), 'A category of cap.');
   assert.deepEqual(splitExampleSentence('Hello.', ''), [{ text: 'Hello.', isTarget: false }]);
 });
+
+test('词组例句：词组里的词都标出 / 挖空，插入的宾语保留', () => {
+  assert.equal(maskExampleSentence('Please pick it up now.', 'pick up'), 'Please ____ it ___ now.');
+  assert.equal(maskExampleSentence('She gave up.', 'give up'), 'She ____ ___.');
+});

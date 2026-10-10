@@ -14,7 +14,7 @@ import { SelectionAction } from '@/components/SelectionAction';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { cn } from '@/lib/utils';
-import { targetOf, tokenize } from '@/utils/passage';
+import { isPhrase, targetOf, tokenize } from '@/utils/passage';
 import type { SpeechSpeed } from '@/services/ttsService';
 import type { Passage } from '@/types/passage';
 
@@ -84,7 +84,8 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ la
  * 设置：慢速、每句读几遍、句间停顿（跟读）、翻译显示（不显示 / 当前句 / 全部）、听后回忆、标出目标词；盲听（先听再看原文）。
  */
 /** 选中的文字是一个英文单词（可以加成目标词） */
-const SELECTABLE_WORD = /^[A-Za-z][A-Za-z'’-]{1,29}$/;
+/** 选中的文字是一个英文单词或 2–6 个词的词组（可以加成目标词） */
+const SELECTABLE_WORD = /^[A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){0,5}$/;
 
 /** onAddTarget：读的时候选中原文里的一个词，加成这篇的目标词 */
 export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: string) => void; onOpenWord?: (word: string) => void }> = ({ passage, onAddTarget, onOpenWord }) => {
@@ -355,7 +356,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
 
       <SelectionAction
         label="加入目标词"
-        accept={(text) => Boolean(onAddTarget) && SELECTABLE_WORD.test(text) && !targetOf(text, targets)}
+        accept={(text) => Boolean(onAddTarget) && SELECTABLE_WORD.test(text) && text.length <= 60 && !targets.some((t) => t.toLowerCase() === text.toLowerCase()) && !(!isPhrase(text) && targetOf(text, targets))}
         onAction={(text) => onAddTarget?.(text)}
       >
       <PassageReader
