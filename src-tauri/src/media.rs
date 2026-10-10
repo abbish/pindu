@@ -465,8 +465,10 @@ fn peaks_from_pcm(raw: &[u8], window: usize) -> Vec<f32> {
     raw.chunks(window.max(1) * 2)
         .map(|chunk| {
             let max = chunk
-                .chunks_exact(2)
-                .map(|b| i16::from_le_bytes([b[0], b[1]]).unsigned_abs())
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|b| i16::from_le_bytes(*b).unsigned_abs())
                 .max()
                 .unwrap_or(0);
             ((f32::from(max) / f32::from(i16::MAX)).min(1.0) * 100.0).round() / 100.0
