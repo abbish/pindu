@@ -47,6 +47,11 @@ skills:
     path: .claude/skills/sdd-release/SKILL.md
     summary: 仅显式调用（/sdd-release）：定版本号、发布前门禁、定稿发布说明、打标签、检查 Release 草稿与 latest.json、交用户发布、发布后核对与补救
 
+  - id: sdd-hotfix
+    group: workflow
+    path: .claude/skills/sdd-hotfix/SKILL.md
+    summary: 仅显式调用（/sdd-hotfix）：已发布版本的小缺陷快速修复并发修订版——准入条件（无迁移、不碰更新与构建链路、不升级依赖）、回归测试 + verify + 针对性手测、草稿与 latest.json 检查；省掉完整回归与链路实测
+
   - id: deliver-backend-rust
     group: domain-capability
     path: .claude/skills/deliver-backend-rust/SKILL.md

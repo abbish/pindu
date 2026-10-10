@@ -325,6 +325,7 @@ export const fooService = new FooService();
 | 把失败补成测试 | `harness-regression-curation` |
 | 改本文件 / Skill / hook | `harness-governance` |
 | 发布新版本（仅显式） | `/sdd-release`（人看的流程：`docs/RELEASING.md`） |
+| 已发布版本的小缺陷快速修复并发修订版（仅显式） | `/sdd-hotfix`（有准入条件：无迁移、不碰更新与构建链路、不升级依赖、不加功能；不满足改走 `/sdd-release`） |
 
 **从改动到发布**：每个改动在 `sdd-work` 判断发布影响；验收通过后，用户可见的改动记入 `docs/releases/UNRELEASED.md`；提交到 main 且 CI 绿才算完成；发版由用户显式 `/sdd-release`（UNRELEASED.md → `vX.Y.Z.md` → 打标签 → CI 出 Release 草稿 → 用户发布 → 应用内更新）。
 
