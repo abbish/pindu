@@ -47,6 +47,30 @@ fn thumbs(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
+/// 封面：从时间轴缩略图里挑画面信息最多的一张（JPEG 越大细节越多；黑场、纯色只有几百字节）。
+/// 跳过开头和结尾各 5%（片头、片尾字幕）；同样大小取靠前的
+fn cover_of(thumbs: &[PathBuf]) -> Option<&PathBuf> {
+    let sizes: Vec<u64> = thumbs
+        .iter()
+        .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .collect();
+    pick_cover(&sizes).map(|i| &thumbs[i])
+}
+
+fn pick_cover(sizes: &[u64]) -> Option<usize> {
+    let n = sizes.len();
+    if n == 0 {
+        return None;
+    }
+    let skip = n / 20;
+    let range = if n - 2 * skip > 0 {
+        skip..n - skip
+    } else {
+        0..n
+    };
+    range.rev().max_by_key(|&i| sizes[i])
+}
+
 /// 数据库行 → 前端类型（文件名换成绝对路径）
 pub fn to_video(row: &VideoRow, data_dir: &Path, url: UrlOf) -> Video {
     let dir = video_dir(data_dir, row.id);
@@ -58,8 +82,7 @@ pub fn to_video(row: &VideoRow, data_dir: &Path, url: UrlOf) -> Video {
         subtitle_name: row.subtitle_name.clone(),
         has_source: row.source_file.is_some(),
         media_url: row.media_file.as_ref().and_then(|f| url(&dir.join(f))),
-        // 第一张常是黑场，优先用第二张
-        cover_url: thumbs.get(1).or(thumbs.first()).and_then(|p| url(p)),
+        cover_url: cover_of(&thumbs).and_then(|p| url(p)),
         duration_ms: row.duration_ms,
         width: row.width,
         height: row.height,
@@ -392,6 +415,20 @@ fn io_error(e: std::io::Error) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cover_skips_black_frames_and_credits() {
+        assert_eq!(pick_cover(&[]), None);
+        assert_eq!(pick_cover(&[300]), Some(0));
+        // 开头黑场、中间有画面：取细节最多的；同样大小取靠前的
+        assert_eq!(pick_cover(&[316, 313, 1423, 2471, 2071, 2471]), Some(3));
+        // 20 张：最后 1 张（片尾字幕）再大也不选
+        let mut sizes = vec![1000; 20];
+        sizes[0] = 5000;
+        sizes[19] = 9000;
+        sizes[7] = 2000;
+        assert_eq!(pick_cover(&sizes), Some(7));
+    }
 
     #[test]
     fn thumb_interval_scales_with_duration() {
