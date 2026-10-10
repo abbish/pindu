@@ -214,7 +214,21 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
               <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_9rem] gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="wf-word">单词 / 词组</Label>
-                  <Input id="wf-word" value={values.word} onChange={(e) => set('word', e.target.value)} placeholder="例如：elephant、give up" maxLength={50} autoFocus={!editing} aria-invalid={Boolean(errors.word)} className="font-medium" />
+                  <div className="flex">
+                    <Input id="wf-word" value={values.word} onChange={(e) => set('word', e.target.value)} placeholder="例如：elephant、give up" maxLength={50} autoFocus={!editing} aria-invalid={Boolean(errors.word)} className="rounded-r-none font-medium focus-visible:z-10" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0 rounded-l-none border-l-0"
+                      title="AI 补全空白字段"
+                      aria-label="AI 补全空白字段"
+                      onClick={aiFill}
+                      disabled={busy || !values.word.trim()}
+                    >
+                      {filling ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                    </Button>
+                  </div>
                   {errors.word && <p className="text-xs text-destructive">{errors.word}</p>}
                 </div>
                 <div className="space-y-1.5">
@@ -237,12 +251,6 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              <div className="flex justify-end">
-                <Button type="button" size="sm" variant="outline" className="shrink-0" title="补全空白字段" onClick={aiFill} disabled={busy || !values.word.trim()}>
-                  {filling ? <Loader2 className="animate-spin" /> : <Sparkles />}
-                  {filling ? '正在补全…' : 'AI 补全'}
-                </Button>
               </div>
             </section>
 
