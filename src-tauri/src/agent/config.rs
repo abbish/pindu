@@ -91,6 +91,25 @@ fn ensure_sidecar_fresh(program: &std::path::Path) -> AppResult<()> {
         return Ok(()); // 找不到源码或程序时不拦（如 REDLARK_AGENT_BIN 指向别处）
     };
     if source > binary {
+        // 已经 npm run agent:build 过（binaries/ 里的更新）：换上新程序，不用重启 tauri:dev
+        let os = match std::env::consts::OS {
+            "macos" => "apple-darwin",
+            "windows" => "pc-windows-msvc",
+            _ => "unknown-linux-gnu",
+        };
+        let built = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "binaries/redlark-agent-{}-{}{}",
+            std::env::consts::ARCH,
+            os,
+            std::env::consts::EXE_SUFFIX
+        ));
+        let fresh = std::fs::metadata(&built)
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t >= source);
+        if fresh && std::fs::copy(&built, program).is_ok() {
+            tracing::info!("已换上新编译的 AI 助手程序：{}", built.display());
+            return Ok(());
+        }
         return Err(AppError::InternalError(
             "AI 助手程序比源码旧（agent/src 有更新）：请运行 npm run agent:build 后重启 npm run tauri:dev".to_string(),
         ));

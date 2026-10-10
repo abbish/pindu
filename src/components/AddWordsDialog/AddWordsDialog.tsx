@@ -137,16 +137,24 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const [useIntentAsScene, setUseIntentAsScene] = useState(true);
   /** 按场景给的词汇需求建议（null = 正在想） */
   const [topics, setTopics] = useState<string[] | null>(null);
+  /** 建议没给出来的原因（显示出来，可以重试） */
+  const [topicError, setTopicError] = useState<string | null>(null);
   const topicKey = `${bookId}:${scene}`;
   const loadTopics = async (refresh: boolean) => {
     const key = topicKey;
     const kept = topicStore.get(key);
+    setTopicError(null);
     if (kept && !refresh) return setTopics(kept);
     setTopics(null);
     const r = await wordAnalysisService.suggestVocabTopics(bookId);
-    const list = r.success ? r.data : [];
-    if (r.success) topicStore.set(key, list);
-    setTopics((prev) => (key === topicKeyRef.current ? list : prev));
+    if (key !== topicKeyRef.current) return;
+    if (r.success) {
+      topicStore.set(key, r.data);
+      setTopics(r.data);
+    } else {
+      setTopics([]);
+      setTopicError(r.error);
+    }
   };
   const topicKeyRef = useRef(topicKey);
   topicKeyRef.current = topicKey;
@@ -476,6 +484,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                         </span>
                       ) : (
                         <>
+                          {topicError && <span className="text-xs text-destructive">无法给出建议：{topicError}</span>}
                           {topics.map((topic) => (
                             <button
                               key={topic}
@@ -491,7 +500,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                           ))}
                           <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => void loadTopics(true)}>
                             <RotateCw className="size-3" />
-                            {topics.length > 0 ? '换一批' : '给我一些建议'}
+                            {topicError ? '重试' : topics.length > 0 ? '换一批' : '给我一些建议'}
                           </Button>
                         </>
                       )}
