@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ErrorBoundary, ToastProvider } from './components';
 import { AppShell } from './components/AppShell/AppShell';
 import { DevTools } from './components/DevTools';
@@ -24,14 +24,47 @@ import { VideoLibraryPage } from './pages/VideoLibraryPage';
 import { TagPage } from './pages/TagPage';
 import { VideoEditorPage } from './pages/video-editor/VideoEditorPage';
 import { FOCUS_PAGES, type NavigateFn, type PageKey, type Route, type RouteParams } from './navigation';
+import { pushRoute, startHistory, stepRoute, stepTarget, type RouteHistory } from './utils/routeHistory';
+
+/** 前进 / 后退时跳过的页面：整窗练习、剪辑编辑器、练习结果都有自己的进出流程 */
+const skipInHistory = (r: Route) => FOCUS_PAGES.has(r.page) || r.page === 'practice-result';
 
 function App() {
-  const [route, setRoute] = useState<Route>({ page: 'home' });
+  /** 浏览历史（前进 / 后退）；当前页面是 entries[index] */
+  const [history, setHistory] = useState<RouteHistory<Route>>(() => startHistory<Route>({ page: 'home' }));
+  const route = history.entries[history.index];
 
   const navigate = useCallback((page: PageKey, params?: RouteParams[PageKey]) => {
     // page 与 params 的配对由 NavigateFn 在调用处保证
-    setRoute({ page, params } as Route);
+    setHistory((h) => pushRoute(h, { page, params } as Route));
   }, []) as NavigateFn;
+  const canBack = stepTarget(history, -1, skipInHistory) !== null;
+  const canForward = stepTarget(history, 1, skipInHistory) !== null;
+  const back = useCallback(() => setHistory((h) => stepRoute(h, -1, skipInHistory)), []);
+  const forward = useCallback(() => setHistory((h) => stepRoute(h, 1, skipInHistory)), []);
+
+  // ⌘[ / ⌘] 与鼠标侧键：后退 / 前进（整窗页面里不响应，它们有自己的退出流程）
+  const inFocusPage = FOCUS_PAGES.has(route.page);
+  useEffect(() => {
+    if (inFocusPage) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      if (e.key === '[') back();
+      else if (e.key === ']') forward();
+      else return;
+      e.preventDefault();
+    };
+    const onMouse = (e: MouseEvent) => {
+      if (e.button === 3) back();
+      else if (e.button === 4) forward();
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mouseup', onMouse);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mouseup', onMouse);
+    };
+  }, [inFocusPage, back, forward]);
 
   const renderPage = () => {
     switch (route.page) {
@@ -123,7 +156,7 @@ function App() {
           {FOCUS_PAGES.has(route.page) ? (
             renderPage()
           ) : (
-            <AppShell page={route.page} onNavigate={navigate} parent={shellParent} activeTagId={route.page === 'tag' ? route.params?.tagId : undefined}>
+            <AppShell page={route.page} onNavigate={navigate} parent={shellParent} activeTagId={route.page === 'tag' ? route.params?.tagId : undefined} history={{ canBack, canForward, onBack: back, onForward: forward }}>
               {renderPage()}
             </AppShell>
           )}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, CalendarDays, ChevronDown, ChevronUp, Clapperboard, FileText, Hash, Home, ListChecks, Moon, Settings, Sun } from 'lucide-react';
+import { BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clapperboard, FileText, Hash, Home, ListChecks, Moon, Settings, Sun } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -26,7 +26,8 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { PageTitleContext } from './pageTitle';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/useTheme';
 import { PAGE_TITLE, TOP_LEVEL_OF, type NavigateFn, type PageKey, type TopLevelPage } from '@/navigation';
 import { JobIndicator } from '@/components/Jobs';
@@ -46,6 +47,8 @@ export interface AppShellProps {
   parent?: { section: TopLevelPage; trail: { label: string; onClick: () => void }[] };
   /** 正在看的标签（侧边栏「标签」分组高亮） */
   activeTagId?: number;
+  /** 浏览历史：标题栏的后退 / 前进 */
+  history?: { canBack: boolean; canForward: boolean; onBack: () => void; onForward: () => void };
   /** 页面内容（外壳只负责框架，内容区是唯一滚动区域） */
   children: React.ReactNode;
 }
@@ -133,7 +136,7 @@ function readSidebarOpen(): boolean {
  * 外壳铺满窗口，只有内容区滚动；侧栏折叠状态重启后保持。
  * 主题切换与设置放在侧栏底部；系统日志在「设置 → 通用」里。
  */
-export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, activeTagId, children }) => {
+export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, activeTagId, history, children }) => {
   const [open, setOpen] = useState(readSidebarOpen);
   const { theme, toggleTheme } = useTheme();
   const active = parent?.section ?? TOP_LEVEL_OF[page];
@@ -223,6 +226,26 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
         <SidebarInset className="min-h-0 overflow-hidden">
           <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3 select-none">
             <SidebarTrigger aria-label="折叠侧边栏" />
+            {history && (
+              <div className="flex items-center">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-7" aria-label="后退" disabled={!history.canBack} onClick={history.onBack}>
+                      <ChevronLeft />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>后退 ⌘[</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-7" aria-label="前进" disabled={!history.canForward} onClick={history.onForward}>
+                      <ChevronRight />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>前进 ⌘]</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
             <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-4" />
             <Breadcrumb>
               <BreadcrumbList>
