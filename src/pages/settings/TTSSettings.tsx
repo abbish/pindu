@@ -103,21 +103,30 @@ export const TTSSettings: React.FC = () => {
     stopPreview();
     const run = previewRun.current;
     setPreview({ key, state: 'loading' });
-    const result = await ttsService.textToSpeech({ text, voiceId, style: 'sentence', useCache: false });
+    // 和实际朗读一样逐句合成（短文、例句都是一句一请求），试听到的才是实际效果
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+    const results = await Promise.all(sentences.map((t) => ttsService.textToSpeech({ text: t, voiceId, style: 'sentence', useCache: false })));
     if (run !== previewRun.current) return;
-    if (!result.success) {
+    const failed = results.find((r) => !r.success);
+    if (failed && !failed.success) {
       setPreview(null);
-      return toast.showError('无法试听', result.error);
+      return toast.showError('无法试听', failed.error);
     }
-    const audio = new Audio(result.data.audioUrl);
-    audioRef.current = audio;
-    audio.onended = () => run === previewRun.current && setPreview(null);
+    const urls = results.flatMap((r) => (r.success ? [r.data.audioUrl] : []));
     setPreview({ key, state: 'playing' });
-    audio.play().catch(() => {
+    const playAt = (i: number) => {
       if (run !== previewRun.current) return;
-      setPreview(null);
-      toast.showError('无法播放试听', '音频没能开始播放，请再试一次');
-    });
+      if (i >= urls.length) return setPreview(null);
+      const audio = new Audio(urls[i]);
+      audioRef.current = audio;
+      audio.onended = () => playAt(i + 1);
+      audio.play().catch(() => {
+        if (run !== previewRun.current) return;
+        setPreview(null);
+        toast.showError('无法播放试听', '音频没能开始播放，请再试一次');
+      });
+    };
+    playAt(0);
   };
 
   const handleSave = async (request: UpdateTtsConfigRequest) => {
