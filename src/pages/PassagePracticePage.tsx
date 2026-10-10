@@ -247,6 +247,21 @@ const ClozeCard: React.FC<{
 
 // ==================== 题目 ====================
 
+/** 比较用：小写、只留字母数字 */
+const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * 「参考表达」是在学生原回答基础上改好的一句：0 分（空白、非英文、答非所问）没有可改的，
+ * 或与参考答案基本相同时不再显示，避免与「参考答案」重复。
+ */
+const showSuggestion = (suggestion: string, score: number | null, reference?: string | null) => {
+  if (score === 0) return false;
+  if (!reference) return true;
+  const a = normalize(suggestion);
+  const b = normalize(reference);
+  return a !== b && !a.includes(b) && !b.includes(a);
+};
+
 const QuestionItem: React.FC<{
   index: number;
   question: PassageQuestion;
@@ -367,7 +382,7 @@ const QuestionItem: React.FC<{
                   {result.feedback}
                 </p>
               )}
-              {result?.suggestion && <p className="text-muted-foreground">参考表达：{result.suggestion}</p>}
+              {result?.suggestion && showSuggestion(result.suggestion, result.score, question.referenceAnswer) && <p className="text-muted-foreground">参考表达：{result.suggestion}</p>}
               {question.referenceAnswer && <p className="text-muted-foreground">参考答案：{question.referenceAnswer}</p>}
             </>
           )}
