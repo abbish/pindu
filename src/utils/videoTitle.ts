@@ -7,3 +7,9 @@ export function titleFromFileName(path: string): string {
   const end = words.findIndex((w) => tag.test(w));
   return (end > 0 ? words.slice(0, end) : words).join(' ');
 }
+
+/** 文件扩展名是否在列表里（不区分大小写）；文件选择框的过滤可以被直接输入路径绕过，选完要再核对 */
+export function hasExtension(path: string, extensions: readonly string[]): boolean {
+  const ext = /\.([^./\\]+)$/.exec(baseName(path))?.[1]?.toLowerCase();
+  return !!ext && extensions.includes(ext);
+}

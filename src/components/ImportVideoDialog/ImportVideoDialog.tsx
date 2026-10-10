@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { InlineError } from '@/components/InlineError';
 import { videoService } from '@/services/videoService';
-import { titleFromFileName } from '@/utils/videoTitle';
+import { hasExtension, titleFromFileName } from '@/utils/videoTitle';
 import type { MediaToolsStatus, VideoImportStarted } from '@/types/video';
 
 const VIDEO_EXTENSIONS = ['mp4', 'm4v', 'mov', 'mkv', 'webm', 'avi', 'ts'];
@@ -63,6 +63,8 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
   const [subtitlePath, setSubtitlePath] = useState('');
   const [secondPath, setSecondPath] = useState('');
   const [title, setTitle] = useState('');
+  /** 用户自己改过标题后，重新选视频不再覆盖 */
+  const [titleEdited, setTitleEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -72,20 +74,27 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
     setSubtitlePath('');
     setSecondPath('');
     setTitle('');
+    setTitleEdited(false);
     setError(null);
     videoService.getMediaToolsStatus().then((r) => setTools(r.success ? r.data : null));
   }, [open]);
 
-  const pick = async (extensions: string[], name: string) => {
+  const pick = async (extensions: string[], name: string, wrongType: string) => {
     const picked = await openFileDialog({ multiple: false, directory: false, filters: [{ name, extensions }] });
-    return typeof picked === 'string' ? picked : null;
+    if (typeof picked !== 'string') return null;
+    if (!hasExtension(picked, extensions)) {
+      setError(wrongType);
+      return null;
+    }
+    setError(null);
+    return picked;
   };
 
   const pickVideo = async () => {
-    const path = await pick(VIDEO_EXTENSIONS, '视频');
+    const path = await pick(VIDEO_EXTENSIONS, '视频', '请选择视频文件（mp4、mov、mkv 等）');
     if (!path) return;
     setVideoPath(path);
-    if (!title.trim()) setTitle(titleFromFileName(path));
+    if (!titleEdited) setTitle(titleFromFileName(path));
   };
 
   const pickToolsDir = async () => {
@@ -152,7 +161,7 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
               icon={<Captions className="size-4" />}
               path={subtitlePath}
               onPick={async () => {
-                const path = await pick(SUBTITLE_EXTENSIONS, '字幕');
+                const path = await pick(SUBTITLE_EXTENSIONS, '字幕', '请选择 srt 或 vtt 字幕文件');
                 if (path) setSubtitlePath(path);
               }}
             />
@@ -162,14 +171,18 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
               icon={<Captions className="size-4" />}
               path={secondPath}
               onPick={async () => {
-                const path = await pick(SUBTITLE_EXTENSIONS, '字幕');
+                const path = await pick(SUBTITLE_EXTENSIONS, '字幕', '请选择 srt 或 vtt 字幕文件');
                 if (path) setSecondPath(path);
               }}
               onClear={() => setSecondPath('')}
             />
             <div className="space-y-1.5">
               <Label htmlFor="video-title">标题</Label>
-              <Input id="video-title" value={title} maxLength={100} placeholder="视频文件名" onChange={(e) => setTitle(e.target.value)} />
+              <Input id="video-title" value={title} maxLength={100} placeholder="视频文件名" onChange={(e) => {
+                  setTitle(e.target.value);
+                  setTitleEdited(e.target.value.trim() !== '');
+                }}
+              />
             </div>
           </div>
         )}

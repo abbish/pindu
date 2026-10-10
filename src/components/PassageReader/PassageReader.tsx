@@ -84,6 +84,22 @@ function renderTokens(tokens: ReturnType<typeof tokenize>, targets: string[], ac
   // 目标词片段（词组覆盖多个单词，整体标出、整体可点）
   const spans = targets.length ? targetSpans(tokens, targets, forms) : new Map<number, TargetSpan>();
   const out: React.ReactNode[] = [];
+  // 单词是 inline-block，后面紧贴的标点（. ," 等）会被单独折到下一行：把它们和单词包在一个不换行的片段里
+  const pushGlued = (key: React.Key, node: React.ReactNode, after: string) => {
+    const stuck = after.match(/^\S+/)?.[0] ?? '';
+    const rest = after.slice(stuck.length);
+    out.push(
+      stuck ? (
+        <span key={key} className="whitespace-nowrap">
+          {node}
+          {stuck}
+        </span>
+      ) : (
+        <React.Fragment key={key}>{node}</React.Fragment>
+      )
+    );
+    if (rest) out.push(<React.Fragment key={`${key}-r`}>{rest}</React.Fragment>);
+  };
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     if (t.kind === 'other') {
@@ -105,8 +121,7 @@ function renderTokens(tokens: ReturnType<typeof tokenize>, targets: string[], ac
       const trailing = text.match(/[^A-Za-z]+$/)?.[0] ?? '';
       if (trailing) text = text.slice(0, text.length - trailing.length);
       const isActive = active !== null && active >= span.start && active < span.end;
-      out.push(<React.Fragment key={i}>{renderTarget ? renderTarget(text, span.target, isActive) : <TargetText text={text} active={isActive} />}</React.Fragment>);
-      if (trailing) out.push(<React.Fragment key={`${i}-t`}>{trailing}</React.Fragment>);
+      pushGlued(i, renderTarget ? renderTarget(text, span.target, isActive) : <TargetText text={text} active={isActive} />, trailing);
       i = last;
       continue;
     }
@@ -114,7 +129,6 @@ function renderTokens(tokens: ReturnType<typeof tokenize>, targets: string[], ac
     const isActive = active === t.index;
     const word = (
       <span
-        key={i}
         className={cn(
           'inline-block rounded-sm transition-[transform,background-color,color] duration-150',
           target && 'font-semibold text-warning underline decoration-overdue decoration-wavy decoration-2 underline-offset-[5px]',
@@ -125,7 +139,10 @@ function renderTokens(tokens: ReturnType<typeof tokenize>, targets: string[], ac
         {t.text}
       </span>
     );
-    out.push(target && renderTarget ? <React.Fragment key={i}>{renderTarget(t.text, target, isActive)}</React.Fragment> : word);
+    const next = tokens[i + 1];
+    const after = next?.kind === 'other' ? next.text : '';
+    if (after) i += 1;
+    pushGlued(i, target && renderTarget ? renderTarget(t.text, target, isActive) : word, after);
   }
   return out;
 }

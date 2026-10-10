@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { dropUnpairedBold } from '@/utils/markdownText';
 import { wordExplanationService } from '../../services/wordExplanationService';
 import type { WordExplanation } from '../../types';
 import { useImeGuard } from '../../hooks/useImeGuard';
@@ -173,7 +174,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
           error && 'border border-destructive/40 text-destructive'
         )}
       >
-        {typeof content === 'string' ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown> : content}
+        {typeof content === 'string' ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{dropUnpairedBold(content)}</ReactMarkdown> : content}
       </div>
     </div>
   );

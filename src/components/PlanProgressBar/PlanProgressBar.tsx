@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import type { UnifiedStudyPlanStatus } from '@/types';
 
 export interface PlanProgressBarProps {
-  /** 学习进度 %（已掌握 / 总单词） */
+  /** 学习进度 %（已学 = 练过一次的单词 / 总单词；只练短文时为完成篇数比例） */
   learnProgress: number;
   /** 时间进度 %（画成竖线刻度） */
   timeProgress: number;

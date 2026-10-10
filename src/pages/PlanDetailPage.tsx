@@ -361,9 +361,10 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
   const canPractice = status === 'Pending' || status === 'Active';
   const { primary, menu, danger } = groupPlanActions(getAvailableActions(status), status);
   const timeProgress = calculateTimeProgress(plan.start_date, plan.end_date);
+  // 与计划卡同一口径：已学（练过一次）/ 全部单词；掌握要间隔 7 天后仍写对，计划前期都是 0，看「记忆等级」
   const learnProgress = plan.practice_content === 'passages'
     ? (plan.total_passages > 0 ? (plan.completed_passages / plan.total_passages) * 100 : 0)
-    : (statistics?.actual_progress_percentage ?? 0);
+    : (plan.total_words > 0 ? ((statistics?.learned_words ?? 0) / plan.total_words) * 100 : 0);
   const withWords = plan.practice_content !== 'passages';
   const withPassages = plan.practice_content !== 'words';
   const meta = [
@@ -439,7 +440,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
                   <Info className="size-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-64">
-                  {!withWords ? '完成的短文 / 全部短文' : '已掌握的单词 / 全部单词；掌握 = 间隔 7 天后仍能写对'}
+                  {!withWords ? '完成的短文 / 全部短文' : '练过的单词 / 全部单词；掌握情况见记忆等级'}
                 </TooltipContent>
               </Tooltip>
             </h2>

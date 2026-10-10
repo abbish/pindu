@@ -68,10 +68,15 @@ test('Tauri 自身的错误换成通用说法', () => {
 test('应用内更新的错误说成更新服务器的问题，而不是 AI 服务', () => {
   assert.equal(
     toUserMessage('外部服务错误: 检查更新失败：error sending request for url (https://github.com/x)', 'EXTERNAL_SERVICE_ERROR'),
-    '连不上 GitHub（更新服务器），请检查网络后再试',
+    '连不上更新服务器，请检查网络后再试',
   );
   assert.equal(
     toUserMessage('外部服务错误: 安装更新失败：signature verification failed', 'EXTERNAL_SERVICE_ERROR'),
-    '更新包的签名校验没有通过，为了安全没有安装',
+    '更新文件没有通过安全检查，没有安装，请稍后再试',
+  );
+  // 签名数据本身损坏（编码不对）也是同一类问题
+  assert.equal(
+    toUserMessage('外部服务错误: 安装更新失败：Invalid encoding in minisign data', 'EXTERNAL_SERVICE_ERROR'),
+    '更新文件没有通过安全检查，没有安装，请稍后再试',
   );
 });
