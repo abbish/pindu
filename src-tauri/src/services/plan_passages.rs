@@ -532,7 +532,7 @@ impl PlanPassageService {
         Ok(())
     }
 
-    /// 可加进计划的短文：按相关度（目标词里属于计划单词 / 所选词汇本的个数）从高到低，同分按新到旧
+    /// 可加进计划的短文与视频片段：按相关度（目标词里属于计划单词 / 所选词汇本的个数）从高到低，同分按新到旧
     pub async fn candidates(
         &self,
         request: &PlanPassageCandidatesRequest,
@@ -549,7 +549,7 @@ impl PlanPassageService {
         let mut sets = self.passages.all_set_summaries().await?;
         let mut out: Vec<PlanPassageCandidate> = self
             .passages
-            .list(None, None, None)
+            .list_with_clips()
             .await?
             .into_iter()
             .map(|passage| {
@@ -947,6 +947,53 @@ mod tests {
         );
         assert_eq!(out[0].default_set_id, Some(set1));
         assert_eq!(out[1].default_set_id, None);
+    }
+
+    /// 计划候选同时列短文与视频片段；短文库列表仍只列短文
+    #[tokio::test]
+    async fn candidates_include_video_clips_but_passage_list_does_not() {
+        let pool = memory_pool().await;
+        let text = seed_plain_passage(&pool, "Text").await;
+        let clip = seed_plain_passage(&pool, "Clip").await;
+        let now = "2026-10-10T00:00:00.000Z";
+        let video_id: Id = sqlx::query_scalar(
+            "INSERT INTO videos (title, source_name, created_at, updated_at) VALUES ('v', 'v.mp4', ?1, ?1) RETURNING id",
+        )
+        .bind(now)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO video_clips (video_id, passage_id, seq, start_ms, end_ms, file, created_at)
+             VALUES (?, ?, 1, 0, 5000, 'c.mp4', ?)",
+        )
+        .bind(video_id)
+        .bind(clip)
+        .bind(now)
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        let service = PlanPassageService::new(pool.clone(), test_logger());
+        let out = service
+            .candidates(&PlanPassageCandidatesRequest {
+                book_ids: vec![],
+                plan_id: None,
+            })
+            .await
+            .unwrap();
+        let mut ids: Vec<(Id, String)> = out
+            .iter()
+            .map(|c| (c.passage.id, c.passage.origin.clone()))
+            .collect();
+        ids.sort();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.iter().any(|(id, o)| *id == clip && o == "video"));
+        assert!(ids.iter().any(|(id, o)| *id == text && o != "video"));
+        let library = PassageRepository::new(pool.clone())
+            .list(None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(library.iter().map(|p| p.id).collect::<Vec<_>>(), [text]);
     }
 
     fn d(s: &str) -> NaiveDate {

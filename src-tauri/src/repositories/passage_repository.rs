@@ -292,6 +292,21 @@ impl PassageRepository {
         plan_id: Option<Id>,
         origin: Option<&str>,
     ) -> AppResult<Vec<PassageSummary>> {
+        self.list_where(book_id, plan_id, origin, false).await
+    }
+
+    /// 短文与视频切片一起列出（计划挑素材用），最新在前
+    pub async fn list_with_clips(&self) -> AppResult<Vec<PassageSummary>> {
+        self.list_where(None, None, None, true).await
+    }
+
+    async fn list_where(
+        &self,
+        book_id: Option<Id>,
+        plan_id: Option<Id>,
+        origin: Option<&str>,
+        with_clips: bool,
+    ) -> AppResult<Vec<PassageSummary>> {
         let rows = sqlx::query(
             "SELECT p.id, p.title, p.level, p.word_count, p.target_words, p.created_at, p.source_label,
                     CASE WHEN EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id) THEN 'video' ELSE p.origin END AS origin,
@@ -310,13 +325,14 @@ impl PassageRepository {
                         WHERE s.passage_id = p.id AND s.kind = 'book' AND s.ref_id = ?1))
                AND (?2 IS NULL OR EXISTS (SELECT 1 FROM passage_sources s
                         WHERE s.passage_id = p.id AND s.kind = 'plan' AND s.ref_id = ?2))
-               AND COALESCE(?3 = 'video', 0) = EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id)
+               AND (?4 OR COALESCE(?3 = 'video', 0) = EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id))
                AND (?3 IS NULL OR ?3 = 'video' OR p.origin = ?3)
              ORDER BY p.created_at DESC, p.id DESC",
         )
         .bind(book_id)
         .bind(plan_id)
         .bind(origin)
+        .bind(with_clips)
         .fetch_all(self.pool.as_ref())
         .await?;
         let ids: Vec<Id> = rows.iter().map(|r| r.get("id")).collect();
