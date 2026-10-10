@@ -30,19 +30,20 @@ chrono = { version = "0.4", features = ["serde"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "migrate", "macros"], default-features = false }
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
-thiserror = "1.0"
+thiserror = "2"
 anyhow = "1.0"
-reqwest = { version = "0.12", features = ["json", "multipart"] }
+# 0.13 默认改用 rustls + aws-lc；沿用系统 TLS（与 0.12 默认一致，证书走系统信任库）
+reqwest = { version = "0.13", default-features = false, features = ["json", "multipart", "native-tls", "charset", "http2", "system-proxy"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 # 日志门面：拿不到 Logger 的代码与第三方库的日志经 log_bridge.rs 进应用日志
 tracing = "0.1"
 log = { version = "0.4", features = ["std"] }
 
-sha2 = "0.10"
-base64 = "0.22"
+sha2 = "0.11"
+base64 = "0.23"
 encoding_rs = "0.8"
-quick-xml = "0.38"
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+quick-xml = "0.42"
+zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
 pdf-extract = "0.12.1"
 
 # 发布版只允许运行一个实例：新旧两个版本同时打开会同时升级同一个数据库

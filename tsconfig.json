@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
 
@@ -15,7 +15,6 @@
     "jsx": "react-jsx",
 
     /* Path alias（与 vite.config.ts resolve.alias 一致） */
-    "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] },
 
     /* Linting */

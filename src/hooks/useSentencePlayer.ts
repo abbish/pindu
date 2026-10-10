@@ -76,7 +76,7 @@ export function useSentencePlayer(texts: string[], options: SentencePlayerOption
         const repeat = Math.max(1, optionsRef.current.repeat ?? 1);
         for (let r = 1; r <= repeat; r++) {
           setRound(r);
-          let ok = false;
+          let ok: boolean;
           try {
             ok = await audio.playSentence(texts[i], undefined, { signal, ...speech() });
           } catch {

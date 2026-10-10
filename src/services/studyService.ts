@@ -134,7 +134,7 @@ export class StudyService extends BaseService {
         try {
           JSON.parse(request.aiPlanData);
         } catch (e) {
-          throw new Error('AI规划数据格式无效');
+          throw new Error('AI规划数据格式无效', { cause: e });
         }
       }
 

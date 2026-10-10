@@ -138,7 +138,7 @@ impl Voicing {
         }
         if let Some(instruction) = &self.instruction {
             let digest = Sha256::digest(instruction.as_bytes());
-            tag.push_str(&format!("|ins={:x}", digest)[..14]);
+            tag.push_str(&format!("|ins={}", hex(&digest))[..14]);
         }
         if self.pitch != 0 {
             tag.push_str(&format!("|pitch={}", self.pitch));
@@ -148,6 +148,11 @@ impl Voicing {
         }
         tag
     }
+}
+
+/// 小写十六进制（缓存键与音频文件名；与 sha2 0.10 的 `{:x}` 输出相同）
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 /// 支持语音指令（context_texts）的资源：豆包语音合成 2.0 与声音复刻 2.0
@@ -284,7 +289,7 @@ impl TTSService {
         hasher.update(text.as_bytes());
         hasher.update(voice_id.as_bytes());
         hasher.update(variant.as_bytes());
-        format!("{:x}", hasher.finalize())
+        hex(&hasher.finalize())
     }
 
     /// 检查缓存；查询失败按未命中处理（缓存是旁路，不影响合成）
@@ -975,6 +980,15 @@ fn parse_tts_stream(body: &str) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     use crate::test_support::{memory_pool, test_logger};
+
+    #[test]
+    fn hex_matches_standard_sha256_digest() {
+        // 缓存键与音频文件名依赖这个格式，升级 sha2 后必须保持不变
+        assert_eq!(
+            hex(&Sha256::digest(b"abc")),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 
     const API_KEY: &str = "volc-api-key-0123456789";
     const ACCESS_KEY: &str = "volc-access-token-abcdef";

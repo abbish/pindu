@@ -11,7 +11,7 @@
 
 | 层 | 技术 |
 |---|---|
-| 前端 | React 19 · TypeScript ~5.6 · Vite 6 · **UI：shadcn/ui（Radix）+ Tailwind CSS v4 + lucide-react**（唯一 UI 体系，无 CSS Modules） |
+| 前端 | React 19 · TypeScript ~6.0 · Vite 8 · **UI：shadcn/ui（Radix）+ Tailwind CSS v4 + lucide-react**（唯一 UI 体系，无 CSS Modules） |
 | 桌面壳 | Tauri 2（plugins: opener, process；`withGlobalTauri: true`，开发模式自动打开 DevTools） |
 | 后端 | Rust 2021 · tokio · sqlx 0.8 (sqlite, migrate, WAL) · reqwest · thiserror |
 | AI | 内置 agent harness：pi（`@earendil-works/pi-coding-agent`，RPC sidecar `redlark-agent`，bun 单文件） |

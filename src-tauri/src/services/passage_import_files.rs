@@ -26,10 +26,10 @@ pub fn docx_text(bytes: &[u8]) -> AppResult<String> {
     let mut in_text = false;
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"w:t" => in_text = true,
-            Ok(Event::End(e)) if e.name().as_ref() == b"w:t" => in_text = false,
+            Ok(Event::Start(e)) if e.name().as_ref() == "w:t" => in_text = true,
+            Ok(Event::End(e)) if e.name().as_ref() == "w:t" => in_text = false,
             Ok(Event::Text(t)) if in_text => {
-                let text = t.decode().map_err(|_| unreadable("Word 文件"))?;
+                let text = t.xml10_content();
                 let text = quick_xml::escape::unescape(&text)
                     .map(|s| s.into_owned())
                     .unwrap_or_else(|_| text.into_owned());
@@ -37,14 +37,14 @@ pub fn docx_text(bytes: &[u8]) -> AppResult<String> {
             }
             Ok(Event::GeneralRef(r)) if in_text => {
                 // &amp; 一类实体
-                let name = r.decode().map_err(|_| unreadable("Word 文件"))?;
+                let name = r.into_inner();
                 if let Some(c) = quick_xml::escape::resolve_predefined_entity(&name) {
                     paragraph.push_str(c);
                 }
             }
-            Ok(Event::Empty(e)) if e.name().as_ref() == b"w:tab" => paragraph.push(' '),
-            Ok(Event::Empty(e)) if e.name().as_ref() == b"w:br" => paragraph.push('\n'),
-            Ok(Event::End(e)) if e.name().as_ref() == b"w:p" => {
+            Ok(Event::Empty(e)) if e.name().as_ref() == "w:tab" => paragraph.push(' '),
+            Ok(Event::Empty(e)) if e.name().as_ref() == "w:br" => paragraph.push('\n'),
+            Ok(Event::End(e)) if e.name().as_ref() == "w:p" => {
                 let p = paragraph.trim();
                 if !p.is_empty() {
                     out.push_str(p);
