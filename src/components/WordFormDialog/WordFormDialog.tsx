@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -47,6 +47,9 @@ interface FormValues {
   /** 短语动词能否拆开用 */
   separable: boolean;
 }
+
+/** AI 补全会写的字段 */
+const AI_FIELDS = ['meaning', 'pos', 'ipa', 'syllables', 'segments', 'rule', 'explanation', 'examples', 'phraseType', 'separable'] as const;
 
 const EMPTY: FormValues = { word: '', meaning: '', pos: 'n.', ipa: '', syllables: '', segments: '', rule: '', explanation: '', description: '', examples: [], phraseType: '', separable: false };
 
@@ -98,6 +101,17 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
   const [submitError, setSubmitError] = useState<{ title: string; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [filling, setFilling] = useState(false);
+  /** 上次 AI 补全写进各字段的值：字段仍是这个值说明用户没改过，再次补全时可以覆盖 */
+  const aiFilledRef = useRef<Partial<FormValues>>({});
+  /** 最新的表单值（AI 结果回来时用户可能又改过） */
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+  /** 字段可以由 AI 填写：空着，或仍是 AI 上次填的值 */
+  const isFree = (v: FormValues, key: keyof FormValues): boolean => {
+    const value = v[key];
+    const empty = Array.isArray(value) ? !value.some((e) => e.sentence.trim()) : typeof value === 'string' ? !value.trim() : false;
+    return empty || (key in aiFilledRef.current && aiFilledRef.current[key] === value);
+  };
   /** AI 补全失败的原因（显示在单词输入框下方） */
   const [fillError, setFillError] = useState<string | null>(null);
   /** AI 认为拼写有误时给出的写法与分析 */
@@ -112,6 +126,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
     setSubmitError(null);
     setFillError(null);
     setCorrection(null);
+    aiFilledRef.current = {};
   }, [isOpen, word]);
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
@@ -128,24 +143,37 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
       values.examples.map((e, i) => (i === index ? { ...e, ...patch } : e))
     );
 
-  /** 把 AI 的分析填进空着的字段（不覆盖已填写的内容）；`word` 传入时同时改用这个写法 */
+  /**
+   * 把 AI 的分析填进字段：空着的、或上次由 AI 填写且之后没改过的字段（换了单词再补全时会更新）；用户填写或改过的不覆盖。
+   * `word` 传入时同时改用这个写法。
+   */
   const applyAnalysis = (p: PhonicsWord, word?: string) => {
-    setValues((prev) => ({
-      ...prev,
-      word: word ?? prev.word,
-      meaning: prev.meaning || p.chinese_translation,
-      pos: prev.meaning ? prev.pos : standardizePartOfSpeech(p.pos_abbreviation),
-      ipa: prev.ipa || p.ipa,
-      syllables: prev.syllables || p.syllables,
-      segments: prev.segments || textToSegments((prev.syllables || p.syllables).replace(/-/g, ' ')).join(' / '),
-      rule: prev.rule || p.phonics_rule,
-      explanation: prev.explanation || p.analysis_explanation,
-      examples: prev.examples.some((e) => e.sentence.trim()) ? prev.examples : (p.examples ?? []),
-      phraseType: prev.phraseType || p.phrase_type || '',
-      separable: prev.phraseType ? prev.separable : Boolean(p.separable),
-    }));
+    const filled: Partial<FormValues> = {};
+    {
+      const prev = valuesRef.current;
+      const free = <K extends keyof FormValues>(key: K) => isFree(prev, key);
+      const syllables = free('syllables') ? p.syllables : prev.syllables;
+      const next: FormValues = {
+        ...prev,
+        word: word ?? prev.word,
+        meaning: free('meaning') ? p.chinese_translation : prev.meaning,
+        pos: free('meaning') ? standardizePartOfSpeech(p.pos_abbreviation) : prev.pos,
+        ipa: free('ipa') ? p.ipa : prev.ipa,
+        syllables,
+        segments: free('segments') ? textToSegments(syllables.replace(/-/g, ' ')).join(' / ') : prev.segments,
+        rule: free('rule') ? p.phonics_rule : prev.rule,
+        explanation: free('explanation') ? p.analysis_explanation : prev.explanation,
+        examples: free('examples') ? (p.examples ?? []) : prev.examples,
+        phraseType: free('phraseType') ? p.phrase_type || '' : prev.phraseType,
+        separable: free('phraseType') ? Boolean(p.separable) : prev.separable,
+      };
+      for (const key of AI_FIELDS) if (free(key === 'pos' ? 'meaning' : key === 'separable' ? 'phraseType' : key)) (filled as Record<string, unknown>)[key] = next[key];
+      valuesRef.current = next;
+      setValues(next);
+    }
+    aiFilledRef.current = filled;
     setCorrection(null);
-    toast.showSuccess('已补全空白字段');
+    toast.showSuccess('已补全');
   };
 
   /** 用 AI 补全空白字段；AI 认为拼写有误（返回的词与输入不同）时先提示，用户确认后再改用 */
@@ -158,7 +186,9 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
     setFilling(true);
     setFillError(null);
     setCorrection(null);
-    const result = await wordAnalysisService.analyzeWord(w, values.meaning.trim(), bookId);
+    // 释义是 AI 上次填的（不是用户写的）时不作为参考发给 AI
+    const meaning = isFree(values, 'meaning') ? '' : values.meaning.trim();
+    const result = await wordAnalysisService.analyzeWord(w, meaning, bookId);
     setFilling(false);
     if (!result.success) {
       setFillError(result.error);
