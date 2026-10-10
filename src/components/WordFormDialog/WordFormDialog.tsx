@@ -5,6 +5,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { PHRASE_TYPE_LABEL } from '@/components/WordStudyCard/WordStudyCard';
+import { isPhrase } from '@/utils/passage';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { cn } from '@/lib/utils';
@@ -40,9 +43,13 @@ interface FormValues {
   explanation: string;
   description: string;
   examples: WordExample[];
+  /** 词组类型（词组才有） */
+  phraseType: string;
+  /** 短语动词能否拆开用 */
+  separable: boolean;
 }
 
-const EMPTY: FormValues = { word: '', meaning: '', pos: 'n.', ipa: '', syllables: '', segments: '', rule: '', explanation: '', description: '', examples: [] };
+const EMPTY: FormValues = { word: '', meaning: '', pos: 'n.', ipa: '', syllables: '', segments: '', rule: '', explanation: '', description: '', examples: [], phraseType: '', separable: false };
 
 /** 数据库里的拼读块（JSON 数组字符串）→ 编辑文本 */
 const segmentsToText = (raw?: string | null): string => {
@@ -74,11 +81,13 @@ const fromWord = (w?: Word | null): FormValues =>
         explanation: w.analysis_explanation || '',
         description: w.description || '',
         examples: (w.examples ?? []).map((e) => ({ sentence: e.sentence, translation: e.translation ?? '' })),
+        phraseType: w.phrase_type || '',
+        separable: Boolean(w.separable),
       }
     : EMPTY;
 
 /**
- * 手动添加 / 编辑单词（同一表单）：单词、释义、词性 → 发音与拼读（音节、拼读块可按音节一键拆分）→ 例句逐条编辑。
+ * 手动添加 / 编辑词汇（同一表单）：单词或词组、释义、词性 → 发音与拼读（音节、拼读块可按音节一键拆分；词组换成类型、能否拆开与用法）→ 例句逐条编辑。
  * 词性缩写 / 中文 / 英文由词性自动带出。填好单词与释义后可以“AI 补全”空着的发音、拼读与例句。
  * 保存失败时弹窗不关并显示后端原因（如词汇本里已有同名单词）。
  */
@@ -90,6 +99,8 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
   const [submitError, setSubmitError] = useState<{ title: string; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [filling, setFilling] = useState(false);
+  /** 输入的是词组（含空格）：显示词组类型与用法，不显示音节与拼读 */
+  const phrase = isPhrase(values.word.trim());
 
   useEffect(() => {
     if (!isOpen) return;
@@ -112,7 +123,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
   const aiFill = async () => {
     const w = values.word.trim();
     if (!w) {
-      setErrors({ word: '请填写单词' });
+      setErrors({ word: '请填写单词或词组' });
       return;
     }
     setFilling(true);
@@ -131,6 +142,8 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
         rule: prev.rule || p.phonics_rule,
         explanation: prev.explanation || p.analysis_explanation,
         examples: prev.examples.some((e) => e.sentence.trim()) ? prev.examples : (p.examples ?? []),
+        phraseType: prev.phraseType || p.phrase_type || '',
+        separable: prev.phraseType ? prev.separable : Boolean(p.separable),
       }));
       toast.showSuccess('已补全空白字段');
     } catch (err) {
@@ -143,12 +156,13 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const nextErrors: typeof errors = {};
-    if (!values.word.trim()) nextErrors.word = '请填写单词';
+    if (!values.word.trim()) nextErrors.word = '请填写单词或词组';
     if (!values.meaning.trim()) nextErrors.meaning = '请填写释义';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    const segments = textToSegments(values.segments);
+    // 词组不按字母拼读：不保存音节、拼读分段与拼读规则
+    const segments = phrase ? [] : textToSegments(values.segments);
     const payload: UpdateWordRequest = {
       word: values.word.trim(),
       meaning: values.meaning.trim(),
@@ -157,9 +171,11 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
       pos_chinese: PART_OF_SPEECH_LABELS[values.pos] ?? '',
       pos_english: PART_OF_SPEECH_ENGLISH[values.pos] ?? '',
       ipa: values.ipa.trim(),
-      syllables: values.syllables.trim(),
+      syllables: phrase ? '' : values.syllables.trim(),
       phonics_segments: segments.length > 0 ? JSON.stringify(segments) : '',
-      phonics_rule: values.rule.trim(),
+      phonics_rule: phrase ? '' : values.rule.trim(),
+      phrase_type: phrase ? values.phraseType : '',
+      separable: phrase && values.phraseType === 'phrasal_verb' && values.separable,
       analysis_explanation: values.explanation.trim(),
       description: values.description.trim(),
       examples: values.examples
@@ -173,10 +189,10 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
       : await wordBookService.addWordToBook(bookId, { ...payload, word: payload.word!, meaning: payload.meaning! });
     setSaving(false);
     if (!result.success) {
-      setSubmitError({ title: editing ? '无法保存单词' : '无法添加单词', message: result.error });
+      setSubmitError({ title: editing ? '无法保存' : '无法添加', message: result.error });
       return;
     }
-    toast.showSuccess(editing ? '单词已保存' : `已添加「${payload.word}」`);
+    toast.showSuccess(editing ? '已保存' : `已添加「${payload.word}」`);
     onSaved();
     onClose();
   };
@@ -189,7 +205,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
       <DialogContent aria-describedby={undefined} className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl" onOpenAutoFocus={(e) => editing && e.preventDefault()}>
         <form onSubmit={submit} className="flex min-h-0 flex-col" noValidate>
           <DialogHeader className="border-b px-6 pt-5 pb-4">
-            <DialogTitle>{editing ? `编辑「${word?.word}」` : '手动添加单词'}</DialogTitle>
+            <DialogTitle>{editing ? `编辑「${word?.word}」` : '手动添加词汇'}</DialogTitle>
           </DialogHeader>
 
           <div className="flex min-h-0 flex-col gap-7 overflow-y-auto px-6 py-5">
@@ -197,8 +213,8 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
             <section className="space-y-3">
               <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_9rem] gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="wf-word">单词</Label>
-                  <Input id="wf-word" value={values.word} onChange={(e) => set('word', e.target.value)} placeholder="例如：elephant" maxLength={50} autoFocus={!editing} aria-invalid={Boolean(errors.word)} className="font-medium" />
+                  <Label htmlFor="wf-word">单词 / 词组</Label>
+                  <Input id="wf-word" value={values.word} onChange={(e) => set('word', e.target.value)} placeholder="例如：elephant、give up" maxLength={50} autoFocus={!editing} aria-invalid={Boolean(errors.word)} className="font-medium" />
                   {errors.word && <p className="text-xs text-destructive">{errors.word}</p>}
                 </div>
                 <div className="space-y-1.5">
@@ -230,19 +246,55 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
               </div>
             </section>
 
+            {/* 词组：类型、能否拆开 */}
+            {phrase && (
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold">词组</h3>
+                <div className="grid grid-cols-2 items-end gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="wf-ptype">类型</Label>
+                    <Select value={values.phraseType || undefined} onValueChange={(v) => set('phraseType', v)}>
+                      <SelectTrigger id="wf-ptype" className="w-full">
+                        <SelectValue placeholder="选择类型" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(PHRASE_TYPE_LABEL).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {values.phraseType === 'phrasal_verb' && (
+                    <div className="flex h-9 items-center gap-2">
+                      <Switch id="wf-sep" checked={values.separable} onCheckedChange={(v) => set('separable', v)} />
+                      <Label htmlFor="wf-sep" className="font-normal">
+                        可拆开（如 pick it up）
+                      </Label>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
             {/* 发音与拼读 */}
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold">发音与拼读</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <h3 className="text-sm font-semibold">{phrase ? '发音与用法' : '发音与拼读'}</h3>
+              <div className={cn('grid gap-3', !phrase && 'grid-cols-2')}>
                 <div className="space-y-1.5">
                   <Label htmlFor="wf-ipa">音标</Label>
                   <Input id="wf-ipa" value={values.ipa} onChange={(e) => set('ipa', e.target.value)} placeholder="例如 /ˈelɪfənt/" className="font-mono placeholder:font-sans" />
                 </div>
+                {!phrase && (
                 <div className="space-y-1.5">
                   <Label htmlFor="wf-syl">音节</Label>
                   <Input id="wf-syl" value={values.syllables} onChange={(e) => set('syllables', e.target.value)} placeholder="例如 el-e-phant" className="font-mono placeholder:font-sans" />
                 </div>
+                )}
               </div>
+              {!phrase && (
+              <>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="wf-seg">拼读分段</Label>
@@ -273,9 +325,11 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                 <Label htmlFor="wf-rule">拼读规则</Label>
                 <Input id="wf-rule" value={values.rule} onChange={(e) => set('rule', e.target.value)} placeholder="例如：ph 发 /f/" />
               </div>
+              </>
+              )}
               <div className="space-y-1.5">
-                <Label htmlFor="wf-exp">拼读讲解</Label>
-                <Textarea id="wf-exp" value={values.explanation} onChange={(e) => set('explanation', e.target.value)} placeholder="拼读规则说明" className="min-h-20 resize-none" />
+                <Label htmlFor="wf-exp">{phrase ? '用法' : '拼读讲解'}</Label>
+                <Textarea id="wf-exp" value={values.explanation} onChange={(e) => set('explanation', e.target.value)} placeholder={phrase ? '整体意思、宾语放在哪里' : '拼读规则说明'} className="min-h-20 resize-none" />
               </div>
             </section>
 

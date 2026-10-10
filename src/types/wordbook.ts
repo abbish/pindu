@@ -145,6 +145,10 @@ export interface CreateWordRequest {
   analysis_explanation?: string;
   /** 例句 */
   examples?: WordExample[];
+  /** 词组类型（单词忽略） */
+  phrase_type?: string;
+  /** 短语动词能否拆开用 */
+  separable?: boolean;
 }
 
 /// 更新单词请求
@@ -165,6 +169,10 @@ export interface UpdateWordRequest {
   analysis_explanation?: string;
   /** 例句（传入则整体替换） */
   examples?: WordExample[];
+  /** 词组类型（单词忽略） */
+  phrase_type?: string;
+  /** 短语动词能否拆开用 */
+  separable?: boolean;
 }
 
 /// 单词查询参数

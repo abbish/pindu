@@ -92,6 +92,10 @@ impl WordService {
             .await?;
 
         // 将 CreateWordRequest 转换为 Word
+        let phrase_type = phrase_type_for(&word_data.word, word_data.phrase_type.as_deref());
+        let separable =
+            phrase_type.as_deref() == Some("phrasal_verb") && word_data.separable.unwrap_or(false);
+        let kind = crate::types::wordbook::vocab_kind(&word_data.word).to_string();
         let word = Word {
             id: 0, // 新单词，ID 由数据库生成
             word: word_data.word,
@@ -110,9 +114,9 @@ impl WordService {
             pos_chinese: word_data.pos_chinese,
             phonics_rule: word_data.phonics_rule,
             analysis_explanation: word_data.analysis_explanation,
-            kind: "word".to_string(),
-            phrase_type: None,
-            separable: false,
+            kind,
+            phrase_type,
+            separable,
             examples: clean_examples(word_data.examples.unwrap_or_default()),
             created_at: String::new(),
             updated_at: String::new(),
@@ -187,6 +191,17 @@ impl WordService {
         if let Some(examples) = word_data.examples {
             updated_word.examples = clean_examples(examples);
         }
+        // 词组类型与能否拆开：只对词组有效，改成单词时清除；只有短语动词能拆开
+        if let Some(pt) = word_data.phrase_type {
+            updated_word.phrase_type = Some(pt);
+        }
+        if let Some(separable) = word_data.separable {
+            updated_word.separable = separable;
+        }
+        updated_word.kind = crate::types::wordbook::vocab_kind(&updated_word.word).to_string();
+        updated_word.phrase_type =
+            phrase_type_for(&updated_word.word, updated_word.phrase_type.as_deref());
+        updated_word.separable &= updated_word.phrase_type.as_deref() == Some("phrasal_verb");
 
         // 调用 repository 更新
         self.repository.update(&updated_word).await
@@ -272,6 +287,14 @@ impl WordService {
     }
 }
 
+/// 词组的类型：只接受四种取值；单词没有类型
+pub fn phrase_type_for(word: &str, phrase_type: Option<&str>) -> Option<String> {
+    const TYPES: [&str; 4] = ["phrasal_verb", "collocation", "idiom", "fixed"];
+    let t = phrase_type?.trim();
+    (crate::types::wordbook::vocab_kind(word) == "phrase" && TYPES.contains(&t))
+        .then(|| t.to_string())
+}
+
 /// 去掉首尾空白并丢弃空句子
 pub fn clean_examples(examples: Vec<WordExample>) -> Vec<WordExample> {
     examples
@@ -305,6 +328,8 @@ mod tests {
             phonics_rule: None,
             analysis_explanation: None,
             examples: None,
+            phrase_type: None,
+            separable: None,
         }
     }
 
@@ -347,6 +372,62 @@ mod tests {
         };
         assert!(service.update_word(id, rename("word1")).await.is_err());
         service.update_word(id, rename("Cat")).await.unwrap();
+
+        // 词组：保存类型与能否拆开；改回单词时清除
+        let phrase = service
+            .add_word_to_book(
+                book,
+                CreateWordRequest {
+                    phrase_type: Some("phrasal_verb".into()),
+                    separable: Some(true),
+                    ..new_word("give  up", "放弃")
+                },
+            )
+            .await
+            .unwrap();
+        let saved = service
+            .repository
+            .find_by_id(phrase)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved.word, "give up");
+        assert_eq!(
+            (
+                saved.kind.as_str(),
+                saved.phrase_type.as_deref(),
+                saved.separable
+            ),
+            ("phrase", Some("phrasal_verb"), true)
+        );
+        service
+            .update_word(
+                phrase,
+                UpdateWordRequest {
+                    phrase_type: Some("idiom".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let saved = service
+            .repository
+            .find_by_id(phrase)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (saved.phrase_type.as_deref(), saved.separable),
+            (Some("idiom"), false)
+        );
+        service.update_word(phrase, rename("quit")).await.unwrap();
+        let saved = service
+            .repository
+            .find_by_id(phrase)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!((saved.kind.as_str(), saved.phrase_type), ("word", None));
         crate::time::assert_instants_canonical(&pool).await;
     }
 }

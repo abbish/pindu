@@ -185,6 +185,12 @@ pub struct CreateWordRequest {
     pub analysis_explanation: Option<String>,
     /// 例句（None = 不修改）
     pub examples: Option<Vec<WordExample>>,
+    /// 词组类型：phrasal_verb / collocation / idiom / fixed（单词忽略）
+    #[serde(default)]
+    pub phrase_type: Option<String>,
+    /// 短语动词能否拆开用（单词忽略）
+    #[serde(default)]
+    pub separable: Option<bool>,
 }
 
 /// 更新单词请求
@@ -206,6 +212,12 @@ pub struct UpdateWordRequest {
     pub analysis_explanation: Option<String>,
     /// 例句（None = 不修改；传入则整体替换）
     pub examples: Option<Vec<WordExample>>,
+    /// 词组类型（None = 不修改；空字符串清除）；改成单词时自动清除
+    #[serde(default)]
+    pub phrase_type: Option<String>,
+    /// 短语动词能否拆开用（None = 不修改）
+    #[serde(default)]
+    pub separable: Option<bool>,
 }
 
 /// 词汇本统计

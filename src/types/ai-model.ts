@@ -171,6 +171,10 @@ export interface PhonicsWord {
   analysis_explanation: string;
   /** 例句（5 条以上，第一句最简单） */
   examples: WordExample[];
+  /** 词组类型：phrasal_verb / collocation / idiom / fixed（单词为空） */
+  phrase_type: string;
+  /** 短语动词能否拆开用 */
+  separable: boolean;
 }
 
 /// test_ai_model 的返回（对应 Rust `TestAIModelResult`，camelCase）
