@@ -156,9 +156,9 @@ impl WordRepository {
                 INSERT INTO words (
                     word, meaning, description, ipa, syllables, phonics_segments,
                     part_of_speech, pos_abbreviation, pos_english, pos_chinese,
-                    phonics_rule, analysis_explanation, word_book_id,
+                    phonics_rule, analysis_explanation, kind, phrase_type, separable, word_book_id,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             "#,
             )
             .bind(&word.word)
@@ -173,6 +173,9 @@ impl WordRepository {
             .bind(&word.pos_chinese)
             .bind(&word.phonics_rule)
             .bind(&word.analysis_explanation)
+            .bind(crate::types::wordbook::vocab_kind(&word.word))
+            .bind(&word.phrase_type)
+            .bind(word.separable)
             .bind(word.word_book_id)
             .execute(&mut *conn)
             .await
@@ -203,6 +206,8 @@ impl WordRepository {
                 pos_chinese = ?,
                 phonics_rule = ?,
                 analysis_explanation = ?,
+                phrase_type = COALESCE(?, phrase_type),
+                separable = ?,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
             WHERE id = ?
         "#;
@@ -218,6 +223,8 @@ impl WordRepository {
                 .bind(&word.pos_chinese)
                 .bind(&word.phonics_rule)
                 .bind(&word.analysis_explanation)
+                .bind(&word.phrase_type)
+                .bind(word.separable)
                 .bind(word_id)
                 .execute(&mut *conn)
                 .await
@@ -301,7 +308,7 @@ impl WordRepository {
             SELECT id, word, meaning, description, ipa, syllables, phonics_segments,
                    image_path, audio_path, part_of_speech, category_id,
                    pos_abbreviation, pos_english, pos_chinese,
-                   phonics_rule, analysis_explanation,
+                   phonics_rule, analysis_explanation, kind, phrase_type, separable,
                    word_book_id, created_at, updated_at
             FROM words
             WHERE id = ?
@@ -347,9 +354,9 @@ impl WordRepository {
             INSERT INTO words (
                 word, meaning, description, ipa, syllables, phonics_segments,
                 part_of_speech, pos_abbreviation, pos_english, pos_chinese,
-                phonics_rule, analysis_explanation, word_book_id,
+                phonics_rule, analysis_explanation, kind, phrase_type, separable, word_book_id,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         "#;
 
         let mut tx = self.pool.begin().await?;
@@ -366,6 +373,9 @@ impl WordRepository {
             .bind(&word.pos_chinese)
             .bind(&word.phonics_rule)
             .bind(&word.analysis_explanation)
+            .bind(crate::types::wordbook::vocab_kind(&word.word))
+            .bind(&word.phrase_type)
+            .bind(word.separable)
             .bind(word.word_book_id)
             .execute(&mut *tx)
             .await
@@ -404,6 +414,9 @@ impl WordRepository {
                 pos_chinese = ?,
                 phonics_rule = ?,
                 analysis_explanation = ?,
+                kind = ?,
+                phrase_type = ?,
+                separable = ?,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
             WHERE id = ?
         "#;
@@ -422,6 +435,9 @@ impl WordRepository {
             .bind(&word.pos_chinese)
             .bind(&word.phonics_rule)
             .bind(&word.analysis_explanation)
+            .bind(crate::types::wordbook::vocab_kind(&word.word))
+            .bind(&word.phrase_type)
+            .bind(word.separable)
             .bind(word.id)
             .execute(&mut *tx)
             .await
@@ -504,7 +520,7 @@ impl WordRepository {
                 id, word, meaning, description, ipa, syllables, phonics_segments,
                 image_path, audio_path, part_of_speech, category_id, word_book_id,
                 pos_abbreviation, pos_english, pos_chinese, phonics_rule,
-                analysis_explanation, created_at, updated_at
+                analysis_explanation, kind, phrase_type, separable, created_at, updated_at
             FROM words
             WHERE {where_clause}
             ORDER BY {order_by}
@@ -611,6 +627,12 @@ impl WordRepository {
             pos_chinese: row.get("pos_chinese"),
             phonics_rule: row.get("phonics_rule"),
             analysis_explanation: row.get("analysis_explanation"),
+            // 个别查询没选这几列时按内容推断
+            kind: row.try_get("kind").unwrap_or_else(|_| {
+                crate::types::wordbook::vocab_kind(&row.get::<String, _>("word")).to_string()
+            }),
+            phrase_type: row.try_get("phrase_type").unwrap_or(None),
+            separable: row.try_get("separable").unwrap_or(false),
             examples: Vec::new(),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),

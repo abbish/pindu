@@ -24,7 +24,7 @@ impl WordCardRepository {
         let keys: Vec<String> = words.iter().map(|w| w.trim().to_lowercase()).collect();
         let rows = sqlx::query(
             "SELECT word_key, word, meaning, pos_abbreviation, pos_chinese, ipa, syllables,
-                    phonics_rule, analysis_explanation, examples
+                    phonics_rule, analysis_explanation, examples, kind, phrase_type, separable
              FROM word_cards WHERE word_key IN (SELECT value FROM json_each(?))",
         )
         .bind(json(&keys)?)
@@ -46,6 +46,9 @@ impl WordCardRepository {
                         phonics_rule: r.get("phonics_rule"),
                         analysis_explanation: r.get("analysis_explanation"),
                         examples: serde_json::from_str(&examples).unwrap_or_default(),
+                        kind: r.get("kind"),
+                        phrase_type: r.get("phrase_type"),
+                        separable: r.get("separable"),
                     },
                 )
             })
@@ -57,13 +60,15 @@ impl WordCardRepository {
         let now = crate::time::now_utc();
         sqlx::query(
             "INSERT INTO word_cards (word_key, word, meaning, pos_abbreviation, pos_chinese, ipa, syllables,
-                                     phonics_rule, analysis_explanation, examples, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     phonics_rule, analysis_explanation, examples, kind, phrase_type, separable,
+                                     created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(word_key) DO UPDATE SET
                 word = excluded.word, meaning = excluded.meaning, pos_abbreviation = excluded.pos_abbreviation,
                 pos_chinese = excluded.pos_chinese, ipa = excluded.ipa, syllables = excluded.syllables,
                 phonics_rule = excluded.phonics_rule, analysis_explanation = excluded.analysis_explanation,
-                examples = excluded.examples, updated_at = excluded.updated_at",
+                examples = excluded.examples, kind = excluded.kind, phrase_type = excluded.phrase_type,
+                separable = excluded.separable, updated_at = excluded.updated_at",
         )
         .bind(card.word.trim().to_lowercase())
         .bind(card.word.trim())
@@ -75,6 +80,9 @@ impl WordCardRepository {
         .bind(&card.phonics_rule)
         .bind(&card.analysis_explanation)
         .bind(json(&card.examples)?)
+        .bind(crate::types::wordbook::vocab_kind(&card.word))
+        .bind(&card.phrase_type)
+        .bind(card.separable)
         .bind(&now)
         .bind(&now)
         .execute(self.pool.as_ref())

@@ -114,6 +114,12 @@ export interface Word {
   analysis_explanation?: string;
   /** 例句（按顺序，第一句最简单） */
   examples?: WordExample[];
+  /** word 单词 / phrase 词组（带空格的是词组，D45） */
+  kind?: 'word' | 'phrase';
+  /** 词组类型：phrasal_verb 短语动词 / collocation 固定搭配 / idiom 习语 / fixed 固定短语 */
+  phrase_type?: string | null;
+  /** 短语动词能否拆开用（pick it up） */
+  separable?: boolean;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

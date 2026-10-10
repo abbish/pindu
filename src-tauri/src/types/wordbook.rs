@@ -108,6 +108,24 @@ pub struct TutorReply {
     pub follow_ups: Vec<String>,
 }
 
+/// 词汇条目的类型：带空格的是词组（phrase），其余是单词（word）
+pub fn vocab_kind(text: &str) -> &'static str {
+    if text.trim().contains(char::is_whitespace) {
+        "phrase"
+    } else {
+        "word"
+    }
+}
+
+/// 词汇文本归一：去首尾空白、连续空白合成一个空格（"give  up" 与 "give up" 是同一条）
+pub fn normalize_vocab(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn default_vocab_kind() -> String {
+    "word".to_string()
+}
+
 /// 单词
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Word {
@@ -132,6 +150,15 @@ pub struct Word {
     /// 例句（按顺序，第一句最简单；拼读分析时生成，可朗读）
     #[serde(default)]
     pub examples: Vec<WordExample>,
+    /// word 单词 / phrase 词组（带空格的是词组，写入时由内容决定，D45）
+    #[serde(default = "default_vocab_kind")]
+    pub kind: String,
+    /// 词组类型：phrasal_verb / collocation / idiom / fixed（AI 分析给出；单词为空）
+    #[serde(default)]
+    pub phrase_type: Option<String>,
+    /// 短语动词能否拆开用（pick it up）
+    #[serde(default)]
+    pub separable: bool,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -235,6 +262,12 @@ pub struct AnalyzedWord {
     /// 例句（分析结果，至少 5 条）
     pub examples: Option<Vec<WordExample>>,
     pub word_frequency: Option<i32>,
+    /// 词组类型（单词为空）
+    #[serde(default)]
+    pub phrase_type: Option<String>,
+    /// 短语动词能否拆开用
+    #[serde(default)]
+    pub separable: bool,
 }
 
 /// 从分析结果创建单词本的请求
@@ -248,4 +281,17 @@ pub struct CreateWordBookFromAnalysisRequest {
     pub status: Option<String>,
     pub book_id: Option<Id>, // 如果提供，则向现有单词本添加单词；否则创建新单词本
     pub tag_ids: Option<Vec<Id>>,
+}
+
+#[cfg(test)]
+mod vocab_tests {
+    use super::*;
+
+    #[test]
+    fn phrases_are_detected_and_normalized() {
+        assert_eq!(vocab_kind("apple"), "word");
+        assert_eq!(vocab_kind(" give  up "), "phrase");
+        assert_eq!(normalize_vocab("  give \t up "), "give up");
+        assert_eq!(normalize_vocab("well-known"), "well-known");
+    }
 }

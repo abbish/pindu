@@ -219,7 +219,16 @@ impl WordBookService {
         let mut unique_words = Vec::new();
         let mut seen_words = std::collections::HashSet::new();
 
-        for word in &request.words {
+        let normalized: Vec<AnalyzedWord> = request
+            .words
+            .iter()
+            .cloned()
+            .map(|mut w| {
+                w.word = crate::types::wordbook::normalize_vocab(&w.word);
+                w
+            })
+            .collect();
+        for word in &normalized {
             let word_lower = word.word.to_lowercase();
             if !seen_words.contains(&word_lower) {
                 seen_words.insert(word_lower);
@@ -304,6 +313,7 @@ impl WordBookService {
             WordRepository::new(self.repository.get_pool(), self.repository.get_logger());
         let to_word = |aw: AnalyzedWord| {
             let examples = complete_examples(aw.examples.clone().unwrap_or_default());
+            let kind = crate::types::wordbook::vocab_kind(&aw.word).to_string();
             Word {
                 id: 0,
                 phonics_segments: phonics_segments_from_syllables(
@@ -325,6 +335,9 @@ impl WordBookService {
                 pos_chinese: aw.pos_chinese,
                 phonics_rule: aw.phonics_rule,
                 analysis_explanation: aw.analysis_explanation,
+                kind,
+                phrase_type: aw.phrase_type,
+                separable: aw.separable,
                 // 只保存句子与翻译都有的例句（更新已有单词时，新结果没有例句则保留原例句）
                 examples,
                 created_at: String::new(),
@@ -442,6 +455,8 @@ mod tests {
             phonics_rule: None,
             analysis_explanation: None,
             word_frequency: None,
+            phrase_type: None,
+            separable: false,
         }
     }
 

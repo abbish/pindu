@@ -17,6 +17,12 @@ pub struct PhonicsWord {
     /// 例句（工具已校验：至少 5 条、每条包含该单词；第一句最简单）
     #[serde(default)]
     pub examples: Vec<WordExample>,
+    /// 词组类型：phrasal_verb / collocation / idiom / fixed（单词为空）
+    #[serde(default)]
+    pub phrase_type: String,
+    /// 短语动词能否拆开用
+    #[serde(default)]
+    pub separable: bool,
 }
 
 /// 提取的单词信息
@@ -116,6 +122,8 @@ impl PhonicsWord {
             analysis_explanation: Some(self.analysis_explanation.clone()),
             examples: Some(self.examples.clone()),
             word_frequency: Some(self.frequency),
+            phrase_type: Some(self.phrase_type.clone()).filter(|t| !t.is_empty()),
+            separable: self.separable,
         }
     }
 }

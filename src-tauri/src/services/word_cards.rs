@@ -32,6 +32,9 @@ pub fn card_from_phonics(p: &PhonicsWord) -> WordCard {
         phonics_rule: p.phonics_rule.trim().to_string(),
         analysis_explanation: p.analysis_explanation.trim().to_string(),
         examples: p.examples.clone(),
+        kind: crate::types::wordbook::vocab_kind(&p.word).to_string(),
+        phrase_type: p.phrase_type.clone(),
+        separable: p.separable,
     }
 }
 
@@ -200,6 +203,9 @@ pub async fn learning_word(
             pos_chinese: opt(&card.pos_chinese),
             phonics_rule: opt(&card.phonics_rule),
             analysis_explanation: opt(&card.analysis_explanation),
+            kind: "word".to_string(),
+            phrase_type: None,
+            separable: false,
             examples: card.examples,
             created_at: now.clone(),
             updated_at: now,
@@ -230,6 +236,8 @@ mod tests {
             phonics_rule: "".into(),
             analysis_explanation: "".into(),
             examples: vec![],
+            phrase_type: String::new(),
+            separable: false,
         }
     }
 

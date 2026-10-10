@@ -107,4 +107,13 @@ pub struct WordCard {
     pub phonics_rule: String,
     pub analysis_explanation: String,
     pub examples: Vec<crate::types::wordbook::WordExample>,
+    /// word / phrase（由内容决定）
+    #[serde(default)]
+    pub kind: String,
+    /// 词组类型：phrasal_verb / collocation / idiom / fixed（单词为空）
+    #[serde(default)]
+    pub phrase_type: String,
+    /// 短语动词能否拆开用
+    #[serde(default)]
+    pub separable: bool,
 }

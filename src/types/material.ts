@@ -99,4 +99,10 @@ export interface WordCard {
   phonicsRule: string;
   analysisExplanation: string;
   examples: { sentence: string; translation: string }[];
+  /** word / phrase */
+  kind: 'word' | 'phrase';
+  /** 词组类型（单词为空字符串） */
+  phraseType: string;
+  /** 短语动词能否拆开用 */
+  separable: boolean;
 }

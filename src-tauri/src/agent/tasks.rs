@@ -440,6 +440,14 @@ pub fn phonics_from_submission(details: &Value, requested: &[String]) -> Phonics
             syllables: field("syllables"),
             phonics_rule: field("phonics_rule"),
             analysis_explanation: field("analysis_explanation"),
+            phrase_type: match field("phrase_type").as_str() {
+                t @ ("phrasal_verb" | "collocation" | "idiom" | "fixed") => t.to_string(),
+                _ => String::new(),
+            },
+            separable: item
+                .get("separable")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             examples: item
                 .get("examples")
                 .and_then(Value::as_array)
@@ -1994,6 +2002,9 @@ mod tests {
             pos_chinese: Some("名词".into()),
             phonics_rule: Some("VCE Pattern | 魔法e规则".into()),
             analysis_explanation: Some("结尾的 e 不发音，让 a 读长音 /eɪ/。".into()),
+            kind: "word".to_string(),
+            phrase_type: None,
+            separable: false,
             examples: vec![
                 WordExample {
                     sentence: "I like cake.".into(),

@@ -84,7 +84,7 @@ impl WordService {
             return Err(AppError::NotFound("单词本不存在，可能已被删除".to_string()));
         }
         let word_data = CreateWordRequest {
-            word: word_data.word.trim().to_string(),
+            word: crate::types::wordbook::normalize_vocab(&word_data.word),
             meaning: word_data.meaning.trim().to_string(),
             ..word_data
         };
@@ -110,6 +110,9 @@ impl WordService {
             pos_chinese: word_data.pos_chinese,
             phonics_rule: word_data.phonics_rule,
             analysis_explanation: word_data.analysis_explanation,
+            kind: "word".to_string(),
+            phrase_type: None,
+            separable: false,
             examples: clean_examples(word_data.examples.unwrap_or_default()),
             created_at: String::new(),
             updated_at: String::new(),
@@ -133,7 +136,7 @@ impl WordService {
         // 更新字段
         let mut updated_word = existing_word.clone();
         if let Some(word) = word_data.word {
-            updated_word.word = word.trim().to_string();
+            updated_word.word = crate::types::wordbook::normalize_vocab(&word);
         }
         if let Some(meaning) = word_data.meaning {
             updated_word.meaning = meaning.trim().to_string();

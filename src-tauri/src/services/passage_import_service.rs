@@ -358,6 +358,8 @@ impl PassageImportService {
                             analysis_explanation: Some(p.analysis_explanation.clone()),
                             examples: Some(p.examples.clone()),
                             word_frequency: Some(p.frequency),
+                            phrase_type: Some(p.phrase_type.clone()).filter(|t| !t.is_empty()),
+                            separable: p.separable,
                         },
                         None => crate::types::wordbook::AnalyzedWord {
                             word: t.word.clone(),
@@ -372,6 +374,8 @@ impl PassageImportService {
                             analysis_explanation: None,
                             examples: None,
                             word_frequency: None,
+                            phrase_type: None,
+                            separable: false,
                         },
                     }
                 })

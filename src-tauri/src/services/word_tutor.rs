@@ -170,6 +170,9 @@ mod tests {
             pos_chinese: Some("名词".into()),
             phonics_rule: None,
             analysis_explanation: None,
+            kind: "word".to_string(),
+            phrase_type: None,
+            separable: false,
             examples: vec![WordExample {
                 sentence: "There are many ways to learn.".into(),
                 translation: "学习有很多方法。".into(),
