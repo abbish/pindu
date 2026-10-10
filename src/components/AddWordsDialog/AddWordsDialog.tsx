@@ -29,6 +29,7 @@ import { jobService } from '@/services/jobService';
 import { wordAnalysisService } from '@/services/wordAnalysisService';
 import { wordBookService } from '@/services/wordbookService';
 import { cn } from '@/lib/utils';
+import { SuggestionChips, mergeSuggestions } from '@/components/SuggestionChips';
 import { standardizePartOfSpeech } from '@/utils/partOfSpeech';
 import type { WordExtractionMode } from '@/types';
 import type { WordAnalysisOutcome, WordExtractionResult } from '@/types/word-analysis';
@@ -135,8 +136,9 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const [sceneSaving, setSceneSaving] = useState(false);
   /** 场景为空时，把这次的描述同时设为词汇本场景 */
   const [useIntentAsScene, setUseIntentAsScene] = useState(true);
-  /** 按场景给的词汇需求建议（null = 正在想） */
+  /** 按场景给的词汇需求建议（null = 正在想）与选中的几条（可多选，和自己写的需求一起用） */
   const [topics, setTopics] = useState<string[] | null>(null);
+  const [pickedTopics, setPickedTopics] = useState<string[]>([]);
   /** 建议没给出来的原因（显示出来，可以重试） */
   const [topicError, setTopicError] = useState<string | null>(null);
   const topicKey = `${bookId}:${scene}`;
@@ -145,14 +147,17 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     const kept = topicStore.get(key);
     setTopicError(null);
     if (kept && !refresh) return setTopics(kept);
+    // 换一批：已选的留下，告诉 AI 给过哪些，新的一批接在后面
+    const shown = topics ?? [];
     setTopics(null);
-    const r = await wordAnalysisService.suggestVocabTopics(bookId);
+    const r = await wordAnalysisService.suggestVocabTopics(bookId, refresh ? shown : []);
     if (key !== topicKeyRef.current) return;
     if (r.success) {
-      topicStore.set(key, r.data);
-      setTopics(r.data);
+      const merged = mergeSuggestions(pickedTopics, r.data);
+      topicStore.set(key, merged);
+      setTopics(merged);
     } else {
-      setTopics([]);
+      setTopics(shown);
       setTopicError(r.error);
     }
   };
@@ -197,6 +202,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       setPhase('analyzing');
     }
     setSource(initialSource);
+    setPickedTopics([]);
     setScene(bookDescription.trim());
     setSceneDraft(null);
     setUseIntentAsScene(true);
@@ -248,7 +254,9 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
 
   // ── 1 获取单词 ──
   const textLength = text.trim().length;
-  const intentLength = intent.trim().length;
+  /** 发给 AI 的词汇需求：选中的建议 + 自己写的 */
+  const fullIntent = [...pickedTopics, intent.trim()].filter(Boolean).join('；');
+  const intentLength = fullIntent.length;
   // 有场景描述时词汇需求可以不填（按场景生成）
   const canFetch = source === 'ai' ? (intentLength > 0 || Boolean(scene)) && intentLength <= INTENT_MAX : textLength > 0 && textLength <= MAX_TEXT;
 
@@ -275,7 +283,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     try {
       // 场景为空且勾选了“同时设为词汇本场景”：先保存，后端生成时会读取它
       if (source === 'ai' && !scene && useIntentAsScene) {
-        const saved = await saveScene(intent.trim().slice(0, SCENE_MAX));
+        const saved = await saveScene(fullIntent.slice(0, SCENE_MAX));
         if (!saved || run !== runRef.current) {
           if (run === runRef.current) setPhase('source');
           return;
@@ -283,7 +291,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
       }
       const fetched =
         source === 'ai'
-          ? await wordAnalysisService.generateWordsFromIntent(intent.trim(), count, bookId)
+          ? await wordAnalysisService.generateWordsFromIntent(fullIntent, count, bookId)
           : await wordAnalysisService.extractWordsFromText(text, mode, bookId);
       if (run !== runRef.current) return;
       if (!fetched.success) {
@@ -460,7 +468,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canFetch) fetchWords();
                       }}
-                      placeholder={scene ? '不填就按场景描述生成；想要更具体的，写一个子话题或点下面的建议' : '例如：TED 环境主题演讲，听众是大学生'}
+                      placeholder={scene ? '不填就按场景描述生成；想要更具体的，选下面的建议（可多选）或自己写' : '例如：TED 环境主题演讲，听众是大学生'}
                       maxLength={INTENT_MAX}
                       className="min-h-36 resize-none pb-7"
                       autoFocus
@@ -476,34 +484,15 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                     </label>
                   )}
                   {scene && (
-                    <div className="flex flex-wrap items-center gap-1.5" aria-label="按场景的建议">
-                      {topics === null ? (
-                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Loader2 className="size-3.5 animate-spin" />
-                          AI 正在按场景想建议…
-                        </span>
-                      ) : (
-                        <>
-                          {topicError && <span className="text-xs text-destructive">无法给出建议：{topicError}</span>}
-                          {topics.map((topic) => (
-                            <button
-                              key={topic}
-                              type="button"
-                              onClick={() => setIntent(topic)}
-                              className={cn(
-                                'rounded-full px-2.5 py-1 text-xs outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                                intent.trim() === topic ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                              )}
-                            >
-                              {topic}
-                            </button>
-                          ))}
-                          <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => void loadTopics(true)}>
-                            <RotateCw className="size-3" />
-                            {topicError ? '重试' : topics.length > 0 ? '换一批' : '给我一些建议'}
-                          </Button>
-                        </>
-                      )}
+                    <div aria-label="按场景的建议">
+                      <SuggestionChips
+                        items={topics}
+                        selected={pickedTopics}
+                        onToggle={(t) => setPickedTopics((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))}
+                        onMore={() => void loadTopics(true)}
+                        error={topicError}
+                        loadingText="AI 正在按场景想建议…"
+                      />
                     </div>
                   )}
                 </div>

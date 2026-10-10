@@ -65,8 +65,9 @@ export class VideoService extends BaseService {
   }
 
   /** 「AI 规划切分」的要求建议（AI 读字幕给的；refresh 换一批） */
-  async suggestRequirements(videoId: number, refresh: boolean): Promise<ApiResult<string[]>> {
-    return this.executeWithLoading(() => this.client.invoke<string[]>('suggest_video_requirements', { videoId, refresh }));
+  /** `exclude`：已经给过的建议（换一批时新的不重复） */
+  async suggestRequirements(videoId: number, refresh: boolean, exclude: string[] = []): Promise<ApiResult<string[]>> {
+    return this.executeWithLoading(() => this.client.invoke<string[]>('suggest_video_requirements', { videoId, refresh, exclude }));
   }
 
   /** AI 规划切分（后台任务）：结果写进规划草稿，返回任务 id */

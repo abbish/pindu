@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Sparkles } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { loadMaterialSettings } from '@/hooks/useMaterialSettings';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -10,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { InlineError } from '@/components/InlineError';
 import { videoService } from '@/services/videoService';
+import { SuggestionChips, mergeSuggestions } from '@/components/SuggestionChips';
 
 const MAX_TEXT = 500;
 
@@ -38,13 +38,18 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
+  /** 已经写进要求里的建议（选中） */
+  const picked = (suggestions ?? []).filter((s) => text.includes(s));
+  /** 换一批：已选的留下，告诉 AI 给过哪些，新的一批接在后面 */
   const loadSuggestions = async (refresh: boolean) => {
+    const shown = suggestions ?? [];
+    const keep = shown.filter((s) => text.includes(s));
     setSuggestions(null);
     setSuggestError(null);
-    const r = await videoService.suggestRequirements(videoId, refresh);
-    if (r.success) setSuggestions(r.data);
+    const r = await videoService.suggestRequirements(videoId, refresh, refresh ? shown : []);
+    if (r.success) setSuggestions(mergeSuggestions(keep, r.data));
     else {
-      setSuggestions([]);
+      setSuggestions(shown);
       setSuggestError(r.error);
     }
   };
@@ -55,12 +60,18 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
     // 只在打开时触发
   }, [open]);
 
-  /** 点建议：输入框空时填入，否则接在后面（可以组合几条） */
-  const applySuggestion = (s: string) =>
+  /** 点建议：没选的接到要求后面（可以组合几条），已选的从要求里去掉 */
+  const toggleSuggestion = (s: string) =>
     setText((t) => {
       const cur = t.trim();
+      if (cur.includes(s)) {
+        return cur
+          .split(s)
+          .join('')
+          .replace(/[，；;,]{2,}/g, '；')
+          .replace(/^[，；;,\s]+|[，；;,\s]+$/g, '');
+      }
       if (!cur) return s;
-      if (cur.includes(s)) return t;
       return `${cur.replace(/[，。；,;]$/, '')}；${s}`.slice(0, MAX_TEXT);
     });
 
@@ -127,34 +138,16 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
             <div className="space-y-1.5">
               <Label htmlFor="plan-req">要求</Label>
               <Textarea id="plan-req" rows={3} maxLength={MAX_TEXT} value={text} placeholder="例如：只要在餐厅里的对话" onChange={(e) => setText(e.target.value)} />
-              <div className="space-y-1.5 pt-1">
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Sparkles className="size-3.5" />
-                  {suggestions === null ? '正在读字幕…' : '建议'}
-                  {suggestions !== null && (
-                    <Button type="button" variant="ghost" size="sm" className="ml-auto h-6 px-2 text-xs" onClick={() => loadSuggestions(true)}>
-                      <RefreshCw />
-                      换一批
-                    </Button>
-                  )}
-                </div>
-                {suggestions === null ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {[96, 140, 120, 160].map((w) => (
-                      <Skeleton key={w} className="h-6 rounded-full" style={{ width: w }} />
-                    ))}
-                  </div>
-                ) : suggestError ? (
-                  <p className="text-xs text-muted-foreground">{suggestError}</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {suggestions.map((s) => (
-                      <Button key={s} type="button" variant="outline" size="sm" className="h-auto min-h-6 rounded-full px-2.5 py-0.5 text-left text-xs whitespace-normal" onClick={() => applySuggestion(s)}>
-                        {s}
-                      </Button>
-                    ))}
-                  </div>
-                )}
+              <div className="flex items-start gap-1.5 pt-1 text-xs text-muted-foreground">
+                <Sparkles className="mt-1 size-3.5 shrink-0" />
+                <SuggestionChips
+                  items={suggestions}
+                  selected={picked}
+                  onToggle={toggleSuggestion}
+                  onMore={() => void loadSuggestions(true)}
+                  error={suggestError}
+                  loadingText="正在读字幕，想切分的建议…"
+                />
               </div>
             </div>
           )}

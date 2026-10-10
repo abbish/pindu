@@ -1765,8 +1765,8 @@ pub fn vocab_suggest_task(profile: &PromptProfile) -> AgentTask {
     }
 }
 
-/// 场景 + 已有单词（节选，最多 80 个）
-pub fn vocab_suggest_message(scene: &str, existing: &[String]) -> String {
+/// 场景 + 已有单词（节选，最多 80 个）+ 已经给过的建议（换一批时不重复）
+pub fn vocab_suggest_message(scene: &str, existing: &[String], exclude: &[String]) -> String {
     let sample: Vec<&str> = existing.iter().take(80).map(String::as_str).collect();
     prompts::message(
         MessageTemplate::VocabSuggest,
@@ -1774,6 +1774,7 @@ pub fn vocab_suggest_message(scene: &str, existing: &[String]) -> String {
             ("scene", scene.trim()),
             ("existing", &sample.join(", ")),
             ("count", &existing.len().to_string()),
+            ("exclude", &exclude.join("；")),
         ],
     )
 }
@@ -1830,6 +1831,7 @@ pub fn video_suggest_message(
     cues: &[&crate::services::subtitle::Cue],
     total: usize,
     duration_ms: i64,
+    exclude: &[String],
 ) -> String {
     let lines: Vec<String> = cues
         .iter()
@@ -1854,6 +1856,7 @@ pub fn video_suggest_message(
             ("count", &total.to_string()),
             ("sampled", &sampled),
             ("cues", &lines.join("\n")),
+            ("exclude", &exclude.join("；")),
         ],
     )
 }

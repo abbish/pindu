@@ -615,12 +615,14 @@ async fn passage_video(
     }))
 }
 
-/// 「AI 规划切分」里的要求建议：AI 读字幕给 4–6 条贴合这个视频的切分要求；存进规划草稿，下次直接用（refresh 换一批）
+/// 「AI 规划切分」里的要求建议：AI 读字幕给 4–6 条贴合这个视频的切分要求；存进规划草稿，下次直接用
+/// （refresh 换一批，`exclude` 是已经给过的建议，新的一批不重复）
 #[tauri::command]
 pub async fn suggest_video_requirements(
     app: AppHandle,
     video_id: i64,
     refresh: bool,
+    exclude: Option<Vec<String>>,
 ) -> AppResult<Vec<String>> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
@@ -649,8 +651,12 @@ pub async fn suggest_video_requirements(
         let profile =
             crate::services::prompt_profile::PromptProfileService::load(pool.inner()).await?;
         let sample = crate::services::video_plan::sample_cues(&cues, 250, 10);
-        let message =
-            crate::agent::tasks::video_suggest_message(&sample, cues.len(), row.duration_ms);
+        let message = crate::agent::tasks::video_suggest_message(
+            &sample,
+            cues.len(),
+            row.duration_ms,
+            &exclude.unwrap_or_default(),
+        );
         let suggestions = crate::agent::tasks::suggest_video_requirements(
             &super::agent_paths(&app)?,
             &model,

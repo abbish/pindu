@@ -122,6 +122,7 @@ pub async fn generate_words_from_intent(
     count: i64,
     book_id: Option<i64>,
     model_id: Option<i64>,
+    exclude: Option<Vec<String>>,
 ) -> AppResult<crate::types::word_analysis::WordExtractionResult> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
@@ -164,6 +165,16 @@ pub async fn generate_words_from_intent(
         .collect(),
         None => Default::default(),
     };
+    // 换一批时已经给过的词也不要再选
+    let existing: std::collections::HashSet<String> = existing
+        .into_iter()
+        .chain(
+            exclude
+                .unwrap_or_default()
+                .into_iter()
+                .map(|w| w.trim().to_lowercase()),
+        )
+        .collect();
 
     let model_config = get_model_config(AgentTaskKind::Extract, model_id, &pool, &logger).await?;
     let profile = PromptProfileService::load(pool.inner()).await?;
@@ -215,9 +226,14 @@ async fn has_scene_description(
     )
 }
 
-/// 按词汇本的场景描述给 4–6 条词汇需求的建议（场景下的子话题）；没有场景描述时返回空
+/// 按词汇本的场景描述给 4–6 条词汇需求的建议（场景下的子话题）；没有场景描述时返回空。
+/// `exclude`：已经给过的建议（换一批时新的不重复）
 #[tauri::command]
-pub async fn suggest_vocab_topics(app: AppHandle, book_id: i64) -> AppResult<Vec<String>> {
+pub async fn suggest_vocab_topics(
+    app: AppHandle,
+    book_id: i64,
+    exclude: Option<Vec<String>>,
+) -> AppResult<Vec<String>> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
     logger.api_request("suggest_vocab_topics", Some(&format!("book_id: {book_id}")));
@@ -240,7 +256,11 @@ pub async fn suggest_vocab_topics(app: AppHandle, book_id: i64) -> AppResult<Vec
             &super::agent_paths(&app)?,
             &model,
             &profile,
-            &crate::agent::tasks::vocab_suggest_message(&scene, &existing),
+            &crate::agent::tasks::vocab_suggest_message(
+                &scene,
+                &existing,
+                &exclude.unwrap_or_default(),
+            ),
             &logger,
         )
         .await

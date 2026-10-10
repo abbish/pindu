@@ -406,11 +406,18 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     const run = ++suggestRun.current;
     setSuggesting(true);
     setError(null);
-    const result = await wordAnalysisService.generateWordsFromIntent(instruction.trim(), briefCount);
+    // 换一批（要求没变）：勾选的词留下，已经给过的不再选，新的一批接在后面、由你勾选
+    const more = force && briefWords !== null && briefFor === key;
+    const kept = more ? (briefWords ?? []).filter((w) => w.selected) : [];
+    const shown = more ? (briefWords ?? []).map((w) => w.word) : [];
+    const result = await wordAnalysisService.generateWordsFromIntent(instruction.trim(), briefCount, undefined, shown);
     if (run !== suggestRun.current) return;
     setSuggesting(false);
     if (!result.success) return setError({ title: '无法选词', message: result.error });
-    setBriefWords(result.data.words.map((w) => ({ word: w.word, meaning: w.meaning ?? '', selected: true })));
+    const fresh = result.data.words
+      .filter((w) => !kept.some((k) => k.word.toLowerCase() === w.word.toLowerCase()))
+      .map((w) => ({ word: w.word, meaning: w.meaning ?? '', selected: !more }));
+    setBriefWords([...kept, ...fresh]);
     setBriefFor(key);
     setStep(1);
   };

@@ -10,9 +10,9 @@ import type { StartWordAnalysisRequest, WordExtractionResult } from '../types/wo
 import type { WordExtractionMode } from '../types/wordbook';
 
 class WordAnalysisService {
-  /** 按学习意图生成单词；传 bookId 时避开词汇本里已有的词（模型按「设置 → AI 助手」） */
-  async generateWordsFromIntent(intent: string, count: number, bookId?: number): Promise<ApiResult<WordExtractionResult>> {
-    return apiClient.invoke<WordExtractionResult>('generate_words_from_intent', { intent, count, bookId });
+  /** 按学习意图生成单词；传 bookId 时避开词汇本里已有的词，`exclude` 里的词也不再选（换一批）；模型按「设置 → AI 助手」 */
+  async generateWordsFromIntent(intent: string, count: number, bookId?: number, exclude: string[] = []): Promise<ApiResult<WordExtractionResult>> {
+    return apiClient.invoke<WordExtractionResult>('generate_words_from_intent', { intent, count, bookId, exclude });
   }
 
   /**
@@ -24,8 +24,8 @@ class WordAnalysisService {
   }
 
   /** 按词汇本的场景描述给 4–6 条词汇需求的建议（场景下的子话题）；没有场景描述时为空 */
-  async suggestVocabTopics(bookId: number): Promise<ApiResult<string[]>> {
-    return apiClient.invoke<string[]>('suggest_vocab_topics', { bookId });
+  async suggestVocabTopics(bookId: number, exclude: string[] = []): Promise<ApiResult<string[]>> {
+    return apiClient.invoke<string[]>('suggest_vocab_topics', { bookId, exclude });
   }
 
   /** 分析一个单词，只返回结果不保存（编辑单词时的「AI 补全」） */
