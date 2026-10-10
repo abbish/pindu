@@ -16,6 +16,7 @@ import { Card } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { PageError } from '@/components/PageError';
@@ -288,6 +289,36 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             {passage.origin === 'video' && `视频${passage.sourceLabel ? `（${passage.sourceLabel}）` : ''} · `}
             {passage.wordCount} 词 · {passage.sentences.length} 句 · {passage.origin === 'generated' ? '创建于' : '导入于'} {formatDate(passage.createdAt)}
             {passage.modelName && ` · ${passage.modelName}`}
+            {(passage.scene || passage.sources.length > 0) && (
+              <>
+                {' · '}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type="button" className="underline-offset-2 hover:text-foreground hover:underline">
+                      生成信息
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-96 space-y-3 text-sm">
+                    {passage.scene && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">{passage.sources.length > 0 ? '场景' : '写作要求'}</div>
+                        <p className="whitespace-pre-wrap select-text">{passage.scene}</p>
+                      </div>
+                    )}
+                    {passage.sources.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">词汇来源</div>
+                        <div className="flex flex-wrap gap-1">
+                          {passage.sources.map((s) => (
+                            <SourceBadge key={`${s.kind}-${s.refId}`} source={s} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </>
+            )}
           </p>
           <MaterialTags key={passage.id} kind="passage" refId={passage.id} tags={passage.tags} />
         </div>
@@ -408,22 +439,6 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                 )}
               </Card>
               {hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
-              {passage.sources.length > 0 && (
-                <Card className="gap-3 px-5 py-4">
-                  <h2 className="text-sm font-semibold">词汇来源</h2>
-                  <div className="flex flex-wrap gap-1">
-                    {passage.sources.map((s) => (
-                      <SourceBadge key={`${s.kind}-${s.refId}`} source={s} />
-                    ))}
-                  </div>
-                </Card>
-              )}
-              {passage.scene && (
-                <Card className="gap-2 px-5 py-4">
-                  <h2 className="text-sm font-semibold">场景</h2>
-                  <p className="line-clamp-6 text-xs whitespace-pre-wrap text-muted-foreground select-text">{passage.scene}</p>
-                </Card>
-              )}
             </aside>
           </div>
         </TabsContent>
