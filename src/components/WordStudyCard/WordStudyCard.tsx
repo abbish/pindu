@@ -1,10 +1,10 @@
-import React from 'react';
-import { ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote, Snail, Volume2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronLeft, ChevronRight, Clapperboard, Quote, Snail, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { WordExplanationView } from '@/components/WordExplanation';
+import { AiTeacherEntry, AiTeacherSheet } from '@/components/AiTeacher';
 import { WordMaterialsList } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { parsePhonicsSegments } from '@/utils/phonics';
@@ -112,11 +112,13 @@ export interface WordStudyCardProps {
 }
 
 /**
- * 单词卡（单词本、短文与视频片段的目标词共用）：单词、音标与常速 / 慢速发音、词性与释义 → 拼读分段与规则 →
- * 附加内容（如本文中的句子）→ 例句 / AI 讲解 / 其他素材 → 上一个 / 下一个。
+ * 单词卡（单词本、短文与视频片段的目标词共用）：单词、音标与常速 / 慢速发音、词性与释义 → AI 老师入口（右侧对话面板）→
+ * 拼读分段与规则 → 附加内容（如本文中的句子）→ 例句 / 其他素材 → 上一个 / 下一个。
  */
 export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loading, badge, actions, progress, children, aiWordId, wordId, onOpenPassage, nav }) => {
   const audio = useAudioPlayer();
+  /** AI 老师的对话面板（换词时保持打开，老师跟着讲新的词） */
+  const [teacherOpen, setTeacherOpen] = useState(false);
   const speak = (text: string, style: 'word' | 'sentence', slow = false) => audio.playText(text, undefined, { style, speed: slow ? 'slow' : 'normal' }).catch(() => {});
   const display = info?.word ?? word;
   const segments = info?.segments ?? (info?.syllables ? [info.syllables] : undefined);
@@ -147,6 +149,9 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
         {actions}
       </header>
 
+      {aiWordId !== null && info && <AiTeacherEntry word={display} open={teacherOpen} onOpen={() => setTeacherOpen(true)} />}
+      {aiWordId !== null && info && <AiTeacherSheet open={teacherOpen} onOpenChange={setTeacherOpen} word={display} wordId={aiWordId} />}
+
       {progress}
       {loading ? (
         <Skeleton className="h-24" />
@@ -175,10 +180,6 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
               <Quote />
               例句
             </TabsTrigger>
-            <TabsTrigger value="explanation">
-              <GraduationCap />
-              AI 老师
-            </TabsTrigger>
             <TabsTrigger value="materials">
               <Clapperboard />
               其他素材
@@ -194,9 +195,6 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
                 ))}
               </div>
             )}
-          </TabsContent>
-          <TabsContent value="explanation">
-            <WordExplanationView wordId={aiWordId} active autoGenerate />
           </TabsContent>
           <TabsContent value="materials" className="max-h-[60vh] overflow-y-auto">
             <WordMaterialsList word={display} wordId={wordId} onOpenPassage={onOpenPassage} />

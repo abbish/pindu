@@ -20,6 +20,8 @@ export interface WordExplanationViewProps {
    * 一次答对后的短暂停留为 false，避免刚触发生成就跳到下一题。
    */
   autoGenerate: boolean;
+  /** 占满所在容器的高度（侧边对话面板里用）；默认按内容高度、最高 56vh */
+  fill?: boolean;
 }
 
 /** 页签停留多久才自动开始生成（毫秒），快速切换不触发 */
@@ -52,6 +54,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
   wordId,
   active,
   autoGenerate,
+  fill = false,
 }) => {
   const [state, setState] = useState<ViewState>({ wordId: null, status: 'idle', content: '' });
   const chat = useTutorChat(wordId);
@@ -174,8 +177,8 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
   );
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex max-h-[56vh] min-h-40 flex-col gap-3 overflow-y-auto pr-1" ref={bodyRef}>
+    <div className={cn('flex flex-col gap-3', fill && 'h-full min-h-0')}>
+      <div className={cn('flex min-h-40 flex-col gap-3 overflow-y-auto pr-1', fill ? 'min-h-0 flex-1' : 'max-h-[56vh]')} ref={bodyRef}>
         {/* 老师先开口讲这个词，之后的问答接在同一段对话里 */}
         {state.status === 'missing'
           ? teacher(
