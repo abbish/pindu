@@ -84,7 +84,8 @@ const STATUS_LABEL: Record<Video['status'], string> = {
  */
 export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initialTab, videoId, onNavigate, tagId }) => {
   const embedded = tagId !== undefined;
-  const [tab, setTab] = useState<'clips' | 'sources'>(initialTab ?? 'clips');
+  /** 用户选过的页签；没选过时：还没有片段但有原始视频就先看原始视频，否则看片段 */
+  const [tab, setTab] = useState<'clips' | 'sources' | null>(initialTab ?? null);
   const [videos, setVideos] = useState<Video[] | null>(null);
   const [clips, setClips] = useState<ClipSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -159,6 +160,9 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
     />
   );
 
+  const shownTab = tab ?? (clips?.length === 0 && (videos?.length ?? 0) > 0 ? 'sources' : 'clips');
+  const cutting = (videos ?? []).some((v) => v.status === 'processing') || jobs.some((j) => isJobActive(j) && j.kind === 'video_process');
+
   const clipMs = (clips ?? []).reduce((sum, c) => sum + c.endMs - c.startMs, 0);
   const practiced = (clips ?? []).filter((c) => c.completedAttempts > 0).length;
   const tagCount = new Set((clips ?? []).flatMap((c) => c.tags.map((t) => t.id))).size;
@@ -179,7 +183,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
         ))}
       </section>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'clips' | 'sources')} className={cn(embedded && 'hidden')}>
+      <Tabs value={shownTab} onValueChange={(v) => setTab(v as 'clips' | 'sources')} className={cn(embedded && 'hidden')}>
         <TabsList>
           <TabsTrigger value="clips">
             片段
@@ -194,8 +198,8 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
 
       {loadError ? (
         <PageError title="无法加载视频库" message={loadError} onRetry={load} />
-      ) : tab === 'clips' ? (
-        <ClipGrid clips={clips} videos={videos ?? []} videoId={videoId} onOpen={(c) => onNavigate?.('passage-detail', { passageId: c.id, clip: true })} onGoSources={() => setTab('sources')} onTagsChanged={load} onOpenEditor={(id) => onNavigate?.('video-editor', { videoId: id })} tagId={tagId} />
+      ) : shownTab === 'clips' ? (
+        <ClipGrid clips={clips} videos={videos ?? []} cutting={cutting} videoId={videoId} onOpen={(c) => onNavigate?.('passage-detail', { passageId: c.id, clip: true })} onGoSources={() => setTab('sources')} onTagsChanged={load} onOpenEditor={(id) => onNavigate?.('video-editor', { videoId: id })} tagId={tagId} />
       ) : videos === null ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {[0, 1, 2].map((i) => (
@@ -337,6 +341,8 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
         onOpenChange={setImporting}
         onStarted={() => {
           toast.showSuccess('已开始导入');
+          // 导入进度显示在原始视频的卡片上
+          setTab('sources');
           load();
         }}
       />

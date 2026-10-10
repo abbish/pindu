@@ -36,6 +36,8 @@ export interface ClipGridProps {
   /** 初始只看这个视频的片段 */
   videoId?: number;
   onOpen: (clip: ClipSummary) => void;
+  /** 有视频正在切分 */
+  cutting?: boolean;
   /** 没有片段时去「原始视频」 */
   onGoSources: () => void;
   /** 管理标签、批量改标签、删除之后刷新 */
@@ -65,7 +67,7 @@ const ENGLISH = /^[a-z][a-z' -]*$/i;
  * 视频库「片段」：切出来的短片是主要素材。可按标签、来源视频、难度筛选；搜索除了标题、重点词与标签，
  * 输入英文词时还会找字幕里出现过它的片段（跨视频看同一个词的真实场景），卡片上显示出现的那句。
  */
-export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOpen, onGoSources, onTagsChanged, onOpenEditor, tagId }) => {
+export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, videoId, onOpen, onGoSources, onTagsChanged, onOpenEditor, tagId }) => {
   const fixedTag = tagId !== undefined;
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState(fixedTag ? String(tagId) : 'all');
@@ -118,9 +120,9 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
     return (
       <EmptyState
         icon={<Clapperboard />}
-        title="还没有片段"
-        description="在原始视频里规划切分后，切出的片段会出现在这里"
-        action="去原始视频"
+        title={cutting ? '正在切出片段' : '还没有片段'}
+        description={cutting ? undefined : '在原始视频里规划切分后，切出的片段会出现在这里'}
+        action={cutting ? '查看进度' : '去原始视频'}
         onAction={onGoSources}
       />
     );
