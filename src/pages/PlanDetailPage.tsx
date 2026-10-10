@@ -321,11 +321,12 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
       toast.showInfo('这个计划还没有日程', '在「设置」页签追加词汇本');
       return;
     }
-    // 统一规则：今天未练完 → 最早逾期 → 今天（再练）→ 第一个未练完
+    // 统一规则：今天未练完 → 最早逾期 → 今天（再练）→ 第一个未练完；
+    // 与首页「继续学习」一致：今天的单词没有要练的了，先做到期的短文
     const target = pickPracticeSchedule(result.data);
+    const wordsDue = !!target && !target.completed && target.schedule_date <= today;
+    if (!wordsDue && openDuePassage()) return;
     if (target) onNavigate?.('word-practice', { planId: plan.id, scheduleId: target.id });
-    else if (openDuePassage()) return;
-    else toast.showInfo('日程都已练完', '可以在「日程」页签再练一次');
   };
 
   const container = 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7';
