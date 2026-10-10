@@ -414,6 +414,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           <TargetWordsPanel
             passage={passage}
             focusWord={focusWord}
+            onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })}
             footer={hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
           />
         </TabsContent>

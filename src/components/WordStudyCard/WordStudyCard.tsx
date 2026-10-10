@@ -107,6 +107,8 @@ export interface WordStudyCardProps {
   wordId?: number;
   /** 「其他素材」里打开短文 / 片段 */
   onOpenPassage?: (passageId: number, isClip: boolean) => void;
+  /** 「其他素材」里排除这一篇（在短文 / 片段里看时排除它自己） */
+  excludePassageId?: number;
   /** 底部切换（上一个 / 下一个） */
   nav?: { index: number; total: number; onChange: (index: number) => void };
 }
@@ -115,7 +117,7 @@ export interface WordStudyCardProps {
  * 单词卡（单词本、短文与视频片段的目标词共用）：单词、音标、常速 / 慢速发音与 AI 老师（右侧与卡片等高的对话面板）、词性与释义 →
  * 拼读分段与规则 → 附加内容（如本文中的句子）→ 例句 / 其他素材 → 上一个 / 下一个。
  */
-export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loading, badge, actions, progress, children, aiWordId, wordId, onOpenPassage, nav }) => {
+export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loading, badge, actions, progress, children, aiWordId, wordId, onOpenPassage, excludePassageId, nav }) => {
   const audio = useAudioPlayer();
   /** AI 老师的对话面板（换词时保持打开，老师跟着讲新的词） */
   const [teacherOpen, setTeacherOpen] = useState(false);
@@ -209,7 +211,7 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
             )}
           </TabsContent>
           <TabsContent value="materials" className="max-h-[60vh] overflow-y-auto">
-            <WordMaterialsList word={display} wordId={wordId} onOpenPassage={onOpenPassage} />
+            <WordMaterialsList word={display} wordId={wordId} onOpenPassage={onOpenPassage} excludePassageId={excludePassageId} />
           </TabsContent>
         </Tabs>
       )}

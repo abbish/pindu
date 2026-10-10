@@ -20,13 +20,15 @@ export interface TargetWordsPanelProps {
   footer?: React.ReactNode;
   /** 打开时定位到这个词（从原文侧栏点进来） */
   focusWord?: string | null;
+  /** 「其他素材」里打开短文 / 片段 */
+  onOpenPassage?: (passageId: number, isClip: boolean) => void;
 }
 
 /**
  * 短文详情「目标词」页签：左边目标词列表（指定单词 / AI 选词或重点词，未收录的标出），右边单词卡（WordStudyCard，
  * 与单词本共用）外加「本文中」的句子；未收录的词用单词卡（缺的自动补生成）。↑ ↓ 或上一个 / 下一个切换。
  */
-export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord }) => {
+export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord, onOpenPassage }) => {
   const [details, setDetails] = useState<Map<string, Word> | null>(null);
   /** 不在单词本的目标词的单词卡（小写单词 → 卡片） */
   const [cards, setCards] = useState<Map<string, WordCard> | null>(null);
@@ -139,6 +141,8 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
           progress={generatingCard && cardJob && <JobPanel job={cardJob} title="AI 正在生成单词卡" />}
           aiWordId={info ? aiWordId : null}
           wordId={current.wordId ?? undefined}
+          onOpenPassage={onOpenPassage}
+          excludePassageId={passage.id}
           nav={{ index, total: words.length, onChange: setIndex }}
         >
           {sentences.length > 0 && (

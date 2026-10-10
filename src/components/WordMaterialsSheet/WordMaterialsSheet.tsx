@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Clapperboard, ExternalLink, FileText, Loader2, Play } from 'lucide-react';
+import { ChevronRight, Clapperboard, ExternalLink, FileText, Loader2, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -46,10 +46,12 @@ export interface WordMaterialsListProps {
   /** 只列视频片段（练习右栏「场景」） */
   clipsOnly?: boolean;
   onLoaded?: (clips: number, passages: number) => void;
+  /** 不列出这一篇（在某篇短文 / 片段里看「其他素材」时排除它自己） */
+  excludePassageId?: number;
 }
 
 /** 一个词的素材列表（视频片段 → 短文），单词本侧栏与练习右栏共用 */
-export const WordMaterialsList: React.FC<WordMaterialsListProps> = ({ word, wordId, onOpenPassage, clipsOnly, onLoaded }) => {
+export const WordMaterialsList: React.FC<WordMaterialsListProps> = ({ word, wordId, onOpenPassage, clipsOnly, onLoaded, excludePassageId }) => {
   const [items, setItems] = useState<WordMaterial[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState<number | null>(null);
@@ -62,15 +64,16 @@ export const WordMaterialsList: React.FC<WordMaterialsListProps> = ({ word, word
     tagService.getWordMaterials(word, wordId).then((r) => {
       if (stale) return;
       if (r.success) {
-        setItems(r.data);
-        onLoaded?.(r.data.filter((m) => m.clip).length, r.data.filter((m) => !m.clip).length);
+        const list = r.data.filter((m) => m.passageId !== excludePassageId);
+        setItems(list);
+        onLoaded?.(list.filter((m) => m.clip).length, list.filter((m) => !m.clip).length);
       } else setError(r.error);
     });
     return () => {
       stale = true;
     };
     // onLoaded 只是通知，不触发重新加载
-  }, [word, wordId]);
+  }, [word, wordId, excludePassageId]);
 
   const clips = items?.filter((m) => m.clip) ?? [];
   const passages = clipsOnly ? [] : (items?.filter((m) => !m.clip) ?? []);
@@ -109,10 +112,11 @@ export const WordMaterialsList: React.FC<WordMaterialsListProps> = ({ word, word
             短文
           </h3>
           {passages.map((m) => (
-            <button key={m.passageId} type="button" className="block w-full rounded-lg border p-3 text-left hover:bg-muted disabled:pointer-events-none" onClick={() => onOpenPassage?.(m.passageId, false)} disabled={!onOpenPassage}>
+            <button key={m.passageId} type="button" className="group block w-full rounded-lg border p-3 text-left hover:bg-muted disabled:pointer-events-none" onClick={() => onOpenPassage?.(m.passageId, false)} disabled={!onOpenPassage}>
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.title}</span>
                 {m.key && <Badge variant="secondary">重点</Badge>}
+                {onOpenPassage && <ChevronRight className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />}
               </div>
               {m.en && <Sentence en={m.en} zh={m.zh} word={word} />}
             </button>
