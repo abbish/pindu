@@ -568,7 +568,8 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
               <span className="text-sm text-muted-foreground tabular-nums">
                 已答 {answered} / {total}
               </span>
-              <Button size="lg" onClick={submit} disabled={submitting}>
+              {/* 尺寸固定、不做过渡：提交中切换文字与禁用态时 WebKit 不会留下上一个状态的残影 */}
+              <Button size="lg" className="min-w-32 transition-none" onClick={submit} disabled={submitting}>
                 {submitting && <Loader2 className="animate-spin" />}
                 {submitting ? '正在判分…' : '提交'}
               </Button>
