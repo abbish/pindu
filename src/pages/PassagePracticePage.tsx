@@ -17,6 +17,7 @@ import {
   Snail,
   Sparkles,
   X,
+  Volume2,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -69,16 +70,23 @@ const questionDomId = (id: number) => `passage-question-${id}`;
 // ==================== 听力播放器 ====================
 
 const NO_SENTENCES: PassageSentence[] = [];
+const NO_TEXTS: string[] = [];
 
 /**
  * 逐句听（播放条）：上一句 / 播放·暂停 / 下一句 → 句子进度（每段一句，可点哪句听哪句）→ 重听本句、慢速。
  * 答题时不显示原文。视频切片用原声，其余用合成语音。
  */
-const ListeningPlayer: React.FC<{ texts: string[]; clip?: { url: string; sentences: PassageSentence[] } }> = ({ texts, clip }) => {
-  const [slow, setSlow] = useState(false);
-  const tts = useSentencePlayer(texts, { speed: slow ? 'slow' : 'normal' });
-  const original = useClipSentencePlayer(clip?.url ?? null, clip?.sentences ?? NO_SENTENCES, { slow });
-  const player = clip ? original : tts;
+/** 逐句播放器（合成语音与视频原声两种实现的共同部分） */
+interface ListeningPlayerHandle {
+  current: number | null;
+  playing: boolean;
+  loading: boolean;
+  play: (index: number, onlyThis?: boolean) => unknown;
+  stop: () => void;
+}
+
+const ListeningPlayer: React.FC<{ player: ListeningPlayerHandle; total: number; slow: boolean; onSlowChange: (slow: boolean) => void }> = ({ player, total, slow, onSlowChange }) => {
+  const texts = Array.from({ length: total });
   const current = player.current ?? 0;
   const go = (delta: number) => player.play(Math.min(texts.length - 1, Math.max(0, current + delta)), true);
   return (
@@ -115,7 +123,7 @@ const ListeningPlayer: React.FC<{ texts: string[]; clip?: { url: string; sentenc
           <RotateCcw />
           重听本句
         </Button>
-        <Button variant={slow ? 'secondary' : 'ghost'} size="sm" onClick={() => setSlow((v) => !v)} aria-pressed={slow}>
+        <Button variant={slow ? 'secondary' : 'ghost'} size="sm" onClick={() => onSlowChange(!slow)} aria-pressed={slow}>
           <Snail />
           慢速
         </Button>
@@ -317,7 +325,7 @@ const QuestionItem: React.FC<{
 // ==================== 页面 ====================
 
 /**
- * 按题组练习（专注模式整窗页面）。阅读：看着原文做选词填空与阅读题；听力：逐句听（不看原文、不考选词填空）。
+ * 按题组练习（专注模式整窗页面）。阅读：看着原文做选词填空与阅读题；听力：逐句听（不看原文），选词填空为「听句填空」（只显示所在句子并挖空）。
  * 提交后同页显示对错、解析、开放题评分与评语，并展开原文与翻译。
  */
 export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId, mode = 'reading', planId, returnTo, onNavigate }) => {
@@ -375,7 +383,12 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
   }, [finished]);
 
   const texts = useMemo(() => passage?.sentences.map((s) => s.en) ?? [], [passage]);
-  const clozeQuestions = useMemo(() => (mode === 'reading' ? (set?.questions.filter((q) => q.kind === 'cloze') ?? []) : []), [set, mode]);
+  /** 听力播放：视频切片用原声，其余用合成语音（播放条与听句填空共用） */
+  const [slow, setSlow] = useState(false);
+  const tts = useSentencePlayer(mode === 'listening' && !clipUrl ? texts : NO_TEXTS, { speed: slow ? 'slow' : 'normal' });
+  const original = useClipSentencePlayer(mode === 'listening' ? clipUrl : null, passage?.sentences ?? NO_SENTENCES, { slow });
+  const listenPlayer: ListeningPlayerHandle = clipUrl ? original : tts;
+  const clozeQuestions = useMemo(() => set?.questions.filter((q) => q.kind === 'cloze') ?? [], [set]);
   const otherQuestions = useMemo(() => set?.questions.filter((q) => q.kind !== 'cloze') ?? [], [set]);
 
   const back = () => {
@@ -605,7 +618,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
         // 听力作答：单栏居中，播放条吸顶（随时能听），下沿是题号（已答点亮，点击跳到该题）
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
           <div className="sticky top-0 z-10 space-y-3 rounded-xl border bg-card/95 p-3 shadow-sm backdrop-blur">
-            <ListeningPlayer texts={texts} clip={clipUrl && passage ? { url: clipUrl, sentences: passage.sentences } : undefined} />
+            <ListeningPlayer player={listenPlayer} total={texts.length} slow={slow} onSlowChange={setSlow} />
             {otherQuestions.length > 1 && (
               <div className="flex flex-wrap items-center gap-1.5 border-t pt-2.5">
                 {otherQuestions.map((q, i) => (
@@ -626,6 +639,30 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
               </div>
             )}
           </div>
+          {clozeQuestions.length > 0 && (
+            // 听句填空：只显示有空位的句子，听这一句，从词库里选词
+            <section className="flex flex-col gap-3 rounded-xl border bg-card p-5">
+              <h3 className="font-semibold">听句填空</h3>
+              {[...new Set(clozeQuestions.map((q) => q.sentenceIndex ?? 0))]
+                .sort((x, y) => x - y)
+                .map((idx) => (
+                  <div key={idx} className="flex items-start gap-2">
+                    <Button variant="ghost" size="icon" className="shrink-0" aria-label={`听第 ${idx + 1} 句`} onClick={() => listenPlayer.play(idx, true)}>
+                      <Volume2 />
+                    </Button>
+                    <p className="pt-1.5 text-lg leading-loose">{renderSentence(idx)}</p>
+                  </div>
+                ))}
+              <div className="flex flex-wrap items-center gap-1.5 border-t pt-3 select-none">
+                <span className="mr-1 text-xs text-muted-foreground">词库</span>
+                {set.clozeBank.map((w) => (
+                  <span key={w} className={cn('rounded-full border px-2.5 py-0.5 text-sm', usedWords.has(w.toLowerCase()) && 'line-through opacity-40')}>
+                    {w}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
           {questionsSection}
         </div>
       ) : (
@@ -643,7 +680,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
               </div>
             )}
           </div>
-          {showText && <PassageReader sentences={passage.sentences} translation={showZh ? 'all' : 'off'} renderSentence={mode === 'reading' ? renderSentence : undefined} />}
+          {showText && <PassageReader sentences={passage.sentences} translation={showZh ? 'all' : 'off'} renderSentence={mode === 'reading' || finished ? renderSentence : undefined} />}
           {mode === 'reading' && !finished && clozeQuestions.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 border-t pt-3 select-none">
               <span className="mr-1 text-xs text-muted-foreground">词库</span>

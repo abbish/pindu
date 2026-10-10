@@ -904,11 +904,10 @@ impl PassageService {
             .map(|a| (a.question_id, a.value.as_str()))
             .collect();
         let value_of = |id: Id| given.get(&id).copied().unwrap_or("").to_string();
-        // 必须全部作答才能判分（听力模式不考选词填空）
+        // 必须全部作答才能判分（听力里选词填空是「听句填空」：只显示所在句子并挖空，同样要答）
         let unanswered = set
             .questions
             .iter()
-            .filter(|q| attempt.mode == "reading" || q.kind != "cloze")
             .filter(|q| value_of(q.id).trim().is_empty())
             .count();
         if unanswered > 0 {
@@ -918,12 +917,7 @@ impl PassageService {
             )));
         }
 
-        // 听力模式答题时看不到原文，不考选词填空
-        let cloze_results = if attempt.mode == "reading" {
-            passage_rules::grade_cloze_questions(&set.questions, &value_of)
-        } else {
-            Vec::new()
-        };
+        let cloze_results = passage_rules::grade_cloze_questions(&set.questions, &value_of);
         let others: Vec<_> = set.questions.iter().filter(|q| q.kind != "cloze").collect();
         let mut question_results: Vec<QuestionResult> = others
             .iter()
@@ -1772,7 +1766,7 @@ pub(crate) mod tests {
         assert_eq!(done.question_results.len(), 3);
         assert!(service.submit_attempt(&request, &paths).await.is_err());
 
-        // 听力模式不考选词填空
+        // 听力模式：选词填空是听句填空，同样作答、判分
         let listening = service
             .start_attempt(set_id, "listening", None)
             .await
@@ -1783,6 +1777,8 @@ pub(crate) mod tests {
                     attempt_id: listening.id,
                     active_time: 1_000,
                     answers: vec![
+                        answer(cloze[0], "Passport"),
+                        answer(cloze[1], "visa"),
                         answer(id_of("choice")[0], "1"),
                         answer(id_of("true_false")[0], "false"),
                         answer(id_of("open")[0], "She went home."),
@@ -1792,8 +1788,8 @@ pub(crate) mod tests {
             )
             .await
             .unwrap();
-        assert_eq!((heard.objective_correct, heard.objective_total), (2, 2));
-        assert!(heard.cloze_results.is_empty());
+        assert_eq!((heard.objective_correct, heard.objective_total), (3, 4));
+        assert_eq!(heard.cloze_results.len(), 2);
 
         let stats = service.statistics(None).await.unwrap();
         assert_eq!(
