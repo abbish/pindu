@@ -3,7 +3,7 @@ import { WordMaterialsSheet } from '@/components/WordMaterialsSheet/WordMaterial
 import { tagService } from '@/services/tagService';
 import type { WordMaterialCount } from '@/types/material';
 import type { WordQuery } from '@/types/wordbook';
-import { ChevronDown, FileUp, ListChecks, Loader2, MoreHorizontal, PanelLeft, Pencil, PencilLine, Plus, Sparkles, Table2, Trash2 } from 'lucide-react';
+import { ChevronDown, FileUp, ListChecks, Loader2, MoreHorizontal, PanelLeft, Pencil, PencilLine, Plus, Sparkles, Table2, Trash2, SearchX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -344,7 +344,11 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
     { label: '其他', value: typeStats.others, unit: '个' },
   ];
 
-  const kindControl = (totalWords > 1 || wordKind !== 'all') && (
+  /** 词汇本的总条目数（不受单词 / 词组筛选影响）；筛选后的数量是 totalWords */
+  const bookTotal = wordKind === 'all' ? totalWords : wordBook.total_words || 0;
+  /** 当前筛选下条目的叫法 */
+  const kindNoun = wordKind === 'phrase' ? '词组' : wordKind === 'word' ? '单词' : '条目';
+  const kindControl = (bookTotal > 1 || wordKind !== 'all') && (
     <Select
       value={wordKind}
       onValueChange={(v) => {
@@ -364,7 +368,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
       </SelectContent>
     </Select>
   );
-  const sortControl = totalWords > 1 && (
+  const sortControl = bookTotal > 1 && (
     <SortSelect
       value={wordSort}
       options={WORD_SORTS}
@@ -469,7 +473,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
       <Tabs value={tab} onValueChange={setTab} className="gap-4">
         <TabsList>
           <TabsTrigger value="words" className="gap-1.5 px-3">
-            单词<span className="text-xs text-muted-foreground tabular-nums">{totalWords}</span>
+            单词<span className="text-xs text-muted-foreground tabular-nums">{bookTotal}</span>
           </TabsTrigger>
           <TabsTrigger value="plans" className="gap-1.5 px-3">
             关联计划<span className="text-xs text-muted-foreground tabular-nums">{linkedPlans.length}</span>
@@ -480,7 +484,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
         </TabsList>
 
         <TabsContent value="words">
-          {totalWords === 0 && !wordsLoading && wordKind === 'all' ? (
+          {bookTotal === 0 && !wordsLoading && wordKind === 'all' ? (
             <EmptyState
               icon={<Sparkles />}
               title="这个词汇本还没有单词"
@@ -506,13 +510,16 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               <div className="flex min-h-9 flex-wrap items-center gap-2">
                 <div className="flex flex-1 items-baseline gap-2">
                   <h3 className="text-base font-semibold">单词列表</h3>
-                  <span className="text-sm text-muted-foreground tabular-nums">共 {totalWords} 个单词</span>
+                  <span className="text-sm text-muted-foreground tabular-nums">共 {totalWords} 个{kindNoun}</span>
                 </div>
                 {kindControl}
                 {sortControl}
                 {viewToggle}
                 {addWordsMenu}
               </div>
+              {!wordsLoading && words.length === 0 ? (
+                <EmptyState icon={<SearchX />} title={`没有${kindNoun}`} />
+              ) : (
               <WordCardsView
                 words={words}
                 loading={wordsLoading}
@@ -523,6 +530,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
                 onPassage={(w) => onNavigate?.('create-passage', { bookIds: [wordBook.id], wordIds: [w.id] })}
                 onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })}
               />
+              )}
             </div>
           ) : (
           <WordListTable
@@ -541,6 +549,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             loading={wordsLoading}
             pagination={{ current: currentPage, pageSize: PAGE_SIZE, total: totalWords, onChange: loadWords }}
             toolbarExtra={<>{kindControl}{sortControl}{viewToggle}</>}
+            emptyTitle={`没有${kindNoun}`}
           />
           )
           )}
@@ -591,7 +600,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-end gap-2">
               {(passageCount ?? 0) > 1 && <SortSelect value={passageSort} options={PASSAGE_SORTS} onChange={setPassageSort} className="mr-auto" />}
-              {totalWords > 0 && (
+              {bookTotal > 0 && (
                 <Button variant="outline" onClick={() => onNavigate?.('create-passage', { bookIds: [wordBook.id] })}>
                   <Plus />
                   用本词汇本生成短文

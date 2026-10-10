@@ -1,6 +1,7 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '../types';
 import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, StartVideoImportRequest, StartVideoPlanRequest, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
+import { notifyOnSuccess } from './tagService';
 
 /** 视频库（handlers/video.rs）：视频组件、导入（后台任务）、列表 / 详情 / 波形、改名、规划草稿、删除 */
 export class VideoService extends BaseService {
@@ -84,7 +85,7 @@ export class VideoService extends BaseService {
   }
 
   async delete(videoId: number): Promise<ApiResult<void>> {
-    return this.executeWithLoading(() => this.client.invoke<void>('delete_video', { videoId }));
+    return notifyOnSuccess(await this.executeWithLoading(() => this.client.invoke<void>('delete_video', { videoId })));
   }
 
   /** 删除原视频释放空间（切分完成后） */

@@ -199,8 +199,9 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
     return sortItems(shown, PASSAGE_SORTS, sortBy);
   }, [passages, query, origin, tagId, sortBy]);
 
-  const selection = useSelection(useMemo(() => (visible ?? []).map((p) => p.id), [visible]));
   const pager = usePagination(visible, { id: `passages:${bookId ?? 'all'}`, resetKey: `${query.trim()}|${origin ?? ''}|${tagId ?? ''}|${sortBy}` });
+  // 多选只针对当前这一页（换页即清空），与单词列表一致
+  const selection = useSelection(useMemo(() => (pager.pageItems ?? []).map((p) => p.id), [pager.pageItems]));
   const bar = selection.selecting ? (
     <SelectionBar selection={selection} unit="篇短文">
       <BatchTagButton kind="passage" ids={selection.ids} onDone={load} />

@@ -5,8 +5,8 @@ import type { MaterialKind, MaterialSettings, Tag, TagUsage, WordMaterial, WordM
 /** 标签或素材的标签变了（侧边栏「标签」与标签页据此刷新数量），见 hooks/useTagUsage */
 export const TAGS_CHANGED_EVENT = 'pindu:tags-changed';
 
-/** 改动成功后通知一次 */
-function notifyOnSuccess<T>(result: ApiResult<T>): ApiResult<T> {
+/** 改动成功后通知一次（删除 / 恢复素材也会改变标签数量，各服务同样调用） */
+export function notifyOnSuccess<T>(result: ApiResult<T>): ApiResult<T> {
   if (result.success) window.dispatchEvent(new Event(TAGS_CHANGED_EVENT));
   return result;
 }

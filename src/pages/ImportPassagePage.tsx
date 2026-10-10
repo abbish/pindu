@@ -178,11 +178,14 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
     runImport(items.map((_, i) => i));
   };
 
-  const cancelImport = async () => {
+  /** 停止导入；有任务没停下来时返回 false（进度面板据此恢复停止按钮） */
+  const cancelImport = async (): Promise<boolean> => {
+    let ok = true;
     for (const run of runs) {
       const job = jobs.find((j) => j.id === run.jobId);
-      if (job && isJobActive(job)) await jobService.cancel(job.id);
+      if (job && isJobActive(job)) ok = (await jobService.cancel(job.id)).success && ok;
     }
+    return ok;
   };
 
   const doneItems = (statuses ?? []).flatMap((s) => (s.state === 'done' ? [s] : []));

@@ -143,8 +143,9 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
     );
     return sortItems(shown, VIDEO_SORTS, sourceSort);
   }, [videos, sourceQuery, sourceTag, sourceSort]);
-  const selection = useSelection(useMemo(() => shownVideos.map((v) => v.id), [shownVideos]));
   const pager = usePagination(videos === null ? null : shownVideos, { id: embedded ? `videos:tag${tagId}` : 'videos', resetKey: `${sourceQuery.trim()}|${sourceTag}|${sourceSort}` });
+  // 多选只针对当前这一页（换页即清空），与单词列表一致
+  const selection = useSelection(useMemo(() => (pager.pageItems ?? []).map((v) => v.id), [pager.pageItems]));
 
   const header = (
     <PageHeader
@@ -318,7 +319,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
                       )}
                     </div>
                   )}
-                  {(video.status === 'ready' || video.status === 'done') && <MaterialTags kind="video" refId={video.id} tags={video.tags} />}
+                  {(video.status === 'ready' || video.status === 'done') && <MaterialTags kind="video" refId={video.id} tags={video.tags} onChange={() => void load()} />}
                   {video.status === 'failed' && video.error && <p className="line-clamp-2 text-xs text-destructive">{video.error}</p>}
                   {interrupted && video.status === 'importing' && <p className="text-xs text-muted-foreground">删除后重新导入</p>}
                 </div>

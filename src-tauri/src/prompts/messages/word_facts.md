@@ -1,4 +1,5 @@
 单词：{{word}}
+词组：{{phrase}}
 中文释义：{{meaning}}
 词性：{{pos}}
 音标：{{ipa}}

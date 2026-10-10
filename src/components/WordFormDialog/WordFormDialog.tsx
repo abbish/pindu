@@ -109,9 +109,19 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
   /** 字段可以由 AI 填写：空着，或仍是 AI 上次填的值 */
   const isFree = (v: FormValues, key: keyof FormValues): boolean => {
     const value = v[key];
-    const empty = Array.isArray(value) ? !value.some((e) => e.sentence.trim()) : typeof value === 'string' ? !value.trim() : false;
+    // 词性与「可拆开」总有值：新添加时用户没动过就算空着
+    const empty =
+      key === 'pos' || key === 'separable'
+        ? !editing && !touchedRef.current.has(key)
+        : Array.isArray(value)
+          ? !value.some((e) => e.sentence.trim())
+          : typeof value === 'string'
+            ? !value.trim()
+            : false;
     return empty || (key in aiFilledRef.current && aiFilledRef.current[key] === value);
   };
+  /** 用户动过的字段 */
+  const touchedRef = useRef(new Set<keyof FormValues>());
   /** AI 补全失败的原因（显示在单词输入框下方） */
   const [fillError, setFillError] = useState<string | null>(null);
   /** AI 认为拼写有误时给出的写法与分析 */
@@ -127,9 +137,11 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
     setFillError(null);
     setCorrection(null);
     aiFilledRef.current = {};
+    touchedRef.current = new Set();
   }, [isOpen, word]);
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
+    touchedRef.current.add(key);
     setValues((prev) => ({ ...prev, [key]: value }));
     if (key === 'word' || key === 'meaning') setErrors((prev) => ({ ...prev, [key]: undefined }));
     if (key === 'word') {
@@ -157,7 +169,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
         ...prev,
         word: word ?? prev.word,
         meaning: free('meaning') ? p.chinese_translation : prev.meaning,
-        pos: free('meaning') ? standardizePartOfSpeech(p.pos_abbreviation) : prev.pos,
+        pos: free('pos') ? standardizePartOfSpeech(p.pos_abbreviation) : prev.pos,
         ipa: free('ipa') ? p.ipa : prev.ipa,
         syllables,
         segments: free('segments') ? textToSegments(syllables.replace(/-/g, ' ')).join(' / ') : prev.segments,
@@ -165,9 +177,9 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
         explanation: free('explanation') ? p.analysis_explanation : prev.explanation,
         examples: free('examples') ? (p.examples ?? []) : prev.examples,
         phraseType: free('phraseType') ? p.phrase_type || '' : prev.phraseType,
-        separable: free('phraseType') ? Boolean(p.separable) : prev.separable,
+        separable: free('separable') ? Boolean(p.separable) : prev.separable,
       };
-      for (const key of AI_FIELDS) if (free(key === 'pos' ? 'meaning' : key === 'separable' ? 'phraseType' : key)) (filled as Record<string, unknown>)[key] = next[key];
+      for (const key of AI_FIELDS) if (free(key)) (filled as Record<string, unknown>)[key] = next[key];
       valuesRef.current = next;
       setValues(next);
     }
@@ -194,6 +206,8 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
       setFillError(result.error);
       return;
     }
+    // 等待期间单词被改了（弹窗重开等）：这次结果不再适用
+    if (valuesRef.current.word.trim() !== w) return;
     const p = result.data;
     const same = p.word.trim().replace(/\s+/g, ' ').toLowerCase() === w.replace(/\s+/g, ' ').toLowerCase();
     if (same) applyAnalysis(p);
@@ -262,7 +276,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                 <div className="space-y-1.5">
                   <Label htmlFor="wf-word">单词 / 词组</Label>
                   <div className="flex">
-                    <Input id="wf-word" value={values.word} onChange={(e) => set('word', e.target.value)} placeholder="例如：elephant、give up" maxLength={50} autoFocus={!editing} aria-invalid={Boolean(errors.word)} className="rounded-r-none font-medium focus-visible:z-10" />
+                    <Input id="wf-word" value={values.word} onChange={(e) => set('word', e.target.value)} placeholder="例如：elephant、give up" maxLength={60} readOnly={filling} autoFocus={!editing} aria-invalid={Boolean(errors.word)} className="rounded-r-none font-medium focus-visible:z-10" />
                     <Button
                       type="button"
                       variant="outline"

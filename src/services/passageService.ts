@@ -30,6 +30,7 @@ import type {
   TodayPassageTask,
 } from '../types/passage';
 import type { WordCard } from '../types/material';
+import { notifyOnSuccess } from './tagService';
 
 /** 短文库：短文（独立素材）、阅读理解题组、作答与统计 */
 class PassageService extends BaseService {
@@ -96,7 +97,7 @@ class PassageService extends BaseService {
   }
 
   async deletePassage(passageId: number): Promise<ApiResult<void>> {
-    return this.executeWithLoading(() => this.client.invoke<void>('delete_passage', { passageId }));
+    return notifyOnSuccess(await this.executeWithLoading(() => this.client.invoke<void>('delete_passage', { passageId })));
   }
 
   /** 出一套阅读理解题（后台任务）：返回任务 id；完成后题组已保存，job.result 为 { setId, name, count } */

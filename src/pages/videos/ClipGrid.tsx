@@ -107,8 +107,9 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, videoId, onOp
     return sortItems(shown, CLIP_SORTS, sortBy);
   }, [clips, query, tag, video, level, subtitleHits, sortBy]);
 
-  const selection = useSelection(useMemo(() => (visible ?? []).map((c) => c.id), [visible]));
   const pager = usePagination(visible, { id: fixedTag ? `clips:tag${tagId}` : 'clips', resetKey: `${query.trim()}|${tag}|${video}|${level}|${sortBy}` });
+  // 多选只针对当前这一页（换页即清空），与单词列表一致
+  const selection = useSelection(useMemo(() => (pager.pageItems ?? []).map((c) => c.id), [pager.pageItems]));
   const pickedClips = (visible ?? []).filter((c) => selection.selected.has(c.id));
   const sourceVideos = videos.filter((v) => v.clipCount > 0);
   const active = (query ? 1 : 0) + (!fixedTag && tag !== 'all' ? 1 : 0) + (video !== 'all' ? 1 : 0) + (level !== 'all' ? 1 : 0);

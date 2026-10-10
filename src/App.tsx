@@ -47,14 +47,19 @@ function App() {
   const inFocusPage = FOCUS_PAGES.has(route.page);
   useEffect(() => {
     if (inFocusPage) return;
+    // 弹窗打开、正在输入时不响应：跳走会丢掉没保存的内容
+    const blocked = (target: EventTarget | null) =>
+      Boolean(document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) ||
+      (target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]')));
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.repeat || blocked(e.target)) return;
       if (e.key === '[') back();
       else if (e.key === ']') forward();
       else return;
       e.preventDefault();
     };
     const onMouse = (e: MouseEvent) => {
+      if (blocked(null)) return;
       if (e.button === 3) back();
       else if (e.button === 4) forward();
     };
@@ -77,12 +82,12 @@ function App() {
       case 'plan-detail':
         // 缺少 planId 时回到计划列表（此前会静默打开 id=1 的计划）
         return route.params
-          ? <PlanDetailPage planId={route.params.planId} initialTab={route.params.tab} onNavigate={navigate} />
+          ? <PlanDetailPage key={route.params.planId} planId={route.params.planId} initialTab={route.params.tab} onNavigate={navigate} />
           : <StudyPlansPage onNavigate={navigate} />;
       case 'wordbooks':
         return <WordBookPage onNavigate={navigate} />;
       case 'wordbook-detail':
-        return <WordBookDetailPage id={route.params?.id} onNavigate={navigate} />;
+        return <WordBookDetailPage key={route.params?.id} id={route.params?.id} onNavigate={navigate} />;
       case 'word-practice':
         return (
           <WordPracticePage

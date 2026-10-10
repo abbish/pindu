@@ -34,7 +34,7 @@ impl WordService {
         }
     }
 
-    /// 单词与释义必填、单词最长 50 字；同一词汇本内不能重复（忽略大小写，`except` 为正在编辑的自己）
+    /// 单词与释义必填、最长 60 字（与 valid_vocab 一致）；同一词汇本内不能重复（忽略大小写，`except` 为正在编辑的自己）
     async fn validate_word(
         &self,
         book_id: Id,
@@ -45,9 +45,10 @@ impl WordService {
         if word.is_empty() {
             return Err(AppError::ValidationError("请填写单词".to_string()));
         }
-        if word.chars().count() > 50 {
+        // 与 passage_rules::valid_vocab 的上限一致（词组最长 60 个字符）
+        if word.chars().count() > 60 {
             return Err(AppError::ValidationError(
-                "单词不能超过 50 个字符".to_string(),
+                "单词或词组不能超过 60 个字符".to_string(),
             ));
         }
         if meaning.is_empty() {

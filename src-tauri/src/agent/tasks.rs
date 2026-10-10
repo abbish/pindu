@@ -748,11 +748,31 @@ fn numbered_examples(examples: &[WordExample]) -> String {
 }
 
 /// 单词资料（讲解、答疑共用）
+/// 词组的类型与能否拆开（单词为空）
+fn phrase_facts(word: &Word) -> String {
+    if !crate::services::passage_rules::is_phrase(&word.word) {
+        return String::new();
+    }
+    let kind = match word.phrase_type.as_deref() {
+        Some("phrasal_verb") => "短语动词",
+        Some("collocation") => "固定搭配",
+        Some("idiom") => "习语",
+        Some("fixed") => "固定短语",
+        _ => "词组",
+    };
+    if word.separable {
+        format!("{kind}，可以拆开用（宾语放在中间）")
+    } else {
+        kind.to_string()
+    }
+}
+
 fn word_facts(word: &Word) -> String {
     prompts::message(
         MessageTemplate::WordFacts,
         &[
             ("word", word.word.trim()),
+            ("phrase", &phrase_facts(word)),
             ("meaning", word.meaning.trim()),
             ("pos", word_pos(word).unwrap_or("")),
             ("ipa", trimmed(&word.ipa).unwrap_or("")),

@@ -1,4 +1,5 @@
 import { BaseService } from './baseService';
+import { notifyOnSuccess } from './tagService';
 import {
   AnalyzedWord,
   StudyPlanWithProgress,
@@ -86,15 +87,17 @@ export class WordBookService extends BaseService {
    */
   /** 恢复已删除的词汇本（回到正式状态） */
   async restoreWordBook(id: Id): Promise<ApiResult<void>> {
-    return this.executeWithLoading(async () => this.client.invoke<void>('restore_word_book', { bookId: id }));
+    return notifyOnSuccess(await this.executeWithLoading(async () => this.client.invoke<void>('restore_word_book', { bookId: id })));
   }
 
   async deleteWordBook(id: Id): Promise<ApiResult<void>> {
-    return this.executeWithLoading(async () => {
-      this.validateRequired({ id }, ['id']);
+    return notifyOnSuccess(
+      await this.executeWithLoading(async () => {
+        this.validateRequired({ id }, ['id']);
 
-      return this.client.invoke<void>('delete_word_book', { bookId: id });
-    });
+        return this.client.invoke<void>('delete_word_book', { bookId: id });
+      })
+    );
   }
 
   /**

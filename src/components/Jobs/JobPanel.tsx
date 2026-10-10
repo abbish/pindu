@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -21,8 +21,8 @@ export interface JobPanelProps {
   /** 副标题后面的补充（如预计剩余时间） */
   extra?: string;
   /** 面板上的操作（页面里用；弹窗把「停止」「在后台继续」放在底部操作栏，不传） */
-  /** stop：true 用默认的停止任务；传函数时由调用方停止（如还要重置页面） */
-  actions?: { stop?: boolean | (() => void); onBackground?: () => void };
+  /** stop：true 用默认的停止任务；传函数时由调用方停止（如还要重置页面），返回 false（或 Promise<false>）表示没停下来 */
+  actions?: { stop?: boolean | (() => void | boolean | Promise<void | boolean>); onBackground?: () => void };
   /** 面板下方的明细（逐项状态） */
   children?: React.ReactNode;
 }
@@ -35,6 +35,8 @@ export const JobPanel: React.FC<JobPanelProps> = ({ job, title, count, extra, ac
   const active = !job || isJobActive(job);
   const failed = job?.status === 'failed';
   const [stopRequested, setStopRequested] = useState(false);
+  // 面板换成了另一个任务：重新开始计「是否在停止」
+  useEffect(() => setStopRequested(false), [job?.id]);
   const stopping = active && (stopRequested || job?.stage === STOPPING_STAGE);
   const elapsed = useElapsed(job?.startedAt, active);
   const heading = stopping ? STOPPING_STAGE : !active ? (failed ? '没有完成' : job?.status === 'cancelled' ? '已停止' : '已完成') : title;
@@ -46,7 +48,7 @@ export const JobPanel: React.FC<JobPanelProps> = ({ job, title, count, extra, ac
     if (!job) return;
     setStopRequested(true);
     if (typeof actions?.stop === 'function') {
-      actions.stop();
+      if ((await actions.stop()) === false) setStopRequested(false);
       return;
     }
     const r = await jobService.cancel(job.id);

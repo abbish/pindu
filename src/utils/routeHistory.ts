@@ -27,10 +27,23 @@ export function pushRoute<R extends RouteLike>(h: RouteHistory<R>, route: R): Ro
   return { entries, index: entries.length - 1 };
 }
 
-/** delta = -1 后退 / 1 前进；找不到可去的页面时返回 null */
+/** 只是页签、来源这类视图参数不同的同一页（plan-detail X 与 plan-detail X 的某个页签） */
+const VIEW_PARAMS = new Set(['tab', 'initialTab', 'fromPlan']);
+const samePage = (a: RouteLike, b: RouteLike) => {
+  if (a.page !== b.page) return false;
+  const strip = (p: unknown) =>
+    JSON.stringify(p && typeof p === 'object' ? Object.fromEntries(Object.entries(p).filter(([k, v]) => !VIEW_PARAMS.has(k) && v !== undefined).sort()) : (p ?? null));
+  return strip(a.params) === strip(b.params);
+};
+
+/**
+ * delta = -1 后退 / 1 前进；找不到可去的页面时返回 null。
+ * 跳过 skip 的页面，也跳过和当前是同一页的记录（练完回到进入前那一页后，后退不会原地不动）。
+ */
 export function stepTarget<R extends RouteLike>(h: RouteHistory<R>, delta: -1 | 1, skip: (r: R) => boolean): number | null {
+  const current = h.entries[h.index];
   for (let i = h.index + delta; i >= 0 && i < h.entries.length; i += delta) {
-    if (!skip(h.entries[i])) return i;
+    if (!skip(h.entries[i]) && !samePage(h.entries[i], current)) return i;
   }
   return null;
 }

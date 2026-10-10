@@ -155,8 +155,9 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
     return sortItems(books, SORT_OPTIONS, sortBy);
   }, [data, filters, sortBy]);
   // 已删除的词汇本只能恢复，不参与勾选
-  const selection = useSelection(useMemo(() => filteredBooks.filter((b) => !b.deleted_at).map((b) => b.id), [filteredBooks]));
   const pager = usePagination(loading ? null : filteredBooks, { id: embedded ? `word-books:tag${tagId}` : 'word-books', resetKey: `${JSON.stringify(filters)}|${sortBy}` });
+  // 多选只针对当前这一页（换页即清空），与单词列表一致
+  const selection = useSelection(useMemo(() => (pager.pageItems ?? []).filter((b) => !b.deleted_at).map((b) => b.id), [pager.pageItems]));
 
   const activeFilterCount =
     (filters.searchTerm ? 1 : 0) + (!embedded && filters.tag !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);

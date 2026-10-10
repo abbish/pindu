@@ -28,3 +28,12 @@ test('前进后退跳过整窗练习页', () => {
   h = stepRoute(h, 1, skip);
   assert.equal(h.entries[h.index].page, 'result');
 });
+
+test('练完回到原页后，后退跳过同一页（只差页签也算同一页）', () => {
+  let h = startHistory({ page: 'home' });
+  h = pushRoute(h, { page: 'plan', params: { id: 1 } });
+  h = pushRoute(h, { page: 'practice' });
+  h = pushRoute(h, { page: 'plan', params: { id: 1, tab: 'schedule' } });
+  h = stepRoute(h, -1, skip);
+  assert.equal(h.entries[h.index].page, 'home');
+});

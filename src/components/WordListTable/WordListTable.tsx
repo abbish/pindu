@@ -70,6 +70,8 @@ export interface WordDetail {
 }
 
 export interface WordListTableProps {
+  /** 列表为空时的标题（默认「没有单词」） */
+  emptyTitle?: string;
   /** 单词列表 */
   words: WordDetail[];
   /** 播放发音回调 */
@@ -122,6 +124,7 @@ const POS_CLASS: Record<string, string> = {
  */
 export const WordListTable: React.FC<WordListTableProps> = ({
   words,
+  emptyTitle,
   onPlayPronunciation,
   onPlayExample,
   onEditWord,
@@ -247,7 +250,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
       </div>
 
       {!loading && words.length === 0 ? (
-        <EmptyState icon={<SearchX />} title="没有单词" />
+        <EmptyState icon={<SearchX />} title={emptyTitle ?? '没有单词'} />
       ) : (
         <Card className="gap-0 overflow-hidden py-0">
           <Table>

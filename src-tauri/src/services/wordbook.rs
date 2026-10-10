@@ -314,6 +314,10 @@ impl WordBookService {
         let to_word = |aw: AnalyzedWord| {
             let examples = complete_examples(aw.examples.clone().unwrap_or_default());
             let kind = crate::types::wordbook::vocab_kind(&aw.word).to_string();
+            // 只有词组有类型，只有短语动词能拆开（AI 给单词也带上时清掉）
+            let phrase_type =
+                crate::services::word::phrase_type_for(&aw.word, aw.phrase_type.as_deref());
+            let separable = aw.separable && phrase_type.as_deref() == Some("phrasal_verb");
             Word {
                 id: 0,
                 phonics_segments: phonics_segments_from_syllables(
@@ -336,8 +340,8 @@ impl WordBookService {
                 phonics_rule: aw.phonics_rule,
                 analysis_explanation: aw.analysis_explanation,
                 kind,
-                phrase_type: aw.phrase_type,
-                separable: aw.separable,
+                phrase_type,
+                separable,
                 // 只保存句子与翻译都有的例句（更新已有单词时，新结果没有例句则保留原例句）
                 examples,
                 created_at: String::new(),
