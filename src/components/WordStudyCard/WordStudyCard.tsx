@@ -3,7 +3,6 @@ import { ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote, Snail, V
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AiTeacherPanel } from '@/components/AiTeacher';
 import { WordMaterialsList } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
@@ -129,7 +128,7 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
 
   return (
     <div className="relative">
-    <Card className={cn('gap-6 px-6 py-5', showTeacher && 'min-h-[480px]')}>
+    <Card className="gap-6 px-6 py-5">
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-baseline gap-3">

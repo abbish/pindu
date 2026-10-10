@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { GraduationCap, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,14 +22,13 @@ export interface AiTeacherPanelProps {
 }
 
 /**
- * AI 老师的对话面板：从单词卡右侧滑出、浮在卡片上（单词卡保持完整宽度），与单词卡等高、最高不超过可视区域并贴住顶部
- * （输入框一直可见，对话在面板里滚动）；开着时切换单词，老师跟着讲新的词。
+ * AI 老师的对话面板：固定在窗口右侧（标题栏下方到窗口底部），不随页面滚动，输入框一直可见、对话在面板里滚动；开着时切换单词，老师跟着讲新的词。
  * 同一个词的对话在单词卡、练习、短文与视频里共用（D43）。
  */
-export const AiTeacherPanel: React.FC<AiTeacherPanelProps> = ({ word, wordId, onClose }) => (
-  // 浮在单词卡右侧（不挤占单词卡）：与单词卡等高、最高不超过可视区域并贴住顶部，单词卡很长时往下滚，面板与输入框一直在视野里
-  <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-[360px] max-w-[85%]">
-      <Card className="pointer-events-auto sticky top-4 h-full max-h-[calc(100svh-6rem)] gap-0 overflow-hidden py-0 shadow-xl duration-200 animate-in fade-in slide-in-from-right-4">
+export const AiTeacherPanel: React.FC<AiTeacherPanelProps> = ({ word, wordId, onClose }) =>
+  // 固定在窗口右侧：上到标题栏（面包屑）下方、下到窗口底部，主页面滚动不影响；浮在内容之上，不挤占单词卡
+  createPortal(
+    <Card className="fixed top-[calc(3rem+0.75rem)] right-3 bottom-3 z-30 w-[380px] max-w-[calc(100vw-1.5rem)] gap-0 overflow-hidden py-0 shadow-xl duration-200 animate-in fade-in slide-in-from-right-4">
       <header className="flex items-center gap-2.5 border-b px-4 py-3">
         <TeacherAvatar />
         <div className="min-w-0 flex-1">
@@ -42,6 +42,6 @@ export const AiTeacherPanel: React.FC<AiTeacherPanelProps> = ({ word, wordId, on
       <div className="min-h-0 flex-1 p-4">
         <WordExplanationView key={wordId} wordId={wordId} word={word} active fill />
       </div>
-      </Card>
-  </div>
-);
+    </Card>,
+    document.body
+  );
