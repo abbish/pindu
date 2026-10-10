@@ -11,3 +11,13 @@
 FFmpeg 按 LGPL 编译（未启用 GPL 与 nonfree 组件），源码未作修改。编译配置与步骤见
 https://github.com/abbish/pindu/tree/main/scripts/ffmpeg （`build.sh`、`sources.json`）。
 你可以用上述源码与脚本自行编译，并替换应用目录中的 `ffmpeg` / `ffprobe`。
+
+## 词典数据
+
+单词变形识别（went → go、children → child 等）使用 WordNet 的词表与不规则变形表，内置在应用中。
+
+| 数据 | 版本 | 许可证 | 来源 |
+|---|---|---|---|
+| WordNet | 3.0 | WordNet 3.0 License（`WordNet-3.0-LICENSE.txt`） | https://wordnetcode.princeton.edu/3.0/WordNet-3.0.tar.gz |
+
+WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved. 只取用了四个词性的单词表（index.*）与不规则变形表（*.exc），生成方式见 `scripts/lemma/build.mjs`。

@@ -1,0 +1,15 @@
+{
+  "forms": [
+    ["went", "go"], ["gone", "go"], ["bought", "buy"], ["studied", "study"], ["studies", "study"], ["studying", "study"],
+    ["children", "child"], ["mice", "mouse"], ["wolves", "wolf"], ["geese", "goose"], ["better", "good"],
+    ["making", "make"], ["stopped", "stop"], ["bigger", "big"], ["fossils", "fossil"], ["gave", "give"],
+    ["picked", "pick"], ["leaves", "leaf"], ["leaves", "leave"], ["dying", "die"], ["lying", "lie"],
+    ["written", "write"], ["swam", "swim"], ["analyses", "analysis"], ["was", "be"], ["is", "be"],
+    ["boxes", "box"], ["churches", "church"], ["women", "woman"], ["tickets", "ticket"],
+    ["Elephants", "elephant"], ["constructor", "constructor"], ["dinos", "dino"], ["Mali", "mali"]
+  ],
+  "not_forms": [
+    ["pass", "passport"], ["passport", "pass"], ["kind", "kid"], ["went", "want"], ["constructors", "toString"],
+    ["bed", "be"], ["customs", "custom"], ["red", "re"], ["sing", "s"]
+  ]
+}

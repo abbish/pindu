@@ -2,7 +2,7 @@
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import { irregularForms } from "./irregular.ts";
+import { isFormOf } from "../../../shared/lemma/morphy.ts";
 
 /** 规则名称表（与提示词一致，格式「专业术语 | 直观描述」） */
 export const PHONICS_RULES = [
@@ -58,15 +58,8 @@ export const EXAMPLES_MAX = 8;
 /** 词组里代表某人 / 某物的占位词（例句里换成具体的词） */
 const PLACEHOLDERS = new Set(["sb", "sth", "somebody", "something", "someone", "one's", "sb's", "oneself"]);
 
-/** 一个词是否是 word 的常见变形（复数、过去式、-ing、比较级等） */
-function tokenIsForm(token: string, word: string): boolean {
-  const w = word.toLowerCase();
-  if (irregularForms(w).includes(token)) return true;
-  const bare = token.replace(/'s$/, "");
-  const stems = [w];
-  if (/[ey]$/.test(w) && w.length > 2) stems.push(w.slice(0, -1));
-  return stems.some(stem => bare.startsWith(stem) && bare.length - w.length <= 4);
-}
+/** 一个词是否是 word 的某种形式（词形库 shared/lemma，D47；所有格 's 先去掉） */
+const tokenIsForm = (token: string, word: string) => isFormOf(token.replace(/'s$/, ""), word);
 
 /** 例句中是否出现该单词或词组（允许常见词形变化；词组的各个词按顺序出现、中间可插入少量词，占位词不要求） */
 export function sentenceContainsWord(sentence: string, word: string): boolean {

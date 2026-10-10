@@ -2,28 +2,18 @@
 // 校验不通过时抛错，模型看到问题列表后只改被指出的地方再重交；Rust 侧（services::passage_rules）会按请求再校验一次。
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { irregularForms } from "./irregular.ts";
+import { isFormOf } from "../../../shared/lemma/morphy.ts";
 import { Type, type Static } from "typebox";
 
-/** token 是否是 word 本身或常见屈折形式（与 Rust passage_rules::inflection_matches 同规则） */
-export function inflectionMatches(token: string, word: string): boolean {
-  const t = token.trim().toLowerCase();
-  const w = word.trim().toLowerCase();
-  if (!t || !w) return false;
-  if (t === w) return true;
-  if (["s", "es", "ed", "d", "ing", "er", "est"].some(s => t === w + s)) return true;
-  if (w.endsWith("e") && ["ing", "ed", "er", "est"].some(s => t === w.slice(0, -1) + s)) return true;
-  if (w.endsWith("y") && ["ies", "ied", "ier", "iest"].some(s => t === w.slice(0, -1) + s)) return true;
-  const last = w[w.length - 1];
-  return !"aeiouwxy".includes(last) && ["ing", "ed", "er", "est"].some(s => t === w + last + s);
-}
+/** token 是否是 word 本身或它的某种形式（词形库 shared/lemma：WordNet 词典 + morphy，与前端、Rust 同一份数据，D47） */
+export const inflectionMatches = (token: string, word: string): boolean => isFormOf(token, word);
 
 const wordsOf = (text: string) => (text.match(/[A-Za-z']+/g) ?? []).map(w => w.replace(/^'+|'+$/g, "")).filter(Boolean);
 /** 词组里代表某人 / 某物的占位词：对应 1–3 个任意词 */
 const PLACEHOLDERS = new Set(["sb", "sth", "somebody", "something", "someone", "one's", "sb's", "oneself"]);
 /** 可拆开的两词短语动词的小品词：中间允许插入 1–3 个词（pick it up） */
 const PARTICLES = new Set(["up", "down", "out", "off", "on", "in", "away", "back", "over", "around", "about", "through", "along", "aside"]);
-const isForm = (t: string, p: string) => inflectionMatches(t, p) || irregularForms(p).includes(t.toLowerCase());
+const isForm = (t: string, p: string) => isFormOf(t, p);
 
 /** 从 tokens[i] 起匹配 parts[k..]，返回结束位置（与 Rust passage_rules::phrase_match_from、前端 utils/passage.ts 同规则） */
 function matchFrom(tokens: string[], i: number, parts: string[], k: number): number | null {

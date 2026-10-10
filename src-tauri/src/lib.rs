@@ -4,6 +4,7 @@ mod database;
 mod error;
 mod handlers;
 mod jobs;
+mod lemma;
 mod log_bridge;
 mod logger;
 mod media;

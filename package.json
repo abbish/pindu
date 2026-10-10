@@ -29,7 +29,7 @@
     "package:mac-arm": "node scripts/package.mjs --target mac-arm",
     "type-check": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "node --import ./scripts/test-resolve-hook.mjs --test \"src/**/*.test.ts\"",
+    "test": "node --import ./scripts/test-resolve-hook.mjs --test \"src/**/*.test.ts\" \"shared/**/*.test.ts\"",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "verify": "bash scripts/verify.sh"
   },

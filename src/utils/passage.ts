@@ -3,6 +3,7 @@
  * 空位按 sentenceIndex + 词定位到该句中第一个写法一致（忽略大小写）的整词。
  */
 import type { PassageAttempt, PassageAttemptBrief, PassageMode, PickDifficulty, PickFrequency, PickStatus, PlanWordScope, QuestionDifficulty, QuestionSetSpec } from '../types/passage';
+import { isFormOf } from '../../shared/lemma/morphy';
 
 /** 练习方式文案（唯一 owner） */
 export const MODE_LABEL: Record<PassageMode, string> = { reading: '阅读', listening: '听力' };
@@ -104,18 +105,8 @@ export const scopeDetailLabel = (detail: string | null) =>
 /** 难度显示名 */
 export const DIFFICULTY_LABEL: Record<QuestionDifficulty, string> = { basic: '基础', standard: '标准', advanced: '提高' };
 
-/** token 是否是 word 本身或常见屈折形式（与后端 passage_rules::inflection_matches 同规则） */
-export function inflectionMatches(token: string, word: string): boolean {
-  const t = token.trim().toLowerCase();
-  const w = word.trim().toLowerCase();
-  if (!t || !w) return false;
-  if (t === w) return true;
-  if (['s', 'es', 'ed', 'd', 'ing', 'er', 'est'].some((s) => t === w + s)) return true;
-  if (w.endsWith('e') && ['ing', 'ed', 'er', 'est'].some((s) => t === w.slice(0, -1) + s)) return true;
-  if (w.endsWith('y') && ['ies', 'ied', 'ier', 'iest'].some((s) => t === w.slice(0, -1) + s)) return true;
-  const last = w[w.length - 1];
-  return !'aeiouwxy'.includes(last) && ['ing', 'ed', 'er', 'est'].some((s) => t === w + last + s);
-}
+/** token 是否是 word 本身或它的某种形式（词形库 shared/lemma：WordNet 词典 + morphy，与后端 lemma.rs 同一份数据，D47） */
+export const inflectionMatches = (token: string, word: string): boolean => isFormOf(token, word);
 
 /** 一句英文拆成片段：单词（带序号）与其它字符（空格、标点） */
 export type Token = { kind: 'word'; text: string; index: number } | { kind: 'other'; text: string };
@@ -142,102 +133,10 @@ export const targetOf = (token: string, targets: string[]) => targets.filter((t)
 /** 带空格的是词组 */
 export const isPhrase = (text: string) => /\s/.test(text.trim());
 
-/** 不规则动词的变形（与后端 IRREGULAR_VERBS 同一张表） */
-const IRREGULAR_VERBS: Record<string, string[]> = {
-  be: ['am', 'is', 'are', 'was', 'were', 'been'],
-  become: ['became'],
-  begin: ['began', 'begun'],
-  break: ['broke', 'broken'],
-  bring: ['brought'],
-  build: ['built'],
-  buy: ['bought'],
-  catch: ['caught'],
-  choose: ['chose', 'chosen'],
-  come: ['came'],
-  dig: ['dug'],
-  do: ['did', 'done', 'does'],
-  draw: ['drew', 'drawn'],
-  drink: ['drank', 'drunk'],
-  drive: ['drove', 'driven'],
-  eat: ['ate', 'eaten'],
-  fall: ['fell', 'fallen'],
-  feed: ['fed'],
-  feel: ['felt'],
-  fight: ['fought'],
-  find: ['found'],
-  fly: ['flew', 'flown', 'flies'],
-  forget: ['forgot', 'forgotten'],
-  freeze: ['froze', 'frozen'],
-  get: ['got', 'gotten'],
-  give: ['gave', 'given'],
-  go: ['went', 'gone', 'goes'],
-  grow: ['grew', 'grown'],
-  hang: ['hung'],
-  have: ['has', 'had'],
-  hear: ['heard'],
-  hide: ['hid', 'hidden'],
-  hold: ['held'],
-  keep: ['kept'],
-  know: ['knew', 'known'],
-  lead: ['led'],
-  leave: ['left'],
-  lend: ['lent'],
-  lie: ['lay', 'lain'],
-  lose: ['lost'],
-  make: ['made'],
-  mean: ['meant'],
-  meet: ['met'],
-  pay: ['paid'],
-  ride: ['rode', 'ridden'],
-  ring: ['rang', 'rung'],
-  rise: ['rose', 'risen'],
-  run: ['ran'],
-  say: ['said'],
-  see: ['saw', 'seen'],
-  sell: ['sold'],
-  send: ['sent'],
-  shake: ['shook', 'shaken'],
-  shine: ['shone'],
-  shoot: ['shot'],
-  sing: ['sang', 'sung'],
-  sink: ['sank', 'sunk'],
-  sit: ['sat'],
-  sleep: ['slept'],
-  slide: ['slid'],
-  speak: ['spoke', 'spoken'],
-  spend: ['spent'],
-  stand: ['stood'],
-  steal: ['stole', 'stolen'],
-  stick: ['stuck'],
-  sting: ['stung'],
-  swim: ['swam', 'swum'],
-  swing: ['swung'],
-  take: ['took', 'taken'],
-  teach: ['taught'],
-  tear: ['tore', 'torn'],
-  tell: ['told'],
-  think: ['thought'],
-  throw: ['threw', 'thrown'],
-  understand: ['understood'],
-  wake: ['woke', 'woken'],
-  wear: ['wore', 'worn'],
-  weep: ['wept'],
-  win: ['won'],
-  write: ['wrote', 'written'],
-};
-/** 不规则动词的变形（只查表里自己的键：constructor、toString 等不会取到原型上的属性） */
-const irregularForms = (base: string): string[] => {
-  const key = base.toLowerCase();
-  return Object.prototype.hasOwnProperty.call(IRREGULAR_VERBS, key) ? IRREGULAR_VERBS[key] : [];
-};
-
 /** 词组里代表某人 / 某物的占位词：对应 1–3 个任意词 */
 const PLACEHOLDERS = new Set(['sb', 'sth', 'somebody', 'something', 'someone', "one's", "sb's", 'oneself']);
 /** 可拆开的两词短语动词的小品词：中间允许插入 1–3 个词（pick it up） */
 const PARTICLES = new Set(['up', 'down', 'out', 'off', 'on', 'in', 'away', 'back', 'over', 'around', 'about', 'through', 'along', 'aside']);
-
-const isFormOf = (token: string, part: string) =>
-  inflectionMatches(token, part) || irregularForms(part).includes(token.toLowerCase());
 
 function matchFrom(words: string[], i: number, parts: string[], k: number): number | null {
   if (k === parts.length) return i;

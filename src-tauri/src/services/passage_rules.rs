@@ -60,81 +60,18 @@ pub fn validate_spec(spec: &QuestionSetSpec) -> Result<(), String> {
     Ok(())
 }
 
-/// `token` 是否是 `word` 本身或它的常见屈折形式（-s / -es / -ed / -ing / -er / -est、去 e、y 变 i、双写辅音）
+/// `token` 是否是 `word` 本身或它的某种形式（词形库 [`crate::lemma`]：WordNet 词典 + morphy，D47）
 pub fn inflection_matches(token: &str, word: &str) -> bool {
-    let t = token.trim().to_lowercase();
-    let w = word.trim().to_lowercase();
-    if t.is_empty() || w.is_empty() {
-        return false;
-    }
-    if t == w {
-        return true;
-    }
-    const SUFFIXES: [&str; 7] = ["s", "es", "ed", "d", "ing", "er", "est"];
-    if SUFFIXES.iter().any(|s| t == format!("{w}{s}")) {
-        return true;
-    }
-    if let Some(stem) = w.strip_suffix('e') {
-        if ["ing", "ed", "er", "est"]
-            .iter()
-            .any(|s| t == format!("{stem}{s}"))
-        {
-            return true;
-        }
-    }
-    if let Some(stem) = w.strip_suffix('y') {
-        if ["ies", "ied", "ier", "iest"]
-            .iter()
-            .any(|s| t == format!("{stem}{s}"))
-        {
-            return true;
-        }
-    }
-    // 双写结尾辅音（stop → stopped、big → bigger）
-    w.chars().last().is_some_and(|last| {
-        !"aeiouwxy".contains(last)
-            && ["ing", "ed", "er", "est"]
-                .iter()
-                .any(|s| t == format!("{w}{last}{s}"))
-    })
+    crate::lemma::is_form_of(token, word)
 }
 
-/// 一个单词可能的原形（按屈折规则反推，含不规则动词），都满足 [`inflection_matches`]；不含它自己
+/// 一个单词可能的原形（词形库还原，不含它自己）
 pub fn base_candidates(token: &str) -> Vec<String> {
     let t = token.trim().to_lowercase();
-    let mut out: Vec<String> = Vec::new();
-    let mut push = |c: String| {
-        if c.len() >= 2 && c != t && !out.contains(&c) && inflection_matches(&t, &c) {
-            out.push(c);
-        }
-    };
-    for suffix in ["ies", "ied", "ier", "iest"] {
-        if let Some(stem) = t.strip_suffix(suffix) {
-            push(format!("{stem}y"));
-        }
-    }
-    for suffix in ["ing", "ed", "er", "est"] {
-        if let Some(stem) = t.strip_suffix(suffix) {
-            // 双写辅音（stopped → stop）、去 e（making → make）、直接加（played → play）
-            let chars: Vec<char> = stem.chars().collect();
-            if chars.len() >= 2 && chars[chars.len() - 1] == chars[chars.len() - 2] {
-                push(chars[..chars.len() - 1].iter().collect());
-            }
-            push(format!("{stem}e"));
-            push(stem.to_string());
-        }
-    }
-    for suffix in ["es", "s", "d"] {
-        if let Some(stem) = t.strip_suffix(suffix) {
-            push(stem.to_string());
-        }
-    }
-    for (base, forms) in IRREGULAR_VERBS {
-        if forms.contains(&t.as_str()) && !out.iter().any(|x| x == base) {
-            out.push(base.to_string());
-        }
-    }
-    out
+    crate::lemma::lemmas(&t)
+        .into_iter()
+        .filter(|l| *l != t)
+        .collect()
 }
 
 /// 一段英文里的单词（字母与撇号）
@@ -183,11 +120,7 @@ const PARTICLES: [&str; 14] = [
 
 /// 一个词是否是 part 的某种形式（规则屈折 + 不规则动词）
 fn token_is_form(token: &str, part: &str) -> bool {
-    inflection_matches(token, part)
-        || IRREGULAR_VERBS
-            .iter()
-            .find(|(base, _)| base.eq_ignore_ascii_case(part))
-            .is_some_and(|(_, forms)| forms.iter().any(|f| f.eq_ignore_ascii_case(token)))
+    crate::lemma::is_form_of(token, part)
 }
 
 /// 从 tokens[i] 起匹配 parts[k..]，返回匹配结束的位置（不含）
@@ -858,91 +791,7 @@ pub fn grade_cloze_questions(
         .collect()
 }
 
-/// 常见不规则动词的变化形式（原形 → 过去式 / 过去分词），导入材料的重点词按原形给出时用来核对
-const IRREGULAR_VERBS: &[(&str, &[&str])] = &[
-    ("be", &["am", "is", "are", "was", "were", "been"]),
-    ("become", &["became"]),
-    ("begin", &["began", "begun"]),
-    ("break", &["broke", "broken"]),
-    ("bring", &["brought"]),
-    ("build", &["built"]),
-    ("buy", &["bought"]),
-    ("catch", &["caught"]),
-    ("choose", &["chose", "chosen"]),
-    ("come", &["came"]),
-    ("dig", &["dug"]),
-    ("do", &["did", "done", "does"]),
-    ("draw", &["drew", "drawn"]),
-    ("drink", &["drank", "drunk"]),
-    ("drive", &["drove", "driven"]),
-    ("eat", &["ate", "eaten"]),
-    ("fall", &["fell", "fallen"]),
-    ("feed", &["fed"]),
-    ("feel", &["felt"]),
-    ("fight", &["fought"]),
-    ("find", &["found"]),
-    ("fly", &["flew", "flown", "flies"]),
-    ("forget", &["forgot", "forgotten"]),
-    ("freeze", &["froze", "frozen"]),
-    ("get", &["got", "gotten"]),
-    ("give", &["gave", "given"]),
-    ("go", &["went", "gone", "goes"]),
-    ("grow", &["grew", "grown"]),
-    ("hang", &["hung"]),
-    ("have", &["has", "had"]),
-    ("hear", &["heard"]),
-    ("hide", &["hid", "hidden"]),
-    ("hold", &["held"]),
-    ("keep", &["kept"]),
-    ("know", &["knew", "known"]),
-    ("lead", &["led"]),
-    ("leave", &["left"]),
-    ("lend", &["lent"]),
-    ("lie", &["lay", "lain"]),
-    ("lose", &["lost"]),
-    ("make", &["made"]),
-    ("mean", &["meant"]),
-    ("meet", &["met"]),
-    ("pay", &["paid"]),
-    ("ride", &["rode", "ridden"]),
-    ("ring", &["rang", "rung"]),
-    ("rise", &["rose", "risen"]),
-    ("run", &["ran"]),
-    ("say", &["said"]),
-    ("see", &["saw", "seen"]),
-    ("sell", &["sold"]),
-    ("send", &["sent"]),
-    ("shake", &["shook", "shaken"]),
-    ("shine", &["shone"]),
-    ("shoot", &["shot"]),
-    ("sing", &["sang", "sung"]),
-    ("sink", &["sank", "sunk"]),
-    ("sit", &["sat"]),
-    ("sleep", &["slept"]),
-    ("slide", &["slid"]),
-    ("speak", &["spoke", "spoken"]),
-    ("spend", &["spent"]),
-    ("stand", &["stood"]),
-    ("steal", &["stole", "stolen"]),
-    ("stick", &["stuck"]),
-    ("sting", &["stung"]),
-    ("swim", &["swam", "swum"]),
-    ("swing", &["swung"]),
-    ("take", &["took", "taken"]),
-    ("teach", &["taught"]),
-    ("tear", &["tore", "torn"]),
-    ("tell", &["told"]),
-    ("think", &["thought"]),
-    ("throw", &["threw", "thrown"]),
-    ("understand", &["understood"]),
-    ("wake", &["woke", "woken"]),
-    ("wear", &["wore", "worn"]),
-    ("weep", &["wept"]),
-    ("win", &["won"]),
-    ("write", &["wrote", "written"]),
-];
-
-/// 文本里是否出现了某个词：含规则屈折形式与常见不规则动词变化
+/// 文本里是否出现了某个词（含各种词形）；与 [`text_uses`] 相同
 pub fn text_uses_any_form(text: &str, word: &str) -> bool {
     text_uses(text, word)
 }
