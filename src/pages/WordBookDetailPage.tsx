@@ -39,6 +39,7 @@ import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { WordBookIcon } from '@/components/WordBookIcon/WordBookIcon';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { WordCardsView } from './wordbook-detail/WordCardsView';
 import { usePageTitle } from '@/components/AppShell/pageTitle';
 import { wordBookService } from '@/services';
@@ -147,6 +148,9 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
   // 单词排序（后端排）：记在本机；用 ref 让 loadWords 不随排序重建
   const [wordSort, setWordSortPref] = useSortPref('words', WORD_SORTS);
   const wordSortRef = useRef(wordSort);
+  /** 只看单词 / 只看词组（D45）；用 ref 让 loadWords 不随筛选重建 */
+  const [wordKind, setWordKind] = useState<'all' | 'word' | 'phrase'>('all');
+  const wordKindRef = useRef(wordKind);
 
   // 快速翻页时只采用最后一次请求的结果
   const wordsRequest = useRef(0);
@@ -155,7 +159,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
       if (!id) return;
       const seq = ++wordsRequest.current;
       setWordsLoading(true);
-      const result = await wordBookService.getWordsByBookId(id, { sortBy: wordSortRef.current as WordQuery['sortBy'] }, { page, page_size: PAGE_SIZE });
+      const result = await wordBookService.getWordsByBookId(id, { sortBy: wordSortRef.current as WordQuery['sortBy'], kind: wordKindRef.current === 'all' ? undefined : wordKindRef.current }, { page, page_size: PAGE_SIZE });
       if (seq !== wordsRequest.current) return;
       if (result.success) {
         // 删掉最后一页的全部单词后，这一页已经不存在：退回到现在的最后一页
@@ -340,6 +344,26 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
     { label: '其他', value: typeStats.others, unit: '个' },
   ];
 
+  const kindControl = (totalWords > 1 || wordKind !== 'all') && (
+    <Select
+      value={wordKind}
+      onValueChange={(v) => {
+        const next = v as typeof wordKind;
+        setWordKind(next);
+        wordKindRef.current = next;
+        void loadWords(1);
+      }}
+    >
+      <SelectTrigger className="w-24" aria-label="类型">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">全部</SelectItem>
+        <SelectItem value="word">单词</SelectItem>
+        <SelectItem value="phrase">词组</SelectItem>
+      </SelectContent>
+    </Select>
+  );
   const sortControl = totalWords > 1 && (
     <SortSelect
       value={wordSort}
@@ -456,7 +480,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
         </TabsList>
 
         <TabsContent value="words">
-          {totalWords === 0 && !wordsLoading ? (
+          {totalWords === 0 && !wordsLoading && wordKind === 'all' ? (
             <EmptyState
               icon={<Sparkles />}
               title="这个词汇本还没有单词"
@@ -484,6 +508,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
                   <h3 className="text-base font-semibold">单词列表</h3>
                   <span className="text-sm text-muted-foreground tabular-nums">共 {totalWords} 个单词</span>
                 </div>
+                {kindControl}
                 {sortControl}
                 {viewToggle}
                 {addWordsMenu}
@@ -515,7 +540,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             addAction={addWordsMenu}
             loading={wordsLoading}
             pagination={{ current: currentPage, pageSize: PAGE_SIZE, total: totalWords, onChange: loadWords }}
-            toolbarExtra={<>{sortControl}{viewToggle}</>}
+            toolbarExtra={<>{kindControl}{sortControl}{viewToggle}</>}
           />
           )
           )}

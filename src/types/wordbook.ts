@@ -172,6 +172,8 @@ export interface WordQuery {
   part_of_speech?: string;
   /** word 字母顺序（默认）/ newest 最近添加 / oldest 最早添加 */
   sortBy?: 'word' | 'newest' | 'oldest';
+  /** 只看单词 / 只看词组（D45） */
+  kind?: 'word' | 'phrase';
 }
 
 /// 词汇本统计

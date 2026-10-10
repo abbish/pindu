@@ -488,7 +488,10 @@ impl WordRepository {
         search_term: Option<&str>,
         part_of_speech: Option<&str>,
         sort_by: Option<&str>,
+        kind: Option<&str>,
     ) -> AppResult<(Vec<Word>, u32)> {
+        // 只看单词 / 只看词组（D45）
+        let kind = kind.filter(|k| matches!(*k, "word" | "phrase"));
         let offset = (page - 1) * page_size;
 
         // 构建 WHERE 条件
@@ -504,6 +507,9 @@ impl WordRepository {
             if !pos.trim().is_empty() && pos != "all" {
                 where_conditions.push("part_of_speech = ?".to_string());
             }
+        }
+        if kind.is_some() {
+            where_conditions.push("kind = ?".to_string());
         }
 
         let where_clause = where_conditions.join(" AND ");
@@ -542,6 +548,9 @@ impl WordRepository {
                 query_builder = query_builder.bind(pos);
             }
         }
+        if let Some(k) = kind {
+            query_builder = query_builder.bind(k);
+        }
 
         query_builder = query_builder.bind(page_size as i64).bind(offset as i64);
 
@@ -579,6 +588,9 @@ impl WordRepository {
             if !pos.trim().is_empty() && pos != "all" {
                 count_query_builder = count_query_builder.bind(pos);
             }
+        }
+        if let Some(k) = kind {
+            count_query_builder = count_query_builder.bind(k);
         }
 
         let count_row = count_query_builder

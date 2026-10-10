@@ -18,6 +18,7 @@ pub async fn get_words_by_book(
     search_term: Option<String>,
     part_of_speech: Option<String>,
     sort_by: Option<String>,
+    kind: Option<String>,
 ) -> AppResult<PaginatedResponse<Word>> {
     use crate::services::word::WordService;
 
@@ -48,6 +49,7 @@ pub async fn get_words_by_book(
             search_term,
             part_of_speech,
             sort_by.as_deref(),
+            kind.as_deref(),
         )
         .await
     {

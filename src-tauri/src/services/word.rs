@@ -252,6 +252,7 @@ impl WordService {
         search_term: Option<String>,
         part_of_speech: Option<String>,
         sort_by: Option<&str>,
+        kind: Option<&str>,
     ) -> AppResult<PaginatedResponse<Word>> {
         let (words, total) = self
             .repository
@@ -262,6 +263,7 @@ impl WordService {
                 search_term.as_deref(),
                 part_of_speech.as_deref(),
                 sort_by,
+                kind,
             )
             .await?;
 

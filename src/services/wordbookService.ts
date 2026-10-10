@@ -116,6 +116,7 @@ export class WordBookService extends BaseService {
         searchTerm: query?.keyword,
         partOfSpeech: query?.part_of_speech,
         sortBy: query?.sortBy,
+        kind: query?.kind,
       });
     });
   }
