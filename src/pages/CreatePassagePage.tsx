@@ -35,7 +35,7 @@ import type { StudyPlanWithProgress, UnifiedStudyPlanStatus, WordBook } from '@/
 import type { NavigateFn, RouteParams } from '../navigation';
 
 export interface CreatePassagePageProps {
-  /** 预填（从单词本页 / 单词列表进入） */
+  /** 预填（从词汇本页 / 单词列表进入） */
   initial?: RouteParams['create-passage'];
   onNavigate?: NavigateFn;
 }
@@ -47,11 +47,11 @@ const BRIEF_WORD_COUNTS = [10, 15, 20, 30];
 /** 写作要求最多几个字（与后端 INSTRUCTION_MAX 一致） */
 const INSTRUCTION_MAX = 500;
 
-/** 生成方式：按描述直接生成，或基于单词本 / 学习计划里的单词（三者并列，选一种） */
+/** 生成方式：按描述直接生成，或基于词汇本 / 学习计划里的单词（三者并列，选一种） */
 type SourceMode = 'brief' | 'books' | 'plans';
 const SOURCE_MODES: { value: SourceMode; label: string; description: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: 'brief', label: '按描述生成', description: '写下主题和要求，由 AI 选词', icon: PenLine },
-  { value: 'books', label: '基于单词本', description: '从单词本中选词', icon: BookOpen },
+  { value: 'books', label: '基于词汇本', description: '从词汇本中选词', icon: BookOpen },
   { value: 'plans', label: '基于学习计划', description: '按学习进度选词', icon: ListChecks },
 ];
 const MIN_WORDS = 1;
@@ -85,7 +85,7 @@ const segmentItem = 'h-7 rounded-md px-3 text-sm data-[state=on]:bg-background d
 /** 一个英文单词或 2–6 个词的词组（D45） */
 const isWord = (w: string) => /^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,5}$/.test(w) && w.length <= 60;
 
-/** 可多选的来源列表（单词本 / 学习计划）：搜索 + 勾选行 */
+/** 可多选的来源列表（词汇本 / 学习计划）：搜索 + 勾选行 */
 const SourcePicker: React.FC<{
   title: string;
   icon: React.ReactNode;
@@ -170,12 +170,12 @@ const StatusFilter: React.FC<{ value: PickStatus[]; onChange: (value: PickStatus
 /**
  * 新建短文。三种生成方式并列：
  * - 按描述生成：写下要求与篇幅，直接生成一篇（后台任务，写好后打开）；
- * - 基于单词本 / 基于学习计划：② 选择单词（AI 按数量、难度、词频、选词范围挑选，可另指定单词；或手动选择）
+ * - 基于词汇本 / 基于学习计划：② 选择单词（AI 按数量、难度、词频、选词范围挑选，可另指定单词；或手动选择）
  *   ③ 场景与篇幅 ④ 内容规划（AI 先规划写几篇、每篇的构思）→ 逐篇生成。
  */
 export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, onNavigate }) => {
   const [step, setStep] = useState(initial?.wordIds?.length ? 1 : 0);
-  /** 生成方式：从单词本 / 计划进入时按入口，否则默认按描述生成 */
+  /** 生成方式：从词汇本 / 计划进入时按入口，否则默认按描述生成 */
   const [sourceMode, setSourceMode] = useState<SourceMode>(initial?.planIds?.length ? 'plans' : initial?.bookIds?.length || initial?.wordIds?.length ? 'books' : 'brief');
   /** 按描述生成：写作要求、要几个目标词、AI 选出的词（可勾掉） */
   const [instruction, setInstruction] = useState('');
@@ -522,12 +522,12 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
               {sourceMode === 'books' && (
                 <SourcePicker
-                  title="单词本"
+                  title="词汇本"
                   icon={<BookOpen />}
                   items={books?.map((b) => ({ id: b.id, name: b.title, meta: `${b.total_words} 词` })) ?? null}
                   selected={bookIds}
                   onToggle={toggle(setBookIds)}
-                  empty="还没有包含单词的单词本"
+                  empty="还没有包含单词的词汇本"
                 />
               )}
               {sourceMode === 'plans' && (

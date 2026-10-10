@@ -34,7 +34,7 @@ impl WordService {
         }
     }
 
-    /// 单词与释义必填、单词最长 50 字；同一单词本内不能重复（忽略大小写，`except` 为正在编辑的自己）
+    /// 单词与释义必填、单词最长 50 字；同一词汇本内不能重复（忽略大小写，`except` 为正在编辑的自己）
     async fn validate_word(
         &self,
         book_id: Id,
@@ -62,26 +62,26 @@ impl WordService {
             .is_some_and(|&id| Some(id) != except)
         {
             return Err(AppError::ValidationError(format!(
-                "单词本里已经有「{}」了",
+                "词汇本里已经有「{}」了",
                 word
             )));
         }
         Ok(())
     }
 
-    /// 添加单词到单词本
+    /// 添加单词到词汇本
     pub async fn add_word_to_book(
         &self,
         book_id: Id,
         word_data: CreateWordRequest,
     ) -> AppResult<Id> {
-        // 单词本必须存在且没被删除
+        // 词汇本必须存在且没被删除
         let books = crate::repositories::wordbook_repository::WordBookRepository::new(
             self.pool.clone(),
             self.logger.clone(),
         );
         if books.find_by_id(book_id).await?.is_none() {
-            return Err(AppError::NotFound("单词本不存在，可能已被删除".to_string()));
+            return Err(AppError::NotFound("词汇本不存在，可能已被删除".to_string()));
         }
         let word_data = CreateWordRequest {
             word: crate::types::wordbook::normalize_vocab(&word_data.word),
@@ -193,7 +193,7 @@ impl WordService {
     }
 
     /// 批量删除单词，全部在一个事务里：先把这些词从用到它们的计划里移除（按计划聚合一次，
-    /// 日程计数、掌握数、计划总词数随之重算，变空的日程删除），再删单词本身（作答记录、例句等随外键删除）。
+    /// 日程计数、掌握数、计划总词数随之重算，变空的日程删除），再删词汇本身（作答记录、例句等随外键删除）。
     /// 任何一步失败整体回滚。返回实际删除的单词数（不存在的 ID 忽略）。
     pub async fn delete_words(&self, word_ids: &[Id]) -> AppResult<usize> {
         use crate::repositories::study_plan_repository::StudyPlanRepository;
@@ -243,7 +243,7 @@ impl WordService {
         Ok(deleted)
     }
 
-    /// 分页获取单词本中的单词
+    /// 分页获取词汇本中的单词
     pub async fn get_words_by_book(
         &self,
         book_id: Id,

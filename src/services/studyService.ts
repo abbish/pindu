@@ -79,7 +79,7 @@ export class StudyService extends BaseService {
   private scheduleRequest(request: StudyPlanScheduleRequest) {
     this.validateRequired(request, ['name', 'dailyNewWords', 'startDate', 'wordbookIds']);
     if (request.wordbookIds.length === 0) {
-      throw new Error('必须选择至少一个单词本');
+      throw new Error('必须选择至少一个词汇本');
     }
     if (!Number.isInteger(request.dailyNewWords) || request.dailyNewWords < 1 || request.dailyNewWords > 50) {
       throw new Error('每天新词数需在 1–50 之间');
@@ -100,7 +100,7 @@ export class StudyService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<PlanPaceResult>('replan_study_plan_pace', { planId, dailyNewWords }));
   }
 
-  /** 往计划里追加单词本：新词排在还没学的新词后面 */
+  /** 往计划里追加词汇本：新词排在还没学的新词后面 */
   async addWordBooksToPlan(planId: Id, wordbookIds: Id[]): Promise<ApiResult<PlanPaceResult>> {
     return this.executeWithLoading(() => this.client.invoke<PlanPaceResult>('add_word_books_to_plan', { planId, wordbookIds }));
   }
@@ -118,11 +118,11 @@ export class StudyService extends BaseService {
       // 验证必填字段
       // 周期、档位等以规划元数据为准（后端保存时覆盖），这里只校验必填项
       this.validateRequired(request, ['name', 'startDate', 'endDate']);
-      // 只练短文的计划没有单词本与单词日程（短文是否选了由后端校验）
+      // 只练短文的计划没有词汇本与单词日程（短文是否选了由后端校验）
       const withWords = (request.practiceContent ?? 'words') !== 'passages';
 
       if (withWords && request.wordbookIds.length === 0) {
-        throw new Error('必须选择至少一个单词本');
+        throw new Error('必须选择至少一个词汇本');
       }
 
       if (withWords && (!request.aiPlanData || request.aiPlanData.trim() === '')) {
@@ -193,7 +193,7 @@ export class StudyService extends BaseService {
   }
 
   /**
-   * 获取学习计划关联的单词本ID列表
+   * 获取学习计划关联的词汇本ID列表
    */
   async getStudyPlanWordBooks(planId: number): Promise<ApiResult<number[]>> {
     return this.executeWithLoading(async () => {

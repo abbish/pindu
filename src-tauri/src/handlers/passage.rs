@@ -20,7 +20,7 @@ fn service(app: &AppHandle) -> PassageService {
     )
 }
 
-/// 候选词：按来源（单词本、学习计划的难词 / 已学 / 到期复习）合并，标出难词与建议勾选的词
+/// 候选词：按来源（词汇本、学习计划的难词 / 已学 / 到期复习）合并，标出难词与建议勾选的词
 #[tauri::command]
 pub async fn get_passage_word_candidates(
     app: AppHandle,
@@ -168,7 +168,7 @@ pub async fn start_passage_generation(
     finish(&logger, "start_passage_generation", result)
 }
 
-/// 短文列表（可按来源单词本或计划筛选）
+/// 短文列表（可按来源词汇本或计划筛选）
 #[tauri::command]
 pub async fn get_passages(
     app: AppHandle,
@@ -378,7 +378,7 @@ pub async fn get_passage_statistics(
     finish(&logger, "get_passage_statistics", result)
 }
 
-// ==================== 单词卡（不在单词本的目标词） ====================
+// ==================== 单词卡（不在词汇本的目标词） ====================
 
 fn word_cards(app: &AppHandle) -> crate::services::word_cards::WordCardService {
     crate::services::word_cards::WordCardService::new(
@@ -387,7 +387,7 @@ fn word_cards(app: &AppHandle) -> crate::services::word_cards::WordCardService {
     )
 }
 
-/// 短文里不在单词本的目标词已有的单词卡（还没生成的不在结果里，用 start_word_cards 补）
+/// 短文里不在词汇本的目标词已有的单词卡（还没生成的不在结果里，用 start_word_cards 补）
 #[tauri::command]
 pub async fn get_passage_word_cards(
     app: AppHandle,

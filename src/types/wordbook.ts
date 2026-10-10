@@ -1,7 +1,7 @@
 import { Id, Timestamp } from './common';
 import type { Tag } from './material';
 
-/// 单词本
+/// 词汇本
 export interface WordBook {
   id: Id;
   title: string;
@@ -17,11 +17,11 @@ export interface WordBook {
   status: string;
   /** 标签（素材共用） */
   tags: Tag[];
-  /** 词性分布（`get_word_books` 一次带出；其他返回单词本的接口可能没有） */
+  /** 词性分布（`get_word_books` 一次带出；其他返回词汇本的接口可能没有） */
   word_types?: WordTypeDistribution | null;
 }
 
-/// 创建单词本请求
+/// 创建词汇本请求
 export interface CreateWordBookRequest {
   title: string;
   description: string;
@@ -30,7 +30,7 @@ export interface CreateWordBookRequest {
   tag_ids?: Id[];
 }
 
-/// 更新单词本请求
+/// 更新词汇本请求
 export interface UpdateWordBookRequest {
   title?: string;
   description?: string;
@@ -67,7 +67,7 @@ export interface WordTutorRequest {
   modelId?: Id;
   /** 学习者正在看的讲解（讲解不落库，由前端带上） */
   explanation?: string;
-  /** 不在单词本的目标词：按单词卡答疑（此时 wordId 为 0） */
+  /** 不在词汇本的目标词：按单词卡答疑（此时 wordId 为 0） */
   cardWord?: string | null;
 }
 
@@ -174,7 +174,7 @@ export interface WordQuery {
   sortBy?: 'word' | 'newest' | 'oldest';
 }
 
-/// 单词本统计
+/// 词汇本统计
 export interface WordBookStatistics {
   total_books: number;
   total_words: number;

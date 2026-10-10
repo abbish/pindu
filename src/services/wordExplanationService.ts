@@ -10,7 +10,7 @@ export interface WordExplanationDelta {
 }
 
 /**
- * 不在单词本的目标词（单词卡）在讲解 / 答疑里用一个负数 id 代表（讲解与对话的缓存按 id 记），
+ * 不在词汇本的目标词（单词卡）在讲解 / 答疑里用一个负数 id 代表（讲解与对话的缓存按 id 记），
  * 调用后端时换成 wordId 0 + cardWord。
  */
 const cardWords = new Map<number, string>();

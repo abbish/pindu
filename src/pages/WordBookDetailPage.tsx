@@ -69,6 +69,7 @@ const toRow = (word: Word): WordListDetail => ({
   exampleSentence: word.examples?.[0]?.sentence,
   exampleTranslation: word.examples?.[0]?.translation,
   exampleCount: word.examples?.length ?? 0,
+  phrase: word.kind === 'phrase',
 });
 
 const PAGE_SIZE = 20;
@@ -80,14 +81,14 @@ const WORD_SORTS = [
 ];
 
 export interface WordBookDetailPageProps {
-  /** 单词本ID */
+  /** 词汇本ID */
   id?: number;
   /** Navigation handler */
   onNavigate?: NavigateFn;
 }
 
 /**
- * 单词本详情（shadcn，外壳由 AppShell 提供）：头部信息与操作、词性统计、单词表（分页 / 勾选批删 / 行操作）、关联计划。
+ * 词汇本详情（shadcn，外壳由 AppShell 提供）：头部信息与操作、词性统计、单词表（分页 / 勾选批删 / 行操作）、关联计划。
  * 功能清单见 .claude/work/ui-shadcn-migration/feature-inventory.md §7。
  */
 export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNavigate }) => {
@@ -181,9 +182,9 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
     if (result.success && result.data) setStatistics(result.data);
   }, [id]);
 
-  /** 读取单词本；失败返回原因 */
+  /** 读取词汇本；失败返回原因 */
   const loadWordBook = useCallback(async (): Promise<string | null> => {
-    if (!id) return '没有指定要打开的单词本';
+    if (!id) return '没有指定要打开的词汇本';
     const result = await wordBookService.getWordBookById(id);
     if (!result.success) return result.error;
     if (!result.data) return '它可能已被删除';
@@ -205,7 +206,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
 
   const loadAll = useCallback(async () => {
     if (!id) {
-      setError('没有指定要打开的单词本');
+      setError('没有指定要打开的词汇本');
       setLoading(false);
       return;
     }
@@ -231,12 +232,12 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
     tagService.getBookWordMaterials(id).then((r) => r.success && setMaterials(new Map(r.data.map((c) => [c.wordId, c]))));
   }, [id, totalWords]);
 
-  /** 单词变动后：刷新当前页、统计、单词本计数 */
+  /** 单词变动后：刷新当前页、统计、词汇本计数 */
   const refreshAfterWordChange = async () => {
     await Promise.all([loadWords(currentPage), loadStatistics(), loadWordBook()]);
   };
 
-  // 「分析并加入单词本」是后台任务：这本单词本的任务结束时刷新（弹窗关了也一样）
+  // 「分析并加入词汇本」是后台任务：这本词汇本的任务结束时刷新（弹窗关了也一样）
   useOnJobFinished((job) => {
     if (job.kind === 'word_analysis' && (job.link?.params as { id?: number } | undefined)?.id === wordBook?.id) {
       void refreshAfterWordChange();
@@ -270,7 +271,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
   };
 
 
-  /** 删除单词本：软删除，提示里可以撤销（已删除的也能在单词本列表的“已删除”里恢复） */
+  /** 删除词汇本：软删除，提示里可以撤销（已删除的也能在词汇本列表的“已删除”里恢复） */
   const handleConfirmDelete = async () => {
     if (!wordBook) return;
     setDeleteLoading(true);
@@ -295,7 +296,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             toast.showSuccess(`已恢复「${title}」`);
             onNavigate?.('wordbook-detail', { id: bookId });
           } else {
-            toast.showError('无法恢复单词本', restored.error);
+            toast.showError('无法恢复词汇本', restored.error);
           }
         },
       },
@@ -321,10 +322,10 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
     return (
       <div className={container}>
         <PageError
-          title="无法打开这个单词本"
+          title="无法打开这个词汇本"
           message={error ?? '它可能已被删除'}
           onRetry={loadAll}
-          back={{ label: '返回单词本', onClick: () => onNavigate?.('wordbooks') }}
+          back={{ label: '返回词汇本', onClick: () => onNavigate?.('wordbooks') }}
         />
       </div>
     );
@@ -428,7 +429,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
                 }}
               >
                 <Trash2 />
-                删除单词本…
+                删除词汇本…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -458,7 +459,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
           {totalWords === 0 && !wordsLoading ? (
             <EmptyState
               icon={<Sparkles />}
-              title="这个单词本还没有单词"
+              title="这个词汇本还没有单词"
             >
               <div className="flex gap-2">
                 <Button onClick={() => setAddWordsSource('ai')}>
@@ -526,7 +527,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               {[0, 1].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
             </div>
           ) : linkedPlans.length === 0 ? (
-            <EmptyState icon={<ListChecks />} title="还没有学习计划用到这个单词本" />
+            <EmptyState icon={<ListChecks />} title="还没有学习计划用到这个词汇本" />
           ) : (
             <div className="flex flex-col gap-3">
               {linkedPlans.map((plan) => {
@@ -568,7 +569,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               {totalWords > 0 && (
                 <Button variant="outline" onClick={() => onNavigate?.('create-passage', { bookIds: [wordBook.id] })}>
                   <Plus />
-                  用本单词本生成短文
+                  用本词汇本生成短文
                 </Button>
               )}
             </div>
@@ -589,10 +590,10 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
           <AlertDialogHeader>
             <AlertDialogTitle>删除「{wordBook.title}」？</AlertDialogTitle>
             <AlertDialogDescription>
-              单词本和其中的 {wordBook.total_words || 0} 个单词会移到「已删除」，可以从那里恢复。
+              词汇本和其中的 {wordBook.total_words || 0} 个单词会移到「已删除」，可以从那里恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {deleteError && <InlineError title="无法删除单词本">{deleteError}</InlineError>}
+          {deleteError && <InlineError title="无法删除词汇本">{deleteError}</InlineError>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteLoading}>取消</AlertDialogCancel>
             <AlertDialogAction
@@ -604,7 +605,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               }}
             >
               {deleteLoading && <Loader2 className="animate-spin" />}
-              删除单词本
+              删除词汇本
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

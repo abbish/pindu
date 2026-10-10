@@ -23,7 +23,7 @@ impl TagRepository {
         Self { pool }
     }
 
-    /// 全部标签与各类素材的数量（单词本不算已删除的），按名称排序
+    /// 全部标签与各类素材的数量（词汇本不算已删除的），按名称排序
     pub async fn find_all_with_usage(&self) -> AppResult<Vec<TagUsage>> {
         let rows = sqlx::query(
             "SELECT t.id, t.name,
@@ -215,7 +215,7 @@ impl TagRepository {
         Ok(())
     }
 
-    /// 素材是否存在（单词本含已删除的，可在回收站里改）
+    /// 素材是否存在（词汇本含已删除的，可在回收站里改）
     pub async fn material_exists(&self, kind: MaterialKind, ref_id: Id) -> AppResult<bool> {
         let table = match kind {
             MaterialKind::WordBook => "word_books",
@@ -234,7 +234,7 @@ impl TagRepository {
     }
 }
 
-/// 迁移 060 在「上一个发行版」的真实形状数据上升级：主题 → 标签（同名合并）、单词本关联保留、
+/// 迁移 060 在「上一个发行版」的真实形状数据上升级：主题 → 标签（同名合并）、词汇本关联保留、
 /// 已切出的片段不受影响（来源由 video_clips 推导）、旧短文的词索引在第一次查询时补齐
 #[cfg(test)]
 mod migration_060_tests {

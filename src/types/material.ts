@@ -1,4 +1,4 @@
-/** 素材之间的关联（对应 Rust `types/material.rs`）：标签（单词本 / 短文（含视频切片）/ 原始视频共用）与单词 */
+/** 素材之间的关联（对应 Rust `types/material.rs`）：标签（词汇本 / 短文（含视频切片）/ 原始视频共用）与单词 */
 import type { Id } from './common';
 
 /** 标签 */
@@ -50,7 +50,7 @@ export interface WordMaterial {
   clip: ClipBrief | null;
 }
 
-/** 单词本里一个词在素材里出现的次数 */
+/** 词汇本里一个词在素材里出现的次数 */
 export interface WordMaterialCount {
   wordId: Id;
   /** 出现过的短文（不含切片） */
@@ -61,9 +61,9 @@ export interface WordMaterialCount {
 
 /** 素材处理的默认值（「设置 → 素材」）；各页面打开时以它为默认，当次仍可修改 */
 export interface MaterialSettings {
-  /** 单词本：AI 生成单词的数量 */
+  /** 词汇本：AI 生成单词的数量 */
   wordAiCount: number;
-  /** 单词本：从材料提取单词 focus 重点词 / all 全部 */
+  /** 词汇本：从材料提取单词 focus 重点词 / all 全部 */
   wordExtractMode: 'focus' | 'all';
   /** 短文：AI 写短文的篇幅 */
   passageLength: 'short' | 'standard' | 'long';
@@ -88,7 +88,7 @@ export interface MaterialSettings {
   planAiOrder: boolean;
 }
 
-/** 单词卡：不在单词本里的目标词的学习资料（对应 Rust WordCard） */
+/** 单词卡：不在词汇本里的目标词的学习资料（对应 Rust WordCard） */
 export interface WordCard {
   word: string;
   meaning: string;

@@ -46,7 +46,7 @@ pub async fn get_today_passage_tasks(app: AppHandle) -> AppResult<Vec<TodayPassa
     finish(&logger, "get_today_passage_tasks", result)
 }
 
-/// 可加进计划的短文（按与计划单词 / 所选单词本的相关度排序，含题组）
+/// 可加进计划的短文（按与计划单词 / 所选词汇本的相关度排序，含题组）
 #[tauri::command]
 pub async fn get_plan_passage_candidates(
     app: AppHandle,

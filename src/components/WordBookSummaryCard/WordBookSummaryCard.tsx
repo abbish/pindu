@@ -14,7 +14,7 @@ import { JobProgress } from '@/components/Jobs';
 import { CardMenu, CardMenuButton, SelectCheckbox, type CardAction } from '@/components/MaterialSelection/MaterialSelection';
 
 export interface WordBookSummaryCardProps {
-  /** 单词本名称 */
+  /** 词汇本名称 */
   title: string;
   /** 描述 */
   description?: string | null;
@@ -28,15 +28,15 @@ export interface WordBookSummaryCardProps {
   createdAt: string;
   /** 最近使用（数据库时间戳；默认等于创建时间） */
   lastUsed?: string | null;
-  /** 图标名称（单词本 icon） */
+  /** 图标名称（词汇本 icon） */
   icon?: string | null;
-  /** 图标颜色（单词本 icon_color） */
+  /** 图标颜色（词汇本 icon_color） */
   iconColor?: string | null;
   /** 状态：已删除时在名称旁显示标签 */
   status?: 'normal' | 'deleted' | string;
   /** 打开详情 */
   onOpen: () => void;
-  /** 恢复（只对已删除的单词本显示「恢复」按钮） */
+  /** 恢复（只对已删除的词汇本显示「恢复」按钮） */
   onRestore?: () => void;
   /** 标签 */
   tags?: Tag[];
@@ -56,7 +56,7 @@ const SEGMENTS = [
 ] as const;
 
 /**
- * 单词本摘要卡（shadcn），单词本列表页使用。
+ * 词汇本摘要卡（shadcn），词汇本列表页使用。
  * 信息层级：名称与描述 → 单词数（主数字）与计划使用情况 → 词性构成条 → 时间（一行相对日期）。
  */
 export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({

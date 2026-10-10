@@ -37,7 +37,7 @@ export interface PlanScopeCount {
 
 /** 短文的来源（创建时的快照） */
 export interface PassageSource {
-  /** book 单词本 / plan 学习计划 */
+  /** book 词汇本 / plan 学习计划 */
   kind: 'book' | 'plan';
   refId: number;
   /** 创建时的名称 */
@@ -209,7 +209,7 @@ export interface PassageAttempt {
   completedAt: string | null;
 }
 
-/** 词汇来源：单词本、学习计划（都可多选） */
+/** 词汇来源：词汇本、学习计划（都可多选） */
 export interface PassageWordSources {
   bookIds: number[];
   planIds: number[];
@@ -222,13 +222,13 @@ export interface PassageWordCandidate {
   wordId: number;
   word: string;
   meaning: string;
-  /** 来源名称（单词本名或计划名） */
+  /** 来源名称（词汇本名或计划名） */
   source: string;
   /** 已在几篇短文里用过 */
   usage: number;
-  /** 计划里的学习情况标签（单词本来源为空） */
+  /** 计划里的学习情况标签（词汇本来源为空） */
   tags: Exclude<PlanWordScope, 'learned'>[];
-  /** 挑词用的学习情况：new / learning / mastered 之一，答错过再加 wrong（单词本来源按所有计划的练习记录） */
+  /** 挑词用的学习情况：new / learning / mastered 之一，答错过再加 wrong（词汇本来源按所有计划的练习记录） */
   statuses: PickStatus[];
 }
 
@@ -257,7 +257,7 @@ export interface GeneratePassageRequest {
   pickDifficulty?: PickDifficulty | null;
   /** AI 挑词的常用程度（空 = 不限） */
   pickFrequency?: PickFrequency | null;
-  /** 场景描述（空 = 用所选单词本的场景） */
+  /** 场景描述（空 = 用所选词汇本的场景） */
   topic?: string | null;
   /** 按描述生成：写作要求（主题、体裁、人物等）；有它时可以不选单词 */
   instruction?: string | null;
@@ -407,7 +407,7 @@ export interface PlanPassageCandidatesRequest {
 /** 可加进计划的短文 */
 export interface PlanPassageCandidate {
   passage: PassageSummary;
-  /** 相关度：目标词里属于计划单词（或所选单词本）的个数 */
+  /** 相关度：目标词里属于计划单词（或所选词汇本）的个数 */
   overlap: number;
   /** 题组（新到旧） */
   sets: QuestionSetSummary[];
@@ -462,26 +462,26 @@ export interface ImportPassageRequest {
   /** 最多 120 句 */
   sentences: ImportSentence[];
   sourceLabel: string;
-  /** 原文里属于这些单词本的词标为目标词 */
+  /** 原文里属于这些词汇本的词标为目标词 */
   bookIds: number[];
   /** AI 挑重点词（带中文释义） */
   aiKeyWords: boolean;
 }
 
-/** 短文里还不在单词本的目标词 */
+/** 短文里还不在词汇本的目标词 */
 export interface PassageNewWord {
   word: string;
   meaning: string | null;
 }
 
-/** 把短文里的生词加进单词本 */
+/** 把短文里的生词加进词汇本 */
 export interface AddPassageWordsRequest {
   passageId: number;
   bookId: number;
   words: string[];
 }
 
-/** 读取资料文件（单词本提取与短文导入共用） */
+/** 读取资料文件（词汇本提取与短文导入共用） */
 export interface ReadMaterialRequest {
   fileName: string;
   /** 文件内容 base64：txt / md / srt / vtt / docx / pdf，上限 10MB */

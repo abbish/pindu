@@ -19,7 +19,7 @@ export interface RouteParams {
   'word-practice': { planId: number; scheduleId: number; sessionId?: string; returnTo?: PassagePracticeReturn };
   'practice-result': PracticeResult;
   passages: undefined;
-  /** 新建短文：可预填来源单词本 / 计划与必用词 */
+  /** 新建短文：可预填来源词汇本 / 计划与必用词 */
   'create-passage': { bookIds?: number[]; planIds?: number[]; wordIds?: number[] } | undefined;
   /** 导入我的材料（粘贴 / 文件 → 原文不改的短文） */
   'import-passage': undefined;
@@ -96,8 +96,8 @@ export const PAGE_TITLE: Record<PageKey, string> = {
   plans: '计划',
   'create-plan': '创建计划',
   'plan-detail': '计划详情',
-  wordbooks: '单词本',
-  'wordbook-detail': '单词本详情',
+  wordbooks: '词汇本',
+  'wordbook-detail': '词汇本详情',
   'word-practice': '单词练习',
   'practice-result': '练习结果',
   passages: '短文库',

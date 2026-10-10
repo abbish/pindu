@@ -64,7 +64,7 @@ function Choice<T extends string | number>({ value, options, onChange, label, wi
 }
 
 /**
- * 设置「素材」：单词本、短文、视频、学习计划里各种处理参数的默认值（各页面打开时以它为默认，当次仍可修改）；
+ * 设置「素材」：词汇本、短文、视频、学习计划里各种处理参数的默认值（各页面打开时以它为默认，当次仍可修改）；
  * 视频组件（ffmpeg，自带的不可用时才显示）。改了立即保存。
  */
 export const MaterialSettings: React.FC = () => {
@@ -129,7 +129,7 @@ export const MaterialSettings: React.FC = () => {
 
   return (
     <SettingsPanel title="素材默认值">
-      <SettingsSection title="单词本">
+      <SettingsSection title="词汇本">
         <SettingsRow label="AI 生成单词">
           <Choice label="AI 生成单词的数量" value={s.wordAiCount} options={WORD_COUNTS} onChange={(wordAiCount) => update({ wordAiCount })} />
         </SettingsRow>

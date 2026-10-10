@@ -1,4 +1,4 @@
-//! 素材之间的关联：标签（单词本 / 短文（含视频切片）/ 原始视频共用，迁移 060）与单词（某个词出现在哪些短文 / 切片）
+//! 素材之间的关联：标签（词汇本 / 短文（含视频切片）/ 原始视频共用，迁移 060）与单词（某个词出现在哪些短文 / 切片）
 use super::Id;
 use serde::{Deserialize, Serialize};
 
@@ -83,7 +83,7 @@ pub struct ClipBrief {
     pub duration_ms: i64,
 }
 
-/// 单词本里一个词在素材里出现的次数
+/// 词汇本里一个词在素材里出现的次数
 #[derive(Debug, Serialize, Clone, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WordMaterialCount {
@@ -94,7 +94,7 @@ pub struct WordMaterialCount {
     pub clips: i64,
 }
 
-/// 单词卡：不在单词本里的目标词的学习资料（word_cards，063）
+/// 单词卡：不在词汇本里的目标词的学习资料（word_cards，063）
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WordCard {

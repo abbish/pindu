@@ -221,7 +221,7 @@ export const DataManagementSettings: React.FC = () => {
       )}
 
       <SettingsSection title="危险操作" tone="danger">
-        <SettingsRow label="重置所有用户数据" description="删除单词本、计划和练习记录，保留 AI 模型与设置">
+        <SettingsRow label="重置所有用户数据" description="删除词汇本、计划和练习记录，保留 AI 模型与设置">
           <Button variant="destructive" size="sm" onClick={() => openReset('all')} disabled={busy || loading}>
             重置…
           </Button>
@@ -263,7 +263,7 @@ export const DataManagementSettings: React.FC = () => {
                 <>
                   <p>将删除：</p>
                   <ul className="list-inside list-disc text-muted-foreground">
-                    <li>{countOf('word_books')} 个单词本和其中的单词</li>
+                    <li>{countOf('word_books')} 个词汇本和其中的单词</li>
                     <li>{countOf('study_plans')} 个学习计划和进度</li>
                     <li>{countOf('practice_sessions')} 次练习的记录</li>
                   </ul>
@@ -313,7 +313,7 @@ export const DataManagementSettings: React.FC = () => {
             <div className="space-y-2 text-sm">
               <p>将删除：</p>
               <ul className="list-inside list-disc text-muted-foreground">
-                <li>单词本和单词、学习计划和进度、练习记录</li>
+                <li>词汇本和单词、学习计划和进度、练习记录</li>
                 <li>AI 模型配置与系统设置</li>
               </ul>
             </div>

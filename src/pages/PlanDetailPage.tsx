@@ -79,7 +79,7 @@ const CONFIRMS: Partial<Record<StudyPlanAction, { title: string; description: st
   },
   delete: {
     title: '删除这个计划？',
-    description: '计划和全部练习记录会被删除，不能恢复，单词本不受影响',
+    description: '计划和全部练习记录会被删除，不能恢复，词汇本不受影响',
     destructive: true,
   },
   complete: {
@@ -304,7 +304,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
       return;
     }
     if (result.data.length === 0) {
-      toast.showInfo('这个计划还没有日程', '在「设置」页签追加单词本');
+      toast.showInfo('这个计划还没有日程', '在「设置」页签追加词汇本');
       return;
     }
     // 统一规则：今天未练完 → 最早逾期 → 今天（再练）→ 第一个未练完

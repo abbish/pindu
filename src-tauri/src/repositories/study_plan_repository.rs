@@ -283,7 +283,7 @@ impl StudyPlanRepository {
         Ok(history)
     }
 
-    /// 查询学习计划关联的单词本 ID（按单词所属单词本去重）
+    /// 查询学习计划关联的词汇本 ID（按单词所属词汇本去重）
     pub async fn find_word_book_ids(&self, plan_id: Id) -> AppResult<Vec<Id>> {
         let query = r#"
             SELECT DISTINCT w.word_book_id
@@ -542,7 +542,7 @@ impl StudyPlanRepository {
         Ok(result)
     }
 
-    /// 查询关联到指定单词本的学习计划
+    /// 查询关联到指定词汇本的学习计划
     pub async fn find_linked_plans_by_wordbook(
         &self,
         wordbook_id: Id,

@@ -34,7 +34,7 @@ pub struct PassageTargetWord {
     pub meaning: Option<String>,
 }
 
-/// 短文的来源（创建时的快照）。kind：book 单词本 / plan 学习计划
+/// 短文的来源（创建时的快照）。kind：book 词汇本 / plan 学习计划
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PassageSource {
@@ -226,7 +226,7 @@ pub struct PassageAttempt {
     pub completed_at: Option<String>,
 }
 
-/// 词汇来源：单词本、学习计划（都可多选）
+/// 词汇来源：词汇本、学习计划（都可多选）
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PassageWordSources {
@@ -247,13 +247,13 @@ pub struct PassageWordCandidate {
     pub word_id: Id,
     pub word: String,
     pub meaning: String,
-    /// 来源名称（单词本名或计划名）
+    /// 来源名称（词汇本名或计划名）
     pub source: String,
     /// 已在几篇短文里用过
     pub usage: i64,
-    /// 计划里的学习情况标签：wrong / weak / recent / upcoming / mastered（单词本来源为空）
+    /// 计划里的学习情况标签：wrong / weak / recent / upcoming / mastered（词汇本来源为空）
     pub tags: Vec<String>,
-    /// 挑词用的学习情况：new / learning / mastered 之一，答错过再加 wrong（单词本来源按所有计划的练习记录）
+    /// 挑词用的学习情况：new / learning / mastered 之一，答错过再加 wrong（词汇本来源按所有计划的练习记录）
     pub statuses: Vec<String>,
 }
 
@@ -294,7 +294,7 @@ pub struct GeneratePassageRequest {
     /// AI 挑词的常用程度：common / advanced（空 = 不限）
     #[serde(default)]
     pub pick_frequency: Option<String>,
-    /// 自定主题 / 场景（空 = 用所选单词本的场景）
+    /// 自定主题 / 场景（空 = 用所选词汇本的场景）
     pub topic: Option<String>,
     /// 按描述生成：用户写的要求（主题、体裁、人物等）。有它时可以不选单词，场景就是这段要求
     #[serde(default)]
@@ -513,7 +513,7 @@ pub struct TodayPassageTask {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanPassageCandidatesRequest {
-    /// 计划用的单词本（新建计划时）
+    /// 计划用的词汇本（新建计划时）
     #[serde(default)]
     pub book_ids: Vec<Id>,
     /// 已有计划（计划设置里加短文时）：按计划里的单词算相关度
@@ -521,7 +521,7 @@ pub struct PlanPassageCandidatesRequest {
     pub plan_id: Option<Id>,
 }
 
-/// 可加进计划的短文：相关度 = 目标词里属于计划单词（或所选单词本）的个数
+/// 可加进计划的短文：相关度 = 目标词里属于计划单词（或所选词汇本）的个数
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanPassageCandidate {
@@ -591,7 +591,7 @@ pub struct ImportPassageRequest {
     pub title: Option<String>,
     pub sentences: Vec<ImportSentence>,
     pub source_label: String,
-    /// 原文里属于这些单词本的词标为目标词
+    /// 原文里属于这些词汇本的词标为目标词
     #[serde(default)]
     pub book_ids: Vec<Id>,
     /// 让 AI 挑重点词
@@ -599,7 +599,7 @@ pub struct ImportPassageRequest {
     pub ai_key_words: bool,
 }
 
-/// 短文里还不在单词本的词（AI 挑的重点词）
+/// 短文里还不在词汇本的词（AI 挑的重点词）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PassageNewWord {
@@ -607,7 +607,7 @@ pub struct PassageNewWord {
     pub meaning: Option<String>,
 }
 
-/// 把短文里的生词加进单词本
+/// 把短文里的生词加进词汇本
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddPassageWordsRequest {
@@ -616,7 +616,7 @@ pub struct AddPassageWordsRequest {
     pub words: Vec<String>,
 }
 
-/// 读取一个材料文件（单词本提取与短文导入共用）
+/// 读取一个材料文件（词汇本提取与短文导入共用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadMaterialRequest {

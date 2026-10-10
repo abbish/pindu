@@ -11,7 +11,7 @@ function notifyOnSuccess<T>(result: ApiResult<T>): ApiResult<T> {
   return result;
 }
 
-/** 素材关联：标签（单词本 / 短文 / 视频共用）与单词 ↔ 素材 */
+/** 素材关联：标签（词汇本 / 短文 / 视频共用）与单词 ↔ 素材 */
 class TagService extends BaseService {
   /** 全部标签与各类素材的数量 */
   async getTags(): Promise<ApiResult<TagUsage[]>> {
@@ -57,7 +57,7 @@ class TagService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<WordMaterial[]>('get_word_materials', { word, wordId }));
   }
 
-  /** 单词本里每个词出现过的短文数与切片数 */
+  /** 词汇本里每个词出现过的短文数与切片数 */
   async getBookWordMaterials(bookId: number): Promise<ApiResult<WordMaterialCount[]>> {
     return this.executeWithLoading(() => this.client.invoke<WordMaterialCount[]>('get_book_word_materials', { bookId }));
   }

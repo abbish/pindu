@@ -25,7 +25,7 @@ export interface WordCardsViewProps {
 }
 
 /**
- * 单词本「单词」页签的卡片视图（与短文、视频片段的目标词同一种单词卡）：左边单词列表（释义、出现在素材里的次数），
+ * 词汇本「单词」页签的卡片视图（与短文、视频片段的目标词同一种单词卡）：左边单词列表（释义、出现在素材里的次数），
  * 右边单词卡（发音、拼读、例句、AI 讲解、其他素材）；↑ ↓ 或上一个 / 下一个切换，到页尾自动翻页。
  */
 export const WordCardsView: React.FC<WordCardsViewProps> = ({ words, loading, pagination, materials, onEdit, onDelete, onPassage, onOpenPassage }) => {
@@ -85,6 +85,7 @@ export const WordCardsView: React.FC<WordCardsViewProps> = ({ words, loading, pa
                   aria-current={i === index ? 'true' : undefined}
                 >
                   <span className="font-medium">{w.word}</span>
+                  {w.kind === 'phrase' && <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">词组</span>}
                   <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{w.meaning}</span>
                   {count && count.clips > 0 && <Clapperboard className="size-3 shrink-0 text-muted-foreground" aria-label={`${count.clips} 个视频片段`} />}
                   {count && count.passages > 0 && <FileText className="size-3 shrink-0 text-muted-foreground" aria-label={`${count.passages} 篇短文`} />}

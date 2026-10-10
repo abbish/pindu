@@ -21,9 +21,9 @@ export interface WordBookFormDialogProps {
   isOpen: boolean;
   /** 关闭（取消或保存成功后） */
   onClose: () => void;
-  /** 编辑的单词本；不传为新建 */
+  /** 编辑的词汇本；不传为新建 */
   wordBook?: WordBook | null;
-  /** 保存成功：新建时为新单词本 ID，编辑时为原 ID */
+  /** 保存成功：新建时为新词汇本 ID，编辑时为原 ID */
   onSaved: (id: number) => void;
 }
 
@@ -50,15 +50,15 @@ const initialValues = (book?: WordBook | null): FormValues => ({
 function validate(values: FormValues): Partial<Record<keyof FormValues, string>> {
   const errors: Partial<Record<keyof FormValues, string>> = {};
   const title = values.title.trim();
-  if (!title) errors.title = '请填写单词本名称';
+  if (!title) errors.title = '请填写词汇本名称';
   else if ([...title].length > TITLE_MAX) errors.title = `名称不能超过 ${TITLE_MAX} 个字`;
   if ([...values.description].length > DESCRIPTION_MAX) errors.description = `描述不能超过 ${DESCRIPTION_MAX} 个字`;
   return errors;
 }
 
 /**
- * 新建 / 编辑单词本（同一个表单、同一套校验）：名称、图标与颜色、标签、描述。
- * 新建只建空单词本，单词在详情页里添加（先建对象，再填内容）。保存失败时弹窗保持打开并显示原因。
+ * 新建 / 编辑词汇本（同一个表单、同一套校验）：名称、图标与颜色、标签、描述。
+ * 新建只建空词汇本，单词在详情页里添加（先建对象，再填内容）。保存失败时弹窗保持打开并显示原因。
  */
 export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, onClose, wordBook, onSaved }) => {
   const editing = Boolean(wordBook);
@@ -70,7 +70,7 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
   const [allTags, setTags] = useState<Tag[] | null>(null);
   const [tagsFailed, setTagsFailed] = useState(false);
 
-  // 每次打开按当前单词本回填（取消后再打开不残留未保存的修改）
+  // 每次打开按当前词汇本回填（取消后再打开不残留未保存的修改）
   useEffect(() => {
     if (!isOpen) return;
     setValues(initialValues(wordBook));
@@ -124,7 +124,7 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
       setSubmitError(result.error);
       return;
     }
-    toast.showSuccess(editing ? '已保存单词本信息' : `已创建「${payload.title}」`);
+    toast.showSuccess(editing ? '已保存词汇本信息' : `已创建「${payload.title}」`);
     onSaved(wordBook ? wordBook.id : (result.data as number));
     onClose();
   };
@@ -134,7 +134,7 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
       <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
           <DialogHeader>
-            <DialogTitle>{editing ? '编辑单词本' : '新建单词本'}</DialogTitle>
+            <DialogTitle>{editing ? '编辑词汇本' : '新建词汇本'}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-2">
@@ -189,7 +189,7 @@ export const WordBookFormDialog: React.FC<WordBookFormDialogProps> = ({ isOpen, 
             {errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
           </div>
 
-          {submitError && <InlineError title={editing ? '无法保存单词本' : '无法新建单词本'}>{submitError}</InlineError>}
+          {submitError && <InlineError title={editing ? '无法保存词汇本' : '无法新建词汇本'}>{submitError}</InlineError>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>

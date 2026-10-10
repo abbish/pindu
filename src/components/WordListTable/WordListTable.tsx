@@ -65,6 +65,8 @@ export interface WordDetail {
   exampleTranslation?: string;
   /** 例句总条数（只展示第一条） */
   exampleCount?: number;
+  /** 词组（D45） */
+  phrase?: boolean;
 }
 
 export interface WordListTableProps {
@@ -116,7 +118,7 @@ const POS_CLASS: Record<string, string> = {
 
 /**
  * 单词列表（shadcn 数据表）：勾选 + 批量删除、行操作（发音 / 例句 / 编辑 / 删除，右键同一组）、分页。
- * 单词本详情与计划详情（只读）共用。
+ * 词汇本详情与计划详情（只读）共用。
  */
 export const WordListTable: React.FC<WordListTableProps> = ({
   words,
@@ -287,6 +289,7 @@ export const WordListTable: React.FC<WordListTableProps> = ({
                         <TableCell className="font-semibold select-text">
                           <div className="flex items-center gap-1.5">
                             {word.word}
+                            {word.phrase && <span className="rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">词组</span>}
                             <MaterialCount count={materials?.get(word.id)} onOpen={onOpenMaterials && (() => onOpenMaterials(word))} />
                           </div>
                         </TableCell>

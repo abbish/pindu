@@ -424,7 +424,7 @@ impl PlanPassageService {
         }
         if !has_words && content != "passages" {
             return Err(AppError::ValidationError(
-                "这个计划里还没有单词，练习内容只能是短文；要练单词请先追加单词本".to_string(),
+                "这个计划里还没有单词，练习内容只能是短文；要练单词请先追加词汇本".to_string(),
             ));
         }
         check_inputs_exist_conn(&mut tx, &request.passages).await?;
@@ -532,7 +532,7 @@ impl PlanPassageService {
         Ok(())
     }
 
-    /// 可加进计划的短文：按相关度（目标词里属于计划单词 / 所选单词本的个数）从高到低，同分按新到旧
+    /// 可加进计划的短文：按相关度（目标词里属于计划单词 / 所选词汇本的个数）从高到低，同分按新到旧
     pub async fn candidates(
         &self,
         request: &PlanPassageCandidatesRequest,
@@ -925,7 +925,7 @@ mod tests {
             .is_none());
     }
 
-    /// 候选短文按与所选单词本的相关度排序，默认题组是最早的一套
+    /// 候选短文按与所选词汇本的相关度排序，默认题组是最早的一套
     #[tokio::test]
     async fn candidates_rank_by_overlap_with_books() {
         let pool = memory_pool().await;

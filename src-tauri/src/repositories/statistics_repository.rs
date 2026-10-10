@@ -454,9 +454,9 @@ impl StatisticsRepository {
         })
     }
 
-    /// 获取全局单词本统计
+    /// 获取全局词汇本统计
     pub async fn get_global_word_book_statistics(&self) -> AppResult<WordBookStatistics> {
-        // 获取单词本总数
+        // 获取词汇本总数
         let books_query = "SELECT COUNT(*) as count FROM word_books WHERE deleted_at IS NULL";
         let books_row = sqlx::query(books_query)
             .fetch_one(self.pool.as_ref())
@@ -469,7 +469,7 @@ impl StatisticsRepository {
         let total_books: i64 = books_row.get("count");
 
         // 获取单词总数
-        // 只统计未删除单词本里的单词
+        // 只统计未删除词汇本里的单词
         let words_query = "SELECT COUNT(*) as count FROM words w JOIN word_books b ON b.id = w.word_book_id WHERE b.deleted_at IS NULL";
         let words_row = sqlx::query(words_query)
             .fetch_one(self.pool.as_ref())
@@ -500,7 +500,7 @@ impl StatisticsRepository {
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        // 归类规则与单个单词本统计一致（WordTypeDistribution::add）
+        // 归类规则与单个词汇本统计一致（WordTypeDistribution::add）
         let mut word_types = WordTypeDistribution::default();
         for row in pos_rows {
             let pos: Option<String> = row.get("pos");

@@ -89,10 +89,10 @@ mod tests {
 
     #[test]
     fn serializes_to_code_and_message() {
-        let err = AppError::ValidationError("单词本标题不能为空".to_string());
+        let err = AppError::ValidationError("词汇本标题不能为空".to_string());
         assert_eq!(
             serde_json::to_value(&err).unwrap(),
-            json!({ "code": "VALIDATION_ERROR", "message": "验证错误: 单词本标题不能为空" })
+            json!({ "code": "VALIDATION_ERROR", "message": "验证错误: 词汇本标题不能为空" })
         );
     }
 

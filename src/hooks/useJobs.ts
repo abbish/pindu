@@ -8,7 +8,7 @@ import { isJobActive, type Job } from '../types/job';
  * - useJobs：全部任务（顶栏按钮、任务面板）
  * - useJob(id)：发起页面订阅自己的任务；订阅期间这个任务算「有人在看」，完成时不再弹全局提示
  * - waitForJob(id)：等任务结束（结果只给页面用的前台任务）
- * - useOnJobFinished(cb)：任务结束时回调（如单词本详情页在分析任务结束后刷新列表）
+ * - useOnJobFinished(cb)：任务结束时回调（如词汇本详情页在分析任务结束后刷新列表）
  */
 
 let jobs: Job[] = [];

@@ -150,7 +150,7 @@ impl WordMaterialsService {
             .collect())
     }
 
-    /// 单词本里每个词出现过的短文数与切片数：单词一次索引查询；短语（少数）逐个核对
+    /// 词汇本里每个词出现过的短文数与切片数：单词一次索引查询；短语（少数）逐个核对
     pub async fn counts(&self, words: &[(Id, String)]) -> AppResult<Vec<WordMaterialCount>> {
         PassageWordRepository::index_missing(&self.pool).await?;
         type Words<'a> = Vec<&'a (Id, String)>;
@@ -345,7 +345,7 @@ mod tests {
         assert!(love[0].key && love[0].passage_id == b);
     }
 
-    /// 长期使用的数据量：5000 篇短文、每篇 20 句；单词本 500 个词。
+    /// 长期使用的数据量：5000 篇短文、每篇 20 句；词汇本 500 个词。
     /// `cargo test --release word_materials::tests::scale -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
@@ -393,7 +393,7 @@ mod tests {
         let t = std::time::Instant::now();
         let counts = service.counts(&words).await.unwrap();
         println!(
-            "单词本 500 个词的计数（{} 个有）：{:?}",
+            "词汇本 500 个词的计数（{} 个有）：{:?}",
             counts.len(),
             t.elapsed()
         );

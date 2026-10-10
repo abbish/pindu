@@ -11,16 +11,16 @@ import type { PassageNewWord } from '@/types/passage';
 
 export interface NewWordsCardProps {
   passageId: number;
-  /** 材料来源（新建单词本时的默认名与场景） */
+  /** 材料来源（新建词汇本时的默认名与场景） */
   sourceLabel: string | null;
   /** 加词后刷新短文（目标词补上 wordId，点词能看完整卡片） */
   onAdded: () => void;
-  /** 打开单词本 */
+  /** 打开词汇本 */
   onOpenBook?: (bookId: number) => void;
 }
 
 /**
- * 导入材料的「未收录词」：AI 标出的重点词里还不在任何单词本的，勾选后加进现有单词本或新建一本（passage-import B5）。
+ * 导入材料的「未收录词」：AI 标出的重点词里还不在任何词汇本的，勾选后加进现有词汇本或新建一本（passage-import B5）。
  * 后端一步完成拼读分析与例句；没有未收录词时不显示。
  */
 export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLabel, onAdded, onOpenBook }) => {
@@ -61,21 +61,21 @@ export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLab
     const book = await resolveBookTarget(target, sourceLabel);
     if ('error' in book) {
       setSaving(false);
-      setError({ title: '无法新建单词本', message: book.error });
+      setError({ title: '无法新建词汇本', message: book.error });
       return;
     }
     const result = await passageService.addWordsToBook({ passageId, bookId: book.bookId, words: [...picked] });
     setSaving(false);
     if (!result.success) {
-      setError({ title: '无法加入单词本', message: book.created ? `已新建「${book.title}」，可重试加入。${result.error}` : result.error });
+      setError({ title: '无法加入词汇本', message: book.created ? `已新建「${book.title}」，可重试加入。${result.error}` : result.error });
       if (book.created) setTarget({ kind: 'existing', bookId: book.bookId });
       return;
     }
     toast.showToast({
       type: 'success',
       title: book.created ? `已新建「${book.title}」并加入 ${picked.size} 词` : `已将 ${picked.size} 词加入「${book.title}」`,
-      message: result.data.length < picked.size ? `${picked.size - result.data.length} 个已在该单词本中` : undefined,
-      action: onOpenBook ? { label: '打开单词本', onClick: () => onOpenBook(book.bookId) } : undefined,
+      message: result.data.length < picked.size ? `${picked.size - result.data.length} 个已在该词汇本中` : undefined,
+      action: onOpenBook ? { label: '打开词汇本', onClick: () => onOpenBook(book.bookId) } : undefined,
     });
     setWords((prev) => prev?.filter((w) => !picked.has(w.word)) ?? null);
     setPicked(new Set());
@@ -102,7 +102,7 @@ export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLab
       <BookTargetPicker value={target} onChange={setTarget} defaultTitle={defaultBookTitle(sourceLabel)} disabled={saving} />
       <Button size="sm" onClick={add} disabled={saving || !isBookTargetReady(target) || picked.size === 0}>
         {saving ? <Loader2 className="animate-spin" /> : <Plus />}
-        {saving ? '正在加入…' : `${target?.kind === 'new' ? '新建单词本并加入' : '加入单词本'}${picked.size > 0 ? `（${picked.size} 词）` : ''}`}
+        {saving ? '正在加入…' : `${target?.kind === 'new' ? '新建词汇本并加入' : '加入词汇本'}${picked.size > 0 ? `（${picked.size} 词）` : ''}`}
       </Button>
       {error && <InlineError title={error.title}>{error.message}</InlineError>}
     </Card>

@@ -50,7 +50,7 @@ export interface WordMaterialsListProps {
   excludePassageId?: number;
 }
 
-/** 一个词的素材列表（视频片段 → 短文），单词本侧栏与练习右栏共用 */
+/** 一个词的素材列表（视频片段 → 短文），词汇本侧栏与练习右栏共用 */
 export const WordMaterialsList: React.FC<WordMaterialsListProps> = ({ word, wordId, onOpenPassage, clipsOnly, onLoaded, excludePassageId }) => {
   const [items, setItems] = useState<WordMaterial[] | null>(null);
   const [error, setError] = useState<string | null>(null);

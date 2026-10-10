@@ -79,7 +79,7 @@ export interface PlanPassagePickerProps {
   candidates: PlanPassageCandidate[] | null;
   /** 每一项的排期说明（如“第 3 天”“10月9日”），显示在行内 */
   notes?: (string | null)[];
-  /** 相关度说明的对象，如“所选单词本” / “计划” */
+  /** 相关度说明的对象，如“所选词汇本” / “计划” */
   overlapLabel?: string;
   /** 短文库为空时去新建短文 */
   onCreatePassage?: () => void;

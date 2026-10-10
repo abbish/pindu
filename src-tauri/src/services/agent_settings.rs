@@ -69,7 +69,7 @@ impl AgentTaskKind {
 
     fn description(self) -> &'static str {
         match self {
-            AgentTaskKind::Extract => "从课文或文章里找出要学的单词，或按描述生成单词本",
+            AgentTaskKind::Extract => "从课文或文章里找出要学的单词，或按描述生成词汇本",
             AgentTaskKind::Phonics => {
                 "导入单词时拆音节、写拼读讲解、生成例句；准确性最重要，建议用能力强的模型"
             }

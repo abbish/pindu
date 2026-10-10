@@ -137,7 +137,7 @@ pub async fn replan_study_plan_pace(
     result
 }
 
-/// 往计划里追加单词本：新词排在还没学的新词后面
+/// 往计划里追加词汇本：新词排在还没学的新词后面
 #[tauri::command]
 pub async fn add_word_books_to_plan(
     app: AppHandle,
@@ -318,7 +318,7 @@ pub async fn create_study_plan_with_schedule(
     }
 }
 
-/// 获取学习计划的单词列表（显示原始单词本单词，而不是学习日程单词）
+/// 获取学习计划的单词列表（显示原始词汇本单词，而不是学习日程单词）
 #[tauri::command]
 pub async fn get_study_plan_words(app: AppHandle, plan_id: i64) -> AppResult<Vec<StudyPlanWord>> {
     let pool = app.state::<SqlitePool>();
@@ -671,7 +671,7 @@ pub async fn get_study_plan_calendar_data(
     }
 }
 
-/// 获取学习计划关联的单词本ID列表
+/// 获取学习计划关联的词汇本ID列表
 #[tauri::command]
 pub async fn get_study_plan_word_books(app: AppHandle, plan_id: i64) -> AppResult<Vec<i64>> {
     let pool = app.state::<SqlitePool>();

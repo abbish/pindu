@@ -1,5 +1,5 @@
 //! 短文库的数据访问：passages / passage_sources / passage_question_sets / passage_questions / passage_attempts，
-//! 以及生成短文时的候选词（单词本、学习计划的已学 / 难词 / 到期复习）
+//! 以及生成短文时的候选词（词汇本、学习计划的已学 / 难词 / 到期复习）
 
 use crate::error::{AppError, AppResult};
 use crate::repositories::tag_repository::TagRepository;
@@ -69,12 +69,12 @@ pub struct CandidateRow {
     pub meaning: String,
     pub source: String,
     pub book_id: Option<Id>,
-    /// 计划里的记忆等级（单词本来源为 None）
+    /// 计划里的记忆等级（词汇本来源为 None）
     pub srs_box: Option<i64>,
     pub srs_due: Option<String>,
-    /// 答错的次数（首次作答与当轮小测；计划来源只算这个计划，单词本来源算所有计划）
+    /// 答错的次数（首次作答与当轮小测；计划来源只算这个计划，词汇本来源算所有计划）
     pub wrong: i64,
-    /// 学习情况用的记忆等级：计划来源为这个计划里的，单词本来源为各计划里最高的（没进过计划为 0）
+    /// 学习情况用的记忆等级：计划来源为这个计划里的，词汇本来源为各计划里最高的（没进过计划为 0）
     pub level: i64,
     /// 计划里第一次学这个词的时刻
     pub first_learned: Option<String>,
@@ -284,7 +284,7 @@ impl PassageRepository {
         Ok(raw.map(|r| parse(Some(r))))
     }
 
-    /// 列表（可按来源单词本 / 计划筛选，最新在前），附题组数、完成次数与最近一次成绩。
+    /// 列表（可按来源词汇本 / 计划筛选，最新在前），附题组数、完成次数与最近一次成绩。
     /// 视频切片不算短文（它们在视频库里），只有 origin = video 时才列切片
     pub async fn list(
         &self,
@@ -549,7 +549,7 @@ impl PassageRepository {
 
     // ==================== 候选词 ====================
 
-    /// 单词本名称（已删除的单词本为 None）
+    /// 词汇本名称（已删除的词汇本为 None）
     pub async fn book_title(&self, book_id: Id) -> AppResult<Option<String>> {
         Ok(
             sqlx::query_scalar("SELECT title FROM word_books WHERE id = ? AND deleted_at IS NULL")
@@ -568,7 +568,7 @@ impl PassageRepository {
         )
     }
 
-    /// 按拼写在没删除的单词本里找单词（忽略大小写；同名多本时取 id 最小的）：小写拼写 → 单词 id
+    /// 按拼写在没删除的词汇本里找单词（忽略大小写；同名多本时取 id 最小的）：小写拼写 → 单词 id
     pub async fn word_ids_by_text(&self, words: &[String]) -> AppResult<HashMap<String, Id>> {
         let rows: Vec<(String, Id)> = sqlx::query_as(
             "SELECT LOWER(w.word), MIN(w.id) FROM words w
@@ -582,7 +582,7 @@ impl PassageRepository {
         Ok(rows.into_iter().collect())
     }
 
-    /// 改写短文的目标词（生词加进单词本后补上 wordId）
+    /// 改写短文的目标词（生词加进词汇本后补上 wordId）
     pub async fn update_target_words(
         &self,
         passage_id: Id,
@@ -611,7 +611,7 @@ impl PassageRepository {
         Ok(())
     }
 
-    /// 单词本里的词（最近加入在前），附它在各计划里最高的记忆等级与答错次数（判断学习情况）
+    /// 词汇本里的词（最近加入在前），附它在各计划里最高的记忆等级与答错次数（判断学习情况）
     pub async fn book_candidates(&self, book_id: Id) -> AppResult<Vec<CandidateRow>> {
         let rows = sqlx::query(
             "SELECT w.id, w.word, w.meaning, wb.title,
@@ -682,7 +682,7 @@ impl PassageRepository {
             .collect())
     }
 
-    /// 按 id 取词（单词、所在单词本）
+    /// 按 id 取词（单词、所在词汇本）
     pub async fn words_by_ids(&self, ids: &[Id]) -> AppResult<Vec<(Id, String, Option<Id>)>> {
         Ok(sqlx::query_as(
             "SELECT id, word, word_book_id FROM words WHERE id IN (SELECT value FROM json_each(?))",

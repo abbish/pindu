@@ -29,7 +29,7 @@ import {
 import { cn } from '@/lib/utils';
 
 /**
- * 单词本可选图标：值为数据库 word_books.icon 中保存的名称。
+ * 词汇本可选图标：值为数据库 word_books.icon 中保存的名称。
  * 前 6 个沿用旧版名称（bookmark / book / graduation-cap / globe / star / heart），保持已有数据可用。
  */
 export const WORD_BOOK_ICONS: { value: string; label: string; icon: LucideIcon }[] = [
@@ -105,7 +105,7 @@ export interface WordBookIconProps {
   className?: string;
 }
 
-/** 单词本图标方块 */
+/** 词汇本图标方块 */
 export const WordBookIcon: React.FC<WordBookIconProps> = ({ icon, color, className }) => {
   const Icon = WORD_BOOK_ICONS.find((i) => i.value === icon)?.icon ?? BookOpen;
   return (

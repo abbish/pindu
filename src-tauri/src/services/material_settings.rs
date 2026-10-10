@@ -1,4 +1,4 @@
-//! 素材处理的默认值（「设置 → 素材」）：单词本、短文、视频、学习计划里各种处理参数的默认值，
+//! 素材处理的默认值（「设置 → 素材」）：词汇本、短文、视频、学习计划里各种处理参数的默认值，
 //! 各页面打开时以它为默认，当次仍可修改。整体存在 app_settings 的 `material.defaults`（JSON），缺的字段用默认值，越界的夹回范围。
 
 use crate::error::AppResult;
@@ -11,7 +11,7 @@ const KEY: &str = "material.defaults";
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MaterialSettings {
-    // ---- 单词本 ----
+    // ---- 词汇本 ----
     /// AI 生成单词的数量
     pub word_ai_count: i64,
     /// 从材料提取单词：focus 重点词 / all 全部

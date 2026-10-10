@@ -11,7 +11,7 @@ use tauri::{AppHandle, Manager};
 
 // 移除了传统词汇分析的命令处理器，只保留自然拼读分析
 
-/// 从分析结果创建单词本
+/// 从分析结果创建词汇本
 #[tauri::command]
 pub async fn create_word_book_from_analysis(
     app: AppHandle,

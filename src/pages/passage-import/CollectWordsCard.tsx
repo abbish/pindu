@@ -23,7 +23,7 @@ interface CollectedWord {
 }
 
 /**
- * 导入完成后「整理成单词本」：把这批短文里还不在单词本的重点词去重汇总，勾选后新建一本（或加进现有的）。
+ * 导入完成后「整理成词汇本」：把这批短文里还不在词汇本的重点词去重汇总，勾选后新建一本（或加进现有的）。
  * 逐篇调用 add_passage_words_to_book：同一个词在后面的篇里直接关联、不重复分析，并补上每篇短文目标词的 wordId。
  */
 export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, sourceLabel, onOpenBook }) => {
@@ -89,7 +89,7 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
           已加入「{result.title}」：{result.count} 词，音标、拼读与例句已补全
         </div>
         <Button size="sm" variant="outline" onClick={() => onOpenBook(result.bookId)}>
-          打开单词本
+          打开词汇本
         </Button>
       </Card>
     );
@@ -132,7 +132,7 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
     toast.showToast({
       type: 'success',
       title: book.created ? `已新建「${book.title}」并加入 ${count} 词` : `已将 ${count} 词加入「${book.title}」`,
-      action: { label: '打开单词本', onClick: () => onOpenBook(book.bookId) },
+      action: { label: '打开词汇本', onClick: () => onOpenBook(book.bookId) },
     });
   };
 
@@ -141,7 +141,7 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
       <div className="flex items-start gap-3">
         <BookPlus className="mt-0.5 size-5 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
-          <h2 className="font-semibold">将未收录词加入单词本</h2>
+          <h2 className="font-semibold">将未收录词加入词汇本</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">{words.length} 个未收录词</p>
         </div>
       </div>
@@ -170,7 +170,7 @@ export const CollectWordsCard: React.FC<CollectWordsCardProps> = ({ passages, so
           {running ? <Loader2 className="animate-spin" /> : <BookPlus />}
           {running
             ? `正在加入（第 ${Math.min(progress.done + 1, progress.total)}/${progress.total} 篇）…`
-            : `${target?.kind === 'new' ? '新建单词本' : '加入单词本'}（${picked.size} 词）`}
+            : `${target?.kind === 'new' ? '新建词汇本' : '加入词汇本'}（${picked.size} 词）`}
         </Button>
       </div>
       {error && <InlineError title="部分单词未能加入">{error}</InlineError>}

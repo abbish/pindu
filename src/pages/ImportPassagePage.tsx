@@ -267,7 +267,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm">
                   <BookOpen />
-                  {bookIds.length > 0 ? `从 ${bookIds.length} 本单词本标注目标词` : '从单词本标注目标词'}
+                  {bookIds.length > 0 ? `从 ${bookIds.length} 本词汇本标注目标词` : '从词汇本标注目标词'}
                   <ChevronDown className="opacity-60" />
                 </Button>
               </PopoverTrigger>
@@ -275,7 +275,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                 {books === null ? (
                   <Loader2 className="mx-auto my-3 size-4 animate-spin text-muted-foreground" />
                 ) : books.length === 0 ? (
-                  <p className="px-2 py-3 text-sm text-muted-foreground">还没有带单词的单词本</p>
+                  <p className="px-2 py-3 text-sm text-muted-foreground">还没有带单词的词汇本</p>
                 ) : (
                   <ul className="max-h-64 overflow-y-auto">
                     {books.map((b) => (

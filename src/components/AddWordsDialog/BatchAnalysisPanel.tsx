@@ -25,7 +25,7 @@ const ICON_CLASS: Record<WordState, string> = {
 };
 
 export interface BatchAnalysisPanelProps {
-  /** 「分析并加入单词本」任务（逐词状态在 job.detail） */
+  /** 「分析并加入词汇本」任务（逐词状态在 job.detail） */
   job: Job | undefined;
 }
 

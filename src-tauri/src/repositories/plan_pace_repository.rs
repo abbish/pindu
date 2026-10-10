@@ -1,4 +1,4 @@
-//! 计划就地调整（改节奏 / 追加单词本）的数据访问：只动“还没练过”的新词日，
+//! 计划就地调整（改节奏 / 追加词汇本）的数据访问：只动“还没练过”的新词日，
 //! 已练过的日程、复习条目与 `study_plan_words.srs_*` 一律不动（authoring-flows-redesign B5）。
 
 use crate::error::AppResult;
@@ -210,7 +210,7 @@ pub async fn save_pace_conn(
     Ok(())
 }
 
-/// 这些单词本里还不在计划中的词（按 id 与拼写去重，保持单词本内顺序）：(word_id, word, wordbook_id, meaning)
+/// 这些词汇本里还不在计划中的词（按 id 与拼写去重，保持词汇本内顺序）：(word_id, word, wordbook_id, meaning)
 pub async fn words_not_in_plan_conn(
     conn: &mut SqliteConnection,
     plan_id: Id,

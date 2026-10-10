@@ -80,7 +80,7 @@ impl PromptProfileService {
             .collect())
     }
 
-    /// 单词本场景（标题 + 描述 + 主题标签），作为 AI 任务用户消息里的背景；没有单词本或已删除时为空
+    /// 词汇本场景（标题 + 描述 + 主题标签），作为 AI 任务用户消息里的背景；没有词汇本或已删除时为空
     pub async fn book_scene(
         pool: &Arc<SqlitePool>,
         logger: &Arc<crate::logger::Logger>,

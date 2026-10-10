@@ -49,7 +49,7 @@ type Phase = 'idle' | 'planning' | 'failed' | 'saving';
 const PREVIEW_DAYS = 3;
 const PREVIEW_WORDS_PER_DAY = 10;
 
-/** 没填名称时按所选单词本（只练短文时按短文）生成 */
+/** 没填名称时按所选词汇本（只练短文时按短文）生成 */
 const autoName = (books: WordBookOption[], passages: PlanPassageDraft[]) => {
   if (books.length > 0) return books.length === 1 ? `${books[0].name} 学习计划` : `${books[0].name} 等 ${books.length} 本学习计划`;
   if (passages.length > 0) return passages.length === 1 ? `「${passages[0].title}」阅读计划` : `${passages[0].title} 等 ${passages.length} 篇阅读计划`;
@@ -64,7 +64,7 @@ const CONTENT_OPTIONS: { value: PracticeContent; label: string }[] = [
 
 /**
  * 创建学习计划（单页：左边填写、右边即时预览，DECISIONS D20 / authoring-flows-redesign B4）：
- * 选单词本 → 每天新词数 → 是否用 AI 排学习顺序 → 名称与描述；右侧按确定性规则即时显示总词数、天数与前几天的新词。
+ * 选词汇本 → 每天新词数 → 是否用 AI 排学习顺序 → 名称与描述；右侧按确定性规则即时显示总词数、天数与前几天的新词。
  * 创建后为“待开始”，第一次练习的那天算第 1 天。AI 排序可取消；失败时可以改用默认顺序直接创建。
  */
 export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) => {
@@ -98,7 +98,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
   const { data: rawBooks, loading: loadingBooks, error: loadError, refresh: reloadBooks } = useAsyncData(async () => {
     const result = await wordBookService.getAllWordBooks();
-    // 空单词本不能用于计划
+    // 空词汇本不能用于计划
     if (result.success) return result.data.filter((b) => b.status === 'normal' && b.total_words > 0);
     throw new Error(result.error);
   });
@@ -117,7 +117,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
   const planName = name.trim() || suggestedName;
   const busy = phase === 'planning' || phase === 'saving';
 
-  // 可加入的短文：按与所选单词本的相关度排序（只练短文时不看单词本）
+  // 可加入的短文：按与所选词汇本的相关度排序（只练短文时不看词汇本）
   const candidateBookIds = withWords ? selectedBooks : [];
   const candidateKey = candidateBookIds.join(',');
   useEffect(() => {
@@ -136,7 +136,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
     };
   }, [withPassages, candidateKey, toast]);
 
-  // 即时预览：单词本或每天新词数变化后 200ms 请求一次（去重后的真实词数与天数）
+  // 即时预览：词汇本或每天新词数变化后 200ms 请求一次（去重后的真实词数与天数）
   useEffect(() => {
     if (!withWords || selectedBooks.length === 0) {
       setPreview(null);
@@ -272,7 +272,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
     return (
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-8 py-7">
         <PageHeader title="新建学习计划" />
-        <PageError title="无法加载单词本" message={loadError.message} onRetry={reloadBooks} back={{ label: '返回学习计划', onClick: () => onNavigate?.('plans') }} />
+        <PageError title="无法加载词汇本" message={loadError.message} onRetry={reloadBooks} back={{ label: '返回学习计划', onClick: () => onNavigate?.('plans') }} />
       </div>
     );
   }
@@ -323,7 +323,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
           {withWords &&
             section(
-              '单词本',
+              '词汇本',
               <WordBookSelector
                 books={wordBooks}
                 selectedBooks={selectedBooks}
@@ -419,7 +419,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
 
           {withWords &&
             (selectedBooks.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">还没有选择单词本</p>
+              <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">还没有选择词汇本</p>
             ) : previewError ? (
               <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{previewError}</p>
             ) : !meta ? (

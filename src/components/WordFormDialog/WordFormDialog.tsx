@@ -20,7 +20,7 @@ export interface WordFormDialogProps {
   isOpen: boolean;
   /** 关闭 */
   onClose: () => void;
-  /** 所在单词本 */
+  /** 所在词汇本 */
   bookId: number;
   /** 编辑的单词；不传为手动添加 */
   word?: Word | null;
@@ -80,7 +80,7 @@ const fromWord = (w?: Word | null): FormValues =>
 /**
  * 手动添加 / 编辑单词（同一表单）：单词、释义、词性 → 发音与拼读（音节、拼读块可按音节一键拆分）→ 例句逐条编辑。
  * 词性缩写 / 中文 / 英文由词性自动带出。填好单词与释义后可以“AI 补全”空着的发音、拼读与例句。
- * 保存失败时弹窗不关并显示后端原因（如单词本里已有同名单词）。
+ * 保存失败时弹窗不关并显示后端原因（如词汇本里已有同名单词）。
  */
 export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose, bookId, word, onSaved }) => {
   const editing = Boolean(word);

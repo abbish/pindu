@@ -26,7 +26,7 @@ import { messageOf } from '@/utils/errorHandler';
 export interface WordBookPageProps {
   /** Navigation handler */
   onNavigate?: NavigateFn;
-  /** 嵌在标签页里：只列这个标签的单词本（不显示页头、统计与标签筛选） */
+  /** 嵌在标签页里：只列这个标签的词汇本（不显示页头、统计与标签筛选） */
   tagId?: number;
 }
 
@@ -64,7 +64,7 @@ interface PageData {
 }
 
 /**
- * 单词本列表（shadcn，外壳由 AppShell 提供）：统计 + 搜索 / 主题 / 状态 / 排序 + 单词本卡片。
+ * 词汇本列表（shadcn，外壳由 AppShell 提供）：统计 + 搜索 / 主题 / 状态 / 排序 + 词汇本卡片。
  * 功能清单见 .claude/work/ui-shadcn-migration/feature-inventory.md §5。
  */
 export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId }) => {
@@ -87,7 +87,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
     setError(null);
     try {
 
-      // “全部状态”不含已删除的单词本，已删除的只在“已删除”筛选里看
+      // “全部状态”不含已删除的词汇本，已删除的只在“已删除”筛选里看
       const includeDeleted = status === 'deleted';
       const [statsResult, booksResult] = await Promise.all([
         wordBookService.getWordBookStatistics(),
@@ -96,7 +96,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
       if (!statsResult.success) throw new Error(statsResult.error);
       if (!booksResult.success) throw new Error(booksResult.error);
 
-      // 词性分布由单词本列表一次带出（不再逐本请求统计）
+      // 词性分布由词汇本列表一次带出（不再逐本请求统计）
       const books = booksResult.data.map(book => ({
         ...book,
         wordTypes: book.word_types ?? { nouns: 0, verbs: 0, adjectives: 0, others: 0 },
@@ -123,11 +123,11 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
   const handleRestore = async (id: number) => {
     const result = await wordBookService.restoreWordBook(id);
     if (!result.success) {
-      toast.showError('无法恢复单词本', result.error);
+      toast.showError('无法恢复词汇本', result.error);
       return;
     }
     const title = data?.books.find((b) => b.id === id)?.title;
-    toast.showSuccess(title ? `已恢复「${title}」` : '已恢复单词本');
+    toast.showSuccess(title ? `已恢复「${title}」` : '已恢复词汇本');
     loadWordBookData(filters.status);
   };
 
@@ -154,7 +154,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
     }
     return sortItems(books, SORT_OPTIONS, sortBy);
   }, [data, filters, sortBy]);
-  // 已删除的单词本只能恢复，不参与勾选
+  // 已删除的词汇本只能恢复，不参与勾选
   const selection = useSelection(useMemo(() => filteredBooks.filter((b) => !b.deleted_at).map((b) => b.id), [filteredBooks]));
   const pager = usePagination(loading ? null : filteredBooks, { id: embedded ? `word-books:tag${tagId}` : 'word-books', resetKey: `${JSON.stringify(filters)}|${sortBy}` });
 
@@ -165,7 +165,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
 
   const stats = data?.stats;
   const metrics = [
-    { label: '单词本总数', value: stats?.totalBooks ?? 0, unit: '本', icon: Library },
+    { label: '词汇本总数', value: stats?.totalBooks ?? 0, unit: '本', icon: Library },
     { label: '单词总数', value: stats?.totalWords ?? 0, unit: '个', icon: BookOpen },
     { label: '名词', value: stats?.nouns ?? 0, unit: '个' },
     { label: '动词', value: stats?.verbs ?? 0, unit: '个' },
@@ -175,24 +175,24 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
   const createAction = (
     <Button onClick={() => setCreatingBook(true)}>
       <Plus />
-      新建单词本
+      新建词汇本
     </Button>
   );
 
   if (error && !data) {
     return (
       <div className={embedded ? 'flex flex-col gap-6' : 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7'}>
-        {!embedded && <PageHeader title="我的单词本" actions={createAction} />}
-        <PageError title="无法加载单词本" message={error} onRetry={() => loadWordBookData(filters.status)} />
+        {!embedded && <PageHeader title="我的词汇本" actions={createAction} />}
+        <PageError title="无法加载词汇本" message={error} onRetry={() => loadWordBookData(filters.status)} />
       </div>
     );
   }
 
   return (
     <div className={embedded ? 'flex flex-col gap-6' : 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7'}>
-      {!embedded && <PageHeader title="我的单词本" actions={createAction} />}
+      {!embedded && <PageHeader title="我的词汇本" actions={createAction} />}
 
-      <section aria-label="单词本统计" className={cn('grid grid-cols-5 gap-3', embedded && 'hidden')}>
+      <section aria-label="词汇本统计" className={cn('grid grid-cols-5 gap-3', embedded && 'hidden')}>
         {metrics.map((m) => (
           <MetricCard key={m.label} {...m} loading={loading && !data} />
         ))}
@@ -207,7 +207,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
       <MaterialToolbar
         search={filters.searchTerm}
         onSearch={(v) => setFilter('searchTerm', v)}
-        searchPlaceholder="搜索单词本"
+        searchPlaceholder="搜索词汇本"
         tag={embedded ? null : { kind: 'word_book', value: filters.tag, onChange: (v) => setFilter('tag', v), onTagsChanged: () => loadWordBookData(filters.status) }}
         activeCount={activeFilterCount}
         onReset={() => setFilters(defaultFilters)}
@@ -233,12 +233,12 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
         </div>
       ) : filteredBooks.length === 0 ? (
         isFiltering ? (
-          <EmptyState icon={<SearchX />} title="没有匹配的单词本" />
+          <EmptyState icon={<SearchX />} title="没有匹配的词汇本" />
         ) : (
           <EmptyState
             icon={<BookOpen />}
-            title="还没有单词本"
-            action="新建单词本"
+            title="还没有词汇本"
+            action="新建词汇本"
             actionIcon={<Plus />}
             onAction={() => setCreatingBook(true)}
           />
@@ -260,7 +260,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
               iconColor={book.icon_color}
               tags={book.tags}
               status={book.deleted_at ? 'deleted' : book.status}
-              // 已删除的单词本没有详情页：只能恢复
+              // 已删除的词汇本没有详情页：只能恢复
               onOpen={() => {
                 if (!book.deleted_at) onNavigate?.('wordbook-detail', { id: book.id });
               }}
@@ -291,8 +291,8 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
       <BatchDeleteDialog
         items={toDelete}
         onClose={() => setToDelete(null)}
-        unit="本单词本"
-        description="删除后可以在「已删除」里恢复。被计划使用中的单词本不会删除。"
+        unit="本词汇本"
+        description="删除后可以在「已删除」里恢复。被计划使用中的词汇本不会删除。"
         nameOf={(b) => b.title}
         remove={(b) => wordBookService.deleteWordBook(b.id)}
         onDone={() => {

@@ -250,11 +250,11 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   }
 
   // 导入的材料：指定单词（required）/ 重点词；AI 生成的短文：指定单词 / AI 选词
-  // 视频切片与导入的材料一样：原文不是 AI 生成的，重点词由 AI 识别，可以把未收录词加进单词本
+  // 视频切片与导入的材料一样：原文不是 AI 生成的，重点词由 AI 识别，可以把未收录词加进词汇本
   const imported = passage.origin !== 'generated';
   const required = passage.targetWords.filter((w) => w.required);
   const picked = passage.targetWords.filter((w) => !w.required);
-  /** 有还没收录进单词本的目标词 */
+  /** 有还没收录进词汇本的目标词 */
   const hasNewWords = passage.targetWords.some((w) => w.wordId === null);
   /** 读原文时选中的词加成目标词，然后到「目标词」页签看它的单词卡（没收录的会自动生成） */
   const addTarget = async (word: string) => {
@@ -463,7 +463,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             <AlertDialogDescription>
               {isClip
                 ? `将同时删除片段视频、${passage.questionSets.length} 个题组与练习记录；原始视频不受影响。`
-                : `将同时删除 ${passage.questionSets.length} 个题组与练习记录；单词本与学习计划不受影响。`}
+                : `将同时删除 ${passage.questionSets.length} 个题组与练习记录；词汇本与学习计划不受影响。`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

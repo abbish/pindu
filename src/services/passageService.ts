@@ -31,7 +31,7 @@ import type { WordCard } from '../types/material';
 
 /** 短文库：短文（独立素材）、阅读理解题组、作答与统计 */
 class PassageService extends BaseService {
-  /** 候选词：按来源（单词本、学习计划）合并去重 */
+  /** 候选词：按来源（词汇本、学习计划）合并去重 */
   async getWordCandidates(request: PassageWordSources): Promise<ApiResult<PassageWordCandidate[]>> {
     return this.executeWithLoading(() => this.client.invoke<PassageWordCandidate[]>('get_passage_word_candidates', { request }));
   }
@@ -73,7 +73,7 @@ class PassageService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<Word[]>('get_passage_words', { passageId }));
   }
 
-  /** 不在单词本的目标词已有的单词卡 */
+  /** 不在词汇本的目标词已有的单词卡 */
   async getWordCards(passageId: number): Promise<ApiResult<WordCard[]>> {
     return this.executeWithLoading(() => this.client.invoke<WordCard[]>('get_passage_word_cards', { passageId }));
   }
@@ -147,12 +147,12 @@ class PassageService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<string>('start_passage_import', { request }));
   }
 
-  /** 短文里还不在单词本的目标词 */
+  /** 短文里还不在词汇本的目标词 */
   async getNewWords(passageId: number): Promise<ApiResult<PassageNewWord[]>> {
     return this.executeWithLoading(() => this.client.invoke<PassageNewWord[]>('get_passage_new_words', { passageId }));
   }
 
-  /** 把短文里的生词加进单词本，返回新建单词的 id */
+  /** 把短文里的生词加进词汇本，返回新建单词的 id */
   async addWordsToBook(request: AddPassageWordsRequest): Promise<ApiResult<number[]>> {
     return this.executeWithLoading(() => this.client.invoke<number[]>('add_passage_words_to_book', { request }));
   }

@@ -408,7 +408,7 @@ impl PracticeService {
         self.schedule_repo
             .refresh_completion(&mut tx, session.schedule_id)
             .await?;
-        // 练过的单词本刷新“最近使用”
+        // 练过的词汇本刷新“最近使用”
         crate::repositories::wordbook_repository::WordBookRepository::touch_last_used_by_schedule_conn(
             &mut tx,
             session.schedule_id,

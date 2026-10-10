@@ -122,7 +122,7 @@ pub fn decode_text(bytes: &[u8]) -> String {
 }
 
 /// 读取一个材料文件：解码 / 取文字 → 按格式清理 → 段落之间空一行的纯文本（标题独占一段）。
-/// 单词本「从文本提取」与短文导入共用；空文件、非英文、扫描版 PDF 报错。
+/// 词汇本「从文本提取」与短文导入共用；空文件、非英文、扫描版 PDF 报错。
 pub fn read_material(file_name: &str, data: &str) -> AppResult<MaterialText> {
     use base64::Engine;
     let name = file_name.trim();

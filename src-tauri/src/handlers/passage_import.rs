@@ -1,4 +1,4 @@
-//! 导入材料：读取材料文件、预处理预览、逐篇导入（AI 翻译）与取消、生词加进单词本
+//! 导入材料：读取材料文件、预处理预览、逐篇导入（AI 翻译）与取消、生词加进词汇本
 
 use super::{agent_paths, finish};
 use crate::error::{AppError, AppResult};
@@ -20,7 +20,7 @@ fn service(app: &AppHandle) -> PassageImportService {
     )
 }
 
-/// 读取一个材料文件（txt / md / srt / vtt / docx / pdf）为清理后的纯文本；单词本提取与短文导入共用
+/// 读取一个材料文件（txt / md / srt / vtt / docx / pdf）为清理后的纯文本；词汇本提取与短文导入共用
 #[tauri::command]
 pub async fn read_material_file(
     app: AppHandle,
@@ -166,7 +166,7 @@ pub async fn start_passage_import(
     finish(&logger, "start_passage_import", result)
 }
 
-/// 短文里还不在单词本的词（AI 挑的重点词）
+/// 短文里还不在词汇本的词（AI 挑的重点词）
 #[tauri::command]
 pub async fn get_passage_new_words(
     app: AppHandle,
@@ -181,7 +181,7 @@ pub async fn get_passage_new_words(
     finish(&logger, "get_passage_new_words", result)
 }
 
-/// 生词加进单词本（拼读分析补全音标、音节与例句），返回这些词在本里的 id
+/// 生词加进词汇本（拼读分析补全音标、音节与例句），返回这些词在本里的 id
 #[tauri::command]
 pub async fn add_passage_words_to_book(
     app: AppHandle,

@@ -44,10 +44,10 @@ pub struct ScheduleFixture {
     pub schedule_word_ids: Vec<i64>,
 }
 
-/// 种子：单词本 + `word_count` 个单词 + 计划 + 一天的日程（total_words_count = word_count）。
+/// 种子：词汇本 + `word_count` 个单词 + 计划 + 一天的日程（total_words_count = word_count）。
 pub async fn seed_schedule(pool: &SqlitePool, word_count: usize) -> ScheduleFixture {
     let book_id =
-        sqlx::query("INSERT INTO word_books (title, description, created_at, last_used, updated_at) VALUES ('测试单词本', '', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))")
+        sqlx::query("INSERT INTO word_books (title, description, created_at, last_used, updated_at) VALUES ('测试词汇本', '', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))")
             .execute(pool)
             .await
             .expect("seed word_books")

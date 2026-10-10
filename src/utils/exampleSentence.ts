@@ -8,7 +8,7 @@ export interface SentencePart {
 
 /**
  * 把例句按目标单词切分，用于高亮（练习第一步）或挖空（第二步）。
- * 识别规则与 agent 工具 `sentenceContainsWord` 一致：单词本身及复数、过去式、-ing、比较级等常见变形。
+ * 识别规则与 agent 工具 `sentenceContainsWord` 一致：词汇本身及复数、过去式、-ing、比较级等常见变形。
  */
 export function splitExampleSentence(sentence: string, word: string): SentencePart[] {
   const w = word.trim().toLowerCase();

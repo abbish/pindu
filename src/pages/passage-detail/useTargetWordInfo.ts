@@ -22,7 +22,7 @@ const fromCard = (c: WordCard): Word => ({
 });
 
 /**
- * 一篇短文（含视频片段）目标词的学习资料：单词本里的词用单词本的资料，未收录的用单词卡（063）。
+ * 一篇短文（含视频片段）目标词的学习资料：词汇本里的词用词汇本的资料，未收录的用单词卡（063）。
  * 原文与台词里点词弹出的小卡片共用；单词卡生成完（word_cards 任务结束）自动刷新。
  */
 export function useTargetWordInfo(passage: Pick<Passage, 'id' | 'targetWords'>): Map<string, Word> {

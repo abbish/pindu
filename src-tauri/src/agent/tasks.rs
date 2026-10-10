@@ -335,7 +335,7 @@ pub fn generated_from_submission(
     words
 }
 
-/// 通过 agent 按意图生成单词（`existing` 为单词本里已有的词，小写）
+/// 通过 agent 按意图生成单词（`existing` 为词汇本里已有的词，小写）
 #[allow(clippy::too_many_arguments)]
 pub async fn generate_words(
     paths: &AgentPaths,
@@ -487,7 +487,7 @@ pub fn phonics_from_submission(details: &Value, requested: &[String]) -> Phonics
     }
 }
 
-/// 拼读分析的上下文：单词本场景 + 生成 / 提取时已确定的中文释义（小写单词 → 释义）
+/// 拼读分析的上下文：词汇本场景 + 生成 / 提取时已确定的中文释义（小写单词 → 释义）
 #[derive(Debug, Clone, Default)]
 pub struct PhonicsContext {
     pub scene: String,
@@ -2061,7 +2061,7 @@ mod tests {
         assert!(task.system_prompt.contains("读懂例句") && task.system_prompt.contains("想一想"));
     }
 
-    /// 单词本场景放在用户消息最前面；没有场景时消息与原来一致
+    /// 词汇本场景放在用户消息最前面；没有场景时消息与原来一致
     #[test]
     fn book_scene_leads_every_word_message() {
         let scene = crate::prompts::book_scene(
@@ -2069,7 +2069,7 @@ mod tests {
             "出国旅行常用词：机场、海关、酒店、问路",
             &["旅行".to_string()],
         );
-        assert!(scene.starts_with("【单词本场景】\n单词本：出国旅行\n场景说明：出国旅行常用词"));
+        assert!(scene.starts_with("【词汇本场景】\n词汇本：出国旅行\n场景说明：出国旅行常用词"));
         assert!(scene.contains("主题标签：旅行") && scene.contains("一词多义时选这个场景里的意思"));
         assert!(crate::prompts::book_scene("", " ", &[]).is_empty());
         // 没有描述和标签时只写标题
@@ -2127,7 +2127,7 @@ mod tests {
                 ("hints", &context.hint_lines(&words)),
             ],
         );
-        assert!(message.starts_with("【单词本场景】"));
+        assert!(message.starts_with("【词汇本场景】"));
         assert!(message.contains("请分析以下 2 个单词：\nCustoms, passport"));
         assert!(message.ends_with("例句也用这个意思）：\nCustoms：海关"));
         let plain = prompts::message(

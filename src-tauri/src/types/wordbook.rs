@@ -2,7 +2,7 @@ use super::material::Tag;
 use super::{Id, Timestamp};
 use serde::{Deserialize, Serialize};
 
-/// 单词本
+/// 词汇本
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WordBook {
     pub id: Id,
@@ -20,12 +20,12 @@ pub struct WordBook {
     /// 标签（迁移 060 起由「主题」改为素材共用标签）
     #[serde(default)]
     pub tags: Vec<Tag>,
-    /// 词性分布（单词本列表一次查询带出，免得前端逐本请求统计）
+    /// 词性分布（词汇本列表一次查询带出，免得前端逐本请求统计）
     #[serde(default)]
     pub word_types: Option<WordTypeDistribution>,
 }
 
-/// 创建单词本请求
+/// 创建词汇本请求
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateWordBookRequest {
     pub title: String,
@@ -35,7 +35,7 @@ pub struct CreateWordBookRequest {
     pub tag_ids: Option<Vec<Id>>,
 }
 
-/// 更新单词本请求
+/// 更新词汇本请求
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateWordBookRequest {
     pub title: Option<String>,
@@ -80,7 +80,7 @@ pub struct WordTutorRequest {
     /// 学习者正在看的讲解（讲解不落库，由前端带上）
     #[serde(default)]
     pub explanation: Option<String>,
-    /// 不在单词本的目标词：按单词卡答疑（此时 word_id 为 0）
+    /// 不在词汇本的目标词：按单词卡答疑（此时 word_id 为 0）
     #[serde(default)]
     pub card_word: Option<String>,
 }
@@ -205,7 +205,7 @@ pub struct UpdateWordRequest {
     pub examples: Option<Vec<WordExample>>,
 }
 
-/// 单词本统计
+/// 词汇本统计
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WordBookStatistics {
     pub total_books: i32,
@@ -270,7 +270,7 @@ pub struct AnalyzedWord {
     pub separable: bool,
 }
 
-/// 从分析结果创建单词本的请求
+/// 从分析结果创建词汇本的请求
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateWordBookFromAnalysisRequest {
     pub title: String,
@@ -279,7 +279,7 @@ pub struct CreateWordBookFromAnalysisRequest {
     pub icon_color: Option<String>,
     pub words: Vec<AnalyzedWord>,
     pub status: Option<String>,
-    pub book_id: Option<Id>, // 如果提供，则向现有单词本添加单词；否则创建新单词本
+    pub book_id: Option<Id>, // 如果提供，则向现有词汇本添加单词；否则创建新词汇本
     pub tag_ids: Option<Vec<Id>>,
 }
 

@@ -55,7 +55,7 @@ export interface AppShellProps {
 
 type NavItem = { key: TopLevelPage; label: string; icon: React.ComponentType };
 
-/** 侧边栏分组：一级功能（无标题）+ 素材库（单词本、短文） */
+/** 侧边栏分组：一级功能（无标题）+ 素材库（词汇本、短文） */
 const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     items: [
@@ -67,7 +67,7 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     label: '素材库',
     items: [
-      { key: 'wordbooks', label: '单词本', icon: BookOpen },
+      { key: 'wordbooks', label: '词汇本', icon: BookOpen },
       { key: 'passages', label: '短文库', icon: FileText },
       { key: 'videos', label: '视频库', icon: Clapperboard },
     ],

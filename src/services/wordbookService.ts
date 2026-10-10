@@ -20,12 +20,12 @@ import {
 } from '../types';
 
 /**
- * 单词本服务
+ * 词汇本服务
  */
 export class WordBookService extends BaseService {
 
   /**
-   * 获取所有单词本
+   * 获取所有词汇本
    */
   async getAllWordBooks(includeDeleted: boolean = false, status?: string): Promise<ApiResult<WordBook[]>> {
     return this.executeWithLoading(async () => {
@@ -35,7 +35,7 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 根据 ID 获取单词本详情
+   * 根据 ID 获取词汇本详情
    */
   async getWordBookById(id: Id): Promise<ApiResult<WordBook>> {
     return this.executeWithLoading(async () => {
@@ -46,7 +46,7 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 获取单词本关联的学习计划
+   * 获取词汇本关联的学习计划
    */
   async getWordBookLinkedPlans(id: Id): Promise<ApiResult<StudyPlanWithProgress[]>> {
     return this.executeWithLoading(async () => {
@@ -57,7 +57,7 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 创建单词本
+   * 创建词汇本
    */
   async createWordBook(request: CreateWordBookRequest): Promise<ApiResult<Id>> {
     return this.executeWithLoading(async () => {
@@ -68,7 +68,7 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 更新单词本
+   * 更新词汇本
    */
   async updateWordBook(
     id: Id,
@@ -82,9 +82,9 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 删除单词本
+   * 删除词汇本
    */
-  /** 恢复已删除的单词本（回到正式状态） */
+  /** 恢复已删除的词汇本（回到正式状态） */
   async restoreWordBook(id: Id): Promise<ApiResult<void>> {
     return this.executeWithLoading(async () => this.client.invoke<void>('restore_word_book', { bookId: id }));
   }
@@ -98,7 +98,7 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 获取单词本中的单词
+   * 获取词汇本中的单词
    */
   async getWordsByBookId(
     bookId: Id,
@@ -133,7 +133,7 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 添加单词到单词本
+   * 添加单词到词汇本
    */
   async addWordToBook(
     bookId: Id,
@@ -170,12 +170,12 @@ export class WordBookService extends BaseService {
   /**
    * 删除单词
    */
-  /** 这些单词里哪些已经在单词本中（忽略大小写），返回小写形式 */
+  /** 这些单词里哪些已经在词汇本中（忽略大小写），返回小写形式 */
   async findExistingWords(bookId: Id, words: string[]): Promise<ApiResult<string[]>> {
     return this.executeWithLoading(() => this.client.invoke<string[]>('find_existing_words', { bookId, words }));
   }
 
-  /** 批量删除同一单词本内的单词（后端单事务：要么全删，要么都不删），返回实际删除数 */
+  /** 批量删除同一词汇本内的单词（后端单事务：要么全删，要么都不删），返回实际删除数 */
   async deleteWords(bookId: Id, wordIds: Id[]): Promise<ApiResult<number>> {
     return this.executeWithLoading(
       () => this.client.invoke<number>('delete_words', { bookId, wordIds })
@@ -183,7 +183,7 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 获取单词本统计信息
+   * 获取词汇本统计信息
    */
   async getWordBookStatistics(): Promise<ApiResult<WordBookStatistics>> {
     return this.executeWithLoading(async () => {
@@ -192,7 +192,7 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 获取单词本词性统计
+   * 获取词汇本词性统计
    */
   async getWordBookTypeStatistics(bookId: Id): Promise<ApiResult<WordTypeDistribution>> {
     return this.executeWithLoading(async () => {
@@ -205,7 +205,7 @@ export class WordBookService extends BaseService {
   }
 
   /**
-   * 从分析结果创建单词本
+   * 从分析结果创建词汇本
    */
   async createWordBookFromAnalysis(
     request: {
@@ -215,7 +215,7 @@ export class WordBookService extends BaseService {
       icon_color?: string;
       words: AnalyzedWord[];
       status?: string;
-      book_id?: Id; // 如果提供，则向现有单词本添加单词
+      book_id?: Id; // 如果提供，则向现有词汇本添加单词
       tag_ids?: number[];
     }): Promise<ApiResult<WordSaveResult>> {
     return this.executeWithLoading(async () => {
@@ -223,7 +223,7 @@ export class WordBookService extends BaseService {
       this.validateRequired(request, ['title', 'words']);
 
       if (request.words.length === 0) {
-        throw new Error('单词本必须包含至少一个单词');
+        throw new Error('词汇本必须包含至少一个单词');
       }
 
       return this.client.invoke<{

@@ -31,7 +31,7 @@ export interface MaterialInputProps {
 }
 
 /**
- * 用户资料输入（单词本「从我的材料提取」与短文「从我的材料导入」共用）：
+ * 用户资料输入（词汇本「从我的材料提取」与短文「从我的材料导入」共用）：
  * 粘贴文本，或选择 / 拖入文件（txt、md、srt、vtt、docx、pdf）——文件由后端读成清理过的纯文本，填进同一个文本框，可以再改。
  */
 export const MaterialInput: React.FC<MaterialInputProps> = ({

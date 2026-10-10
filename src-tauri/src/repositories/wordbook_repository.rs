@@ -1,4 +1,4 @@
-//! 单词本数据访问层
+//! 词汇本数据访问层
 //!
 //! 提供 Repository 模式的数据访问封装
 //!
@@ -13,7 +13,7 @@ use crate::types::{common::Id, wordbook::*};
 use sqlx::{Row, SqliteConnection, SqlitePool};
 use std::sync::Arc;
 
-/// 单词本查询过滤器
+/// 词汇本查询过滤器
 #[derive(Debug, Clone, Default)]
 pub struct WordBookFilters {
     /// normal / draft / deleted（deleted = 已删除，只能在“已删除”里看到）
@@ -22,9 +22,9 @@ pub struct WordBookFilters {
     pub include_deleted: bool,
 }
 
-/// 单词本仓储
+/// 词汇本仓储
 ///
-/// 负责单词本的数据访问逻辑,封装所有数据库操作
+/// 负责词汇本的数据访问逻辑,封装所有数据库操作
 pub struct WordBookRepository {
     pool: Arc<SqlitePool>,
     logger: Arc<Logger>,
@@ -46,7 +46,7 @@ impl WordBookRepository {
         self.logger.clone()
     }
 
-    /// 查询单个单词本（包含主题标签）
+    /// 查询单个词汇本（包含主题标签）
     pub async fn find_by_id(&self, id: Id) -> AppResult<Option<WordBook>> {
         let query = r#"
             SELECT
@@ -88,7 +88,7 @@ impl WordBookRepository {
         }
     }
 
-    /// 查询所有单词本（支持过滤）
+    /// 查询所有词汇本（支持过滤）
     pub async fn find_all(&self, filters: WordBookFilters) -> AppResult<Vec<WordBook>> {
         let mut sql = String::from(
             r#"
@@ -103,7 +103,7 @@ impl WordBookRepository {
         "#,
         );
 
-        // 已删除的单词本只在“已删除”或“包含已删除”时出现
+        // 已删除的词汇本只在“已删除”或“包含已删除”时出现
         let status = filters.status.clone();
         match status.as_deref() {
             Some("deleted") => sql.push_str(" AND wb.deleted_at IS NOT NULL"),
@@ -147,7 +147,7 @@ impl WordBookRepository {
             .collect::<AppResult<Vec<WordBook>>>()
     }
 
-    /// 创建单词本及其主题标签（同一事务）
+    /// 创建词汇本及其主题标签（同一事务）
     pub async fn create(&self, request: CreateWordBookRequest) -> AppResult<Id> {
         let mut tx = self.pool.begin().await?;
         let id = self
@@ -174,7 +174,7 @@ impl WordBookRepository {
         Ok(id)
     }
 
-    /// 插入单词本（在调用方事务内执行），返回新 ID
+    /// 插入词汇本（在调用方事务内执行），返回新 ID
     pub async fn insert_conn(
         &self,
         conn: &mut SqliteConnection,
@@ -212,7 +212,7 @@ impl WordBookRepository {
             .await
     }
 
-    /// 单词本是否存在且未删除（在调用方事务内读取）
+    /// 词汇本是否存在且未删除（在调用方事务内读取）
     pub async fn exists_active_conn(&self, conn: &mut SqliteConnection, id: Id) -> AppResult<bool> {
         let row = sqlx::query("SELECT id FROM word_books WHERE id = ? AND deleted_at IS NULL")
             .bind(id)
@@ -221,7 +221,7 @@ impl WordBookRepository {
         Ok(row.is_some())
     }
 
-    /// 更新单词本
+    /// 更新词汇本
     pub async fn update(&self, id: Id, request: UpdateWordBookRequest) -> AppResult<()> {
         // 构建动态更新查询
         let mut set_clauses = Vec::new();
@@ -272,7 +272,7 @@ impl WordBookRepository {
         }
         query_builder = query_builder.bind(id);
 
-        // 单词本与主题标签在一个事务里改完，失败时不留下标签被清空的单词本
+        // 词汇本与主题标签在一个事务里改完，失败时不留下标签被清空的词汇本
         let mut tx = self.pool.begin().await?;
         let rows_affected = query_builder
             .execute(&mut *tx)
@@ -285,7 +285,7 @@ impl WordBookRepository {
             .rows_affected();
 
         if rows_affected == 0 {
-            return Err(AppError::NotFound("单词本不存在，可能已被删除".to_string()));
+            return Err(AppError::NotFound("词汇本不存在，可能已被删除".to_string()));
         }
 
         self.logger.database_operation(
@@ -306,7 +306,7 @@ impl WordBookRepository {
         Ok(())
     }
 
-    /// 软删除单词本
+    /// 软删除词汇本
     pub async fn delete(&self, id: Id) -> AppResult<()> {
         let query = format!(
             "UPDATE word_books SET deleted_at = {now}, updated_at = {now}, status = 'deleted'
@@ -326,7 +326,7 @@ impl WordBookRepository {
             .rows_affected();
 
         if rows_affected == 0 {
-            return Err(AppError::NotFound("单词本不存在，可能已被删除".to_string()));
+            return Err(AppError::NotFound("词汇本不存在，可能已被删除".to_string()));
         }
 
         self.logger.database_operation(
@@ -339,7 +339,7 @@ impl WordBookRepository {
         Ok(())
     }
 
-    /// 获取单词本统计信息
+    /// 获取词汇本统计信息
     pub async fn get_statistics(&self, id: Id) -> AppResult<WordBookStatistics> {
         // 获取单词总数
         // 注意: words 表没有 deleted_at 字段，不需要过滤
@@ -369,13 +369,13 @@ impl WordBookRepository {
             .unwrap_or_default();
 
         Ok(WordBookStatistics {
-            total_books: 1, // 当前查询单个单词本
+            total_books: 1, // 当前查询单个词汇本
             total_words: total_words as i32,
             word_types,
         })
     }
 
-    /// 更新所有单词本的统计信息
+    /// 更新所有词汇本的统计信息
     pub async fn update_all_counts(&self) -> AppResult<()> {
         let update_query = r#"
             UPDATE word_books
@@ -414,7 +414,7 @@ impl WordBookRepository {
         Ok(())
     }
 
-    /// 更新单词本的统计信息（单词数量、最后使用时间等）
+    /// 更新词汇本的统计信息（单词数量、最后使用时间等）
     pub async fn update_statistics(&self, id: Id) -> AppResult<()> {
         let update_query = r#"
             UPDATE word_books
@@ -445,7 +445,7 @@ impl WordBookRepository {
         Ok(())
     }
 
-    /// 各单词本的词性分布（一次查询）；`book_id` 为 None 时统计全部单词本
+    /// 各词汇本的词性分布（一次查询）；`book_id` 为 None 时统计全部词汇本
     pub async fn word_type_distributions(
         &self,
         book_id: Option<Id>,
@@ -477,7 +477,7 @@ impl WordBookRepository {
 
     // ===== 辅助方法 =====
 
-    /// 恢复已删除的单词本（回到正式状态）
+    /// 恢复已删除的词汇本（回到正式状态）
     pub async fn restore(&self, id: Id) -> AppResult<bool> {
         Ok(sqlx::query(&format!(
             "UPDATE word_books SET deleted_at = NULL, status = 'normal', updated_at = {}
@@ -491,7 +491,7 @@ impl WordBookRepository {
             > 0)
     }
 
-    /// 用到这个单词本的单词、且还没结束（草稿 / 待开始 / 进行中 / 已暂停）的计划名称
+    /// 用到这个词汇本的单词、且还没结束（草稿 / 待开始 / 进行中 / 已暂停）的计划名称
     pub async fn unfinished_plan_names(&self, id: Id) -> AppResult<Vec<String>> {
         Ok(sqlx::query_scalar(
             "SELECT DISTINCT sp.name FROM study_plans sp
@@ -506,7 +506,7 @@ impl WordBookRepository {
         .await?)
     }
 
-    /// 单词本练习后刷新“最近使用”（练习完成时调用，调用方事务内）
+    /// 词汇本练习后刷新“最近使用”（练习完成时调用，调用方事务内）
     pub async fn touch_last_used_by_schedule_conn(
         conn: &mut SqliteConnection,
         schedule_id: Id,
@@ -580,7 +580,7 @@ mod tests {
     #[tokio::test]
     async fn find_all_includes_newly_created_book() {
         let repo = create_test_repository().await;
-        // 001 迁移自带示例单词本，库在迁移后不为空
+        // 001 迁移自带示例词汇本，库在迁移后不为空
         let before = repo.find_all(WordBookFilters::default()).await.unwrap();
 
         let id = repo

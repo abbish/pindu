@@ -293,7 +293,7 @@ pub const PICK_DIFFICULTIES: [&str; 3] = ["easy", "medium", "hard"];
 /// AI 挑词的常用程度（空 = 不限）：common 日常常用 / advanced 也要书面、少见的
 pub const PICK_FREQUENCIES: [&str; 2] = ["common", "advanced"];
 
-/// 一个词的学习情况：`level` 是记忆等级（单词本里的词取它在各计划里最高的，没进过计划为 0），`wrong` 是答错次数
+/// 一个词的学习情况：`level` 是记忆等级（词汇本里的词取它在各计划里最高的，没进过计划为 0），`wrong` 是答错次数
 pub fn learning_statuses(level: i64, wrong: i64) -> Vec<String> {
     let mut statuses = vec![match level {
         l if l >= 4 => "mastered",

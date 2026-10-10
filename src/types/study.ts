@@ -207,9 +207,9 @@ export interface StudyPlanScheduleRequest {
   /** 每天新学的词数（1–50）；周期与复习由系统按自适应间隔复习计算 */
   dailyNewWords: number;
   startDate: string; // YYYY-MM-DD
-  wordbookIds: Id[]; // 选择的单词本ID列表
+  wordbookIds: Id[]; // 选择的词汇本ID列表
   modelId?: number; // AI模型ID
-  /** 是否用 AI 排学习顺序（默认 true）；false 时按单词本原顺序立即排好 */
+  /** 是否用 AI 排学习顺序（默认 true）；false 时按词汇本原顺序立即排好 */
   useAi?: boolean;
 }
 
@@ -242,7 +242,7 @@ export interface DailyStudyWord {
   reviewCount?: number;
   priority: 'high' | 'medium' | 'low';
   difficultyLevel: number;
-  // 新增字段，与单词本详情页面保持一致
+  // 新增字段，与词汇本详情页面保持一致
   meaning?: string;
   partOfSpeech?: 'n.' | 'v.' | 'adj.' | 'adv.' | 'prep.' | 'conj.' | 'int.' | 'pron.';
   ipa?: string;
@@ -513,7 +513,7 @@ export type StudyPlanAction =
 /// 获取可用操作
 export const getAvailableActions = (status: UnifiedStudyPlanStatus): StudyPlanAction[] => {
   switch (status) {
-    // 不再有“编辑 → 草稿 → 发布”：名称、节奏、单词本在详情页「设置」里就地修改（authoring-flows-redesign B5）
+    // 不再有“编辑 → 草稿 → 发布”：名称、节奏、词汇本在详情页「设置」里就地修改（authoring-flows-redesign B5）
     case 'Draft':
       return ['publish', 'delete'];
     case 'Pending':

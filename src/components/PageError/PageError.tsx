@@ -4,7 +4,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 
 export interface PageErrorProps {
-  /** “无法加载 + 对象”，如“无法加载单词本” */
+  /** “无法加载 + 对象”，如“无法加载词汇本” */
   title: string;
   /** 原因（直接用 `result.error`）；多个数据源失败时传列表 */
   message?: React.ReactNode;

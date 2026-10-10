@@ -51,7 +51,7 @@
   --warning: #92400e;
   --warning-soft: #fef3c7;
   --overdue: #f59e0b;
-  /* 单词本图标配色（WordBookIcon，背景用 /15 透明度） */
+  /* 词汇本图标配色（WordBookIcon，背景用 /15 透明度） */
   --book-teal: #0d9488;
   --book-blue: #2563eb;
   --book-indigo: #4f46e5;
@@ -96,7 +96,7 @@
   --success-soft: #14532d;
   --warning: #fde68a;
   --warning-soft: #451a03;
-  /* 单词本图标配色（WordBookIcon，背景用 /15 透明度） */
+  /* 词汇本图标配色（WordBookIcon，背景用 /15 透明度） */
   --book-teal: #5eead4;
   --book-blue: #93c5fd;
   --book-indigo: #a5b4fc;

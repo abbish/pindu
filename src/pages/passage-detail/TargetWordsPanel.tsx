@@ -16,7 +16,7 @@ import type { Passage, PassageTargetWord } from '@/types/passage';
 
 export interface TargetWordsPanelProps {
   passage: Passage;
-  /** 列表下方的附加内容（如把未收录词加入单词本） */
+  /** 列表下方的附加内容（如把未收录词加入词汇本） */
   footer?: React.ReactNode;
   /** 打开时定位到这个词（从原文侧栏点进来） */
   focusWord?: string | null;
@@ -26,11 +26,11 @@ export interface TargetWordsPanelProps {
 
 /**
  * 短文详情「目标词」页签：左边目标词列表（指定单词 / AI 选词或重点词，未收录的标出），右边单词卡（WordStudyCard，
- * 与单词本共用）外加「本文中」的句子；未收录的词用单词卡（缺的自动补生成）。↑ ↓ 或上一个 / 下一个切换。
+ * 与词汇本共用）外加「本文中」的句子；未收录的词用单词卡（缺的自动补生成）。↑ ↓ 或上一个 / 下一个切换。
  */
 export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord, onOpenPassage }) => {
   const [details, setDetails] = useState<Map<string, Word> | null>(null);
-  /** 不在单词本的目标词的单词卡（小写单词 → 卡片） */
+  /** 不在词汇本的目标词的单词卡（小写单词 → 卡片） */
   const [cards, setCards] = useState<Map<string, WordCard> | null>(null);
   /** 补生成单词卡的后台任务 */
   const [cardJobId, setCardJobId] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
   const word = current ? details?.get(current.word.toLowerCase()) : undefined;
   const card = current && current.wordId === null ? cards?.get(current.word.toLowerCase()) : undefined;
   const info = word ? studyInfoFromWord(word) : card ? studyInfoFromCard(card) : undefined;
-  /** 讲解 / 答疑用的 id：单词本的词用 wordId，未收录的用单词卡 */
+  /** 讲解 / 答疑用的 id：词汇本的词用 wordId，未收录的用单词卡 */
   const aiWordId = current ? (current.wordId ?? (card ? cardWordId(card.word) : null)) : null;
   const generatingCard = current?.wordId === null && !card && cardJob !== undefined && isJobActive(cardJob);
 

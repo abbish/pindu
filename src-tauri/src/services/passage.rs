@@ -1,5 +1,5 @@
 //! 短文库（DECISIONS D23）：短文是独立素材，阅读理解题按「题组」单独生成。
-//! 写短文：来源（单词本 / 学习计划，可组合）→ 用户指定必用词 + AI 从来源里按场景挑词 → AI 写短文。
+//! 写短文：来源（词汇本 / 学习计划，可组合）→ 用户指定必用词 + AI 从来源里按场景挑词 → AI 写短文。
 //! 出题：选题型、题量、难度 → AI 出一套题。练习：按题组做阅读或听力 → 客观题判分 + 开放题 AI 评分。
 //! 统计与单词练习独立，不读写记忆等级。
 
@@ -35,7 +35,7 @@ const TOPIC_MAX: usize = 200;
 const INSTRUCTION_MAX: usize = 500;
 /// 按描述生成时 AI 为整份规划选目标词的上限
 const FREE_PLAN_WORDS: usize = 32;
-/// 场景里最多合并几本单词本的描述
+/// 场景里最多合并几本词汇本的描述
 const MAX_SCENE_BOOKS: usize = 3;
 /// 题组名称最大长度
 const SET_NAME_MAX: usize = 30;
@@ -190,7 +190,7 @@ impl PassageService {
                 .repository
                 .book_title(book_id)
                 .await?
-                .ok_or_else(|| AppError::NotFound("单词本不存在，可能已被删除".to_string()))?;
+                .ok_or_else(|| AppError::NotFound("词汇本不存在，可能已被删除".to_string()))?;
             out.push(PassageSource {
                 kind: "book".into(),
                 ref_id: book_id,
@@ -217,7 +217,7 @@ impl PassageService {
         Ok(out)
     }
 
-    /// 候选行：计划在前（同一个词两边都有时保留计划里的学习标签），单词本在后
+    /// 候选行：计划在前（同一个词两边都有时保留计划里的学习标签），词汇本在后
     async fn candidate_rows(&self, sources: &PassageWordSources) -> AppResult<Vec<CandidateRow>> {
         let mut rows = Vec::new();
         if !sources.plan_ids.is_empty() {
@@ -293,7 +293,7 @@ impl PassageService {
             .collect())
     }
 
-    /// 必用词（勾选的 + 手动输入的）、AI 可挑选的候选池，以及必用词所在的单词本
+    /// 必用词（勾选的 + 手动输入的）、AI 可挑选的候选池，以及必用词所在的词汇本
     async fn resolve_words(
         &self,
         request: &GeneratePassageRequest,
@@ -363,7 +363,7 @@ impl PassageService {
         Ok((required, pool, books))
     }
 
-    /// 场景：自定主题优先；否则合并所选单词本（及必用词所在单词本）的场景。
+    /// 场景：自定主题优先；否则合并所选词汇本（及必用词所在词汇本）的场景。
     /// 返回（给模型的场景文本, 给界面看的场景说明）
     async fn scene(&self, topic: &str, book_ids: &[Id]) -> AppResult<(String, String)> {
         if !topic.is_empty() {
@@ -472,7 +472,7 @@ impl PassageService {
         )
     }
 
-    /// 选好的词：必用词、AI 可挑的候选池（及实际可挑数）、场景用到的单词本
+    /// 选好的词：必用词、AI 可挑的候选池（及实际可挑数）、场景用到的词汇本
     async fn chosen_words(
         &self,
         request: &GeneratePassageRequest,
@@ -507,7 +507,7 @@ impl PassageService {
         Ok((required, pool, ai_pick, scene_books))
     }
 
-    /// 内容规划里一篇的词：有 id 的必须是真实存在的词，手动词必须是英文单词；返回词与它们所在的单词本。
+    /// 内容规划里一篇的词：有 id 的必须是真实存在的词，手动词必须是英文单词；返回词与它们所在的词汇本。
     /// `allow_empty`：按描述生成时这一篇可以不指定单词
     async fn plan_item_words(
         &self,
@@ -609,7 +609,7 @@ impl PassageService {
         Ok(plan)
     }
 
-    /// AI 自己选的目标词：已在单词本里的关联上 wordId（不算未收录词）
+    /// AI 自己选的目标词：已在词汇本里的关联上 wordId（不算未收录词）
     async fn link_existing_words(
         &self,
         plan: &mut crate::types::passage::PassagePlan,
@@ -1302,7 +1302,7 @@ pub(crate) mod tests {
         let service = PassageService::new(pool.clone(), test_logger());
         let p = service.get(id).await.unwrap();
         assert_eq!(p.sentences.len(), 3);
-        // 手动输入的 fly 没有资料，只返回单词本里的两个词
+        // 手动输入的 fly 没有资料，只返回词汇本里的两个词
         let details = service.target_word_details(id).await.unwrap();
         assert_eq!(
             details.iter().map(|w| w.word.as_str()).collect::<Vec<_>>(),
@@ -1325,7 +1325,7 @@ pub(crate) mod tests {
             .unwrap()
             .is_empty());
 
-        // 删除来源单词本：短文还在，来源标为已删除
+        // 删除来源词汇本：短文还在，来源标为已删除
         sqlx::query("DELETE FROM word_books WHERE id = 970")
             .execute(pool.as_ref())
             .await
@@ -1485,7 +1485,7 @@ pub(crate) mod tests {
         assert_eq!(snapshot[0].detail.as_deref(), Some("wrong,weak"));
     }
 
-    /// 单词本来源的学习情况按所有计划里的记忆等级与答错记录判断；AI 挑词的候选池按学习情况筛选
+    /// 词汇本来源的学习情况按所有计划里的记忆等级与答错记录判断；AI 挑词的候选池按学习情况筛选
     #[tokio::test]
     async fn book_words_carry_learning_statuses_and_filter_the_pool() {
         use crate::test_support::{seed_schedule, seed_session, seed_step};

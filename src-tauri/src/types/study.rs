@@ -300,9 +300,9 @@ pub struct StudyPlanScheduleRequest {
     #[serde(default)]
     pub review_frequency: i32,
     pub start_date: String,    // YYYY-MM-DD
-    pub wordbook_ids: Vec<Id>, // 选择的单词本ID列表
+    pub wordbook_ids: Vec<Id>, // 选择的词汇本ID列表
     pub model_id: Option<i64>, // AI模型ID
-    /// 是否用 AI 排学习顺序（默认 true）；false 时按单词本原顺序、词长估难度，立即完成
+    /// 是否用 AI 排学习顺序（默认 true）；false 时按词汇本原顺序、词长估难度，立即完成
     #[serde(default)]
     pub use_ai: Option<bool>,
 }

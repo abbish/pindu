@@ -1,4 +1,4 @@
-//! 素材关联命令：标签（单词本 / 短文（含视频切片）/ 原始视频共用，迁移 060）与单词 ↔ 素材
+//! 素材关联命令：标签（词汇本 / 短文（含视频切片）/ 原始视频共用，迁移 060）与单词 ↔ 素材
 
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
@@ -142,7 +142,7 @@ pub async fn get_word_materials(
     super::finish(&logger, "get_word_materials", result)
 }
 
-/// 单词本里每个词出现过的短文数与切片数
+/// 词汇本里每个词出现过的短文数与切片数
 #[tauri::command]
 pub async fn get_book_word_materials(
     app: AppHandle,

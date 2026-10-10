@@ -187,7 +187,7 @@ impl StudyPlanService {
             &format!("已永久删除学习计划 {}", plan_id),
         );
 
-        // 刷新单词本的关联计划数量（存储列；在事务外执行，失败不影响删除结果）
+        // 刷新词汇本的关联计划数量（存储列；在事务外执行，失败不影响删除结果）
         let wordbook_service =
             crate::services::wordbook::WordBookService::new(self.pool.clone(), self.logger.clone());
         if let Err(e) = wordbook_service.update_all_counts().await {
@@ -200,7 +200,7 @@ impl StudyPlanService {
         Ok(())
     }
 
-    /// 获取学习计划关联的单词本 ID
+    /// 获取学习计划关联的词汇本 ID
     pub async fn get_plan_word_book_ids(&self, plan_id: Id) -> AppResult<Vec<Id>> {
         self.repository.find_word_book_ids(plan_id).await
     }
@@ -355,7 +355,7 @@ impl StudyPlanService {
         self.repository.find_plan_schedules(plan_id).await
     }
 
-    /// 获取关联到指定单词本的学习计划
+    /// 获取关联到指定词汇本的学习计划
     pub async fn get_linked_plans_by_wordbook(
         &self,
         wordbook_id: Id,
@@ -516,7 +516,7 @@ impl StudyPlanService {
             AppError::DatabaseError(format!("保存失败：{}", e))
         })?;
 
-        // 更新相关单词本的关联计划数量（在事务外执行，失败不影响主流程）
+        // 更新相关词汇本的关联计划数量（在事务外执行，失败不影响主流程）
         let wordbook_service =
             crate::services::wordbook::WordBookService::new(self.pool.clone(), self.logger.clone());
         if let Err(e) = wordbook_service.update_all_counts().await {
@@ -753,7 +753,7 @@ mod tests {
             .fetch_one(pool.as_ref())
             .await
             .unwrap();
-        // 单词本的关联计划数（存储列）先刷新到 1
+        // 词汇本的关联计划数（存储列）先刷新到 1
         let book_id: Id = sqlx::query_scalar("SELECT word_book_id FROM words WHERE id = ?")
             .bind(fx.word_ids[0])
             .fetch_one(pool.as_ref())
@@ -793,13 +793,13 @@ mod tests {
                 .unwrap();
             assert_eq!(n, 0, "{} 应被级联删除", table);
         }
-        // 单词本与单词不受影响
+        // 词汇本与单词不受影响
         let words: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM words")
             .fetch_one(pool.as_ref())
             .await
             .unwrap();
         assert_eq!(words, words_before);
-        // 删除后单词本的关联计划数归零
+        // 删除后词汇本的关联计划数归零
         assert_eq!(linked().await, 0);
         // 再删一次：不存在
         assert!(matches!(

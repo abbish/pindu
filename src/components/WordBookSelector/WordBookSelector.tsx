@@ -18,19 +18,19 @@ export interface WordBookOption {
 }
 
 export interface WordBookSelectorProps {
-  /** 可选单词本 */
+  /** 可选词汇本 */
   books: WordBookOption[];
-  /** 已选单词本 ID */
+  /** 已选词汇本 ID */
   selectedBooks: number[];
   /** 选择变化 */
   onSelectionChange: (selectedIds: number[]) => void;
   /** 加载中 */
   loading?: boolean;
-  /** 没有单词本时的“去新建”入口 */
+  /** 没有词汇本时的“去新建”入口 */
   onCreateBook?: () => void;
 }
 
-/** 选择计划使用的单词本（可多选）：带图标的列表行，勾选后高亮 */
+/** 选择计划使用的词汇本（可多选）：带图标的列表行，勾选后高亮 */
 export const WordBookSelector: React.FC<WordBookSelectorProps> = ({ books, selectedBooks, onSelectionChange, loading = false, onCreateBook }) => {
   const toggle = (id: number) =>
     onSelectionChange(selectedBooks.includes(id) ? selectedBooks.filter((b) => b !== id) : [...selectedBooks, id]);
@@ -49,11 +49,11 @@ export const WordBookSelector: React.FC<WordBookSelectorProps> = ({ books, selec
     return (
       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center">
         <BookOpen className="size-5 text-muted-foreground" />
-        <div className="text-sm font-medium">还没有可用的单词本</div>
+        <div className="text-sm font-medium">还没有可用的词汇本</div>
         {onCreateBook && (
           <Button size="sm" variant="outline" className="mt-1" onClick={onCreateBook}>
             <Plus />
-            去新建单词本
+            去新建词汇本
           </Button>
         )}
       </div>

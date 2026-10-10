@@ -59,7 +59,7 @@ const paceSummary = (r: PlanPaceResult) =>
 
 /**
  * 计划「设置」页签（就地生效，不再转草稿；authoring-flows-redesign B5）：
- * 名称与描述；每天新词数（只重排还没练过的新词日，已学的单词、复习与练习记录不变）；单词本（列出 + 追加）；
+ * 名称与描述；每天新词数（只重排还没练过的新词日，已学的单词、复习与练习记录不变）；词汇本（列出 + 追加）；
  * 短文（练习内容、间隔、顺序与题组，整体保存，已完成的锁定；C4）；删除。
  */
 export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChanged, onDelete }) => {
@@ -110,7 +110,7 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
     await onChanged();
   };
 
-  // 单词本
+  // 词汇本
   const [books, setBooks] = useState<WordBookOption[]>([]);
   const [planBookIds, setPlanBookIds] = useState<number[]>([]);
   const [adding, setAdding] = useState(false);
@@ -285,18 +285,18 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
       )}
 
       <SettingsSection
-        title="单词本"
+        title="词汇本"
         actions={
           <Button variant="outline" size="sm" onClick={() => setAdding(true)} disabled={!editable || addableBooks.length === 0}>
             <Plus />
-            追加单词本
+            追加词汇本
           </Button>
         }
       >
         {!hasWords ? (
-          <SettingsRow label="还没有单词本" />
+          <SettingsRow label="还没有词汇本" />
         ) : planBooks.length === 0 ? (
-          <SettingsRow label="没有找到计划的单词本" description="单词本可能已被删除" />
+          <SettingsRow label="没有找到计划的词汇本" description="词汇本可能已被删除" />
         ) : (
           planBooks.map((b) => <SettingsRow key={b.id} icon={<WordBookIcon icon={b.icon} color={b.color} />} label={b.name} description={`${b.wordCount} 个单词`} />)
         )}
@@ -390,11 +390,11 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>追加单词本</DialogTitle>
+            <DialogTitle>追加词汇本</DialogTitle>
             <DialogDescription>新单词按每天 {currentPace} 个排在没学的新词后面</DialogDescription>
           </DialogHeader>
           <WordBookSelector books={addableBooks} selectedBooks={toAdd} onSelectionChange={setToAdd} />
-          {addBooksError && <InlineError title="无法追加单词本">{addBooksError}</InlineError>}
+          {addBooksError && <InlineError title="无法追加词汇本">{addBooksError}</InlineError>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setAdding(false)} disabled={savingBooks}>
               取消

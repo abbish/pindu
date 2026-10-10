@@ -1,6 +1,6 @@
-//! 单词本业务逻辑服务
+//! 词汇本业务逻辑服务
 //!
-//! 封装单词本相关的业务逻辑
+//! 封装词汇本相关的业务逻辑
 //!
 //! # 注意
 //! 此模块当前独立实现,未来将集成到 handlers
@@ -15,28 +15,28 @@ use crate::types::{
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
-/// 单词本服务
+/// 词汇本服务
 ///
-/// 负责单词本的业务逻辑处理
-/// 单词本名称：必填，最多 100 字（与前端表单同一规则）
+/// 负责词汇本的业务逻辑处理
+/// 词汇本名称：必填，最多 100 字（与前端表单同一规则）
 fn validate_title(title: &str) -> AppResult<()> {
     let title = title.trim();
     if title.is_empty() {
-        return Err(AppError::ValidationError("单词本名称不能为空".to_string()));
+        return Err(AppError::ValidationError("词汇本名称不能为空".to_string()));
     }
     if title.chars().count() > 100 {
         return Err(AppError::ValidationError(
-            "单词本名称不能超过 100 个字".to_string(),
+            "词汇本名称不能超过 100 个字".to_string(),
         ));
     }
     Ok(())
 }
 
-/// 单词本描述：最多 500 字
+/// 词汇本描述：最多 500 字
 fn validate_description(description: &str) -> AppResult<()> {
     if description.chars().count() > 500 {
         return Err(AppError::ValidationError(
-            "单词本描述不能超过 500 个字".to_string(),
+            "词汇本描述不能超过 500 个字".to_string(),
         ));
     }
     Ok(())
@@ -56,7 +56,7 @@ impl WordBookService {
         }
     }
 
-    /// 获取单词本列表
+    /// 获取词汇本列表
     pub async fn get_word_books(
         &self,
         include_deleted: bool,
@@ -77,19 +77,19 @@ impl WordBookService {
         Ok(books)
     }
 
-    /// 获取单词本(仅基本信息)
+    /// 获取词汇本(仅基本信息)
     pub async fn get_word_book(&self, id: Id) -> AppResult<WordBook> {
         // 获取基本信息
         let word_book = self
             .repository
             .find_by_id(id)
             .await?
-            .ok_or_else(|| AppError::NotFound("单词本不存在，可能已被删除".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("词汇本不存在，可能已被删除".to_string()))?;
 
         Ok(word_book)
     }
 
-    /// 创建单词本
+    /// 创建词汇本
     pub async fn create_word_book(&self, request: CreateWordBookRequest) -> AppResult<Id> {
         validate_title(&request.title)?;
         validate_description(&request.description)?;
@@ -98,14 +98,14 @@ impl WordBookService {
         self.repository.create(request).await
     }
 
-    /// 更新单词本
+    /// 更新词汇本
     pub async fn update_word_book(&self, id: Id, request: UpdateWordBookRequest) -> AppResult<()> {
-        // 验证单词本是否存在
+        // 验证词汇本是否存在
         let _existing = self
             .repository
             .find_by_id(id)
             .await?
-            .ok_or_else(|| AppError::NotFound("单词本不存在，可能已被删除".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("词汇本不存在，可能已被删除".to_string()))?;
 
         if let Some(title) = &request.title {
             validate_title(title)?;
@@ -114,11 +114,11 @@ impl WordBookService {
             validate_description(description)?;
         }
 
-        // 单词本只有“正常”一种可编辑状态（2026-10 取消草稿，存量由迁移 049 改为正常）；删除走删除命令
+        // 词汇本只有“正常”一种可编辑状态（2026-10 取消草稿，存量由迁移 049 改为正常）；删除走删除命令
         if let Some(status) = &request.status {
             if status != "normal" {
                 return Err(AppError::ValidationError(
-                    "单词本状态只能是 normal（草稿状态已取消，删除请用删除操作）".to_string(),
+                    "词汇本状态只能是 normal（草稿状态已取消，删除请用删除操作）".to_string(),
                 ));
             }
         }
@@ -127,30 +127,30 @@ impl WordBookService {
         self.repository.update(id, request).await
     }
 
-    /// 删除单词本（软删除，可在“已删除”里恢复）；被未结束的计划使用时不能删除
+    /// 删除词汇本（软删除，可在“已删除”里恢复）；被未结束的计划使用时不能删除
     pub async fn delete_word_book(&self, id: Id) -> AppResult<()> {
-        // 验证单词本是否存在
+        // 验证词汇本是否存在
         let _existing = self
             .repository
             .find_by_id(id)
             .await?
-            .ok_or_else(|| AppError::NotFound("单词本不存在，可能已被删除".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("词汇本不存在，可能已被删除".to_string()))?;
         self.ensure_not_in_unfinished_plans(id, "删除").await?;
 
         // 调用 repository 删除
         self.repository.delete(id).await
     }
 
-    /// 恢复已删除的单词本
+    /// 恢复已删除的词汇本
     pub async fn restore_word_book(&self, id: Id) -> AppResult<()> {
         if self.repository.restore(id).await? {
             Ok(())
         } else {
-            Err(AppError::NotFound(format!("没有找到已删除的单词本 {}", id)))
+            Err(AppError::NotFound(format!("没有找到已删除的词汇本 {}", id)))
         }
     }
 
-    /// 单词本被草稿 / 待开始 / 进行中 / 已暂停的计划使用时，不允许删除或转草稿
+    /// 词汇本被草稿 / 待开始 / 进行中 / 已暂停的计划使用时，不允许删除或转草稿
     async fn ensure_not_in_unfinished_plans(&self, id: Id, action: &str) -> AppResult<()> {
         let plans = self.repository.unfinished_plan_names(id).await?;
         if plans.is_empty() {
@@ -162,41 +162,41 @@ impl WordBookService {
             .collect::<Vec<_>>()
             .join("");
         Err(AppError::ValidationError(format!(
-            "这个单词本正在被学习计划{}使用，不能{}。请先完成、终止或删除这些计划。",
+            "这个词汇本正在被学习计划{}使用，不能{}。请先完成、终止或删除这些计划。",
             names, action
         )))
     }
 
-    /// 获取单词本统计信息
+    /// 获取词汇本统计信息
     pub async fn get_word_book_statistics(&self, id: Id) -> AppResult<WordBookStatistics> {
-        // 验证单词本是否存在
+        // 验证词汇本是否存在
         let _existing = self
             .repository
             .find_by_id(id)
             .await?
-            .ok_or_else(|| AppError::NotFound("单词本不存在，可能已被删除".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("词汇本不存在，可能已被删除".to_string()))?;
 
         // 调用 repository 获取统计
         self.repository.get_statistics(id).await
     }
 
-    /// 获取单词本词性分布
+    /// 获取词汇本词性分布
     pub async fn get_word_type_distribution(&self, id: Id) -> AppResult<WordTypeDistribution> {
         let stats = self.get_word_book_statistics(id).await?;
         Ok(stats.word_types)
     }
 
-    /// 更新所有单词本的统计信息
+    /// 更新所有词汇本的统计信息
     pub async fn update_all_counts(&self) -> AppResult<()> {
         self.repository.update_all_counts().await
     }
 
-    /// 更新单词本的统计信息
+    /// 更新词汇本的统计信息
     pub async fn update_statistics(&self, id: Id) -> AppResult<()> {
         self.repository.update_statistics(id).await
     }
 
-    /// 从分析结果创建单词本（批量操作）
+    /// 从分析结果创建词汇本（批量操作）
     pub async fn create_word_book_from_analysis(
         &self,
         request: CreateWordBookFromAnalysisRequest,
@@ -206,12 +206,12 @@ impl WordBookService {
 
         // 验证输入
         if request.title.trim().is_empty() {
-            return Err(AppError::ValidationError("单词本标题不能为空".to_string()));
+            return Err(AppError::ValidationError("词汇本标题不能为空".to_string()));
         }
 
         if request.words.is_empty() {
             return Err(AppError::ValidationError(
-                "单词本必须包含至少一个单词".to_string(),
+                "词汇本必须包含至少一个单词".to_string(),
             ));
         }
 
@@ -274,18 +274,18 @@ impl WordBookService {
         let pool = self.repository.get_pool();
         let mut tx = crate::services::srs::begin_write(&pool).await?;
 
-        // 4. 确定目标单词本ID（已有单词本须存在；否则在事务中新建并关联主题标签）
+        // 4. 确定目标词汇本ID（已有词汇本须存在；否则在事务中新建并关联主题标签）
         let book_id = if let Some(existing_book_id) = request.book_id {
             if !self
                 .repository
                 .exists_active_conn(&mut tx, existing_book_id)
                 .await?
             {
-                return Err(AppError::NotFound("单词本不存在，可能已被删除".to_string()));
+                return Err(AppError::NotFound("词汇本不存在，可能已被删除".to_string()));
             }
             existing_book_id
         } else {
-            // 单词本已取消草稿状态：请求里的 status 只为兼容旧前端保留，一律按正常创建
+            // 词汇本已取消草稿状态：请求里的 status 只为兼容旧前端保留，一律按正常创建
             let creation_status = "normal";
             let icon = request.icon.unwrap_or_else(|| "bookmark".to_string());
             let icon_color = request.icon_color.unwrap_or_else(|| "primary".to_string());
@@ -358,11 +358,11 @@ impl WordBookService {
         // 6. 提交事务
         tx.commit().await?;
 
-        // 7. 更新单词本统计（在事务外，避免长时间锁定）；单词已经保存，统计失败只记日志，下次刷新会补上
+        // 7. 更新词汇本统计（在事务外，避免长时间锁定）；单词已经保存，统计失败只记日志，下次刷新会补上
         if let Err(e) = self.update_statistics(book_id).await {
             self.logger.warn(
                 "WORDBOOK_SERVICE",
-                &format!("更新单词本 {} 统计失败", book_id),
+                &format!("更新词汇本 {} 统计失败", book_id),
                 Some(&e.to_string()),
             );
         }
@@ -462,7 +462,7 @@ mod tests {
 
     fn request(book_id: Option<Id>, words: Vec<AnalyzedWord>) -> CreateWordBookFromAnalysisRequest {
         CreateWordBookFromAnalysisRequest {
-            title: "分析单词本".to_string(),
+            title: "分析词汇本".to_string(),
             description: String::new(),
             icon: None,
             icon_color: None,
@@ -722,7 +722,7 @@ mod tests {
         );
     }
 
-    /// 单词本列表一次带出词性分布（前端不再逐本请求统计）
+    /// 词汇本列表一次带出词性分布（前端不再逐本请求统计）
     #[tokio::test]
     async fn word_book_list_includes_word_type_distribution() {
         let pool = memory_pool().await;
@@ -766,13 +766,13 @@ mod tests {
         );
     }
 
-    /// 单词本生命周期：被未结束的计划使用时不能删除 / 转草稿；删除后在“已删除”里可恢复；计数实时计算
+    /// 词汇本生命周期：被未结束的计划使用时不能删除 / 转草稿；删除后在“已删除”里可恢复；计数实时计算
     #[tokio::test]
     async fn word_book_lifecycle_guards_delete_and_draft_and_supports_restore() {
         use crate::test_support::seed_schedule;
         let pool = memory_pool().await;
         let service = WordBookService::new(pool.clone(), test_logger());
-        let fx = seed_schedule(&pool, 2).await; // Active 计划，单词属于新建的单词本
+        let fx = seed_schedule(&pool, 2).await; // Active 计划，单词属于新建的词汇本
         let book_id: Id = sqlx::query_scalar("SELECT word_book_id FROM words WHERE id = ?")
             .bind(fx.word_ids[0])
             .fetch_one(pool.as_ref())

@@ -1,6 +1,6 @@
 //! 计划就地调整（authoring-flows-redesign B5，用户决定：已开始的计划只做不丢数据的调整）：
 //! - 改每天新词数：只重排“还没练过的日程”里的新词，保持原顺序；
-//! - 追加单词本：新词（未学，srs_box = 0）排在还没学的新词后面。
+//! - 追加词汇本：新词（未学，srs_box = 0）排在还没学的新词后面。
 //!
 //! 已练过的日程、复习条目、`study_plan_words.srs_*` 与练习记录一律不动；全部在一个事务里。
 
@@ -91,7 +91,7 @@ impl PlanPaceService {
         Ok(result)
     }
 
-    /// 追加单词本：新词排在还没学的新词后面（按当前每天新词数）
+    /// 追加词汇本：新词排在还没学的新词后面（按当前每天新词数）
     pub async fn add_word_books(
         &self,
         plan_id: Id,
@@ -100,7 +100,7 @@ impl PlanPaceService {
     ) -> AppResult<PlanPaceResult> {
         if book_ids.is_empty() {
             return Err(AppError::ValidationError(
-                "请至少选择一个单词本".to_string(),
+                "请至少选择一个词汇本".to_string(),
             ));
         }
         let mut tx = crate::services::srs::begin_write(&self.pool).await?;
@@ -108,7 +108,7 @@ impl PlanPaceService {
         let words = repo::words_not_in_plan_conn(&mut tx, plan_id, book_ids).await?;
         if words.is_empty() {
             return Err(AppError::ValidationError(
-                "这些单词本里的单词都已经在计划中了".to_string(),
+                "这些词汇本里的单词都已经在计划中了".to_string(),
             ));
         }
         let mut added = Vec::with_capacity(words.len());
@@ -400,7 +400,7 @@ mod tests {
         let pool = memory_pool().await;
         let fx = plan_with_three_days(&pool).await;
         seed_session(&pool, &fx, "s1", true).await;
-        // 另一个单词本：2 个新词 + 1 个与计划里重名的词（word1）
+        // 另一个词汇本：2 个新词 + 1 个与计划里重名的词（word1）
         let book: Id = sqlx::query(
             "INSERT INTO word_books (title, description, created_at, last_used, updated_at)
              VALUES ('追加', '', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",

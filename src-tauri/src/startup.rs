@@ -646,7 +646,7 @@ mod tests {
         let logger = Logger::new(&tmp).unwrap();
         let t = target();
 
-        // “上一个发行版”：只带到 t-1 的迁移，用户在里面建了单词本
+        // “上一个发行版”：只带到 t-1 的迁移，用户在里面建了词汇本
         let previous = Migrator {
             migrations: std::borrow::Cow::Owned(
                 MIGRATOR.iter().filter(|m| m.version < t).cloned().collect(),
@@ -657,7 +657,7 @@ mod tests {
         previous.run(&pool).await.unwrap();
         sqlx::query(
             "INSERT INTO word_books (title, description, created_at, updated_at)
-             VALUES ('我的单词本', '', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z')",
+             VALUES ('我的词汇本', '', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z')",
         )
         .execute(&pool)
         .await
@@ -668,7 +668,7 @@ mod tests {
         let pool = open_database(&dirs, &logger, |_, _| {}).await.unwrap();
         let count = |pool: SqlitePool| async move {
             let n: i64 =
-                sqlx::query_scalar("SELECT COUNT(*) FROM word_books WHERE title = '我的单词本'")
+                sqlx::query_scalar("SELECT COUNT(*) FROM word_books WHERE title = '我的词汇本'")
                     .fetch_one(&pool)
                     .await
                     .unwrap();

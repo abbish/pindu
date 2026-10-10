@@ -39,7 +39,7 @@ export interface VoiceSelectorProps {
 }
 
 /**
- * 语音选择器组件 - 卡片式选择器，类似单词本选择器
+ * 语音选择器组件 - 卡片式选择器，类似词汇本选择器
  */
 export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   voices,

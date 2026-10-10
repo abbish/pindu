@@ -16,7 +16,7 @@ export const TeacherAvatar: React.FC<{ className?: string }> = ({ className }) =
 export interface AiTeacherPanelProps {
   /** 正在讲的单词（显示用） */
   word: string;
-  /** 讲解 / 答疑用的 id（单词本的词为 wordId，单词卡为负数 id） */
+  /** 讲解 / 答疑用的 id（词汇本的词为 wordId，单词卡为负数 id） */
   wordId: number;
   onClose: () => void;
 }

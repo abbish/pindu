@@ -489,7 +489,7 @@ impl PlanPassageRepository {
         )
     }
 
-    /// 单词本里的单词 id（多本）
+    /// 词汇本里的单词 id（多本）
     pub async fn book_word_ids(&self, book_ids: &[Id]) -> AppResult<Vec<Id>> {
         let ids = serde_json::to_string(book_ids).unwrap_or_else(|_| "[]".into());
         Ok(sqlx::query_scalar(

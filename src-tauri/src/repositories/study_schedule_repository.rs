@@ -334,7 +334,7 @@ impl StudyScheduleRepository {
             })?;
 
             let wordbook_id: i64 = word.wordbook_id.parse().map_err(|_| {
-                AppError::ValidationError("学习日程数据格式不正确（单词本编号）".to_string())
+                AppError::ValidationError("学习日程数据格式不正确（词汇本编号）".to_string())
             })?;
 
             sqlx::query(query)

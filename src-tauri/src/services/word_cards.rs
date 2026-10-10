@@ -1,5 +1,5 @@
-//! 单词卡：短文目标词里没有收进单词本的词，也有完整的学习资料（音标、词性、释义、音节与拼读、例句），
-//! 学短文时不必先建单词本。按小写单词存一份（word_cards，063），由批量拼读分析生成（与单词本加词同一个 AI 任务）；
+//! 单词卡：短文目标词里没有收进词汇本的词，也有完整的学习资料（音标、词性、释义、音节与拼读、例句），
+//! 学短文时不必先建词汇本。按小写单词存一份（word_cards，063），由批量拼读分析生成（与词汇本加词同一个 AI 任务）；
 //! 读原文时选中的词可以加成目标词，随后补生成它的单词卡。
 
 use crate::error::{AppError, AppResult};
@@ -78,7 +78,7 @@ impl WordCardService {
             .ok_or_else(|| AppError::NotFound("短文不存在，可能已被删除".to_string()))
     }
 
-    /// 短文里不在单词本的目标词
+    /// 短文里不在词汇本的目标词
     fn unrecorded(passage: &Passage) -> Vec<String> {
         passage
             .target_words
@@ -88,7 +88,7 @@ impl WordCardService {
             .collect()
     }
 
-    /// 短文里不在单词本的目标词已有的单词卡
+    /// 短文里不在词汇本的目标词已有的单词卡
     pub async fn passage_cards(&self, passage_id: Id) -> AppResult<Vec<WordCard>> {
         let passage = self.passage(passage_id).await?;
         let words = Self::unrecorded(&passage);
@@ -118,7 +118,7 @@ impl WordCardService {
     }
 
     /// 读原文时把一个词加成目标词（指定单词）：必须是英文单词、正文里出现过（含变形）、还不是目标词；
-    /// 单词本里有的关联 wordId。返回更新后的短文
+    /// 词汇本里有的关联 wordId。返回更新后的短文
     pub async fn add_target_word(&self, passage_id: Id, word: &str) -> AppResult<Passage> {
         let normalized = crate::types::wordbook::normalize_vocab(
             word.trim_matches(|c: char| !c.is_ascii_alphabetic()),
@@ -175,7 +175,7 @@ impl WordCardService {
     }
 }
 
-/// 讲解 / 答疑用的单词资料：`card_word` 有值时取单词卡（不在单词本的目标词），否则按 id 取单词本里的词
+/// 讲解 / 答疑用的单词资料：`card_word` 有值时取单词卡（不在词汇本的目标词），否则按 id 取词汇本里的词
 pub async fn learning_word(
     pool: &Arc<SqlitePool>,
     logger: &Arc<Logger>,

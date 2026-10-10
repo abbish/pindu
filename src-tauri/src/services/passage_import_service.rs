@@ -1,5 +1,5 @@
 //! 导入材料（DECISIONS D30）：预处理预览、逐篇导入（AI 只翻译 / 起标题 / 估水平 / 挑重点词）、取消、
-//! 生词加进单词本（拼读分析补全音标与例句）。
+//! 生词加进词汇本（拼读分析补全音标与例句）。
 //!
 //! 原文一字不改：保存的英文来自导入请求，模型只回传译文（`passage_rules::translation_from_submission`）。
 
@@ -50,7 +50,7 @@ impl PassageImportService {
         passage_import::prepare_request(request)
     }
 
-    /// 导入一篇：校验 → 翻译（`cancelled` 为真时中止）→ 目标词（单词本匹配 + AI 重点词）→ 保存。
+    /// 导入一篇：校验 → 翻译（`cancelled` 为真时中止）→ 目标词（词汇本匹配 + AI 重点词）→ 保存。
     /// 由后台任务 `start_passage_import` 逐篇调用
     pub async fn import(
         &self,
@@ -126,18 +126,18 @@ impl PassageImportService {
         };
         if request.book_ids.len() > MAX_BOOKS {
             return Err(AppError::ValidationError(format!(
-                "最多选 {} 个单词本",
+                "最多选 {} 个词汇本",
                 MAX_BOOKS
             )));
         }
 
-        // 单词本匹配（确定性）：原文里出现的词（含屈折形式）
+        // 词汇本匹配（确定性）：原文里出现的词（含屈折形式）
         let full_text = sentences.join(" ");
         let mut targets: Vec<PassageTargetWord> = Vec::new();
         let mut sources: Vec<PassageSource> = Vec::new();
         for &book_id in &request.book_ids {
             let Some(book_title) = self.repository.book_title(book_id).await? else {
-                return Err(AppError::NotFound("单词本不存在，可能已被删除".to_string()));
+                return Err(AppError::NotFound("词汇本不存在，可能已被删除".to_string()));
             };
             let mut matched = 0;
             for c in self.repository.book_candidates(book_id).await? {
@@ -191,7 +191,7 @@ impl PassageImportService {
             return Err(cancelled_error());
         }
 
-        // AI 重点词：已在单词本里的词带上 wordId（不算生词）
+        // AI 重点词：已在词汇本里的词带上 wordId（不算生词）
         let key_texts: Vec<String> = translation
             .key_words
             .iter()
@@ -269,7 +269,7 @@ impl PassageImportService {
             .ok_or_else(|| AppError::NotFound("短文不存在，可能已被删除".to_string()))
     }
 
-    /// 短文里还不在单词本的词（AI 挑的重点词里没有 wordId 的）
+    /// 短文里还不在词汇本的词（AI 挑的重点词里没有 wordId 的）
     pub async fn new_words(&self, passage_id: Id) -> AppResult<Vec<PassageNewWord>> {
         let passage = self.passage(passage_id).await?;
         Ok(passage
@@ -290,7 +290,7 @@ impl PassageImportService {
             .ok_or_else(|| AppError::NotFound("短文不存在，可能已被删除".to_string()))
     }
 
-    /// 生词加进单词本：本里已有的直接关联；其余先做拼读分析（音标、音节、例句）再保存，
+    /// 生词加进词汇本：本里已有的直接关联；其余先做拼读分析（音标、音节、例句）再保存，
     /// 分析没覆盖到的词只存单词与释义。保存后短文的目标词补上 wordId。返回这些词在本里的 id。
     pub async fn add_words_to_book(
         &self,
@@ -299,7 +299,7 @@ impl PassageImportService {
     ) -> AppResult<Vec<Id>> {
         let passage = self.passage(request.passage_id).await?;
         let Some(book_title) = self.repository.book_title(request.book_id).await? else {
-            return Err(AppError::NotFound("单词本不存在，可能已被删除".to_string()));
+            return Err(AppError::NotFound("词汇本不存在，可能已被删除".to_string()));
         };
         let mut wanted: Vec<&PassageTargetWord> = Vec::new();
         for w in &request.words {
@@ -529,7 +529,7 @@ mod tests {
             ["fly"]
         );
 
-        // 单词本 971 里已经有 fly：直接关联，不需要拼读分析（sidecar 不存在也能完成）
+        // 词汇本 971 里已经有 fly：直接关联，不需要拼读分析（sidecar 不存在也能完成）
         sqlx::query(
             "INSERT INTO words (id, word, meaning, word_book_id, created_at, updated_at)
              VALUES (9799, 'fly', '飞', 971, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')",

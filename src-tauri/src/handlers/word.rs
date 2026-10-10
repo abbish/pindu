@@ -70,7 +70,7 @@ pub async fn get_words_by_book(
     }
 }
 
-/// 添加单词到单词本
+/// 添加单词到词汇本
 #[tauri::command]
 pub async fn add_word_to_book(
     app: AppHandle,
@@ -92,7 +92,7 @@ pub async fn add_word_to_book(
 
     match service.add_word_to_book(book_id, word_data).await {
         Ok(word_id) => {
-            // 更新单词本的统计信息
+            // 更新词汇本的统计信息
             use crate::services::wordbook::WordBookService;
             let wordbook_service = WordBookService::new(
                 Arc::new(pool.inner().clone()),
@@ -101,7 +101,7 @@ pub async fn add_word_to_book(
             if let Err(e) = wordbook_service.update_statistics(book_id).await {
                 logger.warn(
                     "WORD_BOOK_UPDATE",
-                    "更新单词本统计失败",
+                    "更新词汇本统计失败",
                     Some(&e.to_string()),
                 );
             }
@@ -153,7 +153,7 @@ pub async fn update_word(
     }
 }
 
-/// 这些单词里哪些已经在单词本中（忽略大小写），返回小写形式；用于导入时标记“已存在”
+/// 这些单词里哪些已经在词汇本中（忽略大小写），返回小写形式；用于导入时标记“已存在”
 #[tauri::command]
 pub async fn find_existing_words(
     app: AppHandle,
@@ -184,7 +184,7 @@ pub async fn find_existing_words(
     Ok(found)
 }
 
-/// 批量删除单词（同一个单词本内的多选删除），单事务；返回实际删除数
+/// 批量删除单词（同一个词汇本内的多选删除），单事务；返回实际删除数
 #[tauri::command]
 pub async fn delete_words(app: AppHandle, book_id: Id, word_ids: Vec<Id>) -> AppResult<usize> {
     let pool = app.state::<SqlitePool>();
@@ -210,7 +210,7 @@ pub async fn delete_words(app: AppHandle, book_id: Id, word_ids: Vec<Id>) -> App
             if let Err(e) = wordbook_service.update_statistics(book_id).await {
                 logger.warn(
                     "WORD_BOOK_UPDATE",
-                    "更新单词本统计失败",
+                    "更新词汇本统计失败",
                     Some(&e.to_string()),
                 );
             }

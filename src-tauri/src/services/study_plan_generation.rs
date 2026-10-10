@@ -30,7 +30,7 @@ pub fn validate_request(request: &StudyPlanScheduleRequest) -> AppResult<()> {
         return invalid("每天新词数需在 1–50 之间");
     }
     if request.wordbook_ids.is_empty() {
-        return invalid("请至少选择一个单词本");
+        return invalid("请至少选择一个词汇本");
     }
     // 日期格式先校验，避免 AI 跑完才报错
     if crate::time::parse_date(&request.start_date).is_none() {
@@ -39,7 +39,7 @@ pub fn validate_request(request: &StudyPlanScheduleRequest) -> AppResult<()> {
     Ok(())
 }
 
-/// 读取所选单词本的单词（去重由排程负责）；没有单词时报校验错误
+/// 读取所选词汇本的单词（去重由排程负责）；没有单词时报校验错误
 async fn load_plan_words(
     pool: &Arc<SqlitePool>,
     logger: &Arc<Logger>,
@@ -58,13 +58,13 @@ async fn load_plan_words(
         .collect();
     if words.is_empty() {
         return Err(AppError::ValidationError(
-            "所选单词本中没有单词".to_string(),
+            "所选词汇本中没有单词".to_string(),
         ));
     }
     Ok(words)
 }
 
-/// 不用 AI 的日程：单词本原顺序、按词长估难度（与 AI 漏排时的补齐规则相同），立即完成
+/// 不用 AI 的日程：词汇本原顺序、按词长估难度（与 AI 漏排时的补齐规则相同），立即完成
 pub async fn generate_without_ai(
     pool: &Arc<SqlitePool>,
     logger: &Arc<Logger>,
@@ -90,7 +90,7 @@ pub async fn preview(
 ) -> AppResult<StudyPlanAIResult> {
     if wordbook_ids.is_empty() {
         return Err(AppError::ValidationError(
-            "请至少选择一个单词本".to_string(),
+            "请至少选择一个词汇本".to_string(),
         ));
     }
     if !DAILY_NEW_WORDS_RANGE.contains(&daily_new_words) {
@@ -124,7 +124,7 @@ impl StudyPlanGenerator {
     ) -> AppResult<StudyPlanAIResult> {
         validate_request(request)?;
         let started = Instant::now();
-        ctx.stage("读取单词本…");
+        ctx.stage("读取词汇本…");
         let words = load_plan_words(&self.pool, &self.logger, &request.wordbook_ids).await?;
 
         let model = crate::services::agent_settings::AgentSettingsService::new(

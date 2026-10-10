@@ -9,7 +9,7 @@ import { TagManagerDialog } from '@/components/TagManagerDialog/TagManagerDialog
 import type { MaterialListKind, TagUsage } from '@/types/material';
 
 /**
- * 素材库（单词本 / 短文库 / 视频库）首页共用的工具栏：搜索 → 标签 → 各自的筛选 → 重置 → 数量。
+ * 素材库（词汇本 / 短文库 / 视频库）首页共用的工具栏：搜索 → 标签 → 各自的筛选 → 重置 → 数量。
  * 三个页面的列表交互保持一致，种类专属的筛选作为 children 放在标签后面。
  */
 export interface MaterialToolbarProps {

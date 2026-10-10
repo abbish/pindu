@@ -534,7 +534,7 @@ pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
     render(text, vars)
 }
 
-/// 单词本场景（标题 + 描述 + 主题标签）：作为生成、分析、例句、讲解、答疑的共同背景放进用户消息
+/// 词汇本场景（标题 + 描述 + 主题标签）：作为生成、分析、例句、讲解、答疑的共同背景放进用户消息
 pub fn book_scene(title: &str, description: &str, tags: &[String]) -> String {
     let title = title.trim();
     let description = description.trim();

@@ -40,7 +40,7 @@ import { InlineError } from '@/components/InlineError';
 export type AddWordsSource = 'ai' | 'text';
 
 /**
- * 阶段：source 填来源 → fetching 生成或提取中 → select 选词 → analyzing 分析并加入单词本（后台任务）→
+ * 阶段：source 填来源 → fetching 生成或提取中 → select 选词 → analyzing 分析并加入词汇本（后台任务）→
  * review 有没完成的词（失败 / 已停止）时显示结果，可以重新分析这些词。全部成功时直接关闭。
  */
 type Phase = 'source' | 'fetching' | 'select' | 'analyzing' | 'review';
@@ -49,7 +49,7 @@ const STEP_OF: Record<Phase, number> = { source: 0, fetching: 0, select: 1, anal
 
 const COUNT_OPTIONS = [10, 20, 30, 50];
 const INTENT_MAX = 500;
-/** 单词本描述上限（与后端 validate_description 一致） */
+/** 词汇本描述上限（与后端 validate_description 一致） */
 const SCENE_MAX = 500;
 const MAX_TEXT = 5000;
 const INTENT_EXAMPLES = ['准备一场 TED 环境主题演讲', '三年级动物主题单元', '去英国旅行时机场和酒店会用到的词', '雅思写作常用的教育类词汇'];
@@ -59,13 +59,13 @@ export interface AddWordsDialogProps {
   isOpen: boolean;
   /** 关闭 */
   onClose: () => void;
-  /** 目标单词本（用于避开 / 标记已有单词） */
+  /** 目标词汇本（用于避开 / 标记已有单词） */
   bookId: number;
-  /** 单词本名称（显示在标题里） */
+  /** 词汇本名称（显示在标题里） */
   bookTitle?: string;
-  /** 单词本描述 = 单词本场景：生成、提取、拼读分析、例句、讲解都会参考它来选词义和场景 */
+  /** 词汇本描述 = 词汇本场景：生成、提取、拼读分析、例句、讲解都会参考它来选词义和场景 */
   bookDescription?: string;
-  /** 在弹窗里修改了单词本场景（描述）后通知页面刷新 */
+  /** 在弹窗里修改了词汇本场景（描述）后通知页面刷新 */
   onSceneSaved?: (description: string) => void;
   /** 打开时选中的来源 */
   initialSource?: AddWordsSource;
@@ -80,7 +80,7 @@ const toCandidates = (result: WordExtractionResult, existing: Set<string>): Extr
       meaning: w.meaning || '',
       partOfSpeech: standardizePartOfSpeech(w.partOfSpeech || 'n.') as ExtractedWord['partOfSpeech'],
       frequency: w.frequency,
-      // 已在单词本中的词默认不选：避免用新分析覆盖手动改过的内容
+      // 已在词汇本中的词默认不选：避免用新分析覆盖手动改过的内容
       selected: !isExisting,
       existing: isExisting,
     };
@@ -94,10 +94,10 @@ const errorText = (err: unknown, title: string) => {
 };
 
 /**
- * 添加单词（单词本详情页唯一入口）：
+ * 添加单词（词汇本详情页唯一入口）：
  * 1 获取单词 —— AI 按描述生成，或从我的材料（粘贴 / 文件）提取（模型按「设置 → AI 助手」）；
- * 2 选择单词 —— 已在单词本中的词标“已存在”且默认不选；
- * 3 分析并保存 —— 后台任务：分批拼读分析，成功的词直接加入单词本；关掉弹窗也会继续（进度在顶栏任务按钮里）。
+ * 2 选择单词 —— 已在词汇本中的词标“已存在”且默认不选；
+ * 3 分析并保存 —— 后台任务：分批拼读分析，成功的词直接加入词汇本；关掉弹窗也会继续（进度在顶栏任务按钮里）。
  *   有失败或中途停止时显示没完成的词，可以重新分析。
  * 关闭时还有生成 / 选好但没开始分析的单词会先确认。
  */
@@ -118,7 +118,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const [fileName, setFileName] = useState<string | null>(null);
   const [mode, setMode] = useState<WordExtractionMode>('focus');
   const [candidates, setCandidates] = useState<ExtractedWord[]>([]);
-  /** 生成 / 提取时 AI 给的标签，分析保存时给单词本加上 */
+  /** 生成 / 提取时 AI 给的标签，分析保存时给词汇本加上 */
   const [aiTags, setAiTags] = useState<string[]>([]);
   /** 分析任务 id 与结果 */
   const [jobId, setJobId] = useState<string | null>(null);
@@ -128,11 +128,11 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const job = useJob(jobId);
   const toast = useToast();
   const [confirmClose, setConfirmClose] = useState(false);
-  /** 单词本场景（描述）：弹窗内可编辑，保存后同步给页面 */
+  /** 词汇本场景（描述）：弹窗内可编辑，保存后同步给页面 */
   const [scene, setScene] = useState(bookDescription.trim());
   const [sceneDraft, setSceneDraft] = useState<string | null>(null);
   const [sceneSaving, setSceneSaving] = useState(false);
-  /** 场景为空时，把这次的描述同时设为单词本场景 */
+  /** 场景为空时，把这次的描述同时设为词汇本场景 */
   const [useIntentAsScene, setUseIntentAsScene] = useState(true);
   // 生成数量与提取方式的默认值来自「设置 → 素材」
   const materialSettings = useMaterialSettings();
@@ -157,11 +157,11 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     setError(null);
   };
 
-  // 每次打开从第一步开始，来源按入口；描述与文本保留，方便改一改再试；单词本场景取打开时的描述
+  // 每次打开从第一步开始，来源按入口；描述与文本保留，方便改一改再试；词汇本场景取打开时的描述
   useEffect(() => {
     if (!isOpen) return;
     reset();
-    // 这本单词本还有分析在跑（之前「在后台继续」了）：直接回到进度
+    // 这本词汇本还有分析在跑（之前「在后台继续」了）：直接回到进度
     const running = activeJobFor(jobsNow(), ['word_analysis'], 'id', bookId);
     if (running) {
       setJobId(running.id);
@@ -222,7 +222,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const intentLength = intent.trim().length;
   const canFetch = source === 'ai' ? intentLength > 0 && intentLength <= INTENT_MAX : textLength > 0 && textLength <= MAX_TEXT;
 
-  /** 保存单词本场景（描述）；成功返回 true */
+  /** 保存词汇本场景（描述）；成功返回 true */
   const saveScene = async (value: string) => {
     setSceneSaving(true);
     const result = await wordBookService.updateWordBook(bookId, { description: value });
@@ -243,7 +243,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     setError(null);
     setPhase('fetching');
     try {
-      // 场景为空且勾选了“同时设为单词本场景”：先保存，后端生成时会读取它
+      // 场景为空且勾选了“同时设为词汇本场景”：先保存，后端生成时会读取它
       if (source === 'ai' && !scene && useIntentAsScene) {
         const saved = await saveScene(intent.trim().slice(0, SCENE_MAX));
         if (!saved || run !== runRef.current) {
@@ -285,7 +285,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   };
 
   // ── 3 分析并保存（后台任务） ──
-  /** 分析 `words`（首次或重新分析没完成的词），成功的词由后端直接加入单词本 */
+  /** 分析 `words`（首次或重新分析没完成的词），成功的词由后端直接加入词汇本 */
   const analyze = async (words: string[]) => {
     if (words.length === 0) return;
     setError(null);
@@ -310,7 +310,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const existingCount = candidates.filter((c) => c.existing).length;
   const busy = phase === 'fetching';
 
-  /** 停止分析：进行中的批次跑完，已完成的词照样加入单词本 */
+  /** 停止分析：进行中的批次跑完，已完成的词照样加入词汇本 */
   const stopAnalysis = async () => {
     if (!jobId) return;
     setStopped(true);
@@ -346,7 +346,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     </button>
   );
 
-  /** 单词本场景：一行小卡片（描述摘要 + 编辑）；编辑时展开为文本框 */
+  /** 词汇本场景：一行小卡片（描述摘要 + 编辑）；编辑时展开为文本框 */
   const sceneCard = () => {
     if (sceneDraft !== null) {
       const tooLong = sceneDraft.trim().length > SCENE_MAX;
@@ -502,7 +502,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
             {existingCount > 0 && (
               <p className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                <span>{existingCount} 个词已在单词本里，勾选会覆盖原有内容</span>
+                <span>{existingCount} 个词已在词汇本里，勾选会覆盖原有内容</span>
               </p>
             )}
             <WordGrid
@@ -527,7 +527,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
               {failed.length > 0 ? <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" /> : <CircleCheck className="mt-0.5 size-5 shrink-0 text-success" />}
               <div className="min-w-0 text-sm">
                 <div className="font-medium">
-                  {added > 0 ? `已加入单词本 ${added} 个` : '没有单词加入单词本'}，{failed.length} 个没有完成
+                  {added > 0 ? `已加入词汇本 ${added} 个` : '没有单词加入词汇本'}，{failed.length} 个没有完成
                 </div>
               </div>
             </div>

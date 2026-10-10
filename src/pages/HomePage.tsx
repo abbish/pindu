@@ -73,7 +73,7 @@ async function loadHomeData() {
 /**
  * 首页：继续上次练习 → 学习计划 → 学习统计。今天要做的（单词日程 + 到期短文）并在计划卡里：
  * 日程栏显示今天的内容，「继续学习」接着做今天没做完的（`utils/planToday.ts`）。
- * 单词本、短文库在侧边栏「素材库」，首页不再单列（2026-10-07 用户确认）。
+ * 词汇本、短文库在侧边栏「素材库」，首页不再单列（2026-10-07 用户确认）。
  * 功能清单见 .claude/work/ui-shadcn-migration/feature-inventory.md §1。
  */
 export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {

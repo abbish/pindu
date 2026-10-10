@@ -42,11 +42,11 @@ pub struct WordExtractionResult {
     pub words: Vec<ExtractedWord>,
     pub total_count: usize,
     pub unique_count: usize,
-    /// AI 给这批单词（单词本）定的标签，加入单词本时一起打上
+    /// AI 给这批单词（词汇本）定的标签，加入词汇本时一起打上
     pub tags: Vec<String>,
 }
 
-/// 「分析并加入单词本」任务的请求（start_word_analysis）
+/// 「分析并加入词汇本」任务的请求（start_word_analysis）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartWordAnalysisRequest {
@@ -55,7 +55,7 @@ pub struct StartWordAnalysisRequest {
     /// 生成 / 提取时定好的释义，与 words 一一对应（空字符串表示没有）
     pub meanings: Option<Vec<String>>,
     pub model_id: Option<i64>,
-    /// 生成 / 提取时 AI 给的标签，保存单词时给单词本加上
+    /// 生成 / 提取时 AI 给的标签，保存单词时给词汇本加上
     pub tags: Option<Vec<String>>,
 }
 
@@ -106,7 +106,7 @@ pub fn standard_pos(raw: &str) -> &'static str {
 }
 
 impl PhonicsWord {
-    /// 转成保存到单词本的形状（释义用分析结果；词性归一）
+    /// 转成保存到词汇本的形状（释义用分析结果；词性归一）
     pub fn to_analyzed(&self) -> crate::types::wordbook::AnalyzedWord {
         let pos = standard_pos(&self.pos_abbreviation).to_string();
         crate::types::wordbook::AnalyzedWord {

@@ -1,4 +1,4 @@
-//! 添加单词的两步：提词 / 按描述生成（直接返回）→ 分析并加入单词本（后台任务，见 services/word_analysis_job.rs）
+//! 添加单词的两步：提词 / 按描述生成（直接返回）→ 分析并加入词汇本（后台任务，见 services/word_analysis_job.rs）
 
 use crate::agent::tasks::PhonicsContext;
 use crate::error::{AppError, AppResult};
@@ -114,7 +114,7 @@ pub async fn extract_words_from_text(
 }
 
 /// 按学习意图生成单词（“AI 生成”入口，替代提取的第一步）：
-/// 描述 1–500 字，数量 5–100；传 `book_id` 时避开单词本里已有的词。
+/// 描述 1–500 字，数量 5–100；传 `book_id` 时避开词汇本里已有的词。
 #[tauri::command]
 pub async fn generate_words_from_intent(
     app: AppHandle,
@@ -138,7 +138,7 @@ pub async fn generate_words_from_intent(
     let intent_len = intent.trim().chars().count();
     if intent_len == 0 || intent_len > 500 {
         return Err(AppError::ValidationError(
-            "请用 1–500 个字描述想要的单词本".to_string(),
+            "请用 1–500 个字描述想要的词汇本".to_string(),
         ));
     }
     let count = usize::try_from(count).unwrap_or(0);
@@ -189,8 +189,8 @@ pub async fn generate_words_from_intent(
     result
 }
 
-/// 分析单词并加入单词本（第二步，后台任务）：立即返回任务 id，进度与逐词状态经 job-updated 推送，
-/// 完成后成功的词已写进单词本（见 services/word_analysis_job.rs）
+/// 分析单词并加入词汇本（第二步，后台任务）：立即返回任务 id，进度与逐词状态经 job-updated 推送，
+/// 完成后成功的词已写进词汇本（见 services/word_analysis_job.rs）
 #[tauri::command]
 pub async fn start_word_analysis(
     app: AppHandle,
@@ -233,12 +233,12 @@ pub async fn start_word_analysis(
         )
         .find_by_id(request.book_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("单词本不存在，可能已被删除".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("词汇本不存在，可能已被删除".to_string()))?;
 
         let model_config =
             get_model_config(AgentTaskKind::Phonics, request.model_id, &pool, &logger).await?;
         let profile = PromptProfileService::load(pool.inner()).await?;
-        // 单词本场景 + 生成 / 提取时已确定的释义
+        // 词汇本场景 + 生成 / 提取时已确定的释义
         let context = PhonicsContext {
             scene: PromptProfileService::book_scene(&pool_arc, &logger_arc, Some(request.book_id))
                 .await?,

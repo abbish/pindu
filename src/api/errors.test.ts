@@ -4,8 +4,8 @@ import { parseIpcError, toUserMessage } from './errors';
 
 test('解析后端 AppError 的 {code, message}', () => {
   assert.deepEqual(
-    parseIpcError({ code: 'VALIDATION_ERROR', message: '验证错误: 单词本标题不能为空' }),
-    { code: 'VALIDATION_ERROR', message: '验证错误: 单词本标题不能为空' },
+    parseIpcError({ code: 'VALIDATION_ERROR', message: '验证错误: 词汇本标题不能为空' }),
+    { code: 'VALIDATION_ERROR', message: '验证错误: 词汇本标题不能为空' },
   );
 });
 
@@ -28,7 +28,7 @@ test('旧的外部标签形状被标记为未识别格式，而不是静默显�
 });
 
 test('去掉后端类别前缀，校验信息原样给用户', () => {
-  assert.equal(toUserMessage('验证错误: 单词本标题不能为空', 'VALIDATION_ERROR'), '单词本标题不能为空');
+  assert.equal(toUserMessage('验证错误: 词汇本标题不能为空', 'VALIDATION_ERROR'), '词汇本标题不能为空');
   assert.equal(toUserMessage('未找到资源: 短文 3 不存在', 'NOT_FOUND'), '短文 3 不存在');
 });
 
@@ -62,7 +62,7 @@ test('取消不是失败', () => {
 
 test('Tauri 自身的错误换成通用说法', () => {
   assert.equal(toUserMessage('command foo not found'), '应用内部出错了，请重启应用后再试');
-  assert.equal(toUserMessage('请先选择单词本'), '请先选择单词本');
+  assert.equal(toUserMessage('请先选择词汇本'), '请先选择词汇本');
 });
 
 test('应用内更新的错误说成更新服务器的问题，而不是 AI 服务', () => {

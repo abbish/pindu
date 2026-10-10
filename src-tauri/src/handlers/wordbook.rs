@@ -1,6 +1,6 @@
-//! 单词本管理命令处理器
+//! 词汇本管理命令处理器
 //!
-//! 包含所有与单词本相关的 Tauri 命令
+//! 包含所有与词汇本相关的 Tauri 命令
 
 use crate::error::AppResult;
 use crate::logger::Logger;
@@ -50,7 +50,7 @@ pub async fn get_word_books(
     }
 }
 
-/// 获取单词本关联的学习计划
+/// 获取词汇本关联的学习计划
 #[tauri::command]
 pub async fn get_word_book_linked_plans(
     app: AppHandle,
@@ -87,7 +87,7 @@ pub async fn get_word_book_linked_plans(
     }
 }
 
-/// 根据ID获取单词本详情
+/// 根据ID获取词汇本详情
 #[tauri::command]
 pub async fn get_word_book_detail(app: AppHandle, book_id: Id) -> AppResult<WordBook> {
     let pool = app.state::<SqlitePool>();
@@ -120,7 +120,7 @@ pub async fn get_word_book_detail(app: AppHandle, book_id: Id) -> AppResult<Word
     }
 }
 
-/// 获取单词本词性统计
+/// 获取词汇本词性统计
 #[tauri::command]
 pub async fn get_word_book_statistics(
     app: AppHandle,
@@ -162,7 +162,7 @@ pub async fn get_word_book_statistics(
     }
 }
 
-/// 获取全局单词本统计
+/// 获取全局词汇本统计
 #[tauri::command]
 pub async fn get_global_word_book_statistics(app: AppHandle) -> AppResult<WordBookStatistics> {
     use crate::services::statistics::StatisticsService;
@@ -200,7 +200,7 @@ pub async fn get_global_word_book_statistics(app: AppHandle) -> AppResult<WordBo
     }
 }
 
-/// 创建单词本
+/// 创建词汇本
 #[tauri::command]
 pub async fn create_word_book(app: AppHandle, request: CreateWordBookRequest) -> AppResult<Id> {
     let pool = app.state::<SqlitePool>();
@@ -233,7 +233,7 @@ pub async fn create_word_book(app: AppHandle, request: CreateWordBookRequest) ->
     }
 }
 
-/// 更新单词本
+/// 更新词汇本
 #[tauri::command]
 pub async fn update_word_book(
     app: AppHandle,
@@ -267,7 +267,7 @@ pub async fn update_word_book(
     }
 }
 
-/// 删除单词本（软删除）
+/// 删除词汇本（软删除）
 #[tauri::command]
 pub async fn delete_word_book(app: AppHandle, book_id: Id) -> AppResult<()> {
     let pool = app.state::<SqlitePool>();
@@ -297,7 +297,7 @@ pub async fn delete_word_book(app: AppHandle, book_id: Id) -> AppResult<()> {
     }
 }
 
-/// 恢复已删除的单词本
+/// 恢复已删除的词汇本
 #[tauri::command]
 pub async fn restore_word_book(app: AppHandle, book_id: Id) -> AppResult<()> {
     let pool = app.state::<SqlitePool>();

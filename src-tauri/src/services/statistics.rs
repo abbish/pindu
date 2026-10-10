@@ -61,7 +61,7 @@ impl StatisticsService {
         self.repository.reset_selected_tables(table_names).await
     }
 
-    /// 获取全局单词本统计
+    /// 获取全局词汇本统计
     pub async fn get_global_word_book_statistics(&self) -> AppResult<WordBookStatistics> {
         self.repository.get_global_word_book_statistics().await
     }

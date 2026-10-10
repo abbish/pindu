@@ -21,7 +21,7 @@ export interface MetricCardProps {
   loading?: boolean;
 }
 
-/** 统计指标卡：名称 + 图标 / 数值 + 单位 / 补充数据。首页、学习计划、单词本、日历共用 */
+/** 统计指标卡：名称 + 图标 / 数值 + 单位 / 补充数据。首页、学习计划、词汇本、日历共用 */
 export const MetricCard: React.FC<MetricCardProps> = ({ label, value, unit, icon: Icon, hint, tip, loading }) => (
   <Card className="justify-between gap-2 px-5 py-4">
     <div className="flex items-center justify-between text-sm text-muted-foreground">

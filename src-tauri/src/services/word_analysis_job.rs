@@ -1,5 +1,5 @@
-//! 后台任务「分析并加入单词本」：分批并发做拼读分析（每批词数与并发按「设置 → AI 助手」），
-//! 逐词状态经任务 detail 推送；分析完（或停止时）把成功的词写进单词本，失败 / 没轮到的词放进结果，可以再提交一次。
+//! 后台任务「分析并加入词汇本」：分批并发做拼读分析（每批词数与并发按「设置 → AI 助手」），
+//! 逐词状态经任务 detail 推送；分析完（或停止时）把成功的词写进词汇本，失败 / 没轮到的词放进结果，可以再提交一次。
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::JobCtx;
@@ -26,7 +26,7 @@ pub struct WordAnalysisJob {
     pub book_id: i64,
     pub book_title: String,
     pub words: Vec<String>,
-    /// 生成 / 提取时 AI 给的标签，保存后给单词本加上
+    /// 生成 / 提取时 AI 给的标签，保存后给词汇本加上
     pub tags: Vec<String>,
     pub batch_size: usize,
     pub concurrency: usize,
@@ -122,7 +122,7 @@ impl WordAnalysisJob {
             )));
         }
 
-        ctx.stage("保存到单词本");
+        ctx.stage("保存到词汇本");
         let saved = WordBookService::new(self.pool.clone(), self.logger.clone())
             .create_word_book_from_analysis(CreateWordBookFromAnalysisRequest {
                 title: self.book_title.clone(),
@@ -139,7 +139,7 @@ impl WordAnalysisJob {
         self.logger.info(
             "WORD_ANALYSIS",
             &format!(
-                "单词本 {} 新增 {}、更新 {}，未完成 {}",
+                "词汇本 {} 新增 {}、更新 {}，未完成 {}",
                 self.book_id,
                 saved.added_count,
                 saved.updated_count,
@@ -149,7 +149,7 @@ impl WordAnalysisJob {
         Ok(self.outcome(saved.added_count, saved.updated_count, failed))
     }
 
-    /// 给单词本加上 AI 定的标签（已有的不重复）；失败只记 WARN，单词已经保存
+    /// 给词汇本加上 AI 定的标签（已有的不重复）；失败只记 WARN，单词已经保存
     async fn add_tags(&self) {
         if self.tags.is_empty() {
             return;
@@ -169,7 +169,7 @@ impl WordAnalysisJob {
         if let Err(e) = result {
             self.logger.warn(
                 "WORD_ANALYSIS",
-                &format!("单词本 {} 加 AI 标签失败：{e}", self.book_id),
+                &format!("词汇本 {} 加 AI 标签失败：{e}", self.book_id),
                 None,
             );
         }

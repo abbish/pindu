@@ -21,7 +21,7 @@ export interface ExtractedWord {
   frequency: number;
   /** 是否已选择 */
   selected: boolean;
-  /** 已在单词本中（勾选保存会用新分析覆盖原有内容） */
+  /** 已在词汇本中（勾选保存会用新分析覆盖原有内容） */
   existing?: boolean;
   /** 自然拼读信息（可选） */
   phonics?: {
@@ -128,7 +128,7 @@ export const WordGrid: React.FC<WordGridProps> = ({ words, onWordToggle, onSelec
                     {word.partOfSpeech}
                   </span>
                   {word.existing && (
-                    <Badge variant="outline" className="ml-auto h-5 shrink-0 border-transparent bg-warning-soft px-1.5 text-[11px] text-warning" title="勾选会覆盖单词本里的原有内容">
+                    <Badge variant="outline" className="ml-auto h-5 shrink-0 border-transparent bg-warning-soft px-1.5 text-[11px] text-warning" title="勾选会覆盖词汇本里的原有内容">
                       已存在
                     </Badge>
                   )}

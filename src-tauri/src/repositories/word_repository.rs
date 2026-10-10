@@ -82,8 +82,8 @@ impl WordRepository {
         Self { pool, logger }
     }
 
-    /// 查找单词本中已存在的单词（用于去重）
-    /// 单词本里全部单词（小写，去重），用于“生成单词时避开已有词”
+    /// 查找词汇本中已存在的单词（用于去重）
+    /// 词汇本里全部单词（小写，去重），用于“生成单词时避开已有词”
     pub async fn word_texts_by_book(&self, book_id: Id) -> AppResult<Vec<String>> {
         Ok(sqlx::query_scalar(
             "SELECT DISTINCT LOWER(word) FROM words WHERE word_book_id = ? ORDER BY LOWER(word)",
@@ -93,7 +93,7 @@ impl WordRepository {
         .await?)
     }
 
-    /// 单词本里全部单词的 id 与拼写（单词 ↔ 素材计数用）
+    /// 词汇本里全部单词的 id 与拼写（单词 ↔ 素材计数用）
     pub async fn id_texts_by_book(&self, book_id: Id) -> AppResult<Vec<(Id, String)>> {
         Ok(
             sqlx::query_as("SELECT id, word FROM words WHERE word_book_id = ? ORDER BY id")
@@ -239,7 +239,7 @@ impl WordRepository {
         Ok(())
     }
 
-    /// 根据单词本ID列表查询单词（用于AI规划）
+    /// 根据词汇本ID列表查询单词（用于AI规划）
     pub async fn find_words_by_wordbook_ids(
         &self,
         wordbook_ids: &[Id],
@@ -479,7 +479,7 @@ impl WordRepository {
             > 0)
     }
 
-    /// 分页查询单词本中的单词；sort_by：word 字母顺序（默认）/ newest 最近添加 / oldest 最早添加
+    /// 分页查询词汇本中的单词；sort_by：word 字母顺序（默认）/ newest 最近添加 / oldest 最早添加
     pub async fn find_by_book_paginated(
         &self,
         book_id: Id,

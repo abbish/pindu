@@ -31,7 +31,7 @@ import { LEVEL_LABEL, MODE_LABEL, scopeDetailLabel, scoreSummary } from '@/utils
 import type { PassageOrigin, PassageSource, PassageSummary } from '@/types/passage';
 
 export interface PassageListProps {
-  /** 只看引用了这个单词本的短文 */
+  /** 只看引用了这个词汇本的短文 */
   bookId?: number;
   /** 按标题或目标词筛选 */
   query?: string;
@@ -55,7 +55,7 @@ export interface PassageListProps {
   emptyDescription?: string;
 }
 
-/** 来源标签：单词本 / 计划（已删除的来源划线） */
+/** 来源标签：词汇本 / 计划（已删除的来源划线） */
 export const SourceBadge: React.FC<{ source: PassageSource }> = ({ source }) => (
   <Badge variant="outline" className={cn('font-normal', !source.exists && 'text-muted-foreground line-through')} title={source.exists ? undefined : '来源已删除'}>
     {source.kind === 'book' ? <BookOpen /> : <ListChecks />}
@@ -154,13 +154,13 @@ export const PASSAGE_SORTS: SortOption<PassageSummary>[] = [
   { value: 'attempts', label: '练习最多', compare: byNumber((p) => p.completedAttempts) },
 ];
 
-/** 短文卡片网格（短文库、单词本「短文」页签共用）：加载 / 空 / 错误三态，删除确认；排序由页面控制（sortBy） */
+/** 短文卡片网格（短文库、词汇本「短文」页签共用）：加载 / 空 / 错误三态，删除确认；排序由页面控制（sortBy） */
 export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', origin, tagId, sortBy = 'recent', toolbar, onOpen, onCreate, onImport, onCountChange, emptyDescription }) => {
   const [passages, setPassages] = useState<PassageSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<PassageSummary[] | null>(null);
   const jobs = useJobs();
-  // 新写 / 导入的短文只在短文库首页显示占位（单词本、标签页里的列表不知道新短文归不归它）
+  // 新写 / 导入的短文只在短文库首页显示占位（词汇本、标签页里的列表不知道新短文归不归它）
   const creating = bookId === undefined && tagId === undefined ? jobs.filter((j) => isJobActive(j) && CREATING_KINDS.includes(j.kind)) : [];
 
   const load = useCallback(async () => {
