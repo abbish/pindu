@@ -5,6 +5,7 @@
 
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::repositories::settings_repository::SettingsRepository;
 use crate::repositories::tts_repository::TtsRepository;
 use crate::types::ai_model::mask_api_key;
 use crate::types::tts::*;
@@ -56,13 +57,12 @@ impl SpeechStyle {
         }
     }
 
-    /// 语音指令（只对支持指令的 2.0 资源生效）
-    fn instruction(self) -> Option<&'static str> {
+    /// 语音指令（只对支持指令的 2.0 资源生效）：单词始终是平稳的示范语气；句子按「朗读风格」设置
+    fn instruction(self, prefs: &TtsPreferences) -> Option<String> {
         match self {
             Self::Plain => None,
-            // 指令用英文：与朗读的语言一致，减少模型被带到中文语境；每句都带同一条，句与句之间语气一致
-            Self::Word => Some("Say this English word the way an English teacher models pronunciation for learners: clear, calm, neutral statement tone with a natural falling intonation, no emotion, not a question."),
-            Self::Sentence => Some("Read this English sentence the way an English teacher reads examples aloud for learners: clear, calm, neutral and consistent tone at a slightly slow pace, no dramatic emotion. Read all numbers, dates and abbreviations in English."),
+            Self::Word => Some(WORD_INSTRUCTION.to_string()),
+            Self::Sentence => Some(sentence_instruction(prefs)),
         }
     }
 
@@ -85,6 +85,71 @@ impl SpeechStyle {
     }
 }
 
+/// 单词示范发音的指令（英文：与朗读的语言一致，减少模型被带到中文语境）
+const WORD_INSTRUCTION: &str = "Say this English word the way an English teacher models pronunciation for learners: clear, calm, neutral statement tone with a natural falling intonation, no emotion, not a question.";
+
+/// 每条句子指令都带上的要求：只按英语读、各句语气一致
+const SENTENCE_RULES: &str = "Keep the same tone from sentence to sentence. Read all numbers, dates and abbreviations in English.";
+
+/// 朗读风格预设的取值
+pub const STYLE_PRESETS: [&str; 5] = ["teacher", "natural", "story", "news", "custom"];
+/// 自定义风格要求最多几个字
+pub const CUSTOM_INSTRUCTION_MAX: usize = 200;
+
+/// 句子朗读的指令：按风格预设（自定义时用用户写的要求），都带上 SENTENCE_RULES
+fn sentence_instruction(prefs: &TtsPreferences) -> String {
+    let style = match prefs.style.as_str() {
+        "natural" => "Read this English sentence naturally, like a native speaker in an everyday conversation: relaxed and friendly, with natural rhythm and linking.",
+        "story" => "Read this English sentence like an audiobook narrator telling a story to learners: warm and gently expressive, but clear and steady in pace.",
+        "news" => "Read this English sentence like a news anchor: clear, steady, formal and neutral.",
+        "custom" if !prefs.custom_instruction.trim().is_empty() => prefs.custom_instruction.trim(),
+        _ => "Read this English sentence the way an English teacher reads examples aloud for learners: clear, calm and neutral at a slightly slow pace, no dramatic emotion.",
+    };
+    format!("{} {}", style, SENTENCE_RULES)
+}
+
+/// 一次合成的发声参数：语音指令、语种、音调、音量
+#[derive(Debug, Clone, Default)]
+struct Voicing {
+    instruction: Option<String>,
+    language: Option<&'static str>,
+    pitch: i64,
+    loudness: i64,
+}
+
+impl Voicing {
+    /// 按朗读风格与偏好得出（指令只对支持的 2.0 资源加，语种对所有资源都加）
+    fn new(style: SpeechStyle, prefs: &TtsPreferences, resource_id: &str) -> Self {
+        Self {
+            instruction: style
+                .instruction(prefs)
+                .filter(|_| supports_instruction(resource_id)),
+            language: style.language(),
+            pitch: prefs.pitch,
+            loudness: prefs.loudness,
+        }
+    }
+
+    /// 缓存键里的部分：指令内容、语种、音调、音量变了都要重新合成
+    fn cache_tag(&self, style: SpeechStyle) -> String {
+        let mut tag = String::new();
+        if self.instruction.is_some() || self.language.is_some() {
+            tag.push_str(style.cache_tag());
+        }
+        if let Some(instruction) = &self.instruction {
+            let digest = Sha256::digest(instruction.as_bytes());
+            tag.push_str(&format!("|ins={:x}", digest)[..14]);
+        }
+        if self.pitch != 0 {
+            tag.push_str(&format!("|pitch={}", self.pitch));
+        }
+        if self.loudness != 0 {
+            tag.push_str(&format!("|loud={}", self.loudness));
+        }
+        tag
+    }
+}
+
 /// 支持语音指令（context_texts）的资源：豆包语音合成 2.0 与声音复刻 2.0
 fn supports_instruction(resource_id: &str) -> bool {
     matches!(resource_id, "seed-tts-2.0" | "seed-icl-2.0")
@@ -95,8 +160,7 @@ fn request_body(
     text: &str,
     voice_id: &str,
     config: &VolcengineTtsConfig,
-    instruction: Option<&str>,
-    language: Option<&str>,
+    voicing: &Voicing,
     with_timings: bool,
 ) -> serde_json::Value {
     let mut req_params = serde_json::json!({
@@ -112,12 +176,21 @@ fn request_body(
         // 逐词时间戳：必须是布尔值，结果在 `sentence.words` 里（秒）
         req_params["audio_params"]["enable_subtitle"] = serde_json::Value::Bool(true);
     }
+    if voicing.loudness != 0 {
+        req_params["audio_params"]["loudness_rate"] = serde_json::json!(voicing.loudness);
+    }
     let mut additions = serde_json::Map::new();
-    if let Some(instruction) = instruction {
+    if let Some(instruction) = &voicing.instruction {
         additions.insert("context_texts".into(), serde_json::json!([instruction]));
     }
-    if let Some(language) = language {
+    if let Some(language) = voicing.language {
         additions.insert("explicit_language".into(), serde_json::json!(language));
+    }
+    if voicing.pitch != 0 {
+        additions.insert(
+            "post_process".into(),
+            serde_json::json!({ "pitch": voicing.pitch }),
+        );
     }
     if !additions.is_empty() {
         req_params["additions"] =
@@ -131,6 +204,29 @@ pub struct TTSService {
     cache_dir: PathBuf,
     logger: Arc<Logger>,
     repository: TtsRepository,
+    pool: Arc<SqlitePool>,
+}
+
+/// 朗读偏好在 app_settings 里的键
+const PREFERENCES_KEY: &str = "tts.preferences";
+
+/// 校正朗读偏好：风格只接受预设值，自定义要求去空白、限长，音调 / 音量夹到范围内
+pub fn normalize_preferences(prefs: TtsPreferences) -> TtsPreferences {
+    TtsPreferences {
+        style: if STYLE_PRESETS.contains(&prefs.style.as_str()) {
+            prefs.style
+        } else {
+            "teacher".to_string()
+        },
+        custom_instruction: prefs
+            .custom_instruction
+            .trim()
+            .chars()
+            .take(CUSTOM_INSTRUCTION_MAX)
+            .collect(),
+        pitch: prefs.pitch.clamp(-12, 12),
+        loudness: prefs.loudness.clamp(-50, 100),
+    }
 }
 
 impl TTSService {
@@ -143,8 +239,43 @@ impl TTSService {
                 .unwrap_or_default(),
             cache_dir,
             logger,
-            repository: TtsRepository::new(pool),
+            repository: TtsRepository::new(pool.clone()),
+            pool,
         }
+    }
+
+    /// 朗读偏好；没设置或读不出来时用默认（读失败记一条警告）
+    pub async fn preferences(&self) -> TtsPreferences {
+        match SettingsRepository::get(&self.pool, PREFERENCES_KEY).await {
+            Ok(Some(raw)) => normalize_preferences(serde_json::from_str(&raw).unwrap_or_default()),
+            Ok(None) => TtsPreferences::default(),
+            Err(e) => {
+                self.logger
+                    .warn("TTS", "读取朗读偏好失败，使用默认", Some(&e.to_string()));
+                TtsPreferences::default()
+            }
+        }
+    }
+
+    /// 保存朗读偏好（校正后），返回保存的值
+    pub async fn save_preferences(&self, prefs: TtsPreferences) -> AppResult<TtsPreferences> {
+        if prefs.style == "custom" && prefs.custom_instruction.trim().is_empty() {
+            return Err(AppError::ValidationError(
+                "请写下自定义的朗读风格".to_string(),
+            ));
+        }
+        if prefs.custom_instruction.trim().chars().count() > CUSTOM_INSTRUCTION_MAX {
+            return Err(AppError::ValidationError(format!(
+                "朗读风格最多 {} 个字",
+                CUSTOM_INSTRUCTION_MAX
+            )));
+        }
+        let prefs = normalize_preferences(prefs);
+        let json =
+            serde_json::to_string(&prefs).map_err(|e| AppError::InternalError(e.to_string()))?;
+        let mut conn = self.pool.acquire().await?;
+        SettingsRepository::set(&mut conn, PREFERENCES_KEY, Some(&json)).await?;
+        Ok(prefs)
     }
 
     /// 缓存键：文本 + 音色 + 影响音频的参数（资源 ID、语速、采样率）
@@ -185,22 +316,12 @@ impl TTSService {
         config: &VolcengineTtsConfig,
         voice_id: &str,
         resource_id: &str,
-        style: SpeechStyle,
+        voicing: &Voicing,
         with_timings: bool,
     ) -> AppResult<(Vec<u8>, Vec<WordTiming>)> {
         let request_id = uuid::Uuid::new_v4().to_string();
-        // 指令只对支持的 2.0 资源加；语种对所有资源都加
-        let instruction = style
-            .instruction()
-            .filter(|_| supports_instruction(resource_id));
-        let body = request_body(
-            text,
-            voice_id,
-            config,
-            instruction,
-            style.language(),
-            with_timings,
-        );
+        let body = request_body(text, voice_id, config, voicing, with_timings);
+        let instruction = voicing.instruction.as_deref();
 
         // 日志不含任何密钥
         self.logger.info(
@@ -344,20 +465,14 @@ impl TTSService {
             .unwrap_or(config.default_voice_id.as_str());
         validate_identifier("音色 ID", voice)?;
         let resource_id = effective_resource_id(&config.resource_id, voice);
-        let instruction = style
-            .instruction()
-            .filter(|_| supports_instruction(&resource_id));
+        let prefs = self.preferences().await;
+        let voicing = Voicing::new(style, &prefs, &resource_id);
         let variant = format!(
             "{}|rate={}|sr={}{}",
             resource_id,
             config.speech_rate,
             config.sample_rate,
-            // 语种对所有资源生效、指令只对 2.0 生效：两者任一有就带风格版本
-            if instruction.is_some() || style.language().is_some() {
-                style.cache_tag()
-            } else {
-                ""
-            }
+            voicing.cache_tag(style)
         );
         let text_hash = self.generate_text_hash(text, voice, &variant);
 
@@ -377,7 +492,7 @@ impl TTSService {
         }
 
         let (audio_data, timings) = self
-            .call_volcengine_api(text, &config, voice, &resource_id, style, with_timings)
+            .call_volcengine_api(text, &config, voice, &resource_id, &voicing, with_timings)
             .await?;
 
         if use_cache {
@@ -562,6 +677,8 @@ pub fn volcengine_voices() -> Vec<TTSVoice> {
             created_at: "2026-10-06T00:00:00Z".to_string(),
             updated_at: "2026-10-06T00:00:00Z".to_string(),
         };
+    // 豆包语音合成 2.0 官方音色（https://www.volcengine.com/docs/6561/1257544）里支持「指令遵循」的英文音色：
+    // 都能按朗读风格调整语气；口音与适用场景按官方音色表
     vec![
         voice(
             1,
@@ -569,15 +686,119 @@ pub fn volcengine_voices() -> Vec<TTSVoice> {
             "Tim",
             "Tim · 美式",
             "male",
-            "",
+            "通用",
         ),
         voice(
             2,
             "en_female_dacey_uranus_bigtts",
             "Dacey",
-            "Dacey · 英式",
+            "Dacey · 美式",
             "female",
-            "",
+            "通用",
+        ),
+        voice(
+            3,
+            "en_female_stokie_uranus_bigtts",
+            "Stokie",
+            "Stokie · 美式",
+            "female",
+            "通用",
+        ),
+        voice(
+            4,
+            "en_male_alberto_uranus_bigtts",
+            "Alberto",
+            "Alberto · 美式",
+            "male",
+            "教学",
+        ),
+        voice(
+            5,
+            "en_male_jamie_uranus_bigtts",
+            "Jamie",
+            "Jamie · 美式",
+            "male",
+            "教学、视频配音",
+        ),
+        voice(
+            6,
+            "en_male_kevin_uranus_bigtts",
+            "Kevin",
+            "Kevin · 美式",
+            "male",
+            "教学、视频配音",
+        ),
+        voice(
+            7,
+            "en_male_russell_uranus_bigtts",
+            "Russell",
+            "Russell · 美式",
+            "male",
+            "教学",
+        ),
+        voice(
+            8,
+            "en_male_michael_uranus_bigtts",
+            "Hank",
+            "Hank · 美式",
+            "male",
+            "教学",
+        ),
+        voice(
+            9,
+            "en_female_authoritative-british_uranus_bigtts",
+            "Charlotte",
+            "Charlotte · 美式",
+            "female",
+            "教学、视频配音",
+        ),
+        voice(
+            10,
+            "en_female_hayley_uranus_bigtts",
+            "Hayley",
+            "Hayley · 美式",
+            "female",
+            "教学、视频配音",
+        ),
+        voice(
+            11,
+            "en_female_mel_uranus_bigtts",
+            "Mel",
+            "Mel · 美式",
+            "female",
+            "教学",
+        ),
+        voice(
+            12,
+            "en_female_myra_uranus_bigtts",
+            "Myra",
+            "Myra · 美式",
+            "female",
+            "教学",
+        ),
+        voice(
+            13,
+            "en_male_david_uranus_bigtts",
+            "David",
+            "David · 美式",
+            "male",
+            "有声阅读",
+        ),
+        voice(
+            14,
+            "en_female_authoritative-informative_uranus_bigtts",
+            "Margaret",
+            "Margaret · 美式",
+            "female",
+            "有声阅读",
+        ),
+        voice(
+            15,
+            "zh_female_yingyujiaoxue_uranus_bigtts",
+            "Tina",
+            "Tina 老师 · 英式",
+            "female",
+            "教学",
         ),
     ]
 }
@@ -1007,7 +1228,13 @@ mod tests {
                 },
             ]
         );
-        let body = request_body("x", "v", &VolcengineTtsConfig::default(), None, None, true);
+        let body = request_body(
+            "x",
+            "v",
+            &VolcengineTtsConfig::default(),
+            &Voicing::default(),
+            true,
+        );
         assert_eq!(body["req_params"]["audio_params"]["enable_subtitle"], true);
     }
 
@@ -1061,17 +1288,15 @@ mod tests {
             sample_rate: 24000,
             ..Default::default()
         };
-        let plain = request_body("cat", "v", &config, None, None, false);
+        let plain = request_body("cat", "v", &config, &Voicing::default(), false);
         assert!(plain["req_params"].get("additions").is_none());
+        assert!(plain["req_params"]["audio_params"]
+            .get("loudness_rate")
+            .is_none());
 
-        let styled = request_body(
-            "cat",
-            "v",
-            &config,
-            SpeechStyle::Word.instruction(),
-            SpeechStyle::Word.language(),
-            false,
-        );
+        let prefs = TtsPreferences::default();
+        let word = Voicing::new(SpeechStyle::Word, &prefs, "seed-tts-2.0");
+        let styled = request_body("cat", "v", &config, &word, false);
         let additions = styled["req_params"]["additions"]
             .as_str()
             .expect("additions 是字符串");
@@ -1082,8 +1307,11 @@ mod tests {
             .contains("English word"));
         // 只按英语读（数字也读英文）
         assert_eq!(parsed["explicit_language"], "en");
+        assert!(parsed.get("post_process").is_none());
+
         // 1.0 资源不支持指令，但语种照样带上
-        let lang_only = request_body("3 cats", "v", &config, None, Some("en"), false);
+        let v1 = Voicing::new(SpeechStyle::Sentence, &prefs, "seed-tts-1.0");
+        let lang_only = request_body("3 cats", "v", &config, &v1, false);
         let parsed: serde_json::Value =
             serde_json::from_str(lang_only["req_params"]["additions"].as_str().unwrap()).unwrap();
         assert!(parsed.get("context_texts").is_none());
@@ -1182,5 +1410,94 @@ mod tests {
                 .await,
             Err(AppError::ValidationError(_))
         ));
+    }
+
+    #[test]
+    fn preferences_shape_instruction_pitch_loudness_and_cache_key() {
+        let config = VolcengineTtsConfig {
+            sample_rate: 24000,
+            ..Default::default()
+        };
+        let story = TtsPreferences {
+            style: "story".into(),
+            pitch: 3,
+            loudness: 20,
+            ..Default::default()
+        };
+        let v = Voicing::new(SpeechStyle::Sentence, &story, "seed-tts-2.0");
+        let body = request_body("Hi.", "v", &config, &v, false);
+        assert_eq!(body["req_params"]["audio_params"]["loudness_rate"], 20);
+        let parsed: serde_json::Value =
+            serde_json::from_str(body["req_params"]["additions"].as_str().unwrap()).unwrap();
+        assert_eq!(parsed["post_process"]["pitch"], 3);
+        let ins = parsed["context_texts"][0].as_str().unwrap();
+        assert!(ins.contains("audiobook") && ins.contains("numbers"));
+
+        // 单词不受句子风格影响
+        let word = Voicing::new(SpeechStyle::Word, &story, "seed-tts-2.0");
+        assert!(word.instruction.unwrap().contains("English word"));
+
+        // 自定义风格；风格、音调变了缓存键就变
+        let custom = TtsPreferences {
+            style: "custom".into(),
+            custom_instruction: "Read slowly and warmly.".into(),
+            ..Default::default()
+        };
+        let c = Voicing::new(SpeechStyle::Sentence, &custom, "seed-tts-2.0");
+        assert!(c
+            .instruction
+            .as_deref()
+            .unwrap()
+            .starts_with("Read slowly and warmly."));
+        let teacher = Voicing::new(
+            SpeechStyle::Sentence,
+            &TtsPreferences::default(),
+            "seed-tts-2.0",
+        );
+        assert_ne!(
+            c.cache_tag(SpeechStyle::Sentence),
+            teacher.cache_tag(SpeechStyle::Sentence)
+        );
+        assert_ne!(
+            v.cache_tag(SpeechStyle::Sentence),
+            teacher.cache_tag(SpeechStyle::Sentence)
+        );
+
+        // 校正：未知风格回到 teacher，范围夹紧
+        let n = normalize_preferences(TtsPreferences {
+            style: "loud".into(),
+            pitch: 99,
+            loudness: -99,
+            ..Default::default()
+        });
+        assert_eq!(
+            (n.style.as_str(), n.pitch, n.loudness),
+            ("teacher", 12, -50)
+        );
+    }
+
+    #[tokio::test]
+    async fn preferences_round_trip() {
+        let pool = memory_pool().await;
+        let dir = std::env::temp_dir().join(format!("redlark-ttsprefs-{}", uuid::Uuid::new_v4()));
+        let service = TTSService::new(pool.clone(), test_logger(), dir);
+        assert_eq!(service.preferences().await, TtsPreferences::default());
+        assert!(service
+            .save_preferences(TtsPreferences {
+                style: "custom".into(),
+                ..Default::default()
+            })
+            .await
+            .is_err());
+        let saved = service
+            .save_preferences(TtsPreferences {
+                style: "news".into(),
+                pitch: -2,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(service.preferences().await, saved);
+        assert_eq!(saved.pitch, -2);
     }
 }

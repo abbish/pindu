@@ -162,3 +162,41 @@ pub async fn update_tts_config(app: AppHandle, request: UpdateTtsConfigRequest) 
     log_result(&logger, "update_tts_config", &result);
     result
 }
+
+/// 朗读偏好（风格预设、自定义风格、音调、音量）
+#[tauri::command]
+pub async fn get_tts_preferences(app: AppHandle) -> AppResult<TtsPreferences> {
+    let logger = app.state::<Logger>();
+    logger.api_request("get_tts_preferences", None);
+    let result = match tts_service(&app) {
+        Ok(service) => Ok(service.preferences().await),
+        Err(e) => Err(e),
+    };
+    log_result(&logger, "get_tts_preferences", &result);
+    result
+}
+
+/// 保存朗读偏好；返回校正后的值
+#[tauri::command]
+pub async fn update_tts_preferences(
+    app: AppHandle,
+    request: TtsPreferences,
+) -> AppResult<TtsPreferences> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "update_tts_preferences",
+        Some(&format!(
+            "style: {}, custom_chars: {}, pitch: {}, loudness: {}",
+            request.style,
+            request.custom_instruction.chars().count(),
+            request.pitch,
+            request.loudness
+        )),
+    );
+    let result = match tts_service(&app) {
+        Ok(service) => service.save_preferences(request).await,
+        Err(e) => Err(e),
+    };
+    log_result(&logger, "update_tts_preferences", &result);
+    result
+}

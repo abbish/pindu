@@ -20,9 +20,10 @@ import { cn } from '@/lib/utils';
 import { ttsService, type TTSVoice, type TtsCacheStats, type TtsConfig, type UpdateTtsConfigRequest } from '../../services/ttsService';
 import { formatBytes } from '@/utils/fileSize';
 import { TtsConfigModal } from './TtsConfigModal';
+import { TtsStyleSection } from './TtsStyleSection';
 
-/** 试听文本：单词 + 短句，贴近练习页的实际用法 */
-const PREVIEW_TEXT = 'Elephant. The elephant is a very large animal.';
+/** 试听文本：短句（含数字），按句子朗读的风格读，贴近练习与短文的实际用法 */
+const PREVIEW_TEXT = 'The elephant is a very large animal. It can eat 150 kilograms of food a day.';
 
 /**
  * 设置「语音合成」：豆包语音配置（只读设置行 + 编辑弹窗）、试听、缓存清理
@@ -107,7 +108,7 @@ export const TTSSettings: React.FC = () => {
   // 用当前保存的配置试听默认音色（不走缓存，确保反映最新配置）
   const handlePreview = async () => {
     setPreviewing(true);
-    const result = await ttsService.textToSpeech({ text: PREVIEW_TEXT, useCache: false });
+    const result = await ttsService.textToSpeech({ text: PREVIEW_TEXT, style: 'sentence', useCache: false });
     setPreviewing(false);
     if (result.success) {
       playAudio(result.data.audioUrl);
@@ -119,7 +120,7 @@ export const TTSSettings: React.FC = () => {
   // 弹窗内试听指定音色
   const handleVoiceTest = async (voiceId: string) => {
     setTestingVoiceId(voiceId);
-    const result = await ttsService.textToSpeech({ text: PREVIEW_TEXT, voiceId, useCache: false });
+    const result = await ttsService.textToSpeech({ text: PREVIEW_TEXT, voiceId, style: 'sentence', useCache: false });
     setTestingVoiceId(undefined);
     if (result.success) {
       playAudio(result.data.audioUrl);
@@ -222,6 +223,8 @@ export const TTSSettings: React.FC = () => {
           </Button>
         </SettingsRow>
       </SettingsSection>
+
+      <TtsStyleSection resourceId={config.effectiveResourceId} canPreview={config.configured} onPlay={playAudio} />
 
       <SettingsSection title="缓存">
         <SettingsRow

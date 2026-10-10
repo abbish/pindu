@@ -130,3 +130,28 @@ pub struct TtsCacheStats {
     /// “很久没用”的天数口径（与清理默认值一致）
     pub stale_days: i64,
 }
+
+/// 朗读偏好（「设置 → 语音合成 → 朗读风格」，存 app_settings 的 `tts.preferences`）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TtsPreferences {
+    /// 句子的朗读风格：teacher 老师示范 / natural 自然口语 / story 讲故事 / news 新闻播报 / custom 自定义
+    pub style: String,
+    /// 自定义风格的要求（style = custom 时用；最多 200 字）
+    pub custom_instruction: String,
+    /// 音调 [-12, 12]，0 为音色本来的音调
+    pub pitch: i64,
+    /// 音量 [-50, 100]，0 为正常
+    pub loudness: i64,
+}
+
+impl Default for TtsPreferences {
+    fn default() -> Self {
+        Self {
+            style: "teacher".to_string(),
+            custom_instruction: String::new(),
+            pitch: 0,
+            loudness: 0,
+        }
+    }
+}

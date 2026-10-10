@@ -351,6 +351,8 @@ pub fn run() {
                 add_passage_words_to_book,
                 get_tts_config,
                 update_tts_config,
+                get_tts_preferences,
+                update_tts_preferences,
                 list_jobs,
                 cancel_job,
                 remove_job,

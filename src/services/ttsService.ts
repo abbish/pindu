@@ -106,6 +106,21 @@ export interface UpdateTtsConfigRequest {
 /**
  * TTS (Text-to-Speech) 服务
  */
+/** 句子的朗读风格预设 */
+export type TtsStylePreset = 'teacher' | 'natural' | 'story' | 'news' | 'custom';
+
+/** 朗读偏好（对应 Rust `TtsPreferences`，camelCase） */
+export interface TtsPreferences {
+  /** 句子的朗读风格；单词始终是平稳的示范语气 */
+  style: TtsStylePreset;
+  /** 自定义风格的要求（style = custom 时用；最多 200 字） */
+  customInstruction: string;
+  /** 音调 [-12, 12]，0 为音色本来的音调 */
+  pitch: number;
+  /** 音量 [-50, 100]，0 为正常 */
+  loudness: number;
+}
+
 export class TTSService extends BaseService {
   /**
    * 文本转语音
@@ -184,6 +199,16 @@ export class TTSService extends BaseService {
   /**
    * 更新豆包语音合成配置
    */
+  /** 朗读偏好（风格预设、自定义风格、音调、音量） */
+  async getPreferences(): Promise<ApiResult<TtsPreferences>> {
+    return this.executeWithLoading(async () => this.client.invoke<TtsPreferences>('get_tts_preferences'));
+  }
+
+  /** 保存朗读偏好；返回校正后的值 */
+  async updatePreferences(request: TtsPreferences): Promise<ApiResult<TtsPreferences>> {
+    return this.executeWithLoading(async () => this.client.invoke<TtsPreferences>('update_tts_preferences', { request }));
+  }
+
   async updateTtsConfig(request: UpdateTtsConfigRequest): Promise<ApiResult<void>> {
     return this.executeWithLoading(
       () => this.client.invoke<void>('update_tts_config', { request })
