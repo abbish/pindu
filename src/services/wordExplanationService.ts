@@ -1,6 +1,7 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { BaseService } from './baseService';
 import type { ApiResult, TutorReply, WordExplanation, WordTutorRequest } from '../types';
+import type { SentenceRef } from '../types/passage';
 
 /** 生成过程中的流式增量（后端事件 `word-explanation-delta`） */
 export interface WordExplanationDelta {
@@ -21,7 +22,18 @@ export function cardWordId(word: string): number {
   cardWords.set(id, word);
   return id;
 }
-const target = (wordId: number) => (wordId < 0 ? { wordId: 0, cardWord: cardWords.get(wordId) ?? null } : { wordId, cardWord: null });
+/** 围绕短文里一句话的对话：同样用负数 id（与单词卡的 id 范围错开），调用后端时换成 wordId 0 + sentence */
+const sentenceRefs = new Map<number, SentenceRef>();
+export function sentenceChatId(passageId: number, sentenceIndex: number): number {
+  const id = -(2 ** 32 + passageId * 100_000 + sentenceIndex);
+  sentenceRefs.set(id, { passageId, sentenceIndex });
+  return id;
+}
+const target = (wordId: number) => {
+  const sentence = sentenceRefs.get(wordId);
+  if (sentence) return { wordId: 0, cardWord: null, sentence };
+  return wordId < 0 ? { wordId: 0, cardWord: cardWords.get(wordId) ?? null } : { wordId, cardWord: null };
+};
 
 /**
  * 单词讲解：由 agent 实时生成（Markdown，可流式显示，不落库）与 AI 老师答疑

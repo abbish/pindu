@@ -244,6 +244,7 @@ impl WordService {
     }
 
     /// 分页获取词汇本中的单词
+    #[allow(clippy::too_many_arguments)]
     pub async fn get_words_by_book(
         &self,
         book_id: Id,

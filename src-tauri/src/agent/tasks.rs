@@ -869,15 +869,10 @@ pub fn word_tutor_task(profile: &PromptProfile) -> AgentTask {
 }
 
 /// 答疑请求：单词资料 + 已有讲解 + 最近对话 + 本次问题
-pub fn word_tutor_message(
-    word: &Word,
-    scene: &str,
-    explanation: Option<&str>,
-    history: &[ChatTurn],
-    question: &str,
-) -> String {
+/// 最近的对话（学生 / 老师）按行排列
+fn tutor_history(history: &[ChatTurn]) -> String {
     let recent = &history[history.len().saturating_sub(TUTOR_HISTORY_LIMIT)..];
-    let history: Vec<String> = recent
+    recent
         .iter()
         .map(|t| {
             let who = if t.role == "teacher" {
@@ -887,14 +882,52 @@ pub fn word_tutor_message(
             };
             format!("{}：{}", who, t.content.trim())
         })
-        .collect();
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 围绕短文里一句话的答疑消息：原句、译文、上下文、看过的句子分析、最近对话
+pub struct SentenceTutorFacts<'a> {
+    pub sentence: &'a str,
+    pub zh: &'a str,
+    pub title: &'a str,
+    pub context: &'a str,
+    pub analysis: &'a str,
+}
+
+pub fn sentence_tutor_message(
+    facts: &SentenceTutorFacts<'_>,
+    history: &[ChatTurn],
+    question: &str,
+) -> String {
+    prompts::message(
+        MessageTemplate::SentenceTutor,
+        &[
+            ("sentence", facts.sentence.trim()),
+            ("zh", facts.zh.trim()),
+            ("title", facts.title.trim()),
+            ("context", facts.context.trim()),
+            ("analysis", facts.analysis.trim()),
+            ("history", &tutor_history(history)),
+            ("question", question.trim()),
+        ],
+    )
+}
+
+pub fn word_tutor_message(
+    word: &Word,
+    scene: &str,
+    explanation: Option<&str>,
+    history: &[ChatTurn],
+    question: &str,
+) -> String {
     prompts::message(
         MessageTemplate::WordTutor,
         &[
             ("scene", scene),
             ("facts", &word_facts(word)),
             ("explanation", explanation.map(str::trim).unwrap_or("")),
-            ("history", &history.join("\n")),
+            ("history", &tutor_history(history)),
             ("question", question.trim()),
         ],
     )
@@ -1810,6 +1843,66 @@ pub async fn plan_video(
             run.outcome.retries
         ),
     );
+    Ok(submission.details.clone())
+}
+
+// ==================== 句子分析 ====================
+
+pub fn sentence_analyze_task(profile: &PromptProfile) -> AgentTask {
+    AgentTask {
+        name: "sentence-analyze",
+        system_prompt: prompts::system_prompt(PromptTask::SentenceAnalyze, profile, &[]),
+        tools: &["submit_sentence_analysis"],
+        // 语法与句式要准确
+        default_thinking: "medium",
+    }
+}
+
+/// 要分析的句子与它的上下文
+pub struct SentenceContext<'a> {
+    pub sentence: &'a str,
+    pub zh: &'a str,
+    pub title: &'a str,
+    pub before: &'a str,
+    pub after: &'a str,
+    pub targets: &'a [String],
+}
+
+pub fn sentence_analyze_message(c: &SentenceContext<'_>) -> String {
+    prompts::message(
+        MessageTemplate::SentenceAnalyze,
+        &[
+            ("sentence", c.sentence.trim()),
+            ("zh", c.zh.trim()),
+            ("title", c.title.trim()),
+            ("before", c.before.trim()),
+            ("after", c.after.trim()),
+            ("targets", &c.targets.join(", ")),
+        ],
+    )
+}
+
+/// 分析一句话，返回 submit_sentence_analysis 的原始提交（由 services::sentence_analysis 校正）
+pub async fn analyze_sentence(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &PromptProfile,
+    context: &SentenceContext<'_>,
+    logger: &Logger,
+) -> AppResult<Value> {
+    let run = run_task(
+        paths,
+        &sentence_analyze_task(profile),
+        model,
+        &sentence_analyze_message(context),
+        logger,
+        |_| {},
+    )
+    .await?;
+    let submission = run
+        .outcome
+        .last_successful_call("submit_sentence_analysis")
+        .ok_or_else(|| AppError::ExternalServiceError("AI 没有给出分析，请再试一次".to_string()))?;
     Ok(submission.details.clone())
 }
 

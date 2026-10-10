@@ -521,3 +521,32 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
     .await;
     finish(&logger, "start_word_cards", result)
 }
+
+// ==================== 句子分析 ====================
+
+/// 分析短文 / 视频片段里的一句（句式、成分、语法点、交际功能、词组、发音要点）。
+/// 这句已经分析过且不要求重新分析时直接返回保存的结果
+#[tauri::command]
+pub async fn analyze_sentence(
+    app: AppHandle,
+    request: crate::types::passage::AnalyzeSentenceRequest,
+) -> AppResult<crate::types::passage::SentenceAnalysis> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "analyze_sentence",
+        Some(&format!(
+            "passage {} sentence {} refresh {}",
+            request.passage_id, request.sentence_index, request.refresh
+        )),
+    );
+    let result = async {
+        crate::services::sentence_analysis::SentenceAnalysisService::new(
+            Arc::new(app.state::<SqlitePool>().inner().clone()),
+            Arc::new(logger.inner().clone()),
+        )
+        .analyze(&request, &super::agent_paths(&app)?)
+        .await
+    }
+    .await;
+    finish(&logger, "analyze_sentence", result)
+}

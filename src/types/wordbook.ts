@@ -1,5 +1,6 @@
 import { Id, Timestamp } from './common';
 import type { Tag } from './material';
+import type { SentenceRef } from './passage';
 
 /// 词汇本
 export interface WordBook {
@@ -69,6 +70,8 @@ export interface WordTutorRequest {
   explanation?: string;
   /** 不在词汇本的目标词：按单词卡答疑（此时 wordId 为 0） */
   cardWord?: string | null;
+  /** 围绕短文里的一句答疑（此时 wordId 为 0） */
+  sentence?: SentenceRef | null;
 }
 
 /// 单词讲解（agent 实时生成的 Markdown，不落库）

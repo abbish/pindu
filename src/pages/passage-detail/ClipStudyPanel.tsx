@@ -14,6 +14,7 @@ import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { isPhrase, targetOf } from '@/utils/passage';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { cn } from '@/lib/utils';
+import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
 import type { Passage, PassageSentence } from '@/types/passage';
 import type { PassageVideo } from '@/types/video';
 import { ListenBuildPanel } from './ListenBuildPanel';
@@ -83,6 +84,8 @@ const SELECTABLE_WORD = /^[A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){0,
 
 export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences, passage, onAddTarget, onOpenWord, onPractice }) => {
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
+  /** 正在看分析的台词 */
+  const [analyzing, setAnalyzing] = useState<number | null>(null);
   const wordInfo = useTargetWordInfo(passage);
   const wordAudio = useAudioPlayer();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -314,6 +317,8 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               onAction={(text) => onAddTarget?.(text)}
             >
             <PassageReader
+              onAnalyzeSentence={setAnalyzing}
+              analyzing={analyzing}
               scrollContainer={textBox}
               sentences={sentences}
               current={active >= 0 ? active : null}
@@ -385,6 +390,9 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
         )}
       </Card>
       </div>
+      {analyzing !== null && (
+        <SentenceAnalysisPanel passageId={passage.id} sentences={sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targetWords} onAddTarget={onAddTarget} onClose={() => setAnalyzing(null)} />
+      )}
     </div>
   );
 };

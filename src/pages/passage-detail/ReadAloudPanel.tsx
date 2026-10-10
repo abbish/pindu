@@ -15,6 +15,7 @@ import { useTargetWordInfo } from './useTargetWordInfo';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { cn } from '@/lib/utils';
 import { isPhrase, recallBlanks, targetOf } from '@/utils/passage';
+import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
 import type { SpeechSpeed } from '@/services/ttsService';
 import type { Passage } from '@/types/passage';
 
@@ -98,6 +99,8 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
 
   const targets = useMemo(() => passage.targetWords.map((w) => w.word), [passage]);
   const texts = useMemo(() => passage.sentences.map((s) => s.en), [passage]);
+  /** 正在看分析的句子 */
+  const [analyzing, setAnalyzing] = useState<number | null>(null);
 
 
   const updatePrefs = (patch: Partial<ReadAloudPrefs>) => {
@@ -375,11 +378,16 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
         focusBlur={prefs.focusBlur}
         renderSentence={renderRecallSentence}
         below={recallPanel}
+        onAnalyzeSentence={setAnalyzing}
+        analyzing={analyzing}
         renderTarget={(text, target, active) => (
           <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} onSpeak={(w, slow) => wordAudio.playText(w, undefined, { style: 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {})} onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined} />
         )}
       />
       </SelectionAction>
+      {analyzing !== null && (
+        <SentenceAnalysisPanel passageId={passage.id} sentences={passage.sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targets} onAddTarget={onAddTarget} onClose={() => setAnalyzing(null)} />
+      )}
     </Card>
   );
 };

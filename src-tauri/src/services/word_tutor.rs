@@ -54,6 +54,9 @@ impl WordTutorService {
         on_delta: impl FnMut(&str),
     ) -> AppResult<TutorReply> {
         validate(request)?;
+        if let Some(sentence) = &request.sentence {
+            return self.ask_sentence(request, sentence, paths, on_delta).await;
+        }
         let word = crate::services::word_cards::learning_word(
             &self.pool,
             &self.logger,
@@ -114,6 +117,74 @@ impl WordTutorService {
     }
 }
 
+impl WordTutorService {
+    /// 围绕短文里的一句答疑：带上原句、译文、前后各一句和已有的句子分析
+    async fn ask_sentence(
+        &self,
+        request: &WordTutorRequest,
+        sentence: &crate::types::passage::SentenceRef,
+        paths: &AgentPaths,
+        on_delta: impl FnMut(&str),
+    ) -> AppResult<TutorReply> {
+        use crate::services::sentence_analysis::{summary, SentenceAnalysisService};
+        let service = SentenceAnalysisService::new(self.pool.clone(), self.logger.clone());
+        let s = service
+            .sentence(sentence.passage_id, sentence.sentence_index)
+            .await?;
+        let analysis = service.cached(s.en()).await?.map(|a| summary(&a));
+        let (before, after) = s.neighbors();
+        let context = [before, after]
+            .iter()
+            .filter(|x| !x.is_empty())
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" … ");
+        let message = tasks::sentence_tutor_message(
+            &tasks::SentenceTutorFacts {
+                sentence: s.en(),
+                zh: s.zh(),
+                title: &s.passage.title,
+                context: &context,
+                analysis: analysis.as_deref().unwrap_or(""),
+            },
+            &request.history,
+            &request.question,
+        );
+        let model = crate::services::agent_settings::AgentSettingsService::new(
+            self.pool.clone(),
+            self.logger.clone(),
+        )
+        .model_for(
+            crate::services::agent_settings::AgentTaskKind::Tutor,
+            request.model_id,
+        )
+        .await?;
+        let profile =
+            crate::services::prompt_profile::PromptProfileService::load(&self.pool).await?;
+        let asked: Vec<&str> = request
+            .history
+            .iter()
+            .filter(|t| t.role == "student")
+            .map(|t| t.content.as_str())
+            .chain(std::iter::once(request.question.as_str()))
+            .collect();
+        let reply = tasks::ask_tutor(
+            paths,
+            &model,
+            &profile,
+            &message,
+            &self.logger,
+            &asked,
+            on_delta,
+        )
+        .await?;
+        Ok(TutorReply {
+            content: reply.content,
+            follow_ups: reply.follow_ups,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,6 +199,7 @@ mod tests {
             model_id: None,
             explanation: None,
             card_word: None,
+            sentence: None,
         }
     }
 

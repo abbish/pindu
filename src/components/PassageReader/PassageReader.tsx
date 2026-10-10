@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Volume2 } from 'lucide-react';
+import { ScanText, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { activeWordIndex, targetSpans, tokenize, type TargetSpan } from '@/utils/passage';
 import type { WordTiming } from '@/services/ttsService';
@@ -34,6 +34,10 @@ export interface PassageReaderProps {
   below?: (index: number) => React.ReactNode;
   /** 聚焦朗读：朗读时当前句最清晰，上下文按距离逐渐模糊变淡（悬停的句子恢复清晰） */
   focusBlur?: boolean;
+  /** 句子分析：每句右侧的分析按钮；不传则不显示 */
+  onAnalyzeSentence?: (index: number) => void;
+  /** 正在看分析的句子（标出来） */
+  analyzing?: number | null;
   /** 跟随当前句时只滚动这个容器（如视频旁的台词框），不带动整页；默认滚动页面 */
   scrollContainer?: React.RefObject<HTMLElement | null>;
 }
@@ -147,6 +151,8 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
   below,
   focusBlur = false,
   scrollContainer,
+  onAnalyzeSentence,
+  analyzing,
 }) => {
   const rows = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -194,7 +200,7 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
             ref={(el) => {
               rows.current[i] = el;
             }}
-            className={cn('group flex items-start gap-2 rounded-md px-2 py-1 transition-colors', s.paragraph && i > 0 && 'mt-3', active && 'bg-accent py-2', onPlaySentence && !active && 'hover:bg-muted/60')}
+            className={cn('group flex items-start gap-2 rounded-md px-2 py-1 transition-colors', s.paragraph && i > 0 && 'mt-3', active && 'bg-accent py-2', onPlaySentence && !active && 'hover:bg-muted/60', analyzing === i && 'ring-2 ring-primary/40')}
             aria-current={active ? 'true' : undefined}
           >
             {onPlaySentence && (
@@ -222,6 +228,20 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
               {showZh && <p className={cn('text-sm leading-relaxed text-muted-foreground', active && 'mt-1 text-[15px]')}>{s.zh}</p>}
               {below?.(i)}
             </div>
+            {onAnalyzeSentence && !hidden && (
+              <button
+                type="button"
+                onClick={() => onAnalyzeSentence(i)}
+                aria-label={`分析第 ${i + 1} 句`}
+                title="句子分析"
+                className={cn(
+                  'mt-1.5 shrink-0 rounded-sm text-muted-foreground opacity-0 outline-none transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  analyzing === i && 'text-primary opacity-100'
+                )}
+              >
+                <ScanText className="size-4" />
+              </button>
+            )}
           </div>
         );
       })}

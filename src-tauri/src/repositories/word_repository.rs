@@ -480,6 +480,7 @@ impl WordRepository {
     }
 
     /// 分页查询词汇本中的单词；sort_by：word 字母顺序（默认）/ newest 最近添加 / oldest 最早添加
+    #[allow(clippy::too_many_arguments)]
     pub async fn find_by_book_paginated(
         &self,
         book_id: Id,

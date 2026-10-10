@@ -1,6 +1,8 @@
 import { BaseService } from './baseService';
 import type { ApiResult, Word } from '../types';
 import type {
+  AnalyzeSentenceRequest,
+  SentenceAnalysis,
   AddPassageWordsRequest,
   GeneratePassageRequest,
   GeneratePassagesRequest,
@@ -81,6 +83,11 @@ class PassageService extends BaseService {
   /** 读原文时把选中的词加成目标词，返回更新后的短文 */
   async addTargetWord(passageId: number, word: string): Promise<ApiResult<Passage>> {
     return this.executeWithLoading(() => this.client.invoke<Passage>('add_passage_target_word', { passageId, word }));
+  }
+
+  /** 分析短文里的一句（已分析过且不要求重新分析时直接返回保存的结果） */
+  async analyzeSentence(request: AnalyzeSentenceRequest): Promise<ApiResult<SentenceAnalysis>> {
+    return this.executeWithLoading(() => this.client.invoke<SentenceAnalysis>('analyze_sentence', { request }));
   }
 
   /** 给还没有单词卡的未收录目标词生成单词卡（后台任务）；都有了返回 null */

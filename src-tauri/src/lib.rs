@@ -208,6 +208,7 @@ pub fn run() {
                 set_material_tags,
                 get_passage_word_cards,
                 add_passage_target_word,
+                analyze_sentence,
                 start_word_cards,
                 get_material_settings,
                 save_material_settings,

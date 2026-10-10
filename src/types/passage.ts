@@ -516,3 +516,71 @@ export interface PassageItemStatus {
   title: string | null;
   error: string | null;
 }
+
+// ==================== 句子分析 ====================
+
+/** 句子成分：原句里连续的一段 + 它在句中的作用 */
+export interface SentenceChunk {
+  text: string;
+  /** 主语 / 谓语 / 宾语 / 状语 / 某某从句… */
+  role: string;
+}
+
+/** 语法点 */
+export interface GrammarPoint {
+  title: string;
+  /** 原句里体现它的片段（可能为空） */
+  text: string;
+  explanation: string;
+}
+
+/** 句子里的词组 */
+export interface SentencePhrase {
+  /** 原句里的写法（可能是变形） */
+  text: string;
+  /** 原形（加入目标词时用） */
+  base: string;
+  meaning: string;
+}
+
+/** 发音要点 */
+export interface PronunciationTip {
+  text: string;
+  tip: string;
+}
+
+/** 同一交际功能的其他说法 */
+export interface AlternativeExpression {
+  en: string;
+  zh: string;
+}
+
+/** 一句话的分析（AI 生成，按句子缓存） */
+export interface SentenceAnalysis {
+  /** 句式公式 */
+  pattern: string;
+  patternNote: string;
+  chunks: SentenceChunk[];
+  grammar: GrammarPoint[];
+  /** 交际功能 */
+  function: string;
+  functionNote: string;
+  alternatives: AlternativeExpression[];
+  phrases: SentencePhrase[];
+  pronunciation: PronunciationTip[];
+}
+
+/** 分析短文 / 视频片段里的一句 */
+export interface AnalyzeSentenceRequest {
+  passageId: number;
+  /** 句子序号（从 0 开始） */
+  sentenceIndex: number;
+  /** 不用已有的分析，重新生成 */
+  refresh?: boolean;
+}
+
+/** 指向短文里的一句 */
+export interface SentenceRef {
+  passageId: number;
+  sentenceIndex: number;
+}

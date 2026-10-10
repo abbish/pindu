@@ -83,6 +83,9 @@ pub struct WordTutorRequest {
     /// 不在词汇本的目标词：按单词卡答疑（此时 word_id 为 0）
     #[serde(default)]
     pub card_word: Option<String>,
+    /// 围绕短文里的一句答疑（此时 word_id 为 0、card_word 为空）
+    #[serde(default)]
+    pub sentence: Option<crate::types::passage::SentenceRef>,
 }
 
 /// 单词讲解（agent 实时生成的 Markdown，不落库）

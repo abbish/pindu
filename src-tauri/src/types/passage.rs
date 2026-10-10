@@ -633,3 +633,95 @@ pub struct MaterialText {
     pub source_label: String,
     pub warnings: Vec<String>,
 }
+
+// ==================== 句子分析 ====================
+
+/// 句子成分：原句里连续的一段 + 它在句中的作用（主语、谓语、宾语、状语、从句…）
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SentenceChunk {
+    pub text: String,
+    pub role: String,
+}
+
+/// 语法点：标题 + 原句里对应的片段 + 说明
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GrammarPoint {
+    pub title: String,
+    #[serde(default)]
+    pub text: String,
+    pub explanation: String,
+}
+
+/// 句子里的词组：原句写法 + 原形 + 释义
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SentencePhrase {
+    pub text: String,
+    pub base: String,
+    pub meaning: String,
+}
+
+/// 发音要点：原句里的片段 + 怎么读（连读、弱读、重音、语调）
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PronunciationTip {
+    pub text: String,
+    pub tip: String,
+}
+
+/// 同一交际功能的其他说法
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AlternativeExpression {
+    pub en: String,
+    pub zh: String,
+}
+
+/// 一句话的分析（AI 生成，按句子缓存在 sentence_analyses，065）
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SentenceAnalysis {
+    /// 句式公式，如「主语 + would rather + do A + than do B」
+    pub pattern: String,
+    /// 句式说明：表达什么、怎么套用
+    #[serde(default)]
+    pub pattern_note: String,
+    /// 成分划分（按原句顺序）
+    #[serde(default)]
+    pub chunks: Vec<SentenceChunk>,
+    #[serde(default)]
+    pub grammar: Vec<GrammarPoint>,
+    /// 交际功能，如「委婉地拒绝邀请」
+    pub function: String,
+    /// 什么场合用、语气
+    #[serde(default)]
+    pub function_note: String,
+    #[serde(default)]
+    pub alternatives: Vec<AlternativeExpression>,
+    #[serde(default)]
+    pub phrases: Vec<SentencePhrase>,
+    #[serde(default)]
+    pub pronunciation: Vec<PronunciationTip>,
+}
+
+/// 分析短文 / 视频片段里的一句
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeSentenceRequest {
+    pub passage_id: Id,
+    /// 句子序号（从 0 开始）
+    pub sentence_index: i64,
+    /// true：不用已有的分析，重新生成
+    #[serde(default)]
+    pub refresh: bool,
+}
+
+/// 指向短文里的一句（AI 老师围绕句子答疑时用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SentenceRef {
+    pub passage_id: Id,
+    pub sentence_index: i64,
+}

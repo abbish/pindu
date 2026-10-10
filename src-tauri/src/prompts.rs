@@ -329,10 +329,11 @@ pub enum PromptTask {
     VideoPlan,
     VideoSuggest,
     SubtitlePrepare,
+    SentenceAnalyze,
 }
 
 impl PromptTask {
-    pub const ALL: [PromptTask; 15] = [
+    pub const ALL: [PromptTask; 16] = [
         PromptTask::Extract,
         PromptTask::Generate,
         PromptTask::Phonics,
@@ -348,6 +349,7 @@ impl PromptTask {
         PromptTask::VideoPlan,
         PromptTask::VideoSuggest,
         PromptTask::SubtitlePrepare,
+        PromptTask::SentenceAnalyze,
     ];
 
     pub fn key(self) -> &'static str {
@@ -367,6 +369,7 @@ impl PromptTask {
             PromptTask::VideoPlan => "video_plan",
             PromptTask::VideoSuggest => "video_suggest",
             PromptTask::SubtitlePrepare => "subtitle_prepare",
+            PromptTask::SentenceAnalyze => "sentence_analyze",
         }
     }
 
@@ -387,6 +390,7 @@ impl PromptTask {
             PromptTask::VideoPlan => "视频：规划场景切分",
             PromptTask::VideoSuggest => "视频：切分要求的建议",
             PromptTask::SubtitlePrepare => "视频：整理字幕（断句与翻译）",
+            PromptTask::SentenceAnalyze => "句子分析",
         }
     }
 
@@ -407,6 +411,7 @@ impl PromptTask {
             PromptTask::VideoPlan => include_str!("prompts/agent/video_plan.md"),
             PromptTask::VideoSuggest => include_str!("prompts/agent/video_plan_suggest.md"),
             PromptTask::SubtitlePrepare => include_str!("prompts/agent/subtitle_prepare.md"),
+            PromptTask::SentenceAnalyze => include_str!("prompts/agent/sentence_analyze.md"),
         }
     }
 }
@@ -507,6 +512,8 @@ pub enum MessageTemplate {
     VideoPlan,
     VideoSuggest,
     SubtitlePrepare,
+    SentenceAnalyze,
+    SentenceTutor,
 }
 
 pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
@@ -530,6 +537,8 @@ pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
         MessageTemplate::VideoPlan => include_str!("prompts/messages/video_plan.md"),
         MessageTemplate::VideoSuggest => include_str!("prompts/messages/video_plan_suggest.md"),
         MessageTemplate::SubtitlePrepare => include_str!("prompts/messages/subtitle_prepare.md"),
+        MessageTemplate::SentenceAnalyze => include_str!("prompts/messages/sentence_analyze.md"),
+        MessageTemplate::SentenceTutor => include_str!("prompts/messages/sentence_tutor.md"),
     };
     render(text, vars)
 }
@@ -682,6 +691,7 @@ mod tests {
             (PromptTask::VideoPlan, "video_plan.md"),
             (PromptTask::VideoSuggest, "video_plan_suggest.md"),
             (PromptTask::SubtitlePrepare, "subtitle_prepare.md"),
+            (PromptTask::SentenceAnalyze, "sentence_analyze.md"),
         ];
         let stopwords = crate::agent::tasks::FOCUS_STOPWORDS;
         for preset in ["primary", "secondary", "adult"] {

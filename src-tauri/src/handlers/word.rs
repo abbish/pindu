@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn get_words_by_book(
     app: AppHandle,
     book_id: Id,

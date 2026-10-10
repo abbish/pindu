@@ -23,6 +23,7 @@ pub mod plan_pace;
 pub mod plan_passages;
 pub mod practice;
 pub mod prompt_profile;
+pub mod sentence_analysis;
 pub mod sentences;
 pub mod srs;
 pub mod statistics;
