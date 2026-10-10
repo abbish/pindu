@@ -2,6 +2,7 @@
 // 校验不通过时抛错，模型看到问题列表后只改被指出的地方再重交；Rust 侧（services::passage_rules）会按请求再校验一次。
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { IRREGULAR_VERBS } from "./irregular.ts";
 import { Type, type Static } from "typebox";
 
 /** token 是否是 word 本身或常见屈折形式（与 Rust passage_rules::inflection_matches 同规则） */
@@ -18,7 +19,24 @@ export function inflectionMatches(token: string, word: string): boolean {
 }
 
 const wordsOf = (text: string) => (text.match(/[A-Za-z']+/g) ?? []).map(w => w.replace(/^'+|'+$/g, "")).filter(Boolean);
-const uses = (tokens: string[], word: string) => tokens.some(t => inflectionMatches(t, word));
+/** 正文是否用到这个单词或词组（词组：各个词按顺序出现、中间可插入少量词，占位词不要求） */
+const uses = (tokens: string[], word: string) => {
+  const parts = word.toLowerCase().trim().split(/\s+/).filter(p => !PLACEHOLDERS.has(p));
+  const isForm = (t: string, p: string) => inflectionMatches(t, p) || (IRREGULAR_VERBS[p] ?? []).includes(t.toLowerCase());
+  if (parts.length <= 1) return tokens.some(t => isForm(t, parts[0] ?? word));
+  return tokens.some((t, start) => {
+    if (!isForm(t, parts[0])) return false;
+    let i = start + 1;
+    for (const p of parts.slice(1)) {
+      let found = -1;
+      for (let j = i; j < Math.min(tokens.length, i + 4); j++) if (isForm(tokens[j], p)) { found = j; break; }
+      if (found < 0) return false;
+      i = found + 1;
+    }
+    return true;
+  });
+};
+const PLACEHOLDERS = new Set(["sb", "sth", "somebody", "something", "someone", "one's", "sb's", "oneself"]);
 const fail = (problems: string[]) => {
   throw new Error(`提交未通过校验（${problems.length} 处），请修正后重新提交：\n- ${problems.join("\n- ")}`);
 };
@@ -334,7 +352,7 @@ export function translationProblems(t: TranslationSubmission): string[] {
   if (!t.title.trim()) problems.push("title 为空");
   if (!LEVELS.includes(t.level.trim().toLowerCase())) problems.push("level 只能是 a1、a2、b1、b2 之一");
   t.key_words.forEach((k, i) => {
-    if (!/^[A-Za-z][A-Za-z'-]*$/.test(k.word.trim())) problems.push(`key_words[${i + 1}].word 应是一个英文单词`);
+    if (!/^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,5}$/.test(k.word.trim())) problems.push(`key_words[${i + 1}].word 应是一个英文单词或词组`);
     if (!k.meaning.trim()) problems.push(`key_words[${i + 1}] 缺少中文意思`);
   });
   if (t.key_words.length > 12) problems.push("key_words 最多 12 个");

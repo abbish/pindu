@@ -23,8 +23,8 @@ export const submitWordsTool = defineTool({
   parameters: Type.Object({
     words: Type.Array(
       Type.Object({
-        word: Type.String({ description: "dictionary form: lowercase, except proper nouns keep their capital letter (e.g. Tom, Sunday)" }),
-        frequency: Type.Integer({ minimum: 1, description: "taken from tokenize_text" }),
+        word: Type.String({ description: "dictionary form: lowercase, except proper nouns keep their capital letter (e.g. Tom, Sunday); may also be a phrase worth learning as a whole (phrasal verb / collocation / idiom), in base form (gave up → give up)" }),
+        frequency: Type.Integer({ minimum: 1, description: "taken from tokenize_text (phrases: how many times it appears)" }),
         pos: Type.String({ description: "part of speech abbreviation: n. v. adj. adv. prep. conj. pron. art. int. det." }),
         translation: Type.String({ description: "concise common Chinese meaning, 1-3 characters" }),
       }),
@@ -53,7 +53,7 @@ export const submitGeneratedWordsTool = defineTool({
   parameters: Type.Object({
     words: Type.Array(
       Type.Object({
-        word: Type.String({ description: "one English word in dictionary form (no phrases): lowercase, except proper nouns keep their capital letter" }),
+        word: Type.String({ description: "one English word, or a phrase worth learning as a whole (phrasal verb / collocation / idiom / fixed phrase), in dictionary form: lowercase, except proper nouns keep their capital letter" }),
         pos: Type.String({ description: "part of speech abbreviation: n. v. adj. adv. prep. conj. pron. int. num." }),
         translation: Type.String({ description: "concise Chinese meaning in this topic, 2-4 characters" }),
       }),

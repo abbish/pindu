@@ -925,12 +925,10 @@ pub fn translation_from_submission(
             .into_iter()
             .flatten()
         {
-            let word = text(item, "word");
+            let word = crate::types::wordbook::normalize_vocab(&text(item, "word"));
             let meaning = text(item, "meaning");
-            let valid = !word.is_empty()
-                && word
-                    .chars()
-                    .all(|c| c.is_ascii_alphabetic() || c == '\'' || c == '-')
+            // 单词或词组（D45）
+            let valid = valid_vocab(&word)
                 && text_uses_any_form(&full, &word)
                 && !words.iter().any(|(w, _)| w.eq_ignore_ascii_case(&word));
             if valid && words.len() < MAX_KEY_WORDS {

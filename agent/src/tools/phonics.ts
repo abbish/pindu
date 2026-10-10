@@ -2,6 +2,7 @@
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
+import { IRREGULAR_VERBS } from "./irregular.ts";
 
 /** 规则名称表（与提示词一致，格式「专业术语 | 直观描述」） */
 export const PHONICS_RULES = [
@@ -22,15 +23,20 @@ export const PHONICS_RULES = [
   "Irregular | 不规则拼读",
 ];
 
+/** 词组类型（D45） */
+export const PHRASE_TYPES = ["phrasal_verb", "collocation", "idiom", "fixed"];
+
 const PhonicsEntry = Type.Object({
-  word: Type.String(),
+  word: Type.String({ description: "the word or phrase exactly as given" }),
   chinese_translation: Type.String({ description: "concise Chinese meaning" }),
   pos_abbreviation: Type.String({ description: "n. v. adj. adv. prep. conj. pron. art. int. det." }),
   pos_english: Type.String({ description: "Noun / Verb / Adjective ..." }),
   pos_chinese: Type.String({ description: "名词 / 动词 / 形容词 ..." }),
   ipa: Type.String({ description: "IPA wrapped in slashes, e.g. /ˈkæt/" }),
-  syllables: Type.String({ description: "syllables joined by '-', letters must spell the word, e.g. ba-king" }),
-  phonics_rule: Type.String({ description: "one label from the rule table, format 'Term | 中文'" }),
+  syllables: Type.String({ description: "single word: syllables joined by '-', letters must spell the word, e.g. ba-king; phrase: empty string" }),
+  phonics_rule: Type.String({ description: "single word: one label from the rule table, format 'Term | 中文'; phrase: empty string" }),
+  phrase_type: Type.Optional(Type.String({ description: "phrase only: phrasal_verb / collocation / idiom / fixed" })),
+  separable: Type.Optional(Type.Boolean({ description: "phrasal verb only: true if an object can go between the verb and the particle (pick it up)" })),
   analysis_explanation: Type.String({ description: "1-3 sentences in Chinese explaining the rule for this word" }),
   examples: Type.Array(
     Type.Object({
@@ -49,10 +55,39 @@ export const EXAMPLE_MAX_WORDS = 12;
 export const EXAMPLES_MIN = 5;
 export const EXAMPLES_MAX = 8;
 
-/** 例句中是否出现该单词（允许常见词形变化：复数、过去式、-ing、比较级等；不认不规则变形） */
-export function sentenceContainsWord(sentence: string, word: string): boolean {
+/** 词组里代表某人 / 某物的占位词（例句里换成具体的词） */
+const PLACEHOLDERS = new Set(["sb", "sth", "somebody", "something", "someone", "one's", "sb's", "oneself"]);
+
+/** 一个词是否是 word 的常见变形（复数、过去式、-ing、比较级等） */
+function tokenIsForm(token: string, word: string): boolean {
   const w = word.toLowerCase();
+  if ((IRREGULAR_VERBS[w] ?? []).includes(token)) return true;
+  const bare = token.replace(/'s$/, "");
+  const stems = [w];
+  if (/[ey]$/.test(w) && w.length > 2) stems.push(w.slice(0, -1));
+  return stems.some(stem => bare.startsWith(stem) && bare.length - w.length <= 4);
+}
+
+/** 例句中是否出现该单词或词组（允许常见词形变化；词组的各个词按顺序出现、中间可插入少量词，占位词不要求） */
+export function sentenceContainsWord(sentence: string, word: string): boolean {
   const tokens = sentence.toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) ?? [];
+  const parts = word.toLowerCase().trim().split(/\s+/).filter(p => !PLACEHOLDERS.has(p));
+  if (parts.length > 1) {
+    for (let start = 0; start < tokens.length; start++) {
+      if (!tokenIsForm(tokens[start], parts[0])) continue;
+      let i = start + 1;
+      let ok = true;
+      for (const p of parts.slice(1)) {
+        let found = -1;
+        for (let j = i; j < Math.min(tokens.length, i + 4); j++) if (tokenIsForm(tokens[j], p)) { found = j; break; }
+        if (found < 0) { ok = false; break; }
+        i = found + 1;
+      }
+      if (ok) return true;
+    }
+    return false;
+  }
+  const w = word.toLowerCase();
   const stems = [w];
   if (/[ey]$/.test(w) && w.length > 2) stems.push(w.slice(0, -1));
   return tokens.some(t => {
@@ -74,7 +109,7 @@ function sentenceProblems(sentence: string, translation: string, word: string, w
   }
   if (/[^\x20-\x7E’]/.test(sentence)) problems.push(`${where} 只能包含英文字符`);
   if (!sentenceContainsWord(sentence, word)) {
-    problems.push(`${where} 必须包含单词 ${word} 本身（尽量用原形）`);
+    problems.push(`${where} 必须包含单词或词组 ${word} 本身（尽量用原形）`);
   }
   if (!/[\u4e00-\u9fff]/.test(translation)) problems.push(`${where} translation 需为该句的中文翻译`);
   return problems;
@@ -110,15 +145,23 @@ export function validatePhonics(words: PhonicsEntry[]): string[] {
   for (const w of words) {
     const word = w.word.trim();
     const label = `「${word || "(空)"}」`;
-    if (!/^[A-Za-z][A-Za-z'-]*$/.test(word)) problems.push(`${label} word 只能包含英文字母`);
-    const letters = w.syllables.replace(/[-·\s]/g, "").toLowerCase();
-    if (letters !== word.toLowerCase().replace(/['-]/g, "")) {
-      problems.push(`${label} syllables「${w.syllables}」去掉连字符后应与单词拼写完全一致`);
+    const phrase = /\s/.test(word);
+    if (!/^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*)*$/.test(word)) problems.push(`${label} word 只能包含英文字母`);
+    if (phrase) {
+      // 词组：不拆音节、不套拼读规则，要给出词组类型
+      if (!PHRASE_TYPES.includes((w.phrase_type ?? "").trim())) {
+        problems.push(`${label} 是词组，phrase_type 需为 phrasal_verb / collocation / idiom / fixed 之一`);
+      }
+    } else {
+      const letters = w.syllables.replace(/[-·\s]/g, "").toLowerCase();
+      if (letters !== word.toLowerCase().replace(/['-]/g, "")) {
+        problems.push(`${label} syllables「${w.syllables}」去掉连字符后应与单词拼写完全一致`);
+      }
+      if (!PHONICS_RULES.includes(w.phonics_rule.trim())) {
+        problems.push(`${label} phonics_rule「${w.phonics_rule}」不在规则表中，请从规则表中选择一项（原样复制）`);
+      }
     }
     if (!/^\/[^/]+\/$/.test(w.ipa.trim())) problems.push(`${label} ipa 需用斜杠包围，如 /ˈkæt/`);
-    if (!PHONICS_RULES.includes(w.phonics_rule.trim())) {
-      problems.push(`${label} phonics_rule「${w.phonics_rule}」不在规则表中，请从规则表中选择一项（原样复制）`);
-    }
     for (const field of ["chinese_translation", "pos_abbreviation", "pos_chinese", "analysis_explanation"] as const) {
       if (!w[field].trim()) problems.push(`${label} ${field} 不能为空`);
     }

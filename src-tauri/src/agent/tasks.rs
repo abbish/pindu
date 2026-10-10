@@ -82,9 +82,23 @@ pub fn words_from_submission(details: &Value, text: &str, mode: &str) -> Vec<Ext
         let Some(word) = item.get("word").and_then(Value::as_str) else {
             continue;
         };
-        let key = word.trim().to_lowercase();
-        let Some(&frequency) = counts.get(&key) else {
-            continue; // 原文中不存在：丢弃（防止模型编造）
+        let normalized = crate::types::wordbook::normalize_vocab(word);
+        let key = normalized.to_lowercase();
+        // 词组（D45）：原文里出现过（可变形、可拆开）才保留，频率为出现次数
+        let frequency = if crate::services::passage_rules::is_phrase(&key) {
+            if !crate::services::passage_rules::valid_vocab(&key) {
+                continue;
+            }
+            let tokens: Vec<&str> = crate::services::passage_rules::words_of(text).collect();
+            match crate::services::passage_rules::phrase_spans(&tokens, &key).len() {
+                0 => continue,
+                n => n as i32,
+            }
+        } else {
+            let Some(&frequency) = counts.get(&key) else {
+                continue; // 原文中不存在：丢弃（防止模型编造）
+            };
+            frequency
         };
         if mode == "focus" && FOCUS_STOPWORDS.contains(&key.as_str()) {
             continue;
@@ -100,7 +114,11 @@ pub fn words_from_submission(details: &Value, text: &str, mode: &str) -> Vec<Ext
                 .map(str::to_string)
         };
         words.push(ExtractedWord {
-            word: display_form(word.trim(), &key, &lowercase_in_text),
+            word: if crate::services::passage_rules::is_phrase(&key) {
+                key.clone()
+            } else {
+                display_form(word.trim(), &key, &lowercase_in_text)
+            },
             frequency,
             part_of_speech: text_field("pos"),
             meaning: text_field("translation"),
@@ -292,11 +310,10 @@ pub fn generated_from_submission(
         let Some(word) = item.get("word").and_then(Value::as_str).map(str::trim) else {
             continue;
         };
-        let valid = (2..=30).contains(&word.chars().count())
-            && word.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
-            && word
-                .chars()
-                .all(|c| c.is_ascii_alphabetic() || c == '-' || c == '\'');
+        // 单词或词组（D45）
+        let normalized = crate::types::wordbook::normalize_vocab(word);
+        let word = normalized.as_str();
+        let valid = crate::services::passage_rules::valid_vocab(word);
         let key = word.to_lowercase();
         if !valid || existing.contains(&key) || !seen.insert(key) {
             continue;
@@ -1822,11 +1839,11 @@ pub async fn test_model(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn generated_words_keep_single_new_words_only() {
+    fn generated_words_keep_new_words_and_phrases() {
         let details = serde_json::json!({ "words": [
             { "word": "climate", "pos": "n.", "translation": "气候" },
             { "word": "Climate", "pos": "n.", "translation": "气候" },
-            { "word": "climate change", "pos": "n.", "translation": "气候变化" },
+            { "word": "climate  change", "pos": "n.", "translation": "气候变化" },
             { "word": "recycle", "pos": "v.", "translation": "回收" },
             { "word": "CO2", "pos": "n.", "translation": "二氧化碳" },
             { "word": "eco-friendly", "pos": "adj.", "translation": "环保的" },
@@ -1836,7 +1853,8 @@ mod tests {
         let existing: HashSet<String> = ["recycle".to_string()].into_iter().collect();
         let words = generated_from_submission(&details, &existing, 3);
         let got: Vec<&str> = words.iter().map(|w| w.word.as_str()).collect();
-        assert_eq!(got, vec!["climate", "eco-friendly", "Earth"]);
+        // 词组也保留（D45），空白归一
+        assert_eq!(got, vec!["climate", "climate change", "eco-friendly"]);
         assert!(words.iter().all(|w| w.frequency == 1));
         assert_eq!(words[0].meaning.as_deref(), Some("气候"));
     }

@@ -130,7 +130,7 @@ test('导入材料翻译：每句都要译、编号不重复、水平与重点�
       { index: 1, zh: ' ' },
     ],
     level: 'c1',
-    key_words: [{ word: 'two words', meaning: '' }],
+    key_words: [{ word: 'run!', meaning: '' }],
   };
   const problems = translationProblems(bad).join('\n');
   assert.match(problems, /译了两次/);

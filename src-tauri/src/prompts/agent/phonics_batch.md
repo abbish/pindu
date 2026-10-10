@@ -13,6 +13,8 @@
 
 ## 每个单词需要的字段
 
+用户给的条目可能是**单词**，也可能是**词组**（带空格，如 give up、make a decision、break the ice）。词组的字段要求见下面「词组怎么写」。
+
 | 字段 | 要求 |
 |---|---|
 | word | 与用户给出的单词一致（专有名词保留首字母大写） |
@@ -57,6 +59,16 @@
 5. "There is a cake on the table." / 桌子上有一个蛋糕。
 
 示例（不好）：「The cake is a sweet baked food made from flour.」——像词典释义、生词多；五条都写成 "I like cake." 的变体——场景单一。
+
+## 词组怎么写
+
+- `syllables`、`phonics_rule` 都写空字符串（词组不拆音节、不套拼读规则）。
+- `phrase_type`：phrasal_verb（短语动词，如 give up、look after）/ collocation（固定搭配，如 make a decision、heavy rain）/ idiom（习语，字面意思不成立，如 break the ice）/ fixed（固定短语，如 in front of、at least）。
+- `separable`：只对短语动词有意义——宾语能放在动词和小品词中间就写 true（pick it up、turn the light off），不能拆开的写 false（look after sb）。
+- `ipa`：整个词组的读音，词与词之间空格，如 `/ɡɪv ˈʌp/`。
+- `pos_*`：词组整体的词性（短语动词为 v.）。
+- `analysis_explanation`：1–2 句、不超过 50 个汉字，说清**为什么要整体记**：意思能不能从字面推出、常见的搭配对象、可拆开的要点出（如「宾语是代词时要放中间：pick it up」）。
+- `examples`：每条都包含这个词组（可变形、可拆开），其余要求同单词。
 
 ## 自然拼读规则库
 

@@ -82,7 +82,8 @@ const LENGTHS = [
   { value: 'long', label: '长' },
 ] as const;
 const segmentItem = 'h-7 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm';
-const isWord = (w: string) => /^[A-Za-z][A-Za-z'-]{1,29}$/.test(w);
+/** 一个英文单词或 2–6 个词的词组（D45） */
+const isWord = (w: string) => /^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,5}$/.test(w) && w.length <= 60;
 
 /** 可多选的来源列表（单词本 / 学习计划）：搜索 + 勾选行 */
 const SourcePicker: React.FC<{
@@ -340,11 +341,13 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     });
   const addExtra = () => {
     const words = extraDraft
-      .split(/[\s,，、;；]+/)
+      // 词组里有空格：多个词条用逗号、顿号、分号或换行分开
+      .split(/[,，、;；\n]+/)
+      .map((w) => w.trim().replace(/\s+/g, ' '))
       .map((w) => w.trim())
       .filter(Boolean);
     const bad = words.filter((w) => !isWord(w));
-    if (bad.length > 0) return setError({ title: '无法添加单词', message: `「${bad.join('、')}」不是英文单词` });
+    if (bad.length > 0) return setError({ title: '无法添加单词', message: `「${bad.join('、')}」不是英文单词或词组` });
     const existing = new Set([...extraWords, ...briefSelected, ...(candidates ?? []).filter((c) => required.has(c.wordId)).map((c) => c.word)].map((w) => w.toLowerCase()));
     setExtraWords((prev) => [...prev, ...words.filter((w) => !existing.has(w.toLowerCase()))]);
     setExtraDraft('');
@@ -623,7 +626,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                     value={extraDraft}
                     onChange={(e) => setExtraDraft(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && extraDraft.trim() && addExtra()}
-                    placeholder="输入其他英文单词，用空格或逗号分隔"
+                    placeholder="输入其他英文单词或词组，用逗号分隔"
                     aria-label="手动输入单词"
                     className="w-96"
                   />
@@ -802,7 +805,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                     value={extraDraft}
                     onChange={(e) => setExtraDraft(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && extraDraft.trim() && addExtra()}
-                    placeholder="输入其他英文单词，用空格或逗号分隔"
+                    placeholder="输入其他英文单词或词组，用逗号分隔"
                     aria-label="手动输入单词"
                     className="w-96"
                   />
