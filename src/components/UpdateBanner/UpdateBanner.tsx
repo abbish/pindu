@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ArrowDownToLine, Loader2, RotateCw, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -54,6 +56,12 @@ export const UpdateWatcher: React.FC = () => {
 /**
  * 更新提示条：发现新版本 → 下载进度 → 重启完成更新。顶栏下方（AppShell）与启动错误页使用。
  */
+/** 更新说明（Markdown）：一级标题与弹窗标题重复，不显示；链接只显示文字，不在应用窗口里跳转 */
+const NOTES_COMPONENTS: Components = {
+  h1: () => null,
+  a: ({ children }) => <span>{children}</span>,
+};
+
 export const UpdateBanner: React.FC = () => {
   const { state, skippedVersion, dismissedVersion } = useUpdater();
   const [showNotes, setShowNotes] = useState(false);
@@ -130,7 +138,11 @@ export const UpdateBanner: React.FC = () => {
             <DialogTitle>{info.version} 更新内容</DialogTitle>
             <DialogDescription>当前版本 {info.currentVersion}</DialogDescription>
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm">{info.notes}</div>
+          <div className="markdown-body max-h-[60vh] overflow-y-auto pr-1">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={NOTES_COMPONENTS}>
+              {info.notes}
+            </ReactMarkdown>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
