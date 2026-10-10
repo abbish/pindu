@@ -128,8 +128,8 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
   const hasPhonics = Boolean(segments?.length || info?.phonicsRule || info?.explanation);
 
   return (
-    <div className="flex items-stretch gap-4">
-    <Card className={cn('min-w-0 flex-1 gap-6 px-6 py-5', showTeacher && 'min-h-[480px]')}>
+    <div className="relative">
+    <Card className={cn('gap-6 px-6 py-5', showTeacher && 'min-h-[480px]')}>
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-baseline gap-3">
