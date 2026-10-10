@@ -23,6 +23,11 @@ class WordAnalysisService {
     return apiClient.invoke<WordExtractionResult>('extract_words_from_text', { text, mode, bookId });
   }
 
+  /** 按词汇本的场景描述给 4–6 条词汇需求的建议（场景下的子话题）；没有场景描述时为空 */
+  async suggestVocabTopics(bookId: number): Promise<ApiResult<string[]>> {
+    return apiClient.invoke<string[]>('suggest_vocab_topics', { bookId });
+  }
+
   /** 分析一个单词，只返回结果不保存（编辑单词时的「AI 补全」） */
   async analyzeWord(word: string, meaning?: string, bookId?: number): Promise<ApiResult<PhonicsWord>> {
     return apiClient.invoke<PhonicsWord>('analyze_word', { word, meaning, bookId });

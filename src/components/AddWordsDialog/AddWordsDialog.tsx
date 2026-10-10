@@ -52,7 +52,8 @@ const INTENT_MAX = 500;
 /** 词汇本描述上限（与后端 validate_description 一致） */
 const SCENE_MAX = 500;
 const MAX_TEXT = 5000;
-const INTENT_EXAMPLES = ['准备一场 TED 环境主题演讲', '三年级动物主题单元', '去英国旅行时机场和酒店会用到的词', '雅思写作常用的教育类词汇'];
+/** AI 按场景给的词汇需求建议：本次打开应用期间按「词汇本 + 场景」保留，重开弹窗不再等 */
+const topicStore = new Map<string, string[]>();
 
 export interface AddWordsDialogProps {
   /** 是否显示 */
@@ -134,6 +135,26 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const [sceneSaving, setSceneSaving] = useState(false);
   /** 场景为空时，把这次的描述同时设为词汇本场景 */
   const [useIntentAsScene, setUseIntentAsScene] = useState(true);
+  /** 按场景给的词汇需求建议（null = 正在想） */
+  const [topics, setTopics] = useState<string[] | null>(null);
+  const topicKey = `${bookId}:${scene}`;
+  const loadTopics = async (refresh: boolean) => {
+    const key = topicKey;
+    const kept = topicStore.get(key);
+    if (kept && !refresh) return setTopics(kept);
+    setTopics(null);
+    const r = await wordAnalysisService.suggestVocabTopics(bookId);
+    const list = r.success ? r.data : [];
+    if (r.success) topicStore.set(key, list);
+    setTopics((prev) => (key === topicKeyRef.current ? list : prev));
+  };
+  const topicKeyRef = useRef(topicKey);
+  topicKeyRef.current = topicKey;
+  useEffect(() => {
+    if (!isOpen || source !== 'ai' || !scene) return;
+    void loadTopics(false);
+    // 换词汇本或改了场景时重新给建议
+  }, [isOpen, source, topicKey]);
   // 生成数量与提取方式的默认值来自「设置 → 素材」
   const materialSettings = useMaterialSettings();
   useEffect(() => {
@@ -220,7 +241,8 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   // ── 1 获取单词 ──
   const textLength = text.trim().length;
   const intentLength = intent.trim().length;
-  const canFetch = source === 'ai' ? intentLength > 0 && intentLength <= INTENT_MAX : textLength > 0 && textLength <= MAX_TEXT;
+  // 有场景描述时词汇需求可以不填（按场景生成）
+  const canFetch = source === 'ai' ? (intentLength > 0 || Boolean(scene)) && intentLength <= INTENT_MAX : textLength > 0 && textLength <= MAX_TEXT;
 
   /** 保存词汇本场景（描述）；成功返回 true */
   const saveScene = async (value: string) => {
@@ -419,7 +441,9 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
             {source === 'ai' ? (
               <div className="flex flex-col gap-5">
                 <div className="space-y-2">
-                  <Label htmlFor="aw-intent">词汇需求</Label>
+                  <Label htmlFor="aw-intent">
+                    词汇需求{scene && <span className="font-normal text-muted-foreground">（可不填）</span>}
+                  </Label>
                   <div className="relative">
                     <Textarea
                       id="aw-intent"
@@ -428,7 +452,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canFetch) fetchWords();
                       }}
-                      placeholder={scene ? '例如：海关、酒店入住' : '例如：TED 环境主题演讲，听众是大学生'}
+                      placeholder={scene ? '不填就按场景描述生成；想要更具体的，写一个子话题或点下面的建议' : '例如：TED 环境主题演讲，听众是大学生'}
                       maxLength={INTENT_MAX}
                       className="min-h-36 resize-none pb-7"
                       autoFocus
@@ -443,18 +467,36 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                       <span>同时设为场景描述</span>
                     </label>
                   )}
-                  <div className="flex flex-wrap gap-1.5">
-                    {INTENT_EXAMPLES.map((example) => (
-                      <button
-                        key={example}
-                        type="button"
-                        onClick={() => setIntent(example)}
-                        className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                      >
-                        {example}
-                      </button>
-                    ))}
-                  </div>
+                  {scene && (
+                    <div className="flex flex-wrap items-center gap-1.5" aria-label="按场景的建议">
+                      {topics === null ? (
+                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Loader2 className="size-3.5 animate-spin" />
+                          AI 正在按场景想建议…
+                        </span>
+                      ) : (
+                        <>
+                          {topics.map((topic) => (
+                            <button
+                              key={topic}
+                              type="button"
+                              onClick={() => setIntent(topic)}
+                              className={cn(
+                                'rounded-full px-2.5 py-1 text-xs outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                                intent.trim() === topic ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                              )}
+                            >
+                              {topic}
+                            </button>
+                          ))}
+                          <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => void loadTopics(true)}>
+                            <RotateCw className="size-3" />
+                            {topics.length > 0 ? '换一批' : '给我一些建议'}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <Label>单词数量</Label>

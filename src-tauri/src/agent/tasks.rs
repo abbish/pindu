@@ -1753,6 +1753,68 @@ pub async fn prepare_subtitles(
         .map_err(AppError::ExternalServiceError)
 }
 
+// ==================== 词汇本：词汇需求的建议 ====================
+
+/// 按词汇本的场景给 4–6 条词汇需求（场景下的子话题），经 submit_topic_suggestions 交付
+pub fn vocab_suggest_task(profile: &PromptProfile) -> AgentTask {
+    AgentTask {
+        name: "vocab-suggest",
+        system_prompt: prompts::system_prompt(PromptTask::VocabSuggest, profile, &[]),
+        tools: &["submit_topic_suggestions"],
+        default_thinking: "low",
+    }
+}
+
+/// 场景 + 已有单词（节选，最多 80 个）
+pub fn vocab_suggest_message(scene: &str, existing: &[String]) -> String {
+    let sample: Vec<&str> = existing.iter().take(80).map(String::as_str).collect();
+    prompts::message(
+        MessageTemplate::VocabSuggest,
+        &[
+            ("scene", scene.trim()),
+            ("existing", &sample.join(", ")),
+            ("count", &existing.len().to_string()),
+        ],
+    )
+}
+
+/// 生成词汇需求的建议（去空白、去重，最多 6 条）
+pub async fn suggest_vocab_topics(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &PromptProfile,
+    message: &str,
+    logger: &Logger,
+) -> AppResult<Vec<String>> {
+    let run = run_task(
+        paths,
+        &vocab_suggest_task(profile),
+        model,
+        message,
+        logger,
+        |_| {},
+    )
+    .await?;
+    let submission = run
+        .outcome
+        .last_successful_call("submit_topic_suggestions")
+        .ok_or_else(|| AppError::ExternalServiceError("AI 没有给出建议，请再试一次".to_string()))?;
+    let mut out: Vec<String> = Vec::new();
+    for s in submission.details["suggestions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        if let Some(text) = s.as_str().map(str::trim).filter(|t| !t.is_empty()) {
+            if !out.iter().any(|x| x == text) {
+                out.push(text.chars().take(30).collect());
+            }
+        }
+    }
+    out.truncate(6);
+    Ok(out)
+}
+
 /// 视频：切分要求的建议（4–6 条，贴合字幕内容），经 submit_plan_suggestions 交付
 pub fn video_suggest_task(profile: &PromptProfile) -> AgentTask {
     AgentTask {

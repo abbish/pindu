@@ -57,6 +57,7 @@ import {
 import type { NavigateFn } from '@/navigation';
 import { PageError } from '@/components/PageError';
 import { InlineError } from '@/components/InlineError';
+import { takePendingAddWords } from './wordbook-detail/pendingAddWords';
 
 
 /** 后端单词 → 表格行 */
@@ -111,7 +112,8 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   /** 添加单词弹窗：null 为关闭，否则为打开时的来源 */
-  const [addWordsSource, setAddWordsSource] = useState<AddWordsSource | null>(null);
+  // 刚新建的词汇本：直接打开「添加单词 · AI 生成」
+  const [addWordsSource, setAddWordsSource] = useState<AddWordsSource | null>(() => (id !== undefined && takePendingAddWords(id) ? 'ai' : null));
   /** 单词表单：null 关闭；{ word: null } 手动添加；{ word } 编辑 */
   const [wordForm, setWordForm] = useState<{ word: Word | null } | null>(null);
   const [wordsToDelete, setWordsToDelete] = useState<WordListDetail[]>([]);

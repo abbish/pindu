@@ -22,6 +22,7 @@ import { BatchDeleteButton, BatchDeleteDialog, BatchTagButton, SelectionBar, use
 import type { NavigateFn } from '@/navigation';
 import { PageError } from '@/components/PageError';
 import { messageOf } from '@/utils/errorHandler';
+import { addWordsAfterCreate } from './wordbook-detail/pendingAddWords';
 
 export interface WordBookPageProps {
   /** Navigation handler */
@@ -301,7 +302,15 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
           loadWordBookData(filters.status);
         }}
       />
-      <WordBookFormDialog isOpen={creatingBook} onClose={() => setCreatingBook(false)} onSaved={(id) => onNavigate?.('wordbook-detail', { id })} />
+      <WordBookFormDialog
+        isOpen={creatingBook}
+        onClose={() => setCreatingBook(false)}
+        onSaved={(id) => {
+          // 建好就接着添加单词（场景描述直接用于 AI 生成）
+          addWordsAfterCreate(id);
+          onNavigate?.('wordbook-detail', { id });
+        }}
+      />
     </div>
   );
 };

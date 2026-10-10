@@ -276,6 +276,7 @@ pub fn run() {
                 // 批量分析相关命令
                 extract_words_from_text,
                 generate_words_from_intent,
+                suggest_vocab_topics,
                 start_word_analysis,
                 analyze_word,
                 // 新增的学习计划单词管理命令

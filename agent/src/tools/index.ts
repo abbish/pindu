@@ -6,9 +6,9 @@ import { submitPhonicsTool } from "./phonics.ts";
 import { submitSentenceAnalysisTool } from "./sentence.ts";
 import { submitPlanSuggestionsTool, submitSubtitlesTool, submitVideoPlanTool } from "./video.ts";
 import { submitLearningOrderTool } from "./planning.ts";
-import { submitGeneratedWordsTool, submitWordsTool, tokenizeTextTool } from "./words.ts";
+import { submitGeneratedWordsTool, submitTopicSuggestionsTool, submitWordsTool, tokenizeTextTool } from "./words.ts";
 
-export const REDLARK_TOOLS = [tokenizeTextTool, submitWordsTool, submitGeneratedWordsTool, submitPhonicsTool, submitLearningOrderTool, submitExamplesTool, submitPassagePlanTool, submitPassageTool, submitQuestionsTool, submitGradeTool, submitTranslationTool, submitVideoPlanTool, submitPlanSuggestionsTool, submitSubtitlesTool, submitSentenceAnalysisTool];
+export const REDLARK_TOOLS = [tokenizeTextTool, submitWordsTool, submitGeneratedWordsTool, submitPhonicsTool, submitLearningOrderTool, submitExamplesTool, submitPassagePlanTool, submitPassageTool, submitQuestionsTool, submitGradeTool, submitTranslationTool, submitVideoPlanTool, submitPlanSuggestionsTool, submitSubtitlesTool, submitSentenceAnalysisTool, submitTopicSuggestionsTool];
 
 export default function redlarkTools(pi: ExtensionAPI) {
   for (const tool of REDLARK_TOOLS) pi.registerTool(tool);

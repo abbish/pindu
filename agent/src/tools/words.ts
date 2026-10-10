@@ -1,6 +1,6 @@
 // 提词任务工具：tokenize_text（确定性分词计数）、submit_words（结构化交付，terminate 结束本轮）
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 import { tokenizeWords } from "./tokenize.ts";
 
 export const tokenizeTextTool = defineTool({
@@ -72,5 +72,38 @@ export const submitGeneratedWordsTool = defineTool({
       details: params,
       terminate: true,
     };
+  },
+});
+
+// ---------- submit_topic_suggestions：按词汇本场景给词汇需求的建议 ----------
+
+const TopicSuggestionsParams = Type.Object({
+  suggestions: Type.Array(Type.String(), { description: "4-6 Chinese sub-topics of this word book's scene (6-20 characters each), each usable as a request to generate a batch of words" }),
+});
+export type TopicSuggestionsSubmission = Static<typeof TopicSuggestionsParams>;
+
+export function topicSuggestionsProblems(p: TopicSuggestionsSubmission): string[] {
+  const problems: string[] = [];
+  const items = p.suggestions.map((s) => s.trim()).filter(Boolean);
+  if (items.length < 4 || items.length > 6) problems.push(`建议要 4–6 条（现在 ${items.length} 条）`);
+  items.forEach((s, i) => {
+    const n = [...s].length;
+    if (n < 4 || n > 24) problems.push(`第 ${i + 1} 条「${s}」长度不合适（6–20 个字）`);
+  });
+  if (new Set(items).size !== items.length) problems.push("有重复的建议");
+  return problems;
+}
+
+export const submitTopicSuggestionsTool = defineTool({
+  name: "submit_topic_suggestions",
+  label: "提交词汇需求建议",
+  description: "Submit 4-6 Chinese sub-topics of this word book's scene. Fix only the listed problems if rejected.",
+  parameters: TopicSuggestionsParams,
+  async execute(_toolCallId, params) {
+    const problems = topicSuggestionsProblems(params);
+    if (problems.length > 0) {
+      throw new Error(`提交未通过校验（${problems.length} 处），请修正后重新提交：\n- ${problems.join("\n- ")}`);
+    }
+    return { content: [{ type: "text", text: "Accepted." }], details: params, terminate: true };
   },
 });

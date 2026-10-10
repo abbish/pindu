@@ -135,10 +135,16 @@ pub async fn generate_words_from_intent(
         )),
     );
 
+    // 词汇需求可以不填：词汇本有场景描述时按场景生成
     let intent_len = intent.trim().chars().count();
-    if intent_len == 0 || intent_len > 500 {
+    if intent_len > 500 {
         return Err(AppError::ValidationError(
-            "请用 1–500 个字描述想要的词汇本".to_string(),
+            "词汇需求最多 500 个字".to_string(),
+        ));
+    }
+    if intent_len == 0 && !has_scene_description(&pool, &logger, book_id).await? {
+        return Err(AppError::ValidationError(
+            "请描述想要的词汇，或先设置词汇本的场景描述".to_string(),
         ));
     }
     let count = usize::try_from(count).unwrap_or(0);
@@ -187,6 +193,60 @@ pub async fn generate_words_from_intent(
         }),
     );
     result
+}
+
+/// 词汇本写了场景描述吗
+async fn has_scene_description(
+    pool: &SqlitePool,
+    logger: &Logger,
+    book_id: Option<i64>,
+) -> AppResult<bool> {
+    let Some(id) = book_id else {
+        return Ok(false);
+    };
+    Ok(
+        crate::repositories::wordbook_repository::WordBookRepository::new(
+            Arc::new(pool.clone()),
+            Arc::new(logger.clone()),
+        )
+        .find_by_id(id)
+        .await?
+        .is_some_and(|b| !b.description.trim().is_empty()),
+    )
+}
+
+/// 按词汇本的场景描述给 4–6 条词汇需求的建议（场景下的子话题）；没有场景描述时返回空
+#[tauri::command]
+pub async fn suggest_vocab_topics(app: AppHandle, book_id: i64) -> AppResult<Vec<String>> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request("suggest_vocab_topics", Some(&format!("book_id: {book_id}")));
+    let result = async {
+        if !has_scene_description(&pool, &logger, Some(book_id)).await? {
+            return Ok(Vec::new());
+        }
+        let pool_arc = Arc::new(pool.inner().clone());
+        let logger_arc = Arc::new(logger.inner().clone());
+        let scene = PromptProfileService::book_scene(&pool_arc, &logger_arc, Some(book_id)).await?;
+        let existing = crate::repositories::word_repository::WordRepository::new(
+            pool_arc.clone(),
+            logger_arc.clone(),
+        )
+        .word_texts_by_book(book_id)
+        .await?;
+        let model = get_model_config(AgentTaskKind::Extract, None, &pool, &logger).await?;
+        let profile = PromptProfileService::load(pool.inner()).await?;
+        crate::agent::tasks::suggest_vocab_topics(
+            &super::agent_paths(&app)?,
+            &model,
+            &profile,
+            &crate::agent::tasks::vocab_suggest_message(&scene, &existing),
+            &logger,
+        )
+        .await
+    }
+    .await;
+    super::finish(&logger, "suggest_vocab_topics", result)
 }
 
 /// 分析单词并加入词汇本（第二步，后台任务）：立即返回任务 id，进度与逐词状态经 job-updated 推送，
