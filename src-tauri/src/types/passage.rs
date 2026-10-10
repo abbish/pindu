@@ -282,6 +282,9 @@ pub struct GeneratePassageRequest {
     /// 必须出现的词（手动输入的英文单词）
     #[serde(default)]
     pub extra_words: Vec<String>,
+    /// 这些词的中文释义（小写单词 → 释义；按描述生成时 AI 选词给出）
+    #[serde(default)]
+    pub extra_meanings: std::collections::HashMap<String, String>,
     /// 再让 AI 从来源里挑几个适合场景的词（0 = 不挑）
     #[serde(default)]
     pub ai_pick: i64,

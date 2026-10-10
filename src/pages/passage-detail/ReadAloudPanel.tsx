@@ -88,7 +88,7 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ la
 /** 选中的文字是一个英文单词或 2–6 个词的词组（可以加成目标词） */
 
 /** onAddTarget：读的时候选中原文里的一个词，加成这篇的目标词 */
-export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: string) => void; onOpenWord?: (word: string) => void }> = ({ passage, onAddTarget, onOpenWord }) => {
+export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: string, stay?: boolean) => void; onOpenWord?: (word: string) => void }> = ({ passage, onAddTarget, onOpenWord }) => {
   const [prefs, setPrefs] = useState<ReadAloudPrefs>(readPrefs);
   const [blind, setBlind] = useState(false);
   const [blindDone, setBlindDone] = useState(false);
@@ -113,6 +113,10 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
   };
 
   /** 读完一句：开启听后回忆且这句有目标词时，挖空等学生填完再继续 */
+  // 盲听与听后回忆时不看句子分析（分析里有整句原文）
+  useEffect(() => {
+    if (blind || prefs.recall) setAnalyzing(null);
+  }, [blind, prefs.recall]);
   const recallRef = useRef(prefs.recall);
   recallRef.current = prefs.recall && !blind;
   const afterSentence = useCallback(
@@ -377,7 +381,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
         focusBlur={prefs.focusBlur}
         renderSentence={renderRecallSentence}
         below={recallPanel}
-        onAnalyzeSentence={setAnalyzing}
+        onAnalyzeSentence={blind || prefs.recall ? undefined : setAnalyzing}
         analyzing={analyzing}
         renderTarget={(text, target, active) => (
           <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} onSpeak={(w, slow) => wordAudio.playText(w, undefined, { style: 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {})} onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined} />
@@ -385,7 +389,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
       />
       </SelectionAction>
       {analyzing !== null && (
-        <SentenceAnalysisPanel passageId={passage.id} sentences={passage.sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targets} onAddTarget={onAddTarget} onClose={() => setAnalyzing(null)} />
+        <SentenceAnalysisPanel passageId={passage.id} sentences={passage.sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targets} onAddTarget={onAddTarget && ((w) => onAddTarget(w, true))} onClose={() => setAnalyzing(null)} />
       )}
     </Card>
   );

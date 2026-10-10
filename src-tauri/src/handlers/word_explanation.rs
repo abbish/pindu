@@ -91,8 +91,13 @@ pub async fn ask_word_tutor(app: AppHandle, request: WordTutorRequest) -> AppRes
     logger.api_request(
         "ask_word_tutor",
         Some(&format!(
-            "word_id: {}, history: {}, question_chars: {}",
+            "word_id: {}, sentence: {}, history: {}, question_chars: {}",
             request.word_id,
+            request
+                .sentence
+                .as_ref()
+                .map(|s| format!("passage {} #{}", s.passage_id, s.sentence_index))
+                .unwrap_or_else(|| "-".into()),
             request.history.len(),
             request.question.chars().count()
         )),

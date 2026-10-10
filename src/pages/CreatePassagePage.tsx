@@ -323,7 +323,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   ].join(' · ');
   /** 按描述生成时勾选的 AI 选词 */
   const briefSelected = sourceMode === 'brief' ? (briefWords ?? []).filter((w) => w.selected).map((w) => w.word) : [];
-  const total = required.size + extraWords.length + effectivePick + briefSelected.length;
+  const total = (sourceMode === 'brief' ? 0 : required.size) + extraWords.length + effectivePick + briefSelected.length;
   const totalError = total < MIN_WORDS ? (aiMode ? '没有可用的单词：请放宽选词范围，或指定单词' : '请至少选择 1 个单词') : null;
   const sceneHint = useMemo(() => {
     const descriptions = (books ?? []).filter((b) => bookIds.includes(b.id) && b.description?.trim()).map((b) => b.description.trim());
@@ -358,8 +358,9 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     bookIds,
     planIds,
     planScopes: scopes,
-    requiredWordIds: [...required],
+    requiredWordIds: sourceMode === 'brief' ? [] : [...required],
     extraWords: [...briefSelected, ...extraWords],
+    extraMeanings: Object.fromEntries((sourceMode === 'brief' ? (briefWords ?? []) : []).filter((w) => w.selected && w.meaning).map((w) => [w.word.toLowerCase(), w.meaning])),
     aiPick: effectivePick,
     pickStatuses: effectivePick > 0 ? prefs.statuses : [],
     pickDifficulty: effectivePick > 0 && prefs.difficulty !== 'any' ? prefs.difficulty : null,
@@ -416,6 +417,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
   /** 换生成方式：只保留这种方式的来源 */
   const chooseSource = (mode: SourceMode) => {
+    if (mode !== sourceMode) setRequired(new Set());
     setSourceMode(mode);
     if (mode !== 'books') setBookIds([]);
     if (mode !== 'plans') setPlanIds([]);
@@ -884,10 +886,12 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                     )}
                   </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">AI 选词</span>
-                  <span>{effectivePick > 0 ? `最多 ${effectivePick} 个` : '不选'}</span>
-                </div>
+                {sourceMode !== 'brief' && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">AI 选词</span>
+                    <span>{effectivePick > 0 ? `最多 ${effectivePick} 个` : '不选'}</span>
+                  </div>
+                )}
                 {effectivePick > 0 && (
                   <div className="flex justify-between gap-3">
                     <span className="shrink-0 text-muted-foreground">条件</span>

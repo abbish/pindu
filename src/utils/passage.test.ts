@@ -79,3 +79,11 @@ test('挖空：单词逐个挖，连着出现的词组整体挖，拆开用的�
   assert.deepEqual(blanks('Please pick it up.', ['pick up']), []);
   assert.equal(recallBlanks('She gave up.', ['give up']).map((p) => (p.kind === 'text' ? p.text : '_')).join(''), 'She _.');
 });
+
+test('空位：词后紧跟撇号也能定位；与已有空位重叠时继续往后找', () => {
+  const blanks = (s: string, words: string[]) =>
+    splitWithBlanks(s, words.map((word, i) => ({ questionId: i + 1, word }))).flatMap((p) => (p.kind === 'blank' ? [p.answer] : []));
+  assert.deepEqual(blanks("The kids' toys are here.", ['kids']), ['kids']);
+  assert.deepEqual(blanks("Don't give up, she gave up.", ['up', 'gave up']).sort(), ['gave up', 'up']);
+  assert.deepEqual(blanks("I don't know.", ['don']), []);
+});

@@ -337,7 +337,11 @@ impl PassageService {
                     word_id: None,
                     word: word.to_string(),
                     required: true,
-                    meaning: None,
+                    meaning: request
+                        .extra_meanings
+                        .get(&word.to_lowercase())
+                        .map(|m| m.trim().to_string())
+                        .filter(|m| !m.is_empty()),
                 });
             }
         }
@@ -544,7 +548,7 @@ impl PassageService {
                     word_id: w.word_id,
                     word,
                     required: w.required,
-                    meaning: None,
+                    meaning: w.meaning.clone().filter(|m| !m.trim().is_empty()),
                 });
             }
         }
@@ -603,13 +607,12 @@ impl PassageService {
             &self.logger,
         )
         .await?;
-        if free {
-            self.link_existing_words(&mut plan).await?;
-        }
+        // AI 选的词、手动输入的词：已在词汇本里的关联上 wordId（不算未收录词）
+        self.link_existing_words(&mut plan).await?;
         Ok(plan)
     }
 
-    /// AI 自己选的目标词：已在词汇本里的关联上 wordId（不算未收录词）
+    /// 规划里没有 wordId 的目标词：已在词汇本里的关联上 wordId（不算未收录词）
     async fn link_existing_words(
         &self,
         plan: &mut crate::types::passage::PassagePlan,
@@ -1542,6 +1545,7 @@ pub(crate) mod tests {
             plan_scopes: vec![],
             required_word_ids: vec![fx.word_ids[0]],
             extra_words: vec![],
+            extra_meanings: Default::default(),
             ai_pick: 5,
             pick_statuses: filter.iter().map(|s| s.to_string()).collect(),
             pick_difficulty: Some("easy".into()),
@@ -1596,6 +1600,7 @@ pub(crate) mod tests {
             plan_scopes: vec![],
             required_word_ids: ids,
             extra_words: extra.into_iter().map(String::from).collect(),
+            extra_meanings: Default::default(),
             ai_pick,
             pick_statuses: vec![],
             pick_difficulty: None,

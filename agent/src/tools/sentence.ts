@@ -44,7 +44,7 @@ const SentenceAnalysisParams = Type.Object({
 });
 export type SentenceAnalysisSubmission = Static<typeof SentenceAnalysisParams>;
 
-const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+const norm = (s: string) => s.replace(/[\u2018\u2019]/g, "'").toLowerCase().replace(/\s+/g, " ").trim();
 const clean = (s: string) => norm(s).replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, "");
 
 export function sentenceAnalysisProblems(p: SentenceAnalysisSubmission): string[] {

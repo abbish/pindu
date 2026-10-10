@@ -42,6 +42,7 @@ fn list(v: &Value, key: &str) -> Vec<Value> {
 fn find_in(sentence: &str, part: &str, from: usize) -> Option<usize> {
     let hay = sentence.to_ascii_lowercase();
     let needle = part
+        .replace(['\u{2019}', '\u{2018}'], "'")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -75,6 +76,9 @@ pub fn analysis_from_submission(
     details: &Value,
     sentence: &str,
 ) -> Result<SentenceAnalysis, String> {
+    // 原句里的弯撇号按直撇号比对（模型抄写时常把 don’t 写成 don't）；位置只用于判断出处与先后
+    let normalized = sentence.replace(['\u{2019}', '\u{2018}'], "'");
+    let sentence = normalized.as_str();
     let pattern = text(details, "pattern");
     let function = text(details, "function");
     if pattern.is_empty() || function.is_empty() {
@@ -383,6 +387,12 @@ mod tests {
             .chunks
             .is_empty());
         assert!(analysis_from_submission(&json!({"pattern": "x"}), SENTENCE).is_err());
+
+        // 原句是弯撇号、模型抄成直撇号：仍算出自原句
+        let curly = json!({"pattern": "x", "function": "y",
+            "pronunciation": [{"text": "don't", "tip": "t 不爆破"}]});
+        let a = analysis_from_submission(&curly, "I don\u{2019}t know.").unwrap();
+        assert_eq!(a.pronunciation.len(), 1);
     }
 
     #[tokio::test]

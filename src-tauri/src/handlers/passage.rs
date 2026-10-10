@@ -473,6 +473,7 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
                 .filter(|(_, m)| !m.is_empty())
                 .collect(),
         };
+        let meanings = context.meanings.clone();
         let analyzer = super::word_analysis::phonics_analyzer(&app, &model, profile, context)?;
         let words: Vec<String> = missing.into_iter().map(|t| t.word).collect();
         let spec = JobSpec {
@@ -492,7 +493,6 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
             return Ok(Some(id));
         }
         Ok(Some(jobs.spawn(spec, move |ctx| async move {
-            ctx.stage("AI 正在生成单词卡");
             let batches: Vec<Vec<String>> = words.chunks(batch_size).map(|c| c.to_vec()).collect();
             let total = words.len() as u64;
             let mut done = 0u64;
@@ -504,7 +504,12 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
                     break;
                 }
                 match analyzer.analyze_batch(batch, i, batches.len()).await {
-                    Ok(outcome) => saved += service.save(&outcome.analyzed).await?,
+                    Ok(outcome) => {
+                        saved += service.save(&outcome.analyzed).await?;
+                        // AI 没给出分析的词（多为 AI 认为拼写有误）：存一张只有释义的卡片，
+                        // 不然每次打开目标词都会再提交一次任务
+                        saved += service.save_basic(&outcome.missing, &meanings).await?;
+                    }
                     Err(e) => last_error = Some(e),
                 }
                 done += batch.len() as u64;

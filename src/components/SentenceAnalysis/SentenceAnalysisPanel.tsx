@@ -11,6 +11,8 @@ import { passageService } from '@/services/passageService';
 import { sentenceChatId } from '@/services/wordExplanationService';
 import { cn } from '@/lib/utils';
 import type { PassageSentence, SentenceAnalysis } from '@/types/passage';
+import type { ApiResult } from '@/types';
+import { canAddTarget } from '@/utils/passage';
 
 export interface SentenceAnalysisPanelProps {
   passageId: number;
@@ -28,6 +30,8 @@ export interface SentenceAnalysisPanelProps {
 
 /** 本次打开应用期间按句子保留分析结果（后端也有缓存，这里只省去切换时的闪烁） */
 const store = new Map<string, SentenceAnalysis>();
+/** 进行中的分析请求（同一句只发一次；快速翻句后回来接着等同一个结果） */
+const inflight = new Map<string, Promise<ApiResult<SentenceAnalysis>>>();
 
 type Tab = 'analysis' | 'teacher';
 
@@ -39,14 +43,24 @@ export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ pa
   const [tab, setTab] = useState<Tab>('analysis');
   const sentence = sentences[index];
   const key = `${passageId}:${index}`;
-  const [state, setState] = useState<{ key: string; analysis?: SentenceAnalysis; error?: string; loading: boolean }>({ key, loading: false });
+  const [state, setState] = useState<{ key: string; analysis?: SentenceAnalysis; error?: string; loading: boolean; refresh?: boolean }>({ key, loading: false });
 
+  /** 加载这句的分析；`refresh` 重新分析。失败时保留已有的分析，只提示原因 */
   const load = async (refresh: boolean) => {
     const k = key;
-    setState({ key: k, loading: true, analysis: store.get(k) });
-    const result = await passageService.analyzeSentence({ passageId, sentenceIndex: index, refresh });
+    setState({ key: k, loading: true, analysis: store.get(k), refresh });
+    const flightKey = `${k}:${refresh ? 'r' : ''}`;
+    let request = inflight.get(flightKey);
+    if (!request) {
+      request = passageService.analyzeSentence({ passageId, sentenceIndex: index, refresh });
+      inflight.set(flightKey, request);
+      void request.finally(() => inflight.delete(flightKey));
+    }
+    const result = await request;
     if (result.success) store.set(k, result.data);
-    setState((prev) => (prev.key !== k ? prev : result.success ? { key: k, loading: false, analysis: result.data } : { key: k, loading: false, error: result.error }));
+    setState((prev) =>
+      prev.key !== k ? prev : result.success ? { key: k, loading: false, analysis: result.data } : { key: k, loading: false, analysis: store.get(k), error: result.error, refresh }
+    );
   };
 
   useEffect(() => {
@@ -56,19 +70,22 @@ export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ pa
     // 换句时加载；load 依赖的值都在 key 里
   }, [key]);
 
-  // Esc 关闭（输入框里不拦截）
+  // Esc 关闭：输入框里、已被其它浮层处理（选词气泡、下拉、弹窗）时不关
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
-      if (e.key === 'Escape') onClose();
+      if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [data-radix-popper-content-wrapper]')) return;
+      onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   if (!sentence) return null;
-  const isTarget = (w: string) => targets.some((t) => t.toLowerCase() === w.toLowerCase());
+  /** 已经是目标词（含变形：gave up 与 give up 视为同一个） */
+  const isTarget = (w: string) => !canAddTarget(w, targets);
   const current = state.key === key ? state : { key, loading: true };
 
   return createPortal(
@@ -119,13 +136,18 @@ export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ pa
 
       {tab === 'analysis' ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" role="tabpanel">
+          {current.error && current.analysis && (
+            <InlineError className="mb-4" title={current.refresh ? '无法重新分析' : '无法分析这句'}>
+              {current.error}
+            </InlineError>
+          )}
           {current.analysis ? (
             <AnalysisView analysis={current.analysis} isTarget={isTarget} onAddTarget={onAddTarget} onRefresh={() => void load(true)} refreshing={current.loading} />
           ) : current.error ? (
             <InlineError
               title="无法分析这句"
               actions={
-                <Button variant="outline" size="sm" className="h-7" onClick={() => void load(false)}>
+                <Button variant="outline" size="sm" className="h-7" onClick={() => void load(current.refresh ?? false)}>
                   再试一次
                 </Button>
               }

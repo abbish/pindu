@@ -256,8 +256,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const picked = passage.targetWords.filter((w) => !w.required);
   /** 有还没收录进词汇本的目标词 */
   const hasNewWords = passage.targetWords.some((w) => w.wordId === null);
-  /** 读原文时选中的词加成目标词，然后到「目标词」页签看它的单词卡（没收录的会自动生成） */
-  const addTarget = async (word: string) => {
+  /** 读原文时选中的词加成目标词，然后到「目标词」页签看它的单词卡（没收录的会自动生成）；
+   * `stay`：留在当前页签（从句子分析面板加入时不打断精读） */
+  const addTarget = async (word: string, stay = false) => {
     const result = await passageService.addTargetWord(passage.id, word);
     if (!result.success) {
       toast.showError('无法加入目标词', result.error);
@@ -265,7 +266,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     }
     setPassage(result.data);
     toast.showSuccess(`已加入目标词「${result.data.targetWords[result.data.targetWords.length - 1]?.word ?? word}」`);
-    openWord(result.data.targetWords[result.data.targetWords.length - 1]?.word ?? word);
+    if (!stay) openWord(result.data.targetWords[result.data.targetWords.length - 1]?.word ?? word);
   };
   /** 侧栏点目标词：到「目标词」页签看这个词的单词卡 */
   const openWord = (word: string) => {

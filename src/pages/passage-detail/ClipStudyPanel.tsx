@@ -60,7 +60,7 @@ export interface ClipStudyPanelProps {
   /** 短文（片段）：目标词的点词卡片与选词加入目标词用 */
   passage: Pick<Passage, 'id' | 'targetWords'>;
   /** 台词里选中一个词，加成目标词 */
-  onAddTarget?: (word: string) => void;
+  onAddTarget?: (word: string, stay?: boolean) => void;
   /** 打开这个目标词的完整单词卡 */
   onOpenWord?: (word: string) => void;
   /** 有阅读理解题时「做听力题」 */
@@ -91,6 +91,10 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   const textBox = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>('study');
   const [prefs, setPrefs] = useState<ClipPrefs>(loadPrefs);
+  // 听句拼句、隐藏台词时不看句子分析（分析里有整句台词）
+  useEffect(() => {
+    if (mode !== 'study' || !prefs.showText) setAnalyzing(null);
+  }, [mode, prefs.showText]);
   const [now, setNow] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
@@ -390,7 +394,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       </Card>
       </div>
       {analyzing !== null && (
-        <SentenceAnalysisPanel passageId={passage.id} sentences={sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targetWords} onAddTarget={onAddTarget} onClose={() => setAnalyzing(null)} />
+        <SentenceAnalysisPanel passageId={passage.id} sentences={sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targetWords} onAddTarget={onAddTarget && ((w) => onAddTarget(w, true))} onClose={() => setAnalyzing(null)} />
       )}
     </div>
   );

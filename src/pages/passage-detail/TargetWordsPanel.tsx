@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { InlineError } from '@/components/InlineError';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { JobPanel } from '@/components/Jobs';
+import { JobPanel, jobErrorText } from '@/components/Jobs';
 import { StudySection, StudySentence, WordStudyCard, studyInfoFromCard, studyInfoFromWord } from '@/components/WordStudyCard';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { useJob, useOnJobFinished } from '@/hooks/useJobs';
@@ -28,6 +30,9 @@ export interface TargetWordsPanelProps {
  * 短文详情「目标词」页签：左边目标词列表（指定单词 / AI 选词或重点词，未收录的标出），右边单词卡（WordStudyCard，
  * 与词汇本共用）外加「本文中」的句子；未收录的词用单词卡（缺的自动补生成）。↑ ↓ 或上一个 / 下一个切换。
  */
+/** 本次打开应用期间已请求过补生成单词卡的「短文 + 那组词」（页签切走再回来不重复提交） */
+const requestedCards = new Set<string>();
+
 export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord, onOpenPassage }) => {
   const [details, setDetails] = useState<Map<string, Word> | null>(null);
   /** 不在词汇本的目标词的单词卡（小写单词 → 卡片） */
@@ -35,11 +40,22 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
   /** 补生成单词卡的后台任务 */
   const [cardJobId, setCardJobId] = useState<string | null>(null);
   const cardJob = useJob(cardJobId);
-  /** 已请求过补生成的那组词（避免重复挂载时提交两次） */
-  const requestedRef = useRef('');
   const [index, setIndex] = useState(0);
   const audio = useAudioPlayer();
   const imported = passage.origin !== 'generated';
+
+  /** 补生成单词卡（已有在跑的同类任务时后端返回它） */
+  const startCards = async () => {
+    setCardError(null);
+    const r = await passageService.startWordCards(passage.id);
+    if (r.success) setCardJobId(r.data);
+    else setCardError(r.error);
+  };
+  /** 补生成失败的原因 */
+  const [cardError, setCardError] = useState<string | null>(null);
+  useEffect(() => {
+    if (cardJob?.status === 'failed') setCardError(jobErrorText(cardJob));
+  }, [cardJob]);
 
   const loadCards = () =>
     passageService.getWordCards(passage.id).then((r) => setCards(new Map((r.success ? r.data : []).map((c) => [c.word.toLowerCase(), c]))));
@@ -49,9 +65,9 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
     // 未收录的词还没有单词卡：自动补生成（已有在跑的同类任务时后端返回它）。同一组词只请求一次
     const unrecorded = passage.targetWords.filter((w) => w.wordId === null).map((w) => w.word.toLowerCase());
     const key = `${passage.id}:${unrecorded.join(',')}`;
-    if (unrecorded.length > 0 && requestedRef.current !== key) {
-      requestedRef.current = key;
-      passageService.startWordCards(passage.id).then((r) => r.success && setCardJobId(r.data));
+    if (unrecorded.length > 0 && !requestedCards.has(key)) {
+      requestedCards.add(key);
+      void startCards();
     }
     // loadCards 只依赖 passage.id
   }, [passage.id, passage.targetWords]);
@@ -138,7 +154,22 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
               </Badge>
             )
           }
-          progress={generatingCard && cardJob && <JobPanel job={cardJob} title="AI 正在生成单词卡" />}
+          progress={
+            generatingCard && cardJob ? (
+              <JobPanel job={cardJob} title="AI 正在生成单词卡" />
+            ) : current.wordId === null && !card && cardError ? (
+              <InlineError
+                title="无法生成单词卡"
+                actions={
+                  <Button variant="outline" size="sm" className="h-7" onClick={() => void startCards()}>
+                    再试一次
+                  </Button>
+                }
+              >
+                {cardError}
+              </InlineError>
+            ) : undefined
+          }
           aiWordId={info ? aiWordId : null}
           wordId={current.wordId ?? undefined}
           onOpenPassage={onOpenPassage}

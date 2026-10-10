@@ -14,13 +14,16 @@ export function splitWithBlanks(sentence: string, blanks: { questionId: number; 
   const hits: { start: number; end: number; questionId: number; answer: string }[] = [];
   for (const b of blanks) {
     const escaped = b.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`(?<![A-Za-z'])${escaped}(?![A-Za-z'])`, 'i');
-    const m = re.exec(sentence);
-    if (!m) continue;
-    const start = m.index;
-    const end = start + m[0].length;
-    if (hits.some((h) => start < h.end && end > h.start)) continue;
-    hits.push({ start, end, questionId: b.questionId, answer: m[0] });
+    // 整词：前后不是字母；撇号只有连着字母时才算词的一部分（don't、kids' toys 里的 kids 都能找到，与后端分词一致）
+    const re = new RegExp(`(?<![A-Za-z]|[A-Za-z]')${escaped}(?![A-Za-z]|'[A-Za-z])`, 'gi');
+    // 与已有空位重叠时继续往后找
+    for (const m of sentence.matchAll(re)) {
+      const start = m.index ?? 0;
+      const end = start + m[0].length;
+      if (hits.some((h) => start < h.end && end > h.start)) continue;
+      hits.push({ start, end, questionId: b.questionId, answer: m[0] });
+      break;
+    }
   }
   hits.sort((a, b) => a.start - b.start);
   const parts: SentencePart[] = [];

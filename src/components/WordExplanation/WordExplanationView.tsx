@@ -149,12 +149,13 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
 
   const ask = (text: string) => {
     if (!text.trim() || chat.busy) return;
-    if (text === EXPLAIN && !explained) {
+    if (!sentence && text === EXPLAIN && !explained) {
       explainAt.set(wordId, chat.messages.length);
       void generate(wordId);
       return;
     }
-    chat.send(text, state.status === 'ready' ? state.content : undefined);
+    // busy 按这段对话判断（见上），能走到这里就一定会发出
+    void chat.send(text, state.status === 'ready' ? state.content : undefined);
     setQuestion('');
   };
 

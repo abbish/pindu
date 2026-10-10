@@ -182,6 +182,26 @@ impl WordCardService {
         self.passage(passage_id).await
     }
 
+    /// AI 没能分析的词：存一张只有单词与释义（有的话）的卡片，标记为已处理
+    pub async fn save_basic(
+        &self,
+        words: &[String],
+        meanings: &std::collections::HashMap<String, String>,
+    ) -> AppResult<usize> {
+        let repository = WordCardRepository::new(self.pool.clone());
+        for w in words {
+            repository
+                .upsert(&WordCard {
+                    word: w.trim().to_string(),
+                    meaning: meanings.get(&w.to_lowercase()).cloned().unwrap_or_default(),
+                    kind: crate::types::wordbook::vocab_kind(w).to_string(),
+                    ..Default::default()
+                })
+                .await?;
+        }
+        Ok(words.len())
+    }
+
     /// 保存分析好的单词卡
     pub async fn save(&self, analyzed: &[PhonicsWord]) -> AppResult<usize> {
         let repository = WordCardRepository::new(self.pool.clone());

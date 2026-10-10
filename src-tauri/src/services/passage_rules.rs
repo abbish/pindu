@@ -693,8 +693,9 @@ pub fn questions_from_submission(
 
     // 选词填空：空位必须是该句里真实出现的词，同一个词只挖一次，同一句最多两个空
     let mut used_words: HashSet<String> = HashSet::new();
-    let mut per_sentence: std::collections::HashMap<i64, usize> = Default::default();
-    let mut cloze = Vec::new();
+    let mut per_sentence: std::collections::HashMap<i64, Vec<(usize, usize)>> = Default::default();
+    // (句子序号, 空位在句中的位置, 题目)
+    let mut cloze: Vec<(i64, usize, NewQuestion)> = Vec::new();
     for item in list("cloze") {
         if cloze.len() as i64 >= spec.cloze {
             break;
@@ -708,25 +709,36 @@ pub fn questions_from_submission(
         let Some(token) = token_in_sentence(&sentence.en, &text(&item, "word")) else {
             continue;
         };
-        let count = per_sentence.entry(index).or_insert(0);
-        if *count >= 2 || !used_words.insert(token.to_lowercase()) {
+        // 空位在句中的位置；同一句最多两个空，且不能和已有的空重叠（gave up 与 up）
+        let start = token.as_ptr() as usize - sentence.en.as_ptr() as usize;
+        let range = (start, start + token.len());
+        let taken = per_sentence.entry(index).or_default();
+        if taken.len() >= 2
+            || taken.iter().any(|&(a, b)| range.0 < b && a < range.1)
+            || used_words.contains(&token.to_lowercase())
+        {
             continue;
         }
-        *count += 1;
-        cloze.push(NewQuestion {
-            kind: "cloze".into(),
-            stem: token.to_string(),
-            options: Vec::new(),
-            answer: Some(token.to_string()),
-            explanation: opt_text(&item, "hint"),
-            reference_answer: None,
-            rubric: Vec::new(),
-            sentence_index: Some(index),
-        });
+        used_words.insert(token.to_lowercase());
+        taken.push(range);
+        cloze.push((
+            index,
+            start,
+            NewQuestion {
+                kind: "cloze".into(),
+                stem: token.to_string(),
+                options: Vec::new(),
+                answer: Some(token.to_string()),
+                explanation: opt_text(&item, "hint"),
+                reference_answer: None,
+                rubric: Vec::new(),
+                sentence_index: Some(index),
+            },
+        ));
     }
-    // 按原文顺序排列空位
-    cloze.sort_by_key(|q| q.sentence_index);
-    questions.extend(cloze);
+    // 按原文顺序排列空位（先按句子，同一句里按位置）
+    cloze.sort_by_key(|(sentence, start, _)| (*sentence, *start));
+    questions.extend(cloze.into_iter().map(|(_, _, q)| q));
 
     for q in list("choice").into_iter().take(spec.choice.max(0) as usize) {
         let options = strings(&q, "options");

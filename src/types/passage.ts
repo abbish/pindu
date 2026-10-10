@@ -249,6 +249,8 @@ export interface GeneratePassageRequest {
   requiredWordIds: number[];
   /** 必须出现的词（手动输入） */
   extraWords: string[];
+  /** 这些词的中文释义（小写单词 → 释义；按描述生成时 AI 选词给出） */
+  extraMeanings?: Record<string, string>;
   /** 再让 AI 从来源里挑几个适合场景的词 */
   aiPick: number;
   /** AI 只从这些学习情况的词里挑（空 = 不限） */
