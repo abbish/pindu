@@ -276,8 +276,7 @@ pub async fn start_question_set_generation(
                 serde_json::json!({ "passageId": request.passage_id }),
             )),
         };
-        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
-            ctx.stage("AI 正在出题");
+        Ok(app.state::<Jobs>().spawn(spec, move |_ctx| async move {
             let set = svc.generate_question_set(&request, &paths).await?;
             Ok(serde_json::json!({ "setId": set.id, "name": set.name, "count": set.questions.len() }))
         }))

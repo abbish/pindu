@@ -38,7 +38,8 @@ export const JobPanel: React.FC<JobPanelProps> = ({ job, title, count, extra, ac
   const stopping = active && (stopRequested || job?.stage === STOPPING_STAGE);
   const elapsed = useElapsed(job?.startedAt, active);
   const heading = stopping ? STOPPING_STAGE : !active ? (failed ? '没有完成' : job?.status === 'cancelled' ? '已停止' : '已完成') : title;
-  const sub = !job || job.status === 'queued' ? '排队中' : stopping ? null : (job.stage ?? '准备中');
+  // 阶段与标题说的是同一件事时不重复（如标题「AI 正在生成题组」）；没有阶段时只显示已用时间
+  const sub = !job || job.status === 'queued' ? '排队中' : stopping ? null : job.stage;
   const shownCount = count ?? (job && job.total > 0 ? `${job.current} / ${job.total}` : null);
 
   const stop = async () => {
