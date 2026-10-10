@@ -823,9 +823,6 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
               onGenerateExamples={handleGenerateExamples}
               explanationLocked={writing}
               explanationSuggested={stage === 'correction' || feedback?.type === 'fixed'}
-              explanationAutoGenerate={
-                stage === 'look' || stage === 'correction' || (stage === 'feedback' && feedback?.type === 'fixed')
-              }
             />
           </div>
         ),

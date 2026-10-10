@@ -13,22 +13,20 @@ import { cn } from '@/lib/utils';
 export interface WordExplanationViewProps {
   /** 当前单词 ID */
   wordId: number;
-  /** 所在页签是否可见：可见时才显示 / 生成讲解 */
+  /** 单词（老师打招呼时用） */
+  word: string;
+  /** 所在页签 / 面板是否可见 */
   active: boolean;
-  /**
-   * 还没有讲解时是否自动生成：只在学生会停下来看的环节（看·说、查）为 true；
-   * 一次答对后的短暂停留为 false，避免刚触发生成就跳到下一题。
-   */
-  autoGenerate: boolean;
   /** 占满所在容器的高度（侧边对话面板里用）；默认按内容高度、最高 56vh */
   fill?: boolean;
 }
 
-/** 页签停留多久才自动开始生成（毫秒），快速切换不触发 */
-const AUTO_GENERATE_DELAY_MS = 1200;
-
 /** AI 没给出推荐追问时的固定建议 */
-const FALLBACK_SUGGESTIONS = ['为什么这样拼？', '能再举一个例子吗？', '有哪些易混淆词？'];
+const FALLBACK_SUGGESTIONS = ['为什么这样拼？', '怎么记住它？', '有哪些易混淆词？'];
+/** 让老师系统地讲一讲这个词（讲解任务） */
+const EXPLAIN = '讲讲这个词';
+/** 讲解出现在对话里的位置（第几条消息之后）：本次打开应用期间按单词记 */
+const explainAt = new Map<number, number>();
 /** 让老师换一种讲法 */
 const REPHRASE = '换个讲法';
 
@@ -47,13 +45,13 @@ interface ViewState {
 }
 
 /**
- * AI 老师：围绕这个词的一段对话。老师先开口讲（讲解，agent 实时生成、流式显示、不落库），学生接着问（答疑）；
- * 讲解与答疑是同一个对话流，没有「生成 / 重新生成」——想换个讲法就直接说。每次回答后给出推荐追问。
+ * AI 老师：围绕这个词的一段对话。打开时老师只打个招呼、等学生提问；推荐问题里第一条是「讲讲这个词」
+ * （讲解任务，流式、不落库），其余是答疑。没有「生成 / 重新生成」——想换个讲法就直接说。每次回答后给出推荐追问。
  */
 export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
   wordId,
+  word,
   active,
-  autoGenerate,
   fill = false,
 }) => {
   const [state, setState] = useState<ViewState>({ wordId: null, status: 'idle', content: '' });
@@ -117,13 +115,6 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
     );
   }, []);
 
-  // 还没有讲解且处在会停下来看的环节：页签停留一会儿再自动生成
-  useEffect(() => {
-    if (state.status !== 'missing' || state.wordId !== wordId || !active || !autoGenerate) return;
-    const timer = setTimeout(() => generate(wordId), AUTO_GENERATE_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [state.status, state.wordId, wordId, active, autoGenerate, generate]);
-
   // 页签可见且换了单词：显示本次已生成的讲解，没有就等待生成
   useEffect(() => {
     if (!active || loadedWordRef.current === wordId) return;
@@ -139,20 +130,26 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
 
 
   // 推荐追问：有对话时用最近一次回答的，否则用讲解的；AI 没给时用固定建议（去掉问过的）
+  const explained = state.status === 'ready' || state.status === 'generating' || state.status === 'error';
   const dynamicFollowUps = chat.messages.length > 0 ? chat.followUps : state.status === 'ready' ? (state.meta?.follow_ups ?? []) : [];
   const base = dynamicFollowUps.length > 0 ? dynamicFollowUps : FALLBACK_SUGGESTIONS.filter(q => !chat.asked.includes(q));
-  // 讲完之后随时可以让老师换个讲法（作为一句话问，不是重新生成）
-  const suggestions = state.status === 'ready' && !base.includes(REPHRASE) ? [...base, REPHRASE] : base;
+  // 还没讲过：第一条是「讲讲这个词」；讲过之后可以让老师换个讲法（都是对话里的一句，不是重新生成）
+  const suggestions = !explained ? [EXPLAIN, ...base.filter((q) => q !== EXPLAIN)] : state.status === 'ready' && !base.includes(REPHRASE) ? [...base, REPHRASE] : base;
 
   // 有新的对话内容时滚到底部
   useEffect(() => {
-    if (chat.messages.length === 0 && chat.pendingText === null) return;
+    if (chat.messages.length === 0 && chat.pendingText === null && !state.content) return;
     const body = bodyRef.current;
     if (body) body.scrollTop = body.scrollHeight;
-  }, [chat.messages, chat.pendingText]);
+  }, [chat.messages, chat.pendingText, state.content]);
 
   const ask = (text: string) => {
     if (!text.trim() || chat.busy) return;
+    if (text === EXPLAIN && !explained) {
+      explainAt.set(wordId, chat.messages.length);
+      void generate(wordId);
+      return;
+    }
     chat.send(text, state.status === 'ready' ? state.content : undefined);
     setQuestion('');
   };
@@ -176,45 +173,51 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
     </div>
   );
 
+  /** 讲解（学生的「讲讲这个词」+ 老师的讲解） */
+  const explanationTurn = explained ? (
+    <React.Fragment key="explain">
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground">{EXPLAIN}</div>
+      </div>
+      {state.status === 'error'
+        ? teacher(
+            <span className="flex flex-wrap items-center gap-2">
+              这次没能讲解：{state.error}
+              <Button variant="outline" size="sm" className="h-7 rounded-full text-xs" onClick={() => generate(wordId)}>
+                再试一次
+              </Button>
+            </span>,
+            'explain-reply',
+            false,
+            true
+          )
+        : state.content
+          ? teacher(state.content, 'explain-reply', state.status === 'generating')
+          : teacher(<span className="text-muted-foreground">正在准备…</span>, 'explain-reply')}
+    </React.Fragment>
+  ) : null;
+  /** 对话：问答按顺序，讲解插在提出它的位置 */
+  const thread = () => {
+    const at = Math.min(explainAt.get(wordId) ?? 0, chat.messages.length);
+    const rows: React.ReactNode[] = chat.messages.map((m, i) =>
+      m.role === 'teacher' ? (
+        teacher(m.content, i, false, m.error)
+      ) : (
+        <div key={i} className="flex justify-end">
+          <div className="max-w-[85%] rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground select-text">{m.content}</div>
+        </div>
+      )
+    );
+    if (explanationTurn) rows.splice(at, 0, explanationTurn);
+    return rows;
+  };
+
   return (
     <div className={cn('flex flex-col gap-3', fill && 'h-full min-h-0')}>
       <div className={cn('flex min-h-40 flex-col gap-3 overflow-y-auto pr-1', fill ? 'min-h-0 flex-1' : 'max-h-[56vh]')} ref={bodyRef}>
-        {/* 老师先开口讲这个词，之后的问答接在同一段对话里 */}
-        {state.status === 'missing'
-          ? teacher(
-              <span className="flex flex-wrap items-center gap-2">
-                需要我讲讲这个词吗？
-                <Button variant="outline" size="sm" className="h-7 rounded-full text-xs" onClick={() => generate(wordId)}>
-                  讲讲这个词
-                </Button>
-              </span>,
-              'intro'
-            )
-          : state.status === 'error'
-            ? teacher(
-                <span className="flex flex-wrap items-center gap-2">
-                  这次没能讲解：{state.error}
-                  <Button variant="outline" size="sm" className="h-7 rounded-full text-xs" onClick={() => generate(wordId)}>
-                    再试一次
-                  </Button>
-                </span>,
-                'intro',
-                false,
-                true
-              )
-            : state.content
-              ? teacher(state.content, 'intro', state.status === 'generating')
-              : teacher(<span className="text-muted-foreground">正在准备…</span>, 'intro')}
-
-        {chat.messages.map((m, i) =>
-          m.role === 'teacher' ? (
-            teacher(m.content, i, false, m.error)
-          ) : (
-            <div key={i} className="flex justify-end">
-              <div className="max-w-[85%] rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground select-text">{m.content}</div>
-            </div>
-          )
-        )}
+        {/* 老师先打个招呼，等学生提问；「讲讲这个词」的讲解按提出的位置插在对话里 */}
+        {teacher(`我们来聊聊 **${word}**。想从哪里开始？`, 'greeting')}
+        {thread()}
         {chat.pendingText !== null && teacher(chat.pendingText || <span className="text-muted-foreground">正在回答…</span>, 'pending', Boolean(chat.pendingText))}
       </div>
 

@@ -31,8 +31,6 @@ export interface WordSidePanelProps {
   explanationLocked: boolean;
   /** 「查」时提示去看讲解 */
   explanationSuggested?: boolean;
-  /** 还没有讲解时是否自动生成（只在会停下来看的环节） */
-  explanationAutoGenerate?: boolean;
 }
 
 /** 各例句显示方式下给学生的说明 */
@@ -59,7 +57,6 @@ export const WordSidePanel: React.FC<WordSidePanelProps> = ({
   onGenerateExamples,
   explanationLocked,
   explanationSuggested = false,
-  explanationAutoGenerate = false,
 }) => {
   return (
     <Card className="sticky top-6 gap-3 p-4">
@@ -107,7 +104,7 @@ export const WordSidePanel: React.FC<WordSidePanelProps> = ({
         />
       </div>
       <div role="tabpanel" hidden={tab !== 'explanation' || explanationLocked}>
-        <WordExplanationView wordId={wordId} active={tab === 'explanation' && !explanationLocked} autoGenerate={explanationAutoGenerate} />
+        <WordExplanationView wordId={wordId} active={tab === 'explanation' && !explanationLocked} word={word} />
       </div>
       {tab === 'scenes' && !explanationLocked && (
         <div role="tabpanel" className="max-h-[70vh] overflow-y-auto">
