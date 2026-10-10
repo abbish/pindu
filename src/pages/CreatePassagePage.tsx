@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronUp, ListChecks, PenLine, Plus, RotateCw, Search, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronUp, CircleCheck, FileText, ListChecks, PenLine, Plus, RotateCw, Search, Sparkles, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -655,6 +655,15 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   ];
   const includedCount = planItems.filter((it) => it.include).length;
   const writing = statuses !== null && statuses.some((st) => st.state === 'running' || st.state === 'waiting');
+  /** 这次提交的都写完了（成功或没写成） */
+  const finished = statuses !== null && !writing;
+  const doneCount = statuses?.filter((st) => st.state === 'done').length ?? 0;
+  const failedCount = statuses?.filter((st) => st.state === 'failed').length ?? 0;
+  // 写完时滚到结果（可能还停在页面下方看规划）
+  const resultRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (finished) resultRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [finished]);
   /** 正在写的那一批（最近提交的进行中任务） */
   const activeRunJob = [...runs].reverse().map((r) => jobs.find((j) => j.id === r.jobId)).find((j) => j && isJobActive(j));
   const requiredWords = [...(candidates ?? []).filter((c) => required.has(c.wordId)).map((c) => c.word), ...briefSelected, ...extraWords];
@@ -1158,7 +1167,50 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
           {step === PLAN_STEP && !planning && activeRunJob && (
             <JobPanel job={activeRunJob} title="AI 正在生成短文" actions={{ stop: true, onBackground: () => onNavigate?.('passages') }} />
           )}
-          {step === PLAN_STEP && !planning && planItems.length > 0 && (
+          {/* 全部写完：明确的结束状态（逐篇打开 / 重试），规划收起 */}
+          {step === PLAN_STEP && !planning && finished && statuses && (
+            <Card ref={resultRef} className="scroll-mt-4 gap-4 px-6 py-5">
+              <div className="flex items-start gap-3">
+                {failedCount > 0 ? <AlertTriangle className="mt-0.5 size-6 shrink-0 text-warning" /> : <CircleCheck className="mt-0.5 size-6 shrink-0 text-success" />}
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg font-semibold">{doneCount > 0 ? `已生成 ${doneCount} 篇短文` : '没有生成短文'}</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {failedCount > 0 ? `${failedCount} 篇没有完成，可以重试` : '已经放进短文库，可以打开阅读、出题练习'}
+                  </p>
+                </div>
+              </div>
+              <ul className="divide-y rounded-lg border">
+                {planItems.map((item, i) => {
+                  const st = statuses[i];
+                  if (!st || st.state === 'skipped') return null;
+                  return (
+                    <li key={i} className="flex items-center gap-3 px-4 py-2.5">
+                      {st.state === 'done' ? <CircleCheck className="size-4 shrink-0 text-success" /> : <AlertTriangle className="size-4 shrink-0 text-warning" />}
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium">{item.title}</div>
+                        {st.state === 'failed' && <div className="truncate text-xs text-muted-foreground">{st.error}</div>}
+                      </div>
+                      {st.state === 'done' ? (
+                        <Button variant="outline" size="sm" onClick={() => leave(() => onNavigate?.('passage-detail', { passageId: st.passageId }))}>
+                          <FileText />
+                          打开
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={() => write([i])}>
+                          <RotateCw />
+                          重试
+                        </Button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="flex justify-end">
+                <Button onClick={() => leave(() => onNavigate?.('passages'))}>前往短文库</Button>
+              </div>
+            </Card>
+          )}
+          {step === PLAN_STEP && !planning && planItems.length > 0 && !finished && (
             <PassagePlanEditor
               items={planItems}
               note={planNote}
@@ -1189,7 +1241,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
           </Button>
         </div>
       )}
-      {!planning && !suggesting && (
+      {!planning && !suggesting && !finished && (
         <div className="flex items-center gap-2 border-t pt-4">
           {statuses === null && (
             <Button variant="ghost" onClick={() => leave(() => onNavigate?.('passages'))}>
@@ -1234,7 +1286,6 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
               {includedCount > 1 ? `生成 ${includedCount} 篇短文` : '生成短文'}
             </Button>
           )}
-          {step === PLAN_STEP && statuses !== null && !writing && <Button onClick={() => leave(() => onNavigate?.('passages'))}>前往短文库</Button>}
         </div>
       )}
     </div>
