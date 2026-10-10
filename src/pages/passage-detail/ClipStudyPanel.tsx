@@ -347,7 +347,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
                   word={wordInfo.get(target.toLowerCase())}
                   onSpeak={(w, slow) => {
                     videoRef.current?.pause();
-                    wordAudio.playText(w, undefined, { style: 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {});
+                    wordAudio.playText(w, undefined, { style: /\s/.test(w.trim()) ? 'sentence' : 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {});
                   }}
                   onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined}
                 />

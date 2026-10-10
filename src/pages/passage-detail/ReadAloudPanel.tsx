@@ -387,7 +387,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
         onAnalyzeSentence={blind || prefs.recall ? undefined : setAnalyzing}
         analyzing={analyzing}
         renderTarget={(text, target, active) => (
-          <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} onSpeak={(w, slow) => wordAudio.playText(w, undefined, { style: 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {})} onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined} />
+          <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} onSpeak={(w, slow) => wordAudio.playText(w, undefined, { style: /\s/.test(w.trim()) ? 'sentence' : 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {})} onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined} />
         )}
       />
       </SelectionAction>

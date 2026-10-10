@@ -31,7 +31,8 @@ const RESOURCE_MISMATCH_CODE: i64 = 55_000_000;
 const SPEECH_RATE_RANGE: std::ops::RangeInclusive<i64> = -50..=100;
 
 /// 朗读风格：豆包 2.0 是生成式模型，同一文本每次合成的语调都会有差异，单个单词尤其容易读成疑问或夸张的语气。
-/// 用固定的语音指令（`additions.context_texts`）约束成“老师示范”的平稳语气；缓存键包含风格版本，改指令时把版本号加一。
+/// 用固定的语音指令（`additions.context_texts`）约束成“老师示范”的平稳语气，并指定只按英语读（`explicit_language`，
+/// 不指定时豆包按中英混读，句子里的数字会读成中文）；缓存键包含风格版本，改指令或参数时把版本号加一。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpeechStyle {
     /// 不加指令（设置页试听等）
@@ -59,8 +60,9 @@ impl SpeechStyle {
     fn instruction(self) -> Option<&'static str> {
         match self {
             Self::Plain => None,
-            Self::Word => Some("像英语老师给小学生示范单词发音一样，用清晰、平稳的陈述语气读出这个单词，语调自然下降，不带情绪"),
-            Self::Sentence => Some("像英语老师给小学生朗读例句一样，用清晰、亲切、平稳的语气，语速稍慢"),
+            // 指令用英文：与朗读的语言一致，减少模型被带到中文语境；每句都带同一条，句与句之间语气一致
+            Self::Word => Some("Say this English word the way an English teacher models pronunciation for learners: clear, calm, neutral statement tone with a natural falling intonation, no emotion, not a question."),
+            Self::Sentence => Some("Read this English sentence the way an English teacher reads examples aloud for learners: clear, calm, neutral and consistent tone at a slightly slow pace, no dramatic emotion. Read all numbers, dates and abbreviations in English."),
         }
     }
 
@@ -68,8 +70,17 @@ impl SpeechStyle {
     fn cache_tag(self) -> &'static str {
         match self {
             Self::Plain => "",
-            Self::Word => "|style=word-v1",
-            Self::Sentence => "|style=sentence-v1",
+            Self::Word => "|style=word-v2",
+            Self::Sentence => "|style=sentence-v2",
+        }
+    }
+
+    /// 朗读语种（`additions.explicit_language`）：单词与句子都是英文内容，只按英语读（数字也读英文）；
+    /// 设置页试听不限定（试听文字可能是中文）
+    fn language(self) -> Option<&'static str> {
+        match self {
+            Self::Plain => None,
+            Self::Word | Self::Sentence => Some("en"),
         }
     }
 }
@@ -85,6 +96,7 @@ fn request_body(
     voice_id: &str,
     config: &VolcengineTtsConfig,
     instruction: Option<&str>,
+    language: Option<&str>,
     with_timings: bool,
 ) -> serde_json::Value {
     let mut req_params = serde_json::json!({
@@ -100,10 +112,16 @@ fn request_body(
         // 逐词时间戳：必须是布尔值，结果在 `sentence.words` 里（秒）
         req_params["audio_params"]["enable_subtitle"] = serde_json::Value::Bool(true);
     }
+    let mut additions = serde_json::Map::new();
     if let Some(instruction) = instruction {
-        req_params["additions"] = serde_json::Value::String(
-            serde_json::json!({ "context_texts": [instruction] }).to_string(),
-        );
+        additions.insert("context_texts".into(), serde_json::json!([instruction]));
+    }
+    if let Some(language) = language {
+        additions.insert("explicit_language".into(), serde_json::json!(language));
+    }
+    if !additions.is_empty() {
+        req_params["additions"] =
+            serde_json::Value::String(serde_json::Value::Object(additions).to_string());
     }
     serde_json::json!({ "user": { "uid": "redlark" }, "req_params": req_params })
 }
@@ -167,11 +185,22 @@ impl TTSService {
         config: &VolcengineTtsConfig,
         voice_id: &str,
         resource_id: &str,
-        instruction: Option<&str>,
+        style: SpeechStyle,
         with_timings: bool,
     ) -> AppResult<(Vec<u8>, Vec<WordTiming>)> {
         let request_id = uuid::Uuid::new_v4().to_string();
-        let body = request_body(text, voice_id, config, instruction, with_timings);
+        // 指令只对支持的 2.0 资源加；语种对所有资源都加
+        let instruction = style
+            .instruction()
+            .filter(|_| supports_instruction(resource_id));
+        let body = request_body(
+            text,
+            voice_id,
+            config,
+            instruction,
+            style.language(),
+            with_timings,
+        );
 
         // 日志不含任何密钥
         self.logger.info(
@@ -323,7 +352,8 @@ impl TTSService {
             resource_id,
             config.speech_rate,
             config.sample_rate,
-            if instruction.is_some() {
+            // 语种对所有资源生效、指令只对 2.0 生效：两者任一有就带风格版本
+            if instruction.is_some() || style.language().is_some() {
                 style.cache_tag()
             } else {
                 ""
@@ -347,14 +377,7 @@ impl TTSService {
         }
 
         let (audio_data, timings) = self
-            .call_volcengine_api(
-                text,
-                &config,
-                voice,
-                &resource_id,
-                instruction,
-                with_timings,
-            )
+            .call_volcengine_api(text, &config, voice, &resource_id, style, with_timings)
             .await?;
 
         if use_cache {
@@ -984,7 +1007,7 @@ mod tests {
                 },
             ]
         );
-        let body = request_body("x", "v", &VolcengineTtsConfig::default(), None, true);
+        let body = request_body("x", "v", &VolcengineTtsConfig::default(), None, None, true);
         assert_eq!(body["req_params"]["audio_params"]["enable_subtitle"], true);
     }
 
@@ -1038,10 +1061,17 @@ mod tests {
             sample_rate: 24000,
             ..Default::default()
         };
-        let plain = request_body("cat", "v", &config, None, false);
+        let plain = request_body("cat", "v", &config, None, None, false);
         assert!(plain["req_params"].get("additions").is_none());
 
-        let styled = request_body("cat", "v", &config, SpeechStyle::Word.instruction(), false);
+        let styled = request_body(
+            "cat",
+            "v",
+            &config,
+            SpeechStyle::Word.instruction(),
+            SpeechStyle::Word.language(),
+            false,
+        );
         let additions = styled["req_params"]["additions"]
             .as_str()
             .expect("additions 是字符串");
@@ -1049,7 +1079,16 @@ mod tests {
         assert!(parsed["context_texts"][0]
             .as_str()
             .unwrap()
-            .contains("单词"));
+            .contains("English word"));
+        // 只按英语读（数字也读英文）
+        assert_eq!(parsed["explicit_language"], "en");
+        // 1.0 资源不支持指令，但语种照样带上
+        let lang_only = request_body("3 cats", "v", &config, None, Some("en"), false);
+        let parsed: serde_json::Value =
+            serde_json::from_str(lang_only["req_params"]["additions"].as_str().unwrap()).unwrap();
+        assert!(parsed.get("context_texts").is_none());
+        assert_eq!(parsed["explicit_language"], "en");
+        assert_eq!(SpeechStyle::Plain.language(), None);
 
         assert!(supports_instruction("seed-tts-2.0") && !supports_instruction("seed-tts-1.0"));
         assert_eq!(SpeechStyle::parse(None).unwrap(), SpeechStyle::Plain);
