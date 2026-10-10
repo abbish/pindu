@@ -112,6 +112,9 @@ const PlanParams = Type.Object({
   required_words: Type.Array(Type.String(), { description: "copy of the required word list from the user message" }),
   ai_pick: Type.Integer({ description: "copy of the max number of candidate words you may choose" }),
   note: Type.String({ description: "一两句中文：为什么这样规划" }),
+  adjustments: Type.Optional(
+    Type.Array(Type.String(), { description: "3-4 short Chinese ways the user might want to adjust THIS plan (each at most 20 characters, specific to these passages, e.g. 把第 2 篇改成对话体)" }),
+  ),
   passages: Type.Array(
     Type.Object({
       title: Type.String({ description: "English title" }),

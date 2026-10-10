@@ -289,6 +289,8 @@ export interface PassagePlan {
   items: PassagePlanItem[];
   /** 为什么这样规划 */
   note: string;
+  /** AI 建议的调整方向（针对这份规划） */
+  adjustments: string[];
 }
 
 /** 为短文生成一套阅读理解题 */
@@ -588,3 +590,18 @@ export interface SentenceRef {
   passageId: number;
   sentenceIndex: number;
 }
+
+/** 新建短文时请 AI 给场景建议 */
+export interface PassageSceneSuggestRequest {
+  /** 所选词汇本（用它们的场景描述） */
+  bookIds: number[];
+  /** 所选学习计划（用计划里单词所在词汇本的场景） */
+  planIds: number[];
+  /** 指定的单词（它们所在的词汇本也算进场景） */
+  wordIds: number[];
+  /** 其他要用的词（手动输入、AI 选的，或候选词节选） */
+  words: string[];
+  /** 已经给过的建议（换一批时新的不重复） */
+  exclude: string[];
+}
+

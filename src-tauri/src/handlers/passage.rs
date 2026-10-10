@@ -50,23 +50,83 @@ pub async fn get_plan_scope_counts(
     finish(&logger, "get_plan_scope_counts", result)
 }
 
-/// 内容规划：AI 提议写几篇、每篇的构思与用词（约 20–40 秒；不保存）。`feedback` 为对上一版规划的调整意见
+/// 内容规划（后台任务）：AI 提议写几篇、每篇的构思与用词（约 20–40 秒），立即返回任务 id；
+/// 规划在 job.result（PassagePlan），不保存。离开新建页也会继续，可以取消。`feedback` 为对上一版规划的调整意见
 #[tauri::command]
-pub async fn plan_passages(
+pub async fn start_passage_planning(
     app: AppHandle,
     request: GeneratePassageRequest,
     feedback: Option<String>,
-) -> AppResult<crate::types::passage::PassagePlan> {
+) -> AppResult<String> {
+    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
     let logger = app.state::<Logger>();
-    logger.api_request("plan_passages", Some(&format!("{:?}", request)));
+    logger.api_request(
+        "start_passage_planning",
+        Some(&format!(
+            "feedback_chars: {}",
+            feedback.as_deref().unwrap_or("").chars().count()
+        )),
+    );
     let result = async {
+        // 先做请求校验与路径准备，错误直接返回给页面
+        crate::services::passage::PassageService::validate_request(&request)?;
+        if feedback.as_deref().unwrap_or("").chars().count() > crate::services::passage::TOPIC_MAX {
+            return Err(AppError::ValidationError(format!(
+                "调整意见最多 {} 个字",
+                crate::services::passage::TOPIC_MAX
+            )));
+        }
         let paths = agent_paths(&app)?;
-        service(&app)
-            .plan(&request, feedback.as_deref().unwrap_or(""), &paths)
-            .await
+        let service = service(&app);
+        let spec = JobSpec {
+            kind: "passage_plan",
+            title: "规划短文内容".to_string(),
+            lane: Lane::Agent,
+            detached: true,
+            link: Some(JobLink::new("create-passage", serde_json::json!({}))),
+        };
+        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
+            ctx.stage("AI 正在规划内容");
+            let cancel = ctx.clone();
+            let plan = service
+                .plan(
+                    &request,
+                    feedback.as_deref().unwrap_or(""),
+                    &paths,
+                    move || cancel.is_cancelled(),
+                )
+                .await?;
+            serde_json::to_value(plan).map_err(|e| AppError::InternalError(e.to_string()))
+        }))
     }
     .await;
-    finish(&logger, "plan_passages", result)
+    finish(&logger, "start_passage_planning", result)
+}
+
+/// 新建短文的场景建议：按所选词汇本的场景与要用的单词给 4–6 个场景（换一批时 exclude 已给过的）；
+/// 没有词汇本也没有单词时返回空
+#[tauri::command]
+pub async fn suggest_passage_scenes(
+    app: AppHandle,
+    request: crate::types::passage::PassageSceneSuggestRequest,
+) -> AppResult<Vec<String>> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "suggest_passage_scenes",
+        Some(&format!(
+            "books: {}, word_ids: {}, words: {}, exclude: {}",
+            request.book_ids.len(),
+            request.word_ids.len(),
+            request.words.len(),
+            request.exclude.len()
+        )),
+    );
+    let result = async {
+        let paths = agent_paths(&app)?;
+        service(&app).suggest_scenes(&request, &paths).await
+    }
+    .await;
+    finish(&logger, "suggest_passage_scenes", result)
 }
 
 /// 按内容规划逐篇写短文（后台任务）：立即返回任务 id；逐篇状态在 job.detail.items，写好的短文 id 在 job.result.passageIds。

@@ -362,6 +362,9 @@ pub struct PassagePlan {
     pub items: Vec<PassagePlanItem>,
     /// 为什么这样规划（一两句）
     pub note: String,
+    /// AI 建议的调整方向（针对这份规划，点选后作为调整意见）
+    #[serde(default)]
+    pub adjustments: Vec<String>,
 }
 
 impl GeneratePassageRequest {
@@ -731,4 +734,25 @@ pub struct AnalyzeSentenceRequest {
 pub struct SentenceRef {
     pub passage_id: Id,
     pub sentence_index: i64,
+}
+
+/// 新建短文时请 AI 给场景建议
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PassageSceneSuggestRequest {
+    /// 所选词汇本（用它们的场景描述）
+    #[serde(default)]
+    pub book_ids: Vec<Id>,
+    /// 所选学习计划（用计划里单词所在词汇本的场景）
+    #[serde(default)]
+    pub plan_ids: Vec<Id>,
+    /// 指定的单词（它们所在的词汇本也算进场景）
+    #[serde(default)]
+    pub word_ids: Vec<Id>,
+    /// 其他要用的词（手动输入、AI 选的，或候选词节选）
+    #[serde(default)]
+    pub words: Vec<String>,
+    /// 已经给过的建议（换一批时新的不重复）
+    #[serde(default)]
+    pub exclude: Vec<String>,
 }

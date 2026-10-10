@@ -526,9 +526,18 @@ pub fn plan_from_submission(
             }
         }
     }
+    let mut adjustments: Vec<String> = Vec::new();
+    for a in strings(details, "adjustments") {
+        let a: String = a.trim().chars().take(30).collect();
+        if !a.is_empty() && !adjustments.contains(&a) {
+            adjustments.push(a);
+        }
+    }
+    adjustments.truncate(4);
     Ok(PassagePlan {
         items,
         note: text(details, "note"),
+        adjustments,
     })
 }
 

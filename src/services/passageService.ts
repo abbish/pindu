@@ -2,6 +2,7 @@ import { BaseService } from './baseService';
 import type { ApiResult, Word } from '../types';
 import type {
   AnalyzeSentenceRequest,
+  PassageSceneSuggestRequest,
   SentenceAnalysis,
   AddPassageWordsRequest,
   GeneratePassageRequest,
@@ -18,7 +19,6 @@ import type {
   PassageStatistics,
   PassageSummary,
   PassageWordCandidate,
-  PassagePlan,
   PassageWordSources,
   PlanScopeCount,
   PlanPassage,
@@ -48,14 +48,17 @@ class PassageService extends BaseService {
     );
   }
 
-  /** 内容规划：AI 提议写几篇、每篇的构思与用词（约 20–40 秒；不保存）。`feedback` 为对上一版的调整意见 */
-  async planPassages(request: GeneratePassageRequest, feedback?: string): Promise<ApiResult<PassagePlan>> {
-    return this.executeWithLoading(() =>
-      this.client.invoke<PassagePlan>('plan_passages', {
-        request,
-        feedback: feedback || null,
-      }),
-    );
+  /**
+   * 内容规划（后台任务）：AI 提议写几篇、每篇的构思与用词（约 20–40 秒，不保存）。返回任务 id，
+   * 规划在 job.result（PassagePlan）；离开页面也会继续，可以停止。`feedback` 为对上一版的调整意见
+   */
+  async startPlanning(request: GeneratePassageRequest, feedback?: string): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_passage_planning', { request, feedback: feedback || null }));
+  }
+
+  /** 新建短文的场景建议：按所选词汇本的场景与要用的单词给 4–6 个（exclude 已给过的） */
+  async suggestScenes(request: PassageSceneSuggestRequest): Promise<ApiResult<string[]>> {
+    return this.executeWithLoading(() => this.client.invoke<string[]>('suggest_passage_scenes', { request }));
   }
 
   /** 按内容规划逐篇写短文（后台任务）：返回任务 id；逐篇状态在 job.detail.items，写好的 id 在 job.result.passageIds */

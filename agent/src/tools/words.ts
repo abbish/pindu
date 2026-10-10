@@ -78,7 +78,7 @@ export const submitGeneratedWordsTool = defineTool({
 // ---------- submit_topic_suggestions：按词汇本场景给词汇需求的建议 ----------
 
 const TopicSuggestionsParams = Type.Object({
-  suggestions: Type.Array(Type.String(), { description: "4-6 Chinese sub-topics of this word book's scene (6-20 characters each), each usable as a request to generate a batch of words" }),
+  suggestions: Type.Array(Type.String(), { description: "4-6 short Chinese suggestions as described in the system prompt (6-30 characters each)" }),
 });
 export type TopicSuggestionsSubmission = Static<typeof TopicSuggestionsParams>;
 
@@ -88,7 +88,7 @@ export function topicSuggestionsProblems(p: TopicSuggestionsSubmission): string[
   if (items.length < 4 || items.length > 6) problems.push(`建议要 4–6 条（现在 ${items.length} 条）`);
   items.forEach((s, i) => {
     const n = [...s].length;
-    if (n < 4 || n > 24) problems.push(`第 ${i + 1} 条「${s}」长度不合适（6–20 个字）`);
+    if (n < 4 || n > 36) problems.push(`第 ${i + 1} 条「${s}」长度不合适（6–30 个字）`);
   });
   if (new Set(items).size !== items.length) problems.push("有重复的建议");
   return problems;
@@ -96,8 +96,8 @@ export function topicSuggestionsProblems(p: TopicSuggestionsSubmission): string[
 
 export const submitTopicSuggestionsTool = defineTool({
   name: "submit_topic_suggestions",
-  label: "提交词汇需求建议",
-  description: "Submit 4-6 Chinese sub-topics of this word book's scene. Fix only the listed problems if rejected.",
+  label: "提交建议",
+  description: "Submit 4-6 short Chinese suggestions (what to suggest is described in the system prompt). Fix only the listed problems if rejected.",
   parameters: TopicSuggestionsParams,
   async execute(_toolCallId, params) {
     const problems = topicSuggestionsProblems(params);

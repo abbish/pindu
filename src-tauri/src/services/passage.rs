@@ -30,7 +30,8 @@ const MAX_CANDIDATES: usize = 500;
 /// 开放题回答的最大长度（字符）
 const OPEN_ANSWER_MAX: usize = 1000;
 /// 自定主题的最大长度（字符）
-const TOPIC_MAX: usize = 200;
+/// 自定场景 / 调整意见最多几个字（start_passage_planning 提交前也按它校验）
+pub const TOPIC_MAX: usize = 200;
 /// 按描述生成时写作要求的最大字数
 const INSTRUCTION_MAX: usize = 500;
 /// 按描述生成时 AI 为整份规划选目标词的上限
@@ -400,6 +401,53 @@ impl PassageService {
         Ok((scenes.join("\n\n"), labels.join("\n")))
     }
 
+    /// 新建短文时的场景建议：按所选词汇本（含指定单词所在的词汇本）的场景，给 4–6 个能用上这些词的场景
+    pub async fn suggest_scenes(
+        &self,
+        request: &crate::types::passage::PassageSceneSuggestRequest,
+        paths: &AgentPaths,
+    ) -> AppResult<Vec<String>> {
+        let found = self.repository.words_by_ids(&request.word_ids).await?;
+        let mut books: Vec<Id> = request.book_ids.clone();
+        // 学习计划：用计划里单词所在的词汇本
+        let plans = StudyPlanRepository::new(self.pool.clone(), self.logger.clone());
+        for &plan in &request.plan_ids {
+            for b in plans.find_word_book_ids(plan).await? {
+                if !books.contains(&b) {
+                    books.push(b);
+                }
+            }
+        }
+        for (_, _, book) in &found {
+            if let Some(b) = book {
+                if !books.contains(b) {
+                    books.push(*b);
+                }
+            }
+        }
+        let (scene, _) = self.scene("", &books).await?;
+        let mut words: Vec<String> = found.into_iter().map(|(_, w, _)| w).collect();
+        for w in &request.words {
+            let w = w.trim();
+            if !w.is_empty() && !words.iter().any(|x| x.eq_ignore_ascii_case(w)) {
+                words.push(w.to_string());
+            }
+        }
+        if scene.is_empty() && words.is_empty() {
+            return Ok(Vec::new());
+        }
+        let model = self.model().await?;
+        let profile = PromptProfileService::load(&self.pool).await?;
+        tasks::suggest_passage_scenes(
+            paths,
+            &model,
+            &profile,
+            &tasks::passage_scene_suggest_message(&scene, &words, &request.exclude),
+            &self.logger,
+        )
+        .await
+    }
+
     // ==================== 写短文 ====================
 
     /// 校验请求里的通用字段（篇幅、场景、AI 挑词数与挑词条件）
@@ -568,6 +616,7 @@ impl PassageService {
         request: &GeneratePassageRequest,
         feedback: &str,
         paths: &AgentPaths,
+        cancelled: impl Fn() -> bool,
     ) -> AppResult<crate::types::passage::PassagePlan> {
         Self::validate_request(request)?;
         if feedback.chars().count() > TOPIC_MAX {
@@ -609,6 +658,7 @@ impl PassageService {
                 free_words: if free { FREE_PLAN_WORDS } else { 0 },
             },
             &self.logger,
+            cancelled,
         )
         .await?;
         // AI 选的词、手动输入的词：已在词汇本里的关联上 wordId（不算未收录词）

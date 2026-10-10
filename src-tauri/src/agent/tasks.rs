@@ -1247,13 +1247,15 @@ pub async fn plan_passages(
     profile: &PromptProfile,
     spec: &PlanSpec<'_>,
     logger: &Logger,
+    cancelled: impl Fn() -> bool,
 ) -> AppResult<PassagePlan> {
-    let run = run_task(
+    let run = run_task_cancellable(
         paths,
         &passage_plan_task(profile),
         model,
         &passage_plan_message(spec),
         logger,
+        cancelled,
         |_| {},
     )
     .await?;
@@ -1787,15 +1789,60 @@ pub async fn suggest_vocab_topics(
     message: &str,
     logger: &Logger,
 ) -> AppResult<Vec<String>> {
-    let run = run_task(
+    run_suggestions(paths, &vocab_suggest_task(profile), model, message, logger).await
+}
+
+/// 短文场景的建议：贴合词汇本场景、能用上这些词，经 submit_topic_suggestions 交付
+pub fn passage_scene_suggest_task(profile: &PromptProfile) -> AgentTask {
+    AgentTask {
+        name: "passage-scene-suggest",
+        system_prompt: prompts::system_prompt(PromptTask::PassageSceneSuggest, profile, &[]),
+        tools: &["submit_topic_suggestions"],
+        default_thinking: "low",
+    }
+}
+
+/// 词汇本场景 + 要用的单词（节选，最多 60 个）+ 已经给过的建议
+pub fn passage_scene_suggest_message(scene: &str, words: &[String], exclude: &[String]) -> String {
+    let sample: Vec<&str> = words.iter().take(60).map(String::as_str).collect();
+    prompts::message(
+        MessageTemplate::PassageSceneSuggest,
+        &[
+            ("scene", scene.trim()),
+            ("words", &sample.join(", ")),
+            ("count", &words.len().to_string()),
+            ("exclude", &exclude.join("；")),
+        ],
+    )
+}
+
+/// 生成短文场景的建议（去空白、去重，最多 6 条）
+pub async fn suggest_passage_scenes(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &PromptProfile,
+    message: &str,
+    logger: &Logger,
+) -> AppResult<Vec<String>> {
+    run_suggestions(
         paths,
-        &vocab_suggest_task(profile),
+        &passage_scene_suggest_task(profile),
         model,
         message,
         logger,
-        |_| {},
     )
-    .await?;
+    .await
+}
+
+/// 跑一次「给建议」任务（submit_topic_suggestions），整理成最多 6 条不重复的建议
+async fn run_suggestions(
+    paths: &AgentPaths,
+    task: &AgentTask,
+    model: &AIModelConfig,
+    message: &str,
+    logger: &Logger,
+) -> AppResult<Vec<String>> {
+    let run = run_task(paths, task, model, message, logger, |_| {}).await?;
     let submission = run
         .outcome
         .last_successful_call("submit_topic_suggestions")
@@ -1808,7 +1855,7 @@ pub async fn suggest_vocab_topics(
     {
         if let Some(text) = s.as_str().map(str::trim).filter(|t| !t.is_empty()) {
             if !out.iter().any(|x| x == text) {
-                out.push(text.chars().take(30).collect());
+                out.push(text.chars().take(36).collect());
             }
         }
     }

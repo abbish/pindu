@@ -9,8 +9,8 @@ export interface SuggestionChipsProps {
   /** 已选的建议（可多选） */
   selected: string[];
   onToggle: (item: string) => void;
-  /** 换一批：保留已选的，追加新的一批 */
-  onMore: () => void;
+  /** 换一批：保留已选的，追加新的一批；不传则没有这个按钮 */
+  onMore?: () => void;
   /** 没给出建议的原因 */
   error?: string | null;
   /** 正在想时的说明 */
@@ -50,13 +50,33 @@ export const SuggestionChips: React.FC<SuggestionChipsProps> = ({ items, selecte
           </button>
         );
       })}
-      <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={onMore}>
-        <RotateCw className="size-3" />
-        {error ? '重试' : items.length > 0 ? '换一批' : '给我一些建议'}
-      </Button>
+      {onMore && (
+        <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={onMore}>
+          <RotateCw className="size-3" />
+          {error ? '重试' : items.length > 0 ? '换一批' : '给我一些建议'}
+        </Button>
+      )}
     </div>
   );
 };
+
+/** 文字里已经用上的建议（选中） */
+export const suggestionsIn = (text: string, items: string[] | null) => (items ?? []).filter((s) => text.includes(s));
+
+/** 点建议：没用上的接到文字后面（可以组合几条），已用上的从文字里去掉；接上后超过 max 时不改（不截断建议本身），由调用方提示 */
+export function toggleInText(text: string, item: string, max: number): string {
+  const cur = text.trim();
+  if (cur.includes(item)) {
+    return cur
+      .split(item)
+      .join('')
+      .replace(/[，；;,]{2,}/g, '；')
+      .replace(/^[，；;,\s]+|[，；;,\s]+$/g, '');
+  }
+  if (!cur) return item.slice(0, max);
+  const next = `${cur.replace(/[，。；,;]$/, '')}；${item}`;
+  return next.length > max ? text : next;
+}
 
 /** 换一批后的列表：已选的留在前面，后面接新的一批（去掉重复） */
 export function mergeSuggestions(selected: string[], fresh: string[]): string[] {

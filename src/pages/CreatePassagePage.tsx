@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { InlineError } from '@/components/InlineError';
+import { useToast } from '@/components/Toast/ToastContainer';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { PassagePlanEditor, type EditablePlanItem, type PlanItemStatus } from '@/components/PassagePlanEditor';
 import { Stepper } from '@/components/Stepper/Stepper';
@@ -23,14 +24,16 @@ import { studyService } from '@/services/studyService';
 import { wordBookService } from '@/services/wordbookService';
 import { wordAnalysisService } from '@/services/wordAnalysisService';
 import { toUserMessage } from '@/api/errors';
-import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { jobsNow, useJob, useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { jobService } from '@/services/jobService';
+import { SuggestionChips, mergeSuggestions, suggestionsIn, toggleInText } from '@/components/SuggestionChips';
 import { AiWorking } from '@/components/AiWorking';
-import { JobPanel } from '@/components/Jobs';
+import { JobPanel, jobErrorText } from '@/components/Jobs';
 import { isJobActive } from '@/types/job';
 import { getStatusDisplay } from '@/types/study';
 import { PICK_DIFFICULTY_OPTIONS, PICK_FREQUENCY_OPTIONS, PICK_STATUS_OPTIONS, PLAN_SCOPE_LABEL, PLAN_SCOPES } from '@/utils/passage';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import type { GeneratePassageRequest, PassageItemStatus, PassageWordCandidate, PickDifficulty, PickFrequency, PickStatus, PlanScopeCount, PlanWordScope } from '@/types/passage';
+import type { GeneratePassageRequest, PassageItemStatus, PassagePlan, PassageWordCandidate, PickDifficulty, PickFrequency, PickStatus, PlanScopeCount, PlanWordScope } from '@/types/passage';
 import type { StudyPlanWithProgress, UnifiedStudyPlanStatus, WordBook } from '@/types';
 import type { NavigateFn, RouteParams } from '../navigation';
 
@@ -41,8 +44,10 @@ export interface CreatePassagePageProps {
 }
 
 const STEPS = ['生成方式', '选择单词', '场景与篇幅', '内容规划'];
-/** 按描述生成：第一步由 AI 按要求选词（代替选来源），后面与基于单词的流程相同 */
-const BRIEF_STEPS = ['写作要求', '选择单词', '要求与篇幅', '内容规划'];
+/** 按描述生成：写作要求（含篇幅）→ AI 选的词 → 内容规划；要求只写一次 */
+const BRIEF_STEPS = ['写作要求', '选择单词', '内容规划'];
+/** 内容规划这一步的序号（按描述生成跳过「场景与篇幅」） */
+const PLAN_STEP = 3;
 const BRIEF_WORD_COUNTS = [10, 15, 20, 30];
 /** 写作要求最多几个字（与后端 INSTRUCTION_MAX 一致） */
 const INSTRUCTION_MAX = 500;
@@ -84,6 +89,59 @@ const LENGTHS = [
 const segmentItem = 'h-7 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm';
 /** 一个英文单词或 2–6 个词的词组（D45） */
 const isWord = (w: string) => /^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,5}$/.test(w) && w.length <= 60;
+
+type BriefWord = { word: string; meaning: string; selected: boolean };
+/** 一次写短文的后台任务；任务结束时记下结果（任务从列表清掉后也能显示逐篇状态） */
+type Run = { jobId: string; indexes: number[]; final?: { status: 'succeeded' | 'failed' | 'cancelled'; items: PassageItemStatus[] | null } };
+/** 新建短文的进度（离开页面时记下，回来接着做） */
+interface Draft {
+  step: number;
+  sourceMode: SourceMode;
+  instruction: string;
+  briefCount: number;
+  briefWords: BriefWord[] | null;
+  briefFor: string;
+  bookIds: number[];
+  planIds: number[];
+  scopes: PlanWordScope[];
+  required: number[];
+  extraWords: string[];
+  prefs: PickPrefs;
+  pickMode: PickMode;
+  modeChosen: boolean;
+  scene: string;
+  sceneTouched: boolean;
+  length: 'short' | 'standard' | 'long';
+  planJobId: string | null;
+  planItems: EditablePlanItem[];
+  planNote: string;
+  planAdjustments: string[];
+  runs: Run[];
+}
+/**
+ * 本次打开应用期间保留的草稿：有进行中的规划、规划好还没生成、或还在写的短文时，回到新建页直接接上
+ * （从任务中心点「规划短文内容」回来也是）。全部写完、或点「取消」后不再保留。
+ */
+let savedDraft: Draft | null = null;
+/** 这份进度值得接着做：规划任务还在（进行中或结果待用）、规划好还没生成、或还有正在写的短文 */
+function isResumable(d: Draft): boolean {
+  const jobs = jobsNow();
+  if (d.planJobId && jobs.some((j) => j.id === d.planJobId)) return true;
+  if (d.planItems.length === 0) return false;
+  if (d.runs.length === 0) return true;
+  return d.runs.some((r) => {
+    const job = jobs.find((j) => j.id === r.jobId);
+    return job !== undefined && isJobActive(job);
+  });
+}
+function resumableDraft(): Draft | null {
+  return savedDraft && isResumable(savedDraft) ? savedDraft : null;
+}
+/** 这份进度现在在做什么（「接着做」提示用） */
+function draftState(d: Draft): string {
+  if (d.planJobId) return '正在规划内容';
+  return d.runs.length > 0 ? '正在生成短文' : '规划好了，还没生成';
+}
 
 /** 可多选的来源列表（词汇本 / 学习计划）：搜索 + 勾选行 */
 const SourcePicker: React.FC<{
@@ -169,52 +227,71 @@ const StatusFilter: React.FC<{ value: PickStatus[]; onChange: (value: PickStatus
 
 /**
  * 新建短文。三种生成方式并列：
- * - 按描述生成：写下要求与篇幅，直接生成一篇（后台任务，写好后打开）；
- * - 基于词汇本 / 基于学习计划：② 选择单词（AI 按数量、难度、词频、选词范围挑选，可另指定单词；或手动选择）
- *   ③ 场景与篇幅 ④ 内容规划（AI 先规划写几篇、每篇的构思）→ 逐篇生成。
+ * - 按描述生成：① 写作要求、目标词数量与篇幅 ② AI 按要求选词（可勾掉、换一批、补词）③ 内容规划；
+ * - 基于词汇本 / 基于学习计划：① 选来源 ② 选择单词（AI 按数量、难度、词频、选词范围挑选，可另指定单词；或手动选择）
+ *   ③ 场景与篇幅（场景自动带入词汇本的场景描述，AI 按来源与单词给场景建议）④ 内容规划。
+ * 内容规划是后台任务：在「内容规划」这一步看进度，离开页面也会继续；规划好后可按 AI 给的调整建议重新规划，确认后逐篇生成。
+ * 进度在本次打开应用期间保留（savedDraft），回到新建页接着做；从词汇本等页面带着来源进来时直接到「选择单词」。
  */
 export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, onNavigate }) => {
-  const [step, setStep] = useState(initial?.wordIds?.length ? 1 : 0);
+  /** 接着上次没做完的（从其他页面带着来源进来时重新开始） */
+  const fromSource = Boolean(initial?.bookIds?.length || initial?.planIds?.length || initial?.wordIds?.length);
+  const [resumed] = useState<Draft | null>(() => {
+    if (fromSource) return null;
+    const d = resumableDraft();
+    // 规划任务已经不在了（如被清掉）：只接着规划好的内容
+    return d && d.planJobId && !jobsNow().some((j) => j.id === d.planJobId) ? { ...d, planJobId: null, step: d.planItems.length > 0 ? PLAN_STEP : d.step } : d;
+  });
+  /** 带着来源进来时，还有一份没做完的：提示可以接着做 */
+  const [pendingDraft] = useState<Draft | null>(() => (fromSource ? resumableDraft() : null));
+  // 带着来源进来（词汇本、单词）：来源已选好，直接到「选择单词」
+  const [step, setStep] = useState(resumed?.step ?? (fromSource ? 1 : 0));
   /** 生成方式：从词汇本 / 计划进入时按入口，否则默认按描述生成 */
-  const [sourceMode, setSourceMode] = useState<SourceMode>(initial?.planIds?.length ? 'plans' : initial?.bookIds?.length || initial?.wordIds?.length ? 'books' : 'brief');
+  const [sourceMode, setSourceMode] = useState<SourceMode>(resumed?.sourceMode ?? (initial?.planIds?.length ? 'plans' : initial?.bookIds?.length || initial?.wordIds?.length ? 'books' : 'brief'));
   /** 按描述生成：写作要求、要几个目标词、AI 选出的词（可勾掉） */
-  const [instruction, setInstruction] = useState('');
-  const [briefCount, setBriefCount] = useState(15);
-  const [briefWords, setBriefWords] = useState<{ word: string; meaning: string; selected: boolean }[] | null>(null);
+  const [instruction, setInstruction] = useState(resumed?.instruction ?? '');
+  const [briefCount, setBriefCount] = useState(resumed?.briefCount ?? 15);
+  const [briefWords, setBriefWords] = useState<BriefWord[] | null>(resumed?.briefWords ?? null);
   /** AI 选的词对应的要求与数量：没改就不重新选 */
-  const [briefFor, setBriefFor] = useState('');
+  const [briefFor, setBriefFor] = useState(resumed?.briefFor ?? '');
   const [suggesting, setSuggesting] = useState(false);
   const suggestRun = useRef(0);
   const [books, setBooks] = useState<WordBook[] | null>(null);
   const [plans, setPlans] = useState<StudyPlanWithProgress[] | null>(null);
-  const [bookIds, setBookIds] = useState<number[]>(initial?.bookIds ?? []);
-  const [planIds, setPlanIds] = useState<number[]>(initial?.planIds ?? []);
-  const [scopes, setScopes] = useState<PlanWordScope[]>(['wrong', 'weak']);
+  const [bookIds, setBookIds] = useState<number[]>(resumed?.bookIds ?? initial?.bookIds ?? []);
+  const [planIds, setPlanIds] = useState<number[]>(resumed?.planIds ?? initial?.planIds ?? []);
+  const [scopes, setScopes] = useState<PlanWordScope[]>(resumed?.scopes ?? ['wrong', 'weak']);
   const [scopeCounts, setScopeCounts] = useState<PlanScopeCount[] | null>(null);
   const [candidates, setCandidates] = useState<PassageWordCandidate[] | null>(null);
-  const [required, setRequired] = useState<Set<number>>(new Set(initial?.wordIds ?? []));
+  const [required, setRequired] = useState<Set<number>>(new Set(resumed?.required ?? initial?.wordIds ?? []));
   const [wordQuery, setWordQuery] = useState('');
   const [onlySelected, setOnlySelected] = useState(false);
-  const [extraWords, setExtraWords] = useState<string[]>([]);
+  const [extraWords, setExtraWords] = useState<string[]>(resumed?.extraWords ?? []);
   const [extraDraft, setExtraDraft] = useState('');
-  const [prefs, setPrefs] = useState<PickPrefs>(DEFAULT_PREFS);
+  const [prefs, setPrefs] = useState<PickPrefs>(resumed?.prefs ?? DEFAULT_PREFS);
   /** 选词方式；用户没选过时按来源里的词数决定 */
-  const [pickMode, setPickMode] = useState<PickMode>(initial?.wordIds?.length ? 'manual' : 'ai');
-  const [modeChosen, setModeChosen] = useState(Boolean(initial?.wordIds?.length));
+  const [pickMode, setPickMode] = useState<PickMode>(resumed?.pickMode ?? (initial?.wordIds?.length ? 'manual' : 'ai'));
+  const [modeChosen, setModeChosen] = useState(resumed?.modeChosen ?? Boolean(initial?.wordIds?.length));
   /** AI 模式下是否展开候选词列表 */
   const [showList, setShowList] = useState(false);
   /** 列表的学习情况筛选（只影响显示） */
   const [tableStatuses, setTableStatuses] = useState<PickStatus[]>([]);
-  const [scene, setScene] = useState('');
-  const [length, setLength] = useState<'short' | 'standard' | 'long'>('standard');
-  /** 正在让 AI 规划 */
-  const [planning, setPlanning] = useState(false);
-  /** 每次内容规划的序号：停止后迟到的结果丢弃 */
-  const planRun = useRef(0);
-  const [planItems, setPlanItems] = useState<EditablePlanItem[]>([]);
-  const [planNote, setPlanNote] = useState('');
+  /** 场景：选了词汇本时自动带入它们的场景描述；自己改过就不再自动带入 */
+  const [scene, setScene] = useState(resumed?.scene ?? '');
+  const [sceneTouched, setSceneTouched] = useState(resumed?.sceneTouched ?? false);
+  const [length, setLength] = useState<'short' | 'standard' | 'long'>(resumed?.length ?? 'standard');
+  /** 内容规划的后台任务（离开页面也会继续） */
+  const [planJobId, setPlanJobId] = useState<string | null>(resumed?.planJobId ?? null);
+  const planJob = useJob(planJobId);
+  /** 正在提交规划任务（还没拿到任务 id） */
+  const [planStarting, setPlanStarting] = useState(false);
+  const planning = planStarting || (planJob !== undefined && isJobActive(planJob)) || (planJobId !== null && planJob === undefined);
+  const [planItems, setPlanItems] = useState<EditablePlanItem[]>(resumed?.planItems ?? []);
+  const [planNote, setPlanNote] = useState(resumed?.planNote ?? '');
+  const [planAdjustments, setPlanAdjustments] = useState<string[]>(resumed?.planAdjustments ?? []);
   /** 写短文的后台任务：每次提交写哪几篇（规划里的序号）；重写失败的篇目是新的一次 */
-  const [runs, setRuns] = useState<{ jobId: string; indexes: number[] }[]>([]);
+  const [runs, setRuns] = useState<Run[]>(resumed?.runs ?? []);
+  const toast = useToast();
   const jobs = useJobs();
   const [error, setError] = useState<{ title: string; message: string } | null>(null);
 
@@ -298,7 +375,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   // 挑词条件与篇幅的默认值来自「设置 → 素材」
   const materialSettings = useMaterialSettings();
   useEffect(() => {
-    if (!materialSettings) return;
+    if (!materialSettings || resumed) return;
     setPrefs((p) => ({
       ...p,
       count: AI_PICK_OPTIONS.includes(materialSettings.passagePickCount) ? materialSettings.passagePickCount : p.count,
@@ -325,10 +402,44 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   const briefSelected = sourceMode === 'brief' ? (briefWords ?? []).filter((w) => w.selected).map((w) => w.word) : [];
   const total = (sourceMode === 'brief' ? 0 : required.size) + extraWords.length + effectivePick + briefSelected.length;
   const totalError = total < MIN_WORDS ? (aiMode ? '没有可用的单词：请放宽选词范围，或指定单词' : '请至少选择 1 个单词') : null;
-  const sceneHint = useMemo(() => {
-    const descriptions = (books ?? []).filter((b) => bookIds.includes(b.id) && b.description?.trim()).map((b) => b.description.trim());
-    return descriptions.length > 0 ? `默认：${descriptions.join('；')}` : '例如：在机场遇到航班延误';
-  }, [books, bookIds]);
+  /** 所选词汇本的场景描述：自动带入「场景」（自己改过就不再覆盖） */
+  const bookScenes = useMemo(
+    () => (books ?? []).filter((b) => bookIds.includes(b.id) && b.description?.trim()).map((b) => b.description.trim()).join('；').slice(0, SCENE_MAX),
+    [books, bookIds]
+  );
+  useEffect(() => {
+    if (sceneTouched || sourceMode === 'brief' || books === null) return;
+    setScene(bookScenes);
+  }, [bookScenes, sceneTouched, sourceMode, books]);
+
+  /** AI 按所选词汇本的场景与要用的单词给的场景建议（null = 正在想） */
+  const [sceneIdeas, setSceneIdeas] = useState<string[] | null>(null);
+  const [sceneIdeasError, setSceneIdeasError] = useState<string | null>(null);
+  const ideasKey = JSON.stringify([bookIds, [...required].sort(), extraWords, sourceMode === 'plans' ? [planIds, scopes] : []]);
+  const ideasFor = useRef<string | null>(null);
+  const loadSceneIdeas = async (more: boolean) => {
+    const key = ideasKey;
+    const shown = more ? (sceneIdeas ?? []) : [];
+    const keep = suggestionsIn(scene, shown);
+    ideasFor.current = key;
+    setSceneIdeas(null);
+    setSceneIdeasError(null);
+    // 要用的词：指定的、手动输入的；还没有时用候选词的一部分（AI 选词时）
+    const named = [...(candidates ?? []).filter((c) => required.has(c.wordId)).map((c) => c.word), ...extraWords];
+    const words = named.length > 0 ? named : (candidates ?? []).slice(0, 40).map((c) => c.word);
+    const r = await passageService.suggestScenes({ bookIds, planIds: sourceMode === 'plans' ? planIds : [], wordIds: [...required], words, exclude: shown });
+    if (ideasFor.current !== key) return;
+    if (r.success) setSceneIdeas(mergeSuggestions(keep, r.data));
+    else {
+      setSceneIdeas(shown);
+      setSceneIdeasError(r.error);
+    }
+  };
+  useEffect(() => {
+    if (step !== 2 || sourceMode === 'brief' || candidates === null || ideasFor.current === ideasKey) return;
+    void loadSceneIdeas(false);
+    // 到「场景与篇幅」、或换了来源和单词时重新给
+  }, [step, ideasKey, candidates === null]);
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<number[]>>) => (id: number) =>
     setter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -365,26 +476,57 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     pickStatuses: effectivePick > 0 ? prefs.statuses : [],
     pickDifficulty: effectivePick > 0 && prefs.difficulty !== 'any' ? prefs.difficulty : null,
     pickFrequency: effectivePick > 0 && prefs.frequency !== 'any' ? prefs.frequency : null,
-    topic: sourceMode === 'brief' ? null : scene.trim() || null,
+    // 场景还是自动带入的词汇本描述时不传：后端按词汇本的完整场景（标题、描述、主题标签）写
+    topic: sourceMode === 'brief' || scene.trim() === bookScenes.trim() ? null : scene.trim() || null,
     instruction: sourceMode === 'brief' ? instruction.trim() : null,
     length,
   });
 
-  /** 让 AI 给出内容规划（写几篇、每篇的构思与用词） */
+  /** 规划没成时回到哪一步（按描述生成没有「场景与篇幅」） */
+  const beforePlanStep = sourceMode === 'brief' ? 1 : 2;
+  /** 让 AI 给出内容规划（写几篇、每篇的构思与用词）：后台任务，先进入「内容规划」这一步看进度 */
   const makePlan = async (feedback?: string) => {
-    const run = ++planRun.current;
-    setPlanning(true);
     setError(null);
-    const result = await passageService.planPassages(baseRequest(), feedback);
-    // 停止后迟到的结果不再采用
-    if (run !== planRun.current) return;
-    setPlanning(false);
-    if (!result.success) return setError({ title: '无法生成内容规划', message: result.error });
-    setPlanItems(result.data.items.map((item) => ({ ...item, include: true })));
-    setPlanNote(result.data.note);
-    setRuns([]);
-    setStep(3);
+    setStep(PLAN_STEP);
+    setPlanStarting(true);
+    const started = await passageService.startPlanning(baseRequest(), feedback);
+    setPlanStarting(false);
+    if (!started.success) {
+      setError({ title: '无法生成内容规划', message: started.error });
+      if (planItems.length === 0) setStep(beforePlanStep);
+      return;
+    }
+    setPlanJobId(started.data);
+    // 马上记下任务：等结果期间离开页面（甚至还没等到这里就离开）也接得上
+    if (draftRef.current) savedDraft = { ...draftRef.current, step: PLAN_STEP, planJobId: started.data };
   };
+  // 规划任务结束（也可能是离开页面期间结束的）：用上结果，或说明没成的原因
+  useEffect(() => {
+    if (!planJob || isJobActive(planJob)) return;
+    if (planJob.status === 'succeeded' && planJob.result) {
+      const plan = planJob.result as PassagePlan;
+      setPlanItems(plan.items.map((item) => ({ ...item, include: true })));
+      setPlanNote(plan.note);
+      setPlanAdjustments(plan.adjustments ?? []);
+      setRuns([]);
+    } else {
+      if (planJob.status === 'failed') setError({ title: '无法生成内容规划', message: jobErrorText(planJob) });
+      if (planItems.length === 0) setStep(beforePlanStep);
+    }
+    setPlanJobId(null);
+    // 只在任务状态变化时处理
+  }, [planJob?.status]);
+  // 回来时任务已经不在（如应用重开过）：不再等它，回到规划前那一步
+  useEffect(() => {
+    if (!planJobId || planJob) return;
+    const timer = setTimeout(() => {
+      if (jobsNow().some((j) => j.id === planJobId)) return;
+      setPlanJobId(null);
+      if (planItems.length === 0) setStep(beforePlanStep);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [planJobId, planJob === undefined]);
+  const stopPlanning = async () => (planJobId ? (await jobService.cancel(planJobId)).success : true);
 
   /** 提交后台任务写这几篇（规划里的序号）；离开页面也会继续 */
   const write = async (indexes: number[]) => {
@@ -406,6 +548,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     const run = ++suggestRun.current;
     setSuggesting(true);
     setError(null);
+    setStep(1);
     // 换一批（要求没变）：勾选的词留下，已经给过的不再选，新的一批接在后面、由你勾选
     const more = force && briefWords !== null && briefFor === key;
     const kept = more ? (briefWords ?? []).filter((w) => w.selected) : [];
@@ -413,7 +556,10 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     const result = await wordAnalysisService.generateWordsFromIntent(instruction.trim(), briefCount, undefined, shown);
     if (run !== suggestRun.current) return;
     setSuggesting(false);
-    if (!result.success) return setError({ title: '无法选词', message: result.error });
+    if (!result.success) {
+      if (!briefWords) setStep(0);
+      return setError({ title: '无法选词', message: result.error });
+    }
     const fresh = result.data.words
       .filter((w) => !kept.some((k) => k.word.toLowerCase() === w.word.toLowerCase()))
       .map((w) => ({ word: w.word, meaning: w.meaning ?? '', selected: !more }));
@@ -424,7 +570,12 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
   /** 换生成方式：只保留这种方式的来源 */
   const chooseSource = (mode: SourceMode) => {
-    if (mode !== sourceMode) setRequired(new Set());
+    if (mode !== sourceMode) {
+      setRequired(new Set());
+      // 场景按新的来源重新带入
+      setScene('');
+      setSceneTouched(false);
+    }
     setSourceMode(mode);
     if (mode !== 'books') setBookIds([]);
     if (mode !== 'plans') setPlanIds([]);
@@ -432,24 +583,64 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     setError(null);
   };
 
-  /** 逐篇状态：从后台任务的 detail 读；后提交的覆盖先提交的（重写失败的篇目） */
+  // 写短文的任务结束时记下逐篇结果：之后任务从列表清掉，状态也还在
+  useEffect(() => {
+    setRuns((prev) => {
+      let changed = false;
+      const next = prev.map((r) => {
+        if (r.final) return r;
+        const job = jobs.find((j) => j.id === r.jobId);
+        if (!job || isJobActive(job)) return r;
+        changed = true;
+        return { ...r, final: { status: job.status as 'succeeded' | 'failed' | 'cancelled', items: (job.detail as { items?: PassageItemStatus[] } | null)?.items ?? null } };
+      });
+      return changed ? next : prev;
+    });
+  }, [jobs]);
+
+  /** 逐篇状态：从后台任务的 detail（结束后从记下的结果）读；后提交的覆盖先提交的（重写失败的篇目） */
   const statuses: PlanItemStatus[] | null = useMemo(() => {
     if (runs.length === 0) return null;
     const out: PlanItemStatus[] = planItems.map(() => ({ state: 'skipped' }));
     for (const run of runs) {
       const job = jobs.find((j) => j.id === run.jobId);
-      const items = (job?.detail as { items?: PassageItemStatus[] } | null)?.items;
+      const items = job ? (job.detail as { items?: PassageItemStatus[] } | null)?.items : run.final?.items;
+      // 任务找不到也没有记下结果（如离开期间被清掉）：当作已结束
+      const ended = job ? !isJobActive(job) : true;
+      const endedStatus = job?.status ?? run.final?.status;
       run.indexes.forEach((idx, k) => {
         const item = items?.[k];
         if (item?.state === 'done' && item.passageId) out[idx] = { state: 'done', passageId: item.passageId };
         else if (item?.state === 'failed') out[idx] = { state: 'failed', error: toUserMessage(item.error ?? '') };
-        else if (item?.state === 'running') out[idx] = { state: 'running' };
-        else if (job && !isJobActive(job)) out[idx] = { state: 'failed', error: job.status === 'cancelled' ? '已停止' : '没有写成' };
+        else if (item?.state === 'running' && !ended) out[idx] = { state: 'running' };
+        else if (ended) out[idx] = { state: 'failed', error: endedStatus === 'cancelled' ? '已停止' : endedStatus === undefined ? '没有记录到结果' : '没有写成' };
         else out[idx] = { state: 'waiting' };
       });
     }
     return out;
   }, [runs, jobs, planItems]);
+
+  // 离开页面时记下进度，回来接着做（见 savedDraft）
+  const draftRef = useRef<Draft | null>(null);
+  draftRef.current = {
+    step, sourceMode, instruction, briefCount, briefWords, briefFor, bookIds, planIds, scopes, required: [...required], extraWords, prefs,
+    pickMode, modeChosen, scene, sceneTouched, length, planJobId, planItems, planNote, planAdjustments, runs,
+  };
+  const discardRef = useRef(false);
+  useEffect(
+    () => () => {
+      const current = draftRef.current;
+      if (current && isResumable(current)) savedDraft = current;
+      // 接着做的那份结束了（取消、写完去短文库）：不再保留；别的入口进来的不动旧的那份
+      else if (discardRef.current && resumed) savedDraft = null;
+    },
+    []
+  );
+  /** 不再保留进度（取消、全部写完后去短文库） */
+  const leave = (go: () => void) => {
+    discardRef.current = true;
+    go();
+  };
 
   // 只写一篇且写好了：还在这个页面时直接打开它
   useOnJobFinished((job) => {
@@ -471,11 +662,19 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-7">
       <PageHeader title="新建短文" />
-      <Stepper steps={sourceMode === 'brief' ? BRIEF_STEPS : STEPS} current={step} />
+      {pendingDraft && (
+        <div className="flex items-center gap-3 rounded-lg border bg-accent/40 px-4 py-2.5 text-sm">
+          <span className="min-w-0 flex-1">还有一篇没做完的短文：{draftState(pendingDraft)}</span>
+          <Button size="sm" variant="outline" onClick={() => onNavigate?.('create-passage', {})}>
+            接着做
+          </Button>
+        </div>
+      )}
+      <Stepper steps={sourceMode === 'brief' ? BRIEF_STEPS : STEPS} current={sourceMode === 'brief' && step === PLAN_STEP ? BRIEF_STEPS.length - 1 : step} />
 
-      {planning || suggesting ? (
+      {suggesting ? (
         <Card className="px-6">
-          <AiWorking title={suggesting ? 'AI 正在选词' : 'AI 正在规划内容'} />
+          <AiWorking title="AI 正在选词" />
         </Card>
       ) : (
         <>
@@ -525,6 +724,16 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <Label>篇幅</Label>
+                    <ToggleGroup type="single" value={length} onValueChange={(v) => v && setLength(v as typeof length)} className="rounded-lg bg-muted p-0.5" aria-label="篇幅">
+                      {LENGTHS.map((l) => (
+                        <ToggleGroupItem key={l.value} value={l.value} className={segmentItem}>
+                          {l.label}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
                   </div>
                 </Card>
               )}
@@ -584,6 +793,12 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                   <div className="min-w-0 flex-1">
                     <h2 className="font-semibold">选择单词</h2>
                     <p className="text-sm text-muted-foreground">已选 {requiredWords.length} 个，都会出现在短文中</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground" title={instruction}>
+                      按要求：{instruction.trim()}
+                      <Button variant="link" size="sm" className="ml-1 h-auto p-0 text-xs" onClick={() => setStep(0)}>
+                        修改
+                      </Button>
+                    </p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => suggestWords(true)}>
                     <RotateCw />
@@ -840,17 +1055,40 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
           {step === 2 && (
             <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-4">
               <Card className="gap-5 px-5 py-4">
-                {sourceMode === 'brief' ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="cp-instruction-2">写作要求</Label>
-                    <Textarea id="cp-instruction-2" value={instruction} maxLength={INSTRUCTION_MAX} onChange={(e) => setInstruction(e.target.value)} className="min-h-28 resize-none" />
+                <div className="space-y-2">
+                  <Label htmlFor="cp-scene">场景</Label>
+                  <Textarea
+                    id="cp-scene"
+                    value={scene}
+                    maxLength={SCENE_MAX}
+                    onChange={(e) => {
+                      setScene(e.target.value);
+                      setSceneTouched(true);
+                    }}
+                    placeholder="写一个具体的情境（人物、地点、发生了什么），或选下面的建议；不写就按词汇本的场景"
+                    className="min-h-28 resize-none"
+                  />
+                  <div className="flex items-start gap-1.5 text-xs text-muted-foreground" aria-label="场景建议">
+                    <Sparkles className="mt-1 size-3.5 shrink-0" />
+                    <SuggestionChips
+                      items={sceneIdeas}
+                      selected={suggestionsIn(scene, sceneIdeas)}
+                      onToggle={(idea) => {
+                        // 还是自动带入的词汇本描述：点建议直接换成它
+                        if (!sceneTouched || scene.trim() === bookScenes.trim()) setScene(idea);
+                        else {
+                          const next = toggleInText(scene, idea, SCENE_MAX);
+                          if (next === scene && !scene.includes(idea)) return toast.showError('场景写不下了', `场景最多 ${SCENE_MAX} 个字，先删掉一些再加`);
+                          setScene(next);
+                        }
+                        setSceneTouched(true);
+                      }}
+                      onMore={() => void loadSceneIdeas(true)}
+                      error={sceneIdeasError}
+                      loadingText="AI 正在按词汇本和单词想场景…"
+                    />
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label htmlFor="cp-scene">场景</Label>
-                    <Textarea id="cp-scene" value={scene} maxLength={SCENE_MAX} onChange={(e) => setScene(e.target.value)} placeholder={sceneHint} className="min-h-28 resize-none" />
-                  </div>
-                )}
+                </div>
                 <div className="flex items-center justify-between gap-4">
                   <Label>篇幅</Label>
                   <ToggleGroup type="single" value={length} onValueChange={(v) => v && setLength(v as typeof length)} className="rounded-lg bg-muted p-0.5" aria-label="篇幅">
@@ -913,13 +1151,18 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
             </div>
           )}
 
-          {step === 3 && activeRunJob && (
+          {/* 规划中：就在「内容规划」这一步看进度（离开页面也会继续，回来接着看） */}
+          {step === PLAN_STEP && planning && (
+            <JobPanel job={planJob} title="AI 正在规划内容" actions={{ stop: stopPlanning, onBackground: () => onNavigate?.('passages') }} />
+          )}
+          {step === PLAN_STEP && !planning && activeRunJob && (
             <JobPanel job={activeRunJob} title="AI 正在生成短文" actions={{ stop: true, onBackground: () => onNavigate?.('passages') }} />
           )}
-          {step === 3 && (
+          {step === PLAN_STEP && !planning && planItems.length > 0 && (
             <PassagePlanEditor
               items={planItems}
               note={planNote}
+              adjustments={planAdjustments}
               onChange={setPlanItems}
               onReplan={(feedback) => makePlan(feedback)}
               statuses={statuses}
@@ -932,15 +1175,14 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
       {error && <InlineError title={error.title}>{error.message}</InlineError>}
 
-      {(planning || suggesting) && (
+      {suggesting && (
         <div className="flex items-center gap-2 border-t pt-4">
           <Button
             variant="outline"
             onClick={() => {
-              planRun.current += 1;
               suggestRun.current += 1;
-              setPlanning(false);
               setSuggesting(false);
+              if (!briefWords) setStep(0);
             }}
           >
             停止
@@ -950,18 +1192,19 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
       {!planning && !suggesting && (
         <div className="flex items-center gap-2 border-t pt-4">
           {statuses === null && (
-            <Button variant="ghost" onClick={() => onNavigate?.('passages')}>
+            <Button variant="ghost" onClick={() => leave(() => onNavigate?.('passages'))}>
               取消
             </Button>
           )}
           <div className="flex-1" />
           {step > 0 && statuses === null && (
-            <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
+            <Button variant="outline" onClick={() => setStep((s) => (s === PLAN_STEP ? beforePlanStep : s - 1))}>
               <ArrowLeft />
               上一步
             </Button>
           )}
-          {step < 2 && (
+          {/* 按描述生成：选好词就规划；其余方式：选来源 → 选词 → 场景与篇幅 */}
+          {step < 2 && !(sourceMode === 'brief' && step === 1) && (
             <Button
               onClick={() => (step === 0 && sourceMode === 'brief' ? suggestWords() : setStep((s) => s + 1))}
               disabled={
@@ -974,21 +1217,24 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
               <ArrowRight />
             </Button>
           )}
-          {step === 2 && (
+          {(step === 2 || (sourceMode === 'brief' && step === 1)) && planItems.length > 0 && statuses === null && (
+            <Button variant="outline" onClick={() => setStep(PLAN_STEP)}>
+              查看规划
+            </Button>
+          )}
+          {(step === 2 || (sourceMode === 'brief' && step === 1)) && (
             <Button onClick={() => makePlan()} disabled={totalError !== null}>
               <Sparkles />
               生成内容规划
             </Button>
           )}
-          {step === 3 && statuses === null && (
+          {step === PLAN_STEP && statuses === null && planItems.length > 0 && (
             <Button onClick={generateAll} disabled={includedCount === 0}>
               <Sparkles />
               {includedCount > 1 ? `生成 ${includedCount} 篇短文` : '生成短文'}
             </Button>
           )}
-          {step === 3 && statuses !== null && !writing && (
-            <Button onClick={() => onNavigate?.('passages')}>前往短文库</Button>
-          )}
+          {step === PLAN_STEP && statuses !== null && !writing && <Button onClick={() => leave(() => onNavigate?.('passages'))}>前往短文库</Button>}
         </div>
       )}
     </div>

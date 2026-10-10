@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
+import { SuggestionChips, suggestionsIn, toggleInText } from '@/components/SuggestionChips';
 import type { PassageLength, PassagePlanItem } from '@/types/passage';
 
 /** 规划里的一篇（加上“是否生成”） */
@@ -22,6 +23,8 @@ export type PlanItemStatus = { state: 'skipped' } | { state: 'waiting' } | { sta
 export interface PassagePlanEditorProps {
   items: EditablePlanItem[];
   note: string;
+  /** AI 针对这份规划建议的调整方向（可多选，写进调整意见） */
+  adjustments?: string[];
   onChange: (items: EditablePlanItem[]) => void;
   /** 重新规划（带调整意见） */
   onReplan: (feedback: string) => void;
@@ -38,13 +41,12 @@ const LENGTHS: { value: PassageLength; label: string }[] = [
   { value: 'long', label: '长' },
 ];
 const segmentItem = 'h-7 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm';
-const FEEDBACK_EXAMPLES = ['合成一篇', '拆成两篇', '增强故事性', '换一个主角'];
 
 /**
  * 内容规划（新建短文最后一步）：AI 的说明 + 每篇的标题、构思、篇幅与用词（可改、可不生成），
  * 写一句调整意见重新规划；确认后逐篇生成，显示每篇的状态。
  */
-export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, note, onChange, onReplan, statuses, onOpen, onRetry, disabled }) => {
+export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, note, adjustments = [], onChange, onReplan, statuses, onOpen, onRetry, disabled }) => {
   const [feedback, setFeedback] = React.useState('');
   const update = (i: number, patch: Partial<EditablePlanItem>) => onChange(items.map((item, j) => (j === i ? { ...item, ...patch } : item)));
   const locked = disabled || statuses !== null;
@@ -137,7 +139,7 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
               disabled={disabled}
               onChange={(e) => setFeedback(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && feedback.trim() && onReplan(feedback.trim())}
-              placeholder="例如：合成一篇，主角换成一只小狗"
+              placeholder="写下想怎么调整，或选下面的建议"
               aria-label="调整意见"
             />
             <Button variant="outline" onClick={() => onReplan(feedback.trim())} disabled={disabled}>
@@ -145,13 +147,9 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
               重新规划
             </Button>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {FEEDBACK_EXAMPLES.map((ex) => (
-              <Button key={ex} variant="secondary" size="sm" className="h-7 rounded-full px-3 text-xs font-normal" disabled={disabled} onClick={() => setFeedback(ex)}>
-                {ex}
-              </Button>
-            ))}
-          </div>
+          {adjustments.length > 0 && (
+            <SuggestionChips items={adjustments} selected={suggestionsIn(feedback, adjustments)} onToggle={(a) => setFeedback((f) => toggleInText(f, a, 200))} loadingText="" />
+          )}
         </Card>
       )}
     </div>

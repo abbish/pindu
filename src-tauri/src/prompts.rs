@@ -331,10 +331,11 @@ pub enum PromptTask {
     SubtitlePrepare,
     SentenceAnalyze,
     VocabSuggest,
+    PassageSceneSuggest,
 }
 
 impl PromptTask {
-    pub const ALL: [PromptTask; 17] = [
+    pub const ALL: [PromptTask; 18] = [
         PromptTask::Extract,
         PromptTask::Generate,
         PromptTask::Phonics,
@@ -352,6 +353,7 @@ impl PromptTask {
         PromptTask::SubtitlePrepare,
         PromptTask::SentenceAnalyze,
         PromptTask::VocabSuggest,
+        PromptTask::PassageSceneSuggest,
     ];
 
     pub fn key(self) -> &'static str {
@@ -373,6 +375,7 @@ impl PromptTask {
             PromptTask::SubtitlePrepare => "subtitle_prepare",
             PromptTask::SentenceAnalyze => "sentence_analyze",
             PromptTask::VocabSuggest => "vocab_suggest",
+            PromptTask::PassageSceneSuggest => "passage_scene_suggest",
         }
     }
 
@@ -395,6 +398,7 @@ impl PromptTask {
             PromptTask::SubtitlePrepare => "视频：整理字幕（断句与翻译）",
             PromptTask::SentenceAnalyze => "句子分析",
             PromptTask::VocabSuggest => "词汇本：词汇需求的建议",
+            PromptTask::PassageSceneSuggest => "短文：场景的建议",
         }
     }
 
@@ -417,6 +421,9 @@ impl PromptTask {
             PromptTask::SubtitlePrepare => include_str!("prompts/agent/subtitle_prepare.md"),
             PromptTask::SentenceAnalyze => include_str!("prompts/agent/sentence_analyze.md"),
             PromptTask::VocabSuggest => include_str!("prompts/agent/vocab_topic_suggest.md"),
+            PromptTask::PassageSceneSuggest => {
+                include_str!("prompts/agent/passage_scene_suggest.md")
+            }
         }
     }
 }
@@ -520,6 +527,7 @@ pub enum MessageTemplate {
     SentenceAnalyze,
     SentenceTutor,
     VocabSuggest,
+    PassageSceneSuggest,
 }
 
 pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
@@ -546,6 +554,9 @@ pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
         MessageTemplate::SentenceAnalyze => include_str!("prompts/messages/sentence_analyze.md"),
         MessageTemplate::SentenceTutor => include_str!("prompts/messages/sentence_tutor.md"),
         MessageTemplate::VocabSuggest => include_str!("prompts/messages/vocab_topic_suggest.md"),
+        MessageTemplate::PassageSceneSuggest => {
+            include_str!("prompts/messages/passage_scene_suggest.md")
+        }
     };
     render(text, vars)
 }
@@ -700,6 +711,7 @@ mod tests {
             (PromptTask::SubtitlePrepare, "subtitle_prepare.md"),
             (PromptTask::SentenceAnalyze, "sentence_analyze.md"),
             (PromptTask::VocabSuggest, "vocab_topic_suggest.md"),
+            (PromptTask::PassageSceneSuggest, "passage_scene_suggest.md"),
         ];
         let stopwords = crate::agent::tasks::FOCUS_STOPWORDS;
         for preset in ["primary", "secondary", "adult"] {

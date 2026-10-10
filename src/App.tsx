@@ -103,7 +103,8 @@ function App() {
       case 'passages':
         return <PassageLibraryPage onNavigate={navigate} />;
       case 'create-passage':
-        return <CreatePassagePage initial={route.params} onNavigate={navigate} />;
+        // 参数变了（如「接着做」上次没做完的）重新挂载，按新的入口初始化
+        return <CreatePassagePage key={JSON.stringify(route.params ?? {})} initial={route.params} onNavigate={navigate} />;
       case 'import-passage':
         return <ImportPassagePage onNavigate={navigate} />;
       case 'passage-detail':

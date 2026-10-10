@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { InlineError } from '@/components/InlineError';
 import { videoService } from '@/services/videoService';
-import { SuggestionChips, mergeSuggestions } from '@/components/SuggestionChips';
+import { SuggestionChips, mergeSuggestions, suggestionsIn, toggleInText } from '@/components/SuggestionChips';
 
 const MAX_TEXT = 500;
 
@@ -39,7 +39,7 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
   /** 已经写进要求里的建议（选中） */
-  const picked = (suggestions ?? []).filter((s) => text.includes(s));
+  const picked = suggestionsIn(text, suggestions);
   /** 换一批：已选的留下，告诉 AI 给过哪些，新的一批接在后面 */
   const loadSuggestions = async (refresh: boolean) => {
     const shown = suggestions ?? [];
@@ -61,19 +61,7 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
   }, [open]);
 
   /** 点建议：没选的接到要求后面（可以组合几条），已选的从要求里去掉 */
-  const toggleSuggestion = (s: string) =>
-    setText((t) => {
-      const cur = t.trim();
-      if (cur.includes(s)) {
-        return cur
-          .split(s)
-          .join('')
-          .replace(/[，；;,]{2,}/g, '；')
-          .replace(/^[，；;,\s]+|[，；;,\s]+$/g, '');
-      }
-      if (!cur) return s;
-      return `${cur.replace(/[，。；,;]$/, '')}；${s}`.slice(0, MAX_TEXT);
-    });
+  const toggleSuggestion = (s: string) => setText((t) => toggleInText(t, s, MAX_TEXT));
 
   useEffect(() => {
     if (!open) return;
