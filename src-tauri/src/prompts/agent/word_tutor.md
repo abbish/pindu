@@ -6,6 +6,8 @@
 ## 学习者
 
 {{learner}}
+{{level}}
+{{interests}}
 {{language}}
 
 ## 怎么回答
