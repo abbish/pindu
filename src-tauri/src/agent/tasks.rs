@@ -419,12 +419,15 @@ pub fn phonics_batch_task(profile: &PromptProfile) -> AgentTask {
 pub struct PhonicsBatchOutcome {
     pub analyzed: Vec<PhonicsWord>,
     pub missing: Vec<String>,
+    /// 不在请求里的提交：模型把请求的词改了（多为纠正拼写，如 some one → someone），word 为模型给的写法
+    pub corrected: Vec<PhonicsWord>,
 }
 
 /// `submit_phonics` 参数 → 结果：只接受请求中的单词（忽略大小写、去重），返回未覆盖的单词
 pub fn phonics_from_submission(details: &Value, requested: &[String]) -> PhonicsBatchOutcome {
     let mut remaining: Vec<&String> = requested.iter().collect();
     let mut analyzed = Vec::new();
+    let mut corrected = Vec::new();
     for item in details
         .get("words")
         .and_then(Value::as_array)
@@ -439,15 +442,21 @@ pub fn phonics_from_submission(details: &Value, requested: &[String]) -> Phonics
                 .to_string()
         };
         let word = field("word");
-        let Some(pos) = remaining
+        let pos = remaining
             .iter()
-            .position(|r| r.trim().eq_ignore_ascii_case(&word))
-        else {
-            continue; // 不是本批请求的词，或重复提交
-        };
-        let requested_word = remaining.remove(pos);
-        analyzed.push(PhonicsWord {
-            word: requested_word.trim().to_string(),
+            .position(|r| r.trim().eq_ignore_ascii_case(&word));
+        // 不是本批请求的词：先记下（可能是纠正了拼写）；重复提交的忽略
+        let matched = pos.map(|p| remaining.remove(p).trim().to_string());
+        if matched.is_none()
+            && (word.is_empty()
+                || requested
+                    .iter()
+                    .any(|r| r.trim().eq_ignore_ascii_case(&word)))
+        {
+            continue;
+        }
+        let parsed = PhonicsWord {
+            word: matched.clone().unwrap_or_else(|| word.clone()),
             frequency: 1,
             chinese_translation: field("chinese_translation"),
             pos_abbreviation: field("pos_abbreviation"),
@@ -479,11 +488,17 @@ pub fn phonics_from_submission(details: &Value, requested: &[String]) -> Phonics
                     })
                 })
                 .collect(),
-        });
+        };
+        if matched.is_some() {
+            analyzed.push(parsed);
+        } else {
+            corrected.push(parsed);
+        }
     }
     PhonicsBatchOutcome {
         analyzed,
         missing: remaining.into_iter().cloned().collect(),
+        corrected,
     }
 }
 
@@ -2625,6 +2640,9 @@ mod tests {
             .map(|w| (w.word.as_str(), w.chinese_translation.as_str()))
             .collect();
         assert_eq!(words, vec![("Baking", "烘烤"), ("car", "汽车")]);
+        // 不在请求里的（dog）单独记下，重复提交的 car 不算
+        let corrected: Vec<&str> = outcome.corrected.iter().map(|w| w.word.as_str()).collect();
+        assert_eq!(corrected, vec!["dog"]);
         assert_eq!(outcome.analyzed[0].phonics_rule, "VCE Pattern | 魔法e规则");
         // 例句：去空白，缺翻译的丢弃，顺序保留
         let examples: Vec<&str> = outcome.analyzed[0]

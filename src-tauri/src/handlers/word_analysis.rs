@@ -326,11 +326,18 @@ pub async fn analyze_word(
         let outcome = phonics_analyzer(&app, &model_config, profile, context)?
             .analyze_batch(std::slice::from_ref(&word), 0, 1)
             .await?;
+        // 模型把词改了（多为纠正拼写）时返回改后的分析，word 与输入不同，由界面提示用户是否改用
+        let corrected = (outcome.corrected.len() == 1)
+            .then(|| outcome.corrected.into_iter().next())
+            .flatten();
         outcome
             .analyzed
             .into_iter()
             .next()
-            .ok_or_else(|| AppError::ExternalServiceError("AI 没有返回这个单词的分析".to_string()))
+            .or(corrected)
+            .ok_or_else(|| {
+                AppError::ExternalServiceError("AI 没有返回这个单词的分析，请再试一次".to_string())
+            })
     }
     .await;
     super::finish(&logger, "analyze_word", result)

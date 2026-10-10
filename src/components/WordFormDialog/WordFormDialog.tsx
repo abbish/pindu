@@ -14,9 +14,8 @@ import { cn } from '@/lib/utils';
 import { wordAnalysisService } from '@/services/wordAnalysisService';
 import { wordBookService } from '@/services/wordbookService';
 import { PART_OF_SPEECH_ENGLISH, PART_OF_SPEECH_LABELS, standardizePartOfSpeech } from '@/utils/partOfSpeech';
-import type { UpdateWordRequest, Word, WordExample } from '@/types';
+import type { PhonicsWord, UpdateWordRequest, Word, WordExample } from '@/types';
 import { InlineError } from '@/components/InlineError';
-import { messageOf } from '@/utils/errorHandler';
 
 export interface WordFormDialogProps {
   /** 是否显示 */
@@ -99,6 +98,10 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
   const [submitError, setSubmitError] = useState<{ title: string; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [filling, setFilling] = useState(false);
+  /** AI 补全失败的原因（显示在单词输入框下方） */
+  const [fillError, setFillError] = useState<string | null>(null);
+  /** AI 认为拼写有误时给出的写法与分析 */
+  const [correction, setCorrection] = useState<PhonicsWord | null>(null);
   /** 输入的是词组（含空格）：显示词组类型与用法，不显示音节与拼读 */
   const phrase = isPhrase(values.word.trim());
 
@@ -107,11 +110,17 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
     setValues(fromWord(word));
     setErrors({});
     setSubmitError(null);
+    setFillError(null);
+    setCorrection(null);
   }, [isOpen, word]);
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((prev) => ({ ...prev, [key]: value }));
     if (key === 'word' || key === 'meaning') setErrors((prev) => ({ ...prev, [key]: undefined }));
+    if (key === 'word') {
+      setFillError(null);
+      setCorrection(null);
+    }
   };
   const setExample = (index: number, patch: Partial<WordExample>) =>
     set(
@@ -119,7 +128,27 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
       values.examples.map((e, i) => (i === index ? { ...e, ...patch } : e))
     );
 
-  /** 用 AI 补全空着的字段（不覆盖已填写的内容） */
+  /** 把 AI 的分析填进空着的字段（不覆盖已填写的内容）；`word` 传入时同时改用这个写法 */
+  const applyAnalysis = (p: PhonicsWord, word?: string) => {
+    setValues((prev) => ({
+      ...prev,
+      word: word ?? prev.word,
+      meaning: prev.meaning || p.chinese_translation,
+      pos: prev.meaning ? prev.pos : standardizePartOfSpeech(p.pos_abbreviation),
+      ipa: prev.ipa || p.ipa,
+      syllables: prev.syllables || p.syllables,
+      segments: prev.segments || textToSegments((prev.syllables || p.syllables).replace(/-/g, ' ')).join(' / '),
+      rule: prev.rule || p.phonics_rule,
+      explanation: prev.explanation || p.analysis_explanation,
+      examples: prev.examples.some((e) => e.sentence.trim()) ? prev.examples : (p.examples ?? []),
+      phraseType: prev.phraseType || p.phrase_type || '',
+      separable: prev.phraseType ? prev.separable : Boolean(p.separable),
+    }));
+    setCorrection(null);
+    toast.showSuccess('已补全空白字段');
+  };
+
+  /** 用 AI 补全空白字段；AI 认为拼写有误（返回的词与输入不同）时先提示，用户确认后再改用 */
   const aiFill = async () => {
     const w = values.word.trim();
     if (!w) {
@@ -127,30 +156,18 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
       return;
     }
     setFilling(true);
-    setSubmitError(null);
-    try {
-      const result = await wordAnalysisService.analyzeWord(w, values.meaning.trim(), bookId);
-      if (!result.success) throw new Error(result.error);
-      const p = result.data;
-      setValues((prev) => ({
-        ...prev,
-        meaning: prev.meaning || p.chinese_translation,
-        pos: prev.meaning ? prev.pos : standardizePartOfSpeech(p.pos_abbreviation),
-        ipa: prev.ipa || p.ipa,
-        syllables: prev.syllables || p.syllables,
-        segments: prev.segments || textToSegments((prev.syllables || p.syllables).replace(/-/g, ' ')).join(' / '),
-        rule: prev.rule || p.phonics_rule,
-        explanation: prev.explanation || p.analysis_explanation,
-        examples: prev.examples.some((e) => e.sentence.trim()) ? prev.examples : (p.examples ?? []),
-        phraseType: prev.phraseType || p.phrase_type || '',
-        separable: prev.phraseType ? prev.separable : Boolean(p.separable),
-      }));
-      toast.showSuccess('已补全空白字段');
-    } catch (err) {
-      setSubmitError({ title: '无法 AI 补全', message: messageOf(err) ?? '请再试一次' });
-    } finally {
-      setFilling(false);
+    setFillError(null);
+    setCorrection(null);
+    const result = await wordAnalysisService.analyzeWord(w, values.meaning.trim(), bookId);
+    setFilling(false);
+    if (!result.success) {
+      setFillError(result.error);
+      return;
     }
+    const p = result.data;
+    const same = p.word.trim().replace(/\s+/g, ' ').toLowerCase() === w.replace(/\s+/g, ' ').toLowerCase();
+    if (same) applyAnalysis(p);
+    else setCorrection(p);
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -230,6 +247,20 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                     </Button>
                   </div>
                   {errors.word && <p className="text-xs text-destructive">{errors.word}</p>}
+                  {fillError && <p className="text-xs text-destructive">无法 AI 补全：{fillError}</p>}
+                  {correction && (
+                    <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                      <span>
+                        AI 认为应为「<span className="font-medium text-foreground">{correction.word}</span>」
+                      </span>
+                      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => applyAnalysis(correction, correction.word)}>
+                        改用并补全
+                      </Button>
+                      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs text-muted-foreground" onClick={() => applyAnalysis({ ...correction, word: values.word })}>
+                        保留原样并补全
+                      </Button>
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="wf-meaning">释义</Label>
@@ -261,7 +292,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                 <div className="grid grid-cols-2 items-end gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="wf-ptype">类型</Label>
-                    <Select value={values.phraseType || undefined} onValueChange={(v) => set('phraseType', v)}>
+                    <Select value={values.phraseType} onValueChange={(v) => set('phraseType', v)}>
                       <SelectTrigger id="wf-ptype" className="w-full">
                         <SelectValue placeholder="选择类型" />
                       </SelectTrigger>
