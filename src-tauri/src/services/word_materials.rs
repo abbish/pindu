@@ -10,24 +10,23 @@ use crate::services::word_forms;
 use crate::types::material::{ClipBrief, WordMaterial, WordMaterialCount};
 use crate::types::Id;
 use sqlx::SqlitePool;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-/// 一篇短文里这个词的位置：是否重点词、第一处出现的句子下标
-fn locate(
-    forms: &HashSet<String>,
-    word_id: Option<Id>,
-    text: &PassageText,
-) -> Option<(bool, Option<usize>)> {
-    let key = text.target_words.iter().any(|t| {
-        (word_id.is_some() && t.word_id == word_id)
-            || forms.contains(&word_forms::normalize(&t.word))
+/// 一篇短文里这个词的位置：是否重点词、第一处出现的句子下标。
+/// 单词按词形库认各种形式；词组按这篇标注的写法（目标词的 forms）或连着出现（D47）
+fn locate(word: &str, word_id: Option<Id>, text: &PassageText) -> Option<(bool, Option<usize>)> {
+    let normalized = word_forms::normalize(word);
+    let target = text.target_words.iter().find(|t| {
+        (word_id.is_some() && t.word_id == word_id) || word_forms::normalize(&t.word) == normalized
     });
+    let forms = target.map(|t| t.forms.as_slice()).unwrap_or(&[]);
     let sentence = text
         .sentences
         .iter()
-        .position(|s| word_forms::occurs(forms, &s.en));
+        .position(|s| word_forms::occurs(word, forms, &s.en));
+    let key = target.is_some();
     (key || sentence.is_some()).then_some((key, sentence))
 }
 
@@ -37,14 +36,13 @@ pub fn find(
     word_id: Option<Id>,
     texts: &[PassageText],
 ) -> Vec<(usize, bool, Option<usize>)> {
-    let forms = word_forms::forms(word);
-    if forms.is_empty() {
+    if word_forms::normalize(word).is_empty() {
         return Vec::new();
     }
     let mut hits: Vec<(usize, bool, Option<usize>)> = texts
         .iter()
         .enumerate()
-        .filter_map(|(i, t)| locate(&forms, word_id, t).map(|(key, s)| (i, key, s)))
+        .filter_map(|(i, t)| locate(word, word_id, t).map(|(key, s)| (i, key, s)))
         .collect();
     hits.sort_by_key(|(_, key, _)| !*key);
     hits
@@ -55,13 +53,12 @@ pub fn count(words: &[(Id, String)], texts: &[PassageText]) -> Vec<WordMaterialC
     words
         .iter()
         .map(|(id, word)| {
-            let forms = word_forms::forms(word);
             let mut c = WordMaterialCount {
                 word_id: *id,
                 ..Default::default()
             };
             for t in texts {
-                if locate(&forms, Some(*id), t).is_some() {
+                if locate(word, Some(*id), t).is_some() {
                     if t.origin == "video" {
                         c.clips += 1;
                     } else {
@@ -86,21 +83,24 @@ impl WordMaterialsService {
         Self { pool }
     }
 
-    /// 可能含有这个词的短文：单词按词形查索引；短语先找含有全部组成词的短文，再逐句核对
+    /// 可能含有这个词的短文：索引里存的是原形，单词直接按原形查；词组再加上含有全部组成词（原形）的短文，
+    /// 由调用方逐句核对（词组记号 sb / sth 等不参与）
     async fn candidates(&self, word: &str) -> AppResult<Vec<Id>> {
         let normalized = word_forms::normalize(word);
         if normalized.is_empty() {
             return Ok(Vec::new());
         }
-        let forms: Vec<String> = word_forms::forms(&normalized).into_iter().collect();
-        let mut ids: Vec<Id> = PassageWordRepository::hits(&self.pool, &forms)
-            .await?
-            .into_iter()
-            .map(|h| h.passage_id)
-            .collect();
+        let mut ids: Vec<Id> =
+            PassageWordRepository::hits(&self.pool, std::slice::from_ref(&normalized))
+                .await?
+                .into_iter()
+                .map(|h| h.passage_id)
+                .collect();
         if normalized.contains(' ') {
-            let tokens: Vec<String> = word_forms::tokens(&normalized).collect();
-            ids.extend(PassageWordRepository::having_all(&self.pool, &tokens).await?);
+            let parts: Vec<String> = word_forms::tokens(&normalized)
+                .filter(|t| !crate::lemma::NOTATION.contains(&t.as_str()))
+                .collect();
+            ids.extend(PassageWordRepository::having_all(&self.pool, &parts).await?);
             ids.sort_unstable();
             ids.dedup();
         }
@@ -157,9 +157,10 @@ impl WordMaterialsService {
         let (phrases, singles): (Words, Words) = words
             .iter()
             .partition(|(_, w)| word_forms::normalize(w).contains(' '));
+        // 索引里存的是原形：每个词按原形查一次
         let pairs: Vec<(Id, String)> = singles
             .iter()
-            .flat_map(|(id, w)| word_forms::forms(w).into_iter().map(move |f| (*id, f)))
+            .map(|(id, w)| (*id, word_forms::normalize(w)))
             .collect();
         let mut out: Vec<WordMaterialCount> = PassageWordRepository::counts(&self.pool, &pairs)
             .await?
