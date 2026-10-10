@@ -14,7 +14,7 @@ import { SelectionAction } from '@/components/SelectionAction';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { cn } from '@/lib/utils';
-import { isPhrase, targetOf, tokenize } from '@/utils/passage';
+import { isPhrase, recallBlanks, targetOf } from '@/utils/passage';
 import type { SpeechSpeed } from '@/services/ttsService';
 import type { Passage } from '@/types/passage';
 
@@ -116,11 +116,11 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
   const afterSentence = useCallback(
     (index: number) => {
       if (!recallRef.current) return;
-      const answers = tokenize(texts[index])
-        .filter((t) => t.kind === 'word' && targetOf(t.text, targets))
-        .map((t) => t.text);
+      const blanks = recallBlanks(texts[index], targets).flatMap((p) => (p.kind === 'blank' ? [p] : []));
+      const answers = blanks.map((b) => b.answer);
       if (answers.length === 0) return;
-      const distractors = shuffle(targets.filter((t) => !answers.some((a) => targetOf(a, [t])))).slice(0, 2);
+      const used = new Set(blanks.map((b) => b.target.toLowerCase()));
+      const distractors = shuffle(targets.filter((t) => !used.has(t.toLowerCase()))).slice(0, 2);
       return new Promise<void>((resolve) => {
         setRecall({ index, answers, filled: [], bank: shuffle([...new Set(answers), ...distractors]), wrong: null, revealed: false, resolve });
       });
@@ -211,8 +211,8 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
   const renderRecallSentence = (index: number) => {
     if (!recall || recall.index !== index) return undefined;
     let blank = 0;
-    return tokenize(texts[index]).map((t, i) => {
-      if (t.kind === 'other' || !targetOf(t.text, targets)) return <React.Fragment key={i}>{t.text}</React.Fragment>;
+    return recallBlanks(texts[index], targets).map((t, i) => {
+      if (t.kind === 'text') return <React.Fragment key={i}>{t.text}</React.Fragment>;
       const n = blank++;
       const value = recall.filled[n];
       return (

@@ -290,7 +290,7 @@ impl PassageImportService {
             .ok_or_else(|| AppError::NotFound("短文不存在，可能已被删除".to_string()))
     }
 
-    /// 生词加进词汇本：本里已有的直接关联；其余先做拼读分析（音标、音节、例句）再保存，
+    /// 生词加进词汇本：本里已有的直接关联；有单词卡的沿用卡片；其余先做拼读分析（音标、音节、例句）再保存，
     /// 分析没覆盖到的词只存单词与释义。保存后短文的目标词补上 wordId。返回这些词在本里的 id。
     pub async fn add_words_to_book(
         &self,
@@ -335,11 +335,49 @@ impl PassageImportService {
             .collect();
 
         if !to_create.is_empty() {
-            let analyzed = self.analyze(&to_create, request.book_id, paths).await?;
+            // 已经生成过单词卡的直接沿用，只对没有卡片的词做拼读分析
+            let cards = crate::repositories::word_card_repository::WordCardRepository::new(
+                self.pool.clone(),
+            )
+            .find_many(&to_create.iter().map(|t| t.word.clone()).collect::<Vec<_>>())
+            .await?;
+            let need: Vec<&PassageTargetWord> = to_create
+                .iter()
+                .copied()
+                .filter(|t| !cards.contains_key(&t.word.trim().to_lowercase()))
+                .collect();
+            let analyzed = if need.is_empty() {
+                HashMap::new()
+            } else {
+                self.analyze(&need, request.book_id, paths).await?
+            };
             let words = to_create
                 .iter()
                 .map(|t| {
                     let meaning = t.meaning.clone().unwrap_or_default();
+                    if let Some(c) = cards.get(&t.word.trim().to_lowercase()) {
+                        let some = |x: &String| Some(x.clone()).filter(|x| !x.trim().is_empty());
+                        return crate::types::wordbook::AnalyzedWord {
+                            word: t.word.clone(),
+                            meaning: if meaning.trim().is_empty() {
+                                c.meaning.clone()
+                            } else {
+                                meaning
+                            },
+                            part_of_speech: some(&c.pos_abbreviation),
+                            ipa: some(&c.ipa),
+                            syllables: some(&c.syllables),
+                            pos_abbreviation: some(&c.pos_abbreviation),
+                            pos_english: None,
+                            pos_chinese: some(&c.pos_chinese),
+                            phonics_rule: some(&c.phonics_rule),
+                            analysis_explanation: some(&c.analysis_explanation),
+                            examples: Some(c.examples.clone()),
+                            word_frequency: None,
+                            phrase_type: some(&c.phrase_type),
+                            separable: c.separable,
+                        };
+                    }
                     match analyzed.get(&t.word.to_lowercase()) {
                         Some(p) => crate::types::wordbook::AnalyzedWord {
                             word: t.word.clone(),
@@ -562,5 +600,47 @@ mod tests {
             )
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn new_words_reuse_word_cards_without_analysis() {
+        let pool = memory_pool().await;
+        let (passage_id, _) = seed_passage(&pool).await;
+        let service = PassageImportService::new(pool.clone(), test_logger());
+        crate::repositories::word_card_repository::WordCardRepository::new(pool.clone())
+            .upsert(&crate::types::material::WordCard {
+                word: "fly".into(),
+                meaning: "飞".into(),
+                pos_abbreviation: "v.".into(),
+                pos_chinese: "动词".into(),
+                ipa: "/flaɪ/".into(),
+                syllables: "fly".into(),
+                phonics_rule: String::new(),
+                analysis_explanation: String::new(),
+                examples: Vec::new(),
+                kind: "word".into(),
+                phrase_type: String::new(),
+                separable: false,
+            })
+            .await
+            .unwrap();
+        // 有单词卡：sidecar 不存在也能加入，音标沿用卡片
+        let ids = service
+            .add_words_to_book(
+                &AddPassageWordsRequest {
+                    passage_id,
+                    book_id: 971,
+                    words: vec!["fly".into()],
+                },
+                &paths(),
+            )
+            .await
+            .unwrap();
+        let ipa: Option<String> = sqlx::query_scalar("SELECT ipa FROM words WHERE id = ?")
+            .bind(ids[0])
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        assert_eq!(ipa.as_deref(), Some("/flaɪ/"));
     }
 }

@@ -226,7 +226,8 @@ pub fn cloze_bank(answers: &[String], distractors: &[String], seed: i64) -> Vec<
 
 /// 选词填空判分（忽略大小写与首尾空白）
 pub fn grade_cloze(answer: &str, given: &str) -> bool {
-    !given.trim().is_empty() && given.trim().eq_ignore_ascii_case(answer.trim())
+    let norm = |x: &str| x.split_whitespace().collect::<Vec<_>>().join(" ");
+    !given.trim().is_empty() && norm(given).eq_ignore_ascii_case(&norm(answer))
 }
 
 /// 客观题是否答对（开放题返回 None；选词填空单独判）
@@ -603,8 +604,35 @@ pub struct GeneratedQuestionSet {
 }
 
 /// 句子里与 `word` 写法一致（忽略大小写）的那个词；没有返回 None
+/// 空位在句子里的原文写法：单词按整词找；词组（gave up）要在句子里连着出现，返回原文那一段
 fn token_in_sentence<'a>(sentence: &'a str, word: &str) -> Option<&'a str> {
-    words_of(sentence).find(|t| t.eq_ignore_ascii_case(word.trim()))
+    let want: Vec<&str> = words_of(word).collect();
+    match want.len() {
+        0 => None,
+        1 => words_of(sentence).find(|t| t.eq_ignore_ascii_case(want[0])),
+        n => {
+            // 句子里每个词的位置（字节区间），找连着的 n 个词逐个相等
+            let base = sentence.as_ptr() as usize;
+            let spans: Vec<(usize, usize)> = words_of(sentence)
+                .map(|t| {
+                    let start = t.as_ptr() as usize - base;
+                    (start, start + t.len())
+                })
+                .collect();
+            spans.windows(n).find_map(|w| {
+                let matched = w
+                    .iter()
+                    .zip(&want)
+                    .all(|(&(a, b), x)| sentence[a..b].eq_ignore_ascii_case(x));
+                let between_ok = w.windows(2).all(|p| {
+                    sentence[p[0].1..p[1].0]
+                        .chars()
+                        .all(|c| c == ' ' || c == '-')
+                });
+                (matched && between_ok).then(|| &sentence[w[0].0..w[n - 1].1])
+            })
+        }
+    }
 }
 
 /// `submit_questions` 的参数 → 合格的题组。不合格的题目丢弃；各题型最多取 `spec` 的数量；一道都不剩时报错
@@ -1344,5 +1372,16 @@ mod tests {
         assert_eq!(grades[0], Some((2, "说出了地点".into(), None)));
         assert_eq!(grades[1], Some((4, "很好".into(), Some("Try ...".into()))));
         assert_eq!(grades[2], None);
+    }
+
+    #[test]
+    fn cloze_blank_can_be_a_contiguous_phrase() {
+        assert_eq!(
+            token_in_sentence("She Gave up her toys.", "gave up"),
+            Some("Gave up")
+        );
+        assert_eq!(token_in_sentence("Pick it up.", "pick up"), None);
+        assert_eq!(token_in_sentence("I like toys.", "toys"), Some("toys"));
+        assert!(grade_cloze("gave up", " gave  up "));
     }
 }

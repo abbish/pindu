@@ -324,3 +324,51 @@ export function activeWordIndex(timings: { startMs: number; endMs: number }[] | 
   if (timings.length === wordCount) return hit;
   return Math.min(wordCount - 1, Math.floor((hit * wordCount) / timings.length));
 }
+
+/** 挖空用的片段：普通文字，或一个空（答案是原文里的写法，target 是对应的目标词） */
+export type BlankPart = { kind: 'text'; text: string } | { kind: 'blank'; answer: string; target: string };
+
+/**
+ * 一句话里的目标词挖空（听后回忆等）：单词逐个挖；词组在原文里连着出现时整体挖成一个空（gave up），
+ * 中间插了宾语或占位词对应的词时（pick it up）不挖，保留原文。
+ */
+export function recallBlanks(sentence: string, targets: string[]): BlankPart[] {
+  const tokens = tokenize(sentence);
+  const spans = targetSpans(tokens, targets);
+  const parts: BlankPart[] = [];
+  const pushText = (text: string) => {
+    const last = parts[parts.length - 1];
+    if (last?.kind === 'text') last.text += text;
+    else parts.push({ kind: 'text', text });
+  };
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const span = t.kind === 'word' ? spans.get(t.index) : undefined;
+    if (t.kind === 'other' || !span) {
+      pushText(t.text);
+      continue;
+    }
+    if (span.end - span.start === 1) {
+      parts.push({ kind: 'blank', answer: t.text, target: span.target });
+      continue;
+    }
+    // 词组：收集到片段结尾，判断是否连着出现
+    let j = i;
+    const words: string[] = [];
+    let text = '';
+    while (j < tokens.length) {
+      const x = tokens[j];
+      if (x.kind === 'word' && x.index >= span.end) break;
+      if (x.kind === 'word') words.push(x.text);
+      text += x.text;
+      j++;
+    }
+    const trailing = text.match(/[^A-Za-z]+$/)?.[0] ?? '';
+    const core = trailing ? text.slice(0, text.length - trailing.length) : text;
+    if (words.every((w) => isPhrasePart(w, span.target))) parts.push({ kind: 'blank', answer: core, target: span.target });
+    else pushText(core);
+    if (trailing) pushText(trailing);
+    i = j - 1;
+  }
+  return parts;
+}

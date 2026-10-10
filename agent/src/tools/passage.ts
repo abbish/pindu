@@ -192,7 +192,7 @@ const QuestionParams = Type.Object({
   cloze: Type.Array(
     Type.Object({
       sentence: Type.Integer({ description: "sentence number from the user message, starting at 1" }),
-      word: Type.String({ description: "the word to blank out, spelled exactly as in that sentence" }),
+      word: Type.String({ description: "the word (or a phrase whose words are contiguous in that sentence, e.g. gave up) to blank out, spelled exactly as in that sentence" }),
       hint: Type.Optional(Type.String({ description: "short Chinese hint, e.g. 名词：海关" })),
     }),
   ),
@@ -235,7 +235,7 @@ export function questionProblems(q: QuestionSubmission): string[] {
   q.cloze.forEach((c, i) => {
     const key = c.word.trim().toLowerCase();
     if (c.sentence < 1) problems.push(`cloze[${i + 1}].sentence 从 1 开始`);
-    if (!/^[A-Za-z][A-Za-z'-]*$/.test(c.word.trim())) problems.push(`cloze[${i + 1}].word 应是一个英文单词`);
+    if (!/^[A-Za-z][A-Za-z'-]*( [A-Za-z][A-Za-z'-]*){0,3}$/.test(c.word.trim())) problems.push(`cloze[${i + 1}].word 应是一个英文单词，或句子里连着出现的词组（最多 4 个词）`);
     if (blanked.has(key)) problems.push(`cloze 里的「${c.word}」重复了，每个词只挖一次`);
     blanked.add(key);
   });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { activeWordIndex, inflectionMatches, scoreSummary, specSummary, splitWithBlanks, targetOf, tokenize, phraseSpans, targetSpans, textUses } from './passage.ts';
+import { activeWordIndex, inflectionMatches, scoreSummary, specSummary, splitWithBlanks, targetOf, tokenize, phraseSpans, targetSpans, textUses, recallBlanks } from './passage.ts';
 
 test('空位按整词定位，忽略大小写，保留原文写法', () => {
   const parts = splitWithBlanks('Show your Passport at customs, not the passports.', [
@@ -71,4 +71,11 @@ test('目标词片段：先词组后单词，词组覆盖的单词不再单独�
   assert.deepEqual(spans.get(2), { target: 'give up', start: 1, end: 3 });
   assert.deepEqual(spans.get(5), { target: 'toy', start: 5, end: 6 });
   assert.equal(spans.get(0), undefined);
+});
+
+test('挖空：单词逐个挖，连着出现的词组整体挖，拆开用的词组不挖', () => {
+  const blanks = (s: string, t: string[]) => recallBlanks(s, t).flatMap((p) => (p.kind === 'blank' ? [p.answer] : []));
+  assert.deepEqual(blanks('She gave up her toys.', ['give up', 'toy']), ['gave up', 'toys']);
+  assert.deepEqual(blanks('Please pick it up.', ['pick up']), []);
+  assert.equal(recallBlanks('She gave up.', ['give up']).map((p) => (p.kind === 'text' ? p.text : '_')).join(''), 'She _.');
 });
