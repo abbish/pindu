@@ -21,13 +21,15 @@ export interface AiTeacherPanelProps {
 }
 
 /**
- * AI 老师的对话面板：贴在单词卡右侧，与单词卡等高（内容多时在面板里滚动）；开着时切换单词，老师跟着讲新的词。
+ * AI 老师的对话面板：贴在单词卡右侧，与单词卡等高、最高不超过可视区域并贴住顶部（输入框一直可见，对话在面板里滚动）；开着时切换单词，老师跟着讲新的词。
  * 同一个词的对话在单词卡、练习、短文与视频里共用（D43）。
  */
 export const AiTeacherPanel: React.FC<AiTeacherPanelProps> = ({ word, wordId, onClose }) => (
-  // 外层只占宽度、高度随单词卡；面板绝对定位填满，不把单词卡撑高
+  // 外层只占宽度、高度随单词卡（面板绝对定位，不把单词卡撑高）；面板贴住可视区域顶部，最高不超过可视区域，
+  // 单词卡很长时往下滚，面板与输入框一直在视野里
   <div className="relative w-[300px] shrink-0 2xl:w-[380px]">
-    <Card className="absolute inset-0 gap-0 overflow-hidden py-0">
+    <div className="absolute inset-0">
+      <Card className="sticky top-4 h-full max-h-[calc(100svh-6rem)] gap-0 overflow-hidden py-0">
       <header className="flex items-center gap-2.5 border-b px-4 py-3">
         <TeacherAvatar />
         <div className="min-w-0 flex-1">
@@ -41,6 +43,7 @@ export const AiTeacherPanel: React.FC<AiTeacherPanelProps> = ({ word, wordId, on
       <div className="min-h-0 flex-1 p-4">
         <WordExplanationView key={wordId} wordId={wordId} active autoGenerate fill />
       </div>
-    </Card>
+      </Card>
+    </div>
   </div>
 );
