@@ -28,3 +28,10 @@ test('错误对应到拼读块', () => {
   // 拼读块拼不回单词时不对应
   assert.deepEqual(checkSpelling('dg', 'dog', ['D', 'o']).wrongChunks, []);
 });
+
+test('词组：多打的空格不算错，按词标出错的块', () => {
+  assert.equal(checkSpelling('give   up', 'give up').correct, true);
+  const r = checkSpelling('giv up', 'give up', ['give', 'up']);
+  assert.equal(r.correct, false);
+  assert.deepEqual(r.wrongChunks, ['give']);
+});

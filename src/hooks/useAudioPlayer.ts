@@ -305,7 +305,8 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
 
   const playWord = useCallback(
     (word: string, voiceId?: string, playOptions?: PlayOptions) =>
-      playText(word, voiceId, { ...playOptions, style: 'word' }),
+      // 词组按句子的语调读（连读自然），单词按单词读（D45）
+      playText(word, voiceId, { ...playOptions, style: /\s/.test(word.trim()) ? 'sentence' : 'word' }),
     [playText]
   );
 

@@ -186,10 +186,10 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
             </p>
           )}
         </div>
-        <Button variant="outline" size="icon" aria-label="发音" onClick={() => speak(display, 'word')}>
+        <Button variant="outline" size="icon" aria-label="发音" onClick={() => speak(display, /\s/.test(display) ? 'sentence' : 'word')}>
           <Volume2 />
         </Button>
-        <Button variant="outline" size="icon" aria-label="慢速发音" onClick={() => speak(display, 'word', true)}>
+        <Button variant="outline" size="icon" aria-label="慢速发音" onClick={() => speak(display, /\s/.test(display) ? 'sentence' : 'word', true)}>
           <Snail />
         </Button>
         {teacherAvailable && (

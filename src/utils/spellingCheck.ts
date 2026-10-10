@@ -20,8 +20,9 @@ export interface SpellingCheck {
 }
 
 export function checkSpelling(input: string, target: string, chunks: string[] = []): SpellingCheck {
-  const a = input.trim().toLowerCase();
-  const b = target.trim();
+  // 空白归一：词组里多打的空格不算错（D45）
+  const a = input.trim().replace(/\s+/g, ' ').toLowerCase();
+  const b = target.trim().replace(/\s+/g, ' ');
   const bl = b.toLowerCase();
   const n = a.length;
   const m = bl.length;
@@ -64,11 +65,12 @@ export function checkSpelling(input: string, target: string, chunks: string[] = 
   const marks = [...b].map((char, k) => ({ char, status: status[k] }));
   const correct = a === bl;
 
-  // 拼读块：拼起来要与单词一致才能对应
+  // 拼读块：拼起来要与单词一致才能对应（词组按词分块，块之间的空格跳过）
   const wrongChunks: string[] = [];
-  if (!correct && chunks.join('').toLowerCase() === bl) {
+  if (!correct && chunks.join('').toLowerCase() === bl.replace(/ /g, '')) {
     let start = 0;
     for (const chunk of chunks) {
+      while (bl[start] === ' ') start++;
       const end = start + chunk.length;
       const bad =
         status.slice(start, end).some(s => s !== 'ok') ||

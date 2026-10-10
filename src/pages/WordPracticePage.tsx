@@ -158,7 +158,8 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       description: wordInfo.description,
       ipa: wordInfo.ipa,
       syllables: wordInfo.syllables,
-      phonicsSegments: parsePhonicsSegments(wordInfo.phonicsSegments),
+      // 词组没有拼读分段：按词分块（D45）
+      phonicsSegments: /\s/.test(wordInfo.word.trim()) ? wordInfo.word.trim().split(/\s+/) : parsePhonicsSegments(wordInfo.phonicsSegments),
       examples: wordInfo.examples ?? []
     };
   }, [currentWordState]);
