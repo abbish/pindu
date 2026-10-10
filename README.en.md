@@ -2,82 +2,148 @@
 
 [中文](./README.md) · [Install](./INSTALL.md) · [Contributing](./CONTRIBUTING.md) · [Security & privacy](./SECURITY.md)
 
-Pindu is a desktop app for learning English vocabulary, built around phonics. Instead of memorizing a word as one block of letters, you first break it into chunks you can sound out (luggage → lug · gage), then learn the meaning and the spelling. Besides single words it handles phrases (give up, pick sb up), and you can study words in passages and video clips too. Explanations follow a learner profile: primary school, secondary school or adult.
+Pindu is a desktop app for learning English vocabulary with phonics, available for macOS, Windows and Linux. Words are broken into phonics chunks (luggage → lug · gage) and then reinforced in passages and video clips.
 
-It runs on macOS, Windows and Linux. Everything is stored on your own computer, there is no account, and AI and speech use API keys you bring yourself.
+- **Local first**: all data is stored in a local SQLite database. No account is required.
+- **Bring your own keys**: AI features use any OpenAI-compatible endpoint you configure; speech uses Volcengine Doubao TTS.
+- **Validated AI output**: model results pass tool-level validation and are checked again in Rust before they are saved.
 
-> The interface is in Simplified Chinese only for now.
+> The user interface is currently available in Simplified Chinese only.
 
 ![Home](docs/screenshots/home.png)
 
-## Getting words in
+## Features
 
-Create a vocabulary book and describe what it's for ("taking a pet to the vet"); the AI suggests a few vocabulary topics for that scene, and you pick some to generate a word list. You can also describe what you want in your own words, type words in by hand, or drop in your own material (txt, md, srt, vtt, docx, pdf) and have it pick out the new words and the phrases worth learning as a whole.
+### Vocabulary books
 
-Each entry then gets its IPA, syllables, phonics chunks and a few example sentences, from easy to harder; phrases are labelled by type (phrasal verb, collocation, idiom) and whether they can be split. If you don't like the examples, add more or regenerate. Vocabulary books, passages and videos share tags, and the sidebar groups related material by tag.
+- Entries can be single words or phrases (phrasal verbs, collocations, idioms, fixed expressions). Phrases are marked as separable or not.
+- Ways to add entries:
+  - Type them in by hand and auto-fill the details with AI.
+  - Generate them with AI from the book's scene description. The AI first suggests vocabulary topics, and you can pick several.
+  - Extract new words and phrases from text, subtitles or documents (txt, md, srt, vtt, docx, pdf).
+- Each entry is completed with IPA, syllables, phonics chunks, meanings and graded example sentences.
+- Vocabulary books, passages and videos share tags. The sidebar groups related material by tag.
 
 ![Vocabulary book](docs/screenshots/wordbook.png)
 
-## Practising
+### Study plans and practice
 
-Create a study plan: pick vocabulary books, choose how many new words a day, and the schedule is laid out for you.
-
-Every new word goes through three steps. First you see everything (phonics chunks, IPA, meaning, examples) and read along; then the English is hidden and you write it from memory; finally you only get the Chinese meaning and the sound and spell it from scratch.
+- Choose vocabulary books and a daily number of new words, and the schedule is generated automatically. Plans can be paused; the schedule shifts when you resume.
+- New words are practised in three steps:
+  1. Full information.
+  2. English hidden; spell from memory.
+  3. Chinese meaning, syllables and pronunciation only.
+- Reviews follow a memory level with intervals of 1, 3, 7, 14 and 30 days. A correct answer moves the word up a level and a mistake sends it back to the first. Reviews that are due are added to the day's tasks automatically.
 
 ![Word practice](docs/screenshots/practice.png)
 
-When a word won't stick, open "AI 老师" (AI tutor) on the word card. Ask it to walk through the word: what it means, why it's spelled that way, other words that follow the same phonics pattern, how it's used, what it's easily confused with, and ways to remember it; then keep asking, like "can you give me another example?". Depth and detail follow the learner profile.
-
-<table><tr>
-<td width="50%"><img src="docs/screenshots/explain.png" alt="AI tutor explaining a word"></td>
-<td width="50%"><img src="docs/screenshots/tutor.png" alt="Asking the AI tutor"></td>
-</tr></table>
-
-Reviews take care of themselves. Each word has a memory level, and the gap between reviews grows from 1 day to 3, 7, 14 and 30 days; a correct answer pushes it further out, a miss brings it back tomorrow. Today's reviews are already in today's task list when you open the app. Need a break? Pause the plan, and the rest of the schedule shifts when you resume.
-
 ![Plan detail](docs/screenshots/plan.png)
 
-## Putting words back into text
+### AI tutor
 
-Word lists alone are easy to forget, so there are passages too. Pick words you've studied and the AI plans the content, then writes a passage at your level with a sentence-by-sentence translation. Or import your own English material: the text stays exactly as it is, and only the translation and level are added.
+- Ask the AI tutor about any word card: meaning, spelling patterns, related words, usage, commonly confused words and memory aids. Follow-up questions are supported.
+- The depth of explanations follows the learner profile (primary school, secondary school or adult).
+- Sentences in passages and video clips can also be discussed with the tutor.
 
-Target words are highlighted while you read; click one to open its word card. For a sentence you don't follow, open "sentence analysis" to see its pattern, parts, grammar points and what it does in conversation, then ask the tutor about it. You can play the passage sentence by sentence or hide the text and just listen; the voice and reading style (teacher, natural, storytelling, …) are set in settings. Afterwards you can generate a comprehension set: cloze, multiple-choice and true/false questions are graded automatically, and open questions are scored by the AI with suggestions. Passages can be added to a study plan, one every few days.
+![AI tutor](docs/screenshots/tutor.png)
+
+### Passages
+
+- Ways to create passages:
+  - Generate them from the words in vocabulary books or study plans. The AI plans the content first and writes each passage with a sentence-by-sentence translation.
+  - Generate them from a topic description.
+- When you import English material, the original text is kept unchanged. Only translations, a title, a level and key words are added.
+- While reading:
+  - Target words are highlighted, and clicking one opens its word card.
+  - Passages can be played sentence by sentence or listened to with the text hidden.
+  - Any word or phrase you select in the text can be added as a target word.
+- Sentence analysis: sentence pattern, constituents, grammar points, communicative function, useful phrases and pronunciation notes.
+- Comprehension exercises:
+  - Cloze, multiple-choice and true/false questions are graded automatically.
+  - Open questions are scored by the AI, which also suggests improvements.
+- Passages can be added to study plans at a fixed interval.
 
 ![Passage reader](docs/screenshots/passage.png)
 
-## Learning from video
+![Sentence analysis](docs/screenshots/sentence.png)
 
-Import a video with its subtitles and the AI plans how to cut it into scene-sized clips; preview and adjust them in the clip editor, then cut. Each clip can be studied line by line, shadowed with recording, or used for listen-and-write practice, and clips can go into a study plan. Search an English word in the video library to find every clip where it's said. The ffmpeg used for video processing ships with the app.
+### Video library
 
-<sub>Screenshots use demo data.</sub>
+- After you import a video and its subtitles, the AI segments and translates the subtitles and proposes how to cut the video into scenes.
+- In the clip editor you can preview clips, adjust in and out points and correct the subtitle timing. Clips are cut precisely once you confirm the plan.
+- Each clip can be studied in three ways: line-by-line study, shadowing with recording, and listen-and-spell. Clips can be added to study plans.
+- Searching for an English word finds every clip in which it is spoken.
+- ffmpeg is bundled with the app; no separate installation is needed.
 
-## Installing
+![Video clips](docs/screenshots/clips.png)
 
-Download the installer for your system from the [Releases page](https://github.com/abbish/pindu/releases): `.dmg` for macOS, `-setup.exe` for Windows, AppImage, deb or rpm for Linux. The app isn't signed with an Apple or Microsoft developer certificate, so your system will stop it the first time you open it; allow it once (steps in [INSTALL.md](./INSTALL.md#1-下载安装包)). After that, new versions show up as a notice at the top of the window and install with one click, and each update is checked against the app's signing key before it's installed.
+![Clip editor](docs/screenshots/editor.png)
 
-After installing, add your API keys in settings: AI works with any OpenAI-compatible endpoint (OpenRouter, MiniMax, Moonshot and DeepSeek are preset), and speech uses Volcengine's Doubao TTS. Without keys you can still build vocabulary books by hand, practise and see your stats; only the AI and audio parts are off.
+### Speech
 
-Step-by-step instructions, upgrading and troubleshooting are in [INSTALL.md](./INSTALL.md) (Chinese). To build installers yourself, see [CONTRIBUTING.md](./CONTRIBUTING.md#本地打包).
+- 15 English voices are built in. Words and sentences are always read in English, including numbers and dates.
+- Sentence reading styles: teacher, natural, storytelling, news or a custom instruction. Speed, pitch and volume are adjustable.
+- Synthesized audio is cached locally, so the same content is never requested twice.
+
+## Installation
+
+Download the installer for your system from [Releases](https://github.com/abbish/pindu/releases):
+
+| System | Installer |
+|---|---|
+| macOS | `.dmg` |
+| Windows | `-setup.exe` |
+| Linux | AppImage, deb or rpm |
+
+The installers are not signed with an Apple or Microsoft developer certificate, so the system asks for confirmation the first time the app is opened; see [INSTALL.md](./INSTALL.md#1-下载安装包) (Chinese). New versions are installed through in-app updates, which are verified against the app's signing key before installation.
+
+After installation, configure these services in Settings:
+
+- **AI models**: any OpenAI-compatible endpoint. OpenRouter, MiniMax, Moonshot and DeepSeek are preset.
+- **Speech**: Volcengine Doubao TTS.
+
+Without them, you can still manage vocabulary books by hand, practise and view statistics.
 
 ## Privacy
 
-There is no Pindu server and no usage tracking. The app only goes online in two cases: when you use AI or speech, the relevant content (words, sentences, material you imported, answers you wrote) goes straight to the provider you configured; and when it checks GitHub for a new version, which you can turn off in settings. API keys are stored in plain text in the local database and never written to logs. See [SECURITY.md](./SECURITY.md).
+- There is no Pindu server and no usage tracking.
+- The app connects to the network in two cases only:
+  - When you use AI or speech features, the relevant content is sent directly to the provider you configured.
+  - When it checks GitHub for updates. You can turn this off in Settings.
+- API keys are stored in plain text in the local database and are never written to logs.
+
+See [SECURITY.md](./SECURITY.md) for details.
 
 ## Development
 
 ```bash
 npm install
 npm run agent:install   # first time only: dependencies of the built-in AI agent
-npm run tauri:dev       # dev mode
+npm run tauri:dev       # development mode
 npm run verify          # before committing: static checks plus frontend and backend tests
 ```
 
-The UI is React 19 with shadcn/ui and Tailwind CSS v4, the shell is Tauri 2, and the backend is Rust with SQLite. All AI work goes through a bundled agent process (built on [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) and compiled to a single binary with Bun). Model output is validated by tools and then checked again in Rust against the input; phonics analysis, for example, only accepts the words that were asked for and fills in any it missed.
+Tech stack:
 
-How the code is layered, what's in the database and how each AI task runs are documented in [CLAUDE.md](./CLAUDE.md), which also serves as the guide for AI coding assistants and describes the code as it is today. The agent design is in [docs/agent-harness/](./docs/agent-harness/DESIGN.md). Most docs are in Chinese, but issues and pull requests in English are welcome.
+| Part | Technology |
+|---|---|
+| UI | React 19, shadcn/ui, Tailwind CSS v4 |
+| Desktop shell | Tauri 2 |
+| Backend | Rust, SQLite |
+| AI | Bundled agent process, built on [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) and compiled to a single executable with Bun |
 
-Found a bug or have an idea? Open an [issue](https://github.com/abbish/pindu/issues). If you'd like to send code, read [CONTRIBUTING.md](./CONTRIBUTING.md) first. Please report security problems privately as described in [SECURITY.md](./SECURITY.md).
+Documentation:
+
+- Architecture, database tables, AI tasks and development rules: [CLAUDE.md](./CLAUDE.md)
+- AI agent design: [docs/agent-harness/](./docs/agent-harness/DESIGN.md)
+- Contribution workflow: [CONTRIBUTING.md](./CONTRIBUTING.md)
+
+Most documentation is in Chinese. Issues and pull requests in English are welcome.
 
 ## License
 
 [MIT](./LICENSE) © 2023-2026 abbish and RedLark contributors
+
+Third-party licenses are listed in [src-tauri/licenses/](./src-tauri/licenses/THIRD_PARTY_NOTICES.md).
+
+<sub>Screenshots use demo data. Video frames are from *Tears of Steel* (© Blender Foundation, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), [mango.blender.org](https://mango.blender.org)).</sub>
