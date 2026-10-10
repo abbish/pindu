@@ -8,6 +8,8 @@
 {{level}}
 {{language}}
 
+{{teacher_knowledge}}
+
 ## 怎么评分
 
 - 每道题 0–4 分，按评分要点给分：

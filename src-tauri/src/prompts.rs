@@ -462,6 +462,10 @@ pub fn system_prompt(task: PromptTask, profile: &PromptProfile, extra: &[(&str, 
         ("ipa", ipa_fragment(&profile.ipa)),
         ("phonics_terms", phonics_terms_fragment(&profile.learner)),
         ("custom", &custom),
+        (
+            "teacher_knowledge",
+            include_str!("prompts/fragments/teacher/knowledge.md").trim(),
+        ),
     ];
     vars.extend_from_slice(extra);
     render(task.template(), &vars)
