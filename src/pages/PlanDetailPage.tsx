@@ -292,10 +292,24 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
 
   const duePassages = passageItems.filter((p) => p.status === 'due' || p.status === 'overdue');
 
+  /** 打开到期最早的短文任务：有题组进练习，只朗读 / 看视频进短文页；没有到期的返回 false */
+  const openDuePassage = () => {
+    if (!plan) return false;
+    const next = [...duePassages].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate) || a.sortOrder - b.sortOrder)[0];
+    if (!next) return false;
+    if (next.setId !== null) practicePassage(next);
+    else onNavigate?.('passage-detail', { passageId: next.passageId, fromPlan: { planId: plan.id, planName: plan.name } });
+    return true;
+  };
+
   const startPractice = async () => {
     if (!plan) return;
     if (plan.practice_content === 'passages') {
-      setView('passages');
+      if (!openDuePassage()) {
+        const upcoming = passageItems.find((p) => p.status !== 'completed');
+        if (upcoming) toast.showInfo('今天没有要做的短文', `下一篇 ${formatDate(upcoming.scheduledDate)}`);
+        else toast.showInfo('短文都已完成');
+      }
       return;
     }
     const result = await studyService.getStudyPlanSchedules(plan.id);
@@ -310,10 +324,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
     // 统一规则：今天未练完 → 最早逾期 → 今天（再练）→ 第一个未练完
     const target = pickPracticeSchedule(result.data);
     if (target) onNavigate?.('word-practice', { planId: plan.id, scheduleId: target.id });
-    else if (duePassages.length > 0) {
-      toast.showInfo('单词日程都练完了');
-      setView('passages');
-    } else toast.showInfo('日程都已练完', '可以在「日程」页签再练一次');
+    else if (openDuePassage()) return;
+    else toast.showInfo('日程都已练完', '可以在「日程」页签再练一次');
   };
 
   const container = 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7';
