@@ -61,9 +61,9 @@ fn proper_noun_form(passage: &Passage, word: &str) -> Option<String> {
     found.filter(|_| mid_sentence)
 }
 
-/// 选中的文字是不是一个可以加成目标词的英文单词（字母开头，可含连字符 / 撇号，2–30 字）
+/// 选中的文字是不是可以加成目标词的英文单词或词组（2–6 个词）
 pub fn valid_selection(word: &str) -> bool {
-    passage_rules::valid_extra_word(word) && !word.trim().contains(' ')
+    passage_rules::valid_vocab(word)
 }
 
 impl WordCardService {
@@ -120,9 +120,12 @@ impl WordCardService {
     /// 读原文时把一个词加成目标词（指定单词）：必须是英文单词、正文里出现过（含变形）、还不是目标词；
     /// 单词本里有的关联 wordId。返回更新后的短文
     pub async fn add_target_word(&self, passage_id: Id, word: &str) -> AppResult<Passage> {
-        let word = word.trim().trim_matches(|c: char| !c.is_ascii_alphabetic());
+        let normalized = crate::types::wordbook::normalize_vocab(
+            word.trim_matches(|c: char| !c.is_ascii_alphabetic()),
+        );
+        let word = normalized.as_str();
         if !valid_selection(word) {
-            return Err(AppError::ValidationError("请选中一个英文单词".into()));
+            return Err(AppError::ValidationError("请选中一个英文单词或词组".into()));
         }
         let mut passage = self.passage(passage_id).await?;
         let text = passage
@@ -136,11 +139,13 @@ impl WordCardService {
                 "「{word}」不在这篇短文里"
             )));
         }
-        if passage
-            .target_words
-            .iter()
-            .any(|t| t.word.eq_ignore_ascii_case(word) || passage_rules::text_uses(word, &t.word))
-        {
+        if passage.target_words.iter().any(|t| {
+            t.word.eq_ignore_ascii_case(word)
+                    // 单词之间按变形判重（birds 与 bird）；词组只与相同的词组判重
+                    || (!passage_rules::is_phrase(word)
+                        && !passage_rules::is_phrase(&t.word)
+                        && passage_rules::text_uses(word, &t.word))
+        }) {
             return Err(AppError::ValidationError(format!("「{word}」已经是目标词")));
         }
         let stored = proper_noun_form(&passage, word).unwrap_or_else(|| word.to_lowercase());
@@ -296,5 +301,9 @@ mod tests {
             missing.iter().map(|t| t.word.as_str()).collect::<Vec<_>>(),
             vec!["Tyrannosaurus"]
         );
+        // 词组：正文里出现（可变形）就能加，与单词不互相判重
+        let passage = service.add_target_word(id, "study  fossil").await.unwrap();
+        assert_eq!(passage.target_words.last().unwrap().word, "study fossil");
+        assert!(service.add_target_word(id, "study fossil").await.is_err());
     }
 }

@@ -82,11 +82,12 @@ pub fn tokens(text: &str) -> impl Iterator<Item = String> + '_ {
         .filter(|t| !t.is_empty())
 }
 
-/// 文本里是否出现这个词的某个形式；短语按子串匹配
+/// 文本里是否出现这个词的某个形式；词组按 passage_rules::text_uses 匹配（每个词可变形、可拆开、占位词）
 pub fn occurs(forms: &HashSet<String>, text: &str) -> bool {
     if forms.iter().any(|f| f.contains(' ')) {
-        let lower = text.to_lowercase();
-        return forms.iter().any(|f| lower.contains(f.as_str()));
+        return forms
+            .iter()
+            .any(|f| crate::services::passage_rules::text_uses(text, f));
     }
     tokens(text)
         .any(|t| forms.contains(&t) || t.strip_suffix("'s").is_some_and(|b| forms.contains(b)))

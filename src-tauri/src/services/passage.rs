@@ -326,9 +326,9 @@ impl PassageService {
             if word.is_empty() {
                 continue;
             }
-            if !passage_rules::valid_extra_word(word) {
+            if !passage_rules::valid_vocab(word) {
                 return Err(AppError::ValidationError(format!(
-                    "「{}」不是一个英文单词",
+                    "「{}」不是英文单词或词组",
                     word
                 )));
             }
@@ -534,7 +534,9 @@ impl PassageService {
                     }
                     None => continue,
                 },
-                None if passage_rules::valid_extra_word(&w.word) => w.word.trim().to_string(),
+                None if passage_rules::valid_vocab(&w.word) => {
+                    crate::types::wordbook::normalize_vocab(&w.word)
+                }
                 None => continue,
             };
             if seen.insert(word.to_lowercase()) {

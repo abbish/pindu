@@ -111,9 +111,94 @@ pub fn english_word_count(sentences: &[PassageSentence]) -> usize {
     sentences.iter().map(|s| words_of(&s.en).count()).sum()
 }
 
-/// 文本里是否出现了某个词（含屈折形式）
+/// 文本里是否出现了某个词（含屈折形式）；词组按 [`phrase_spans`] 匹配
 pub fn text_uses(text: &str, word: &str) -> bool {
+    if is_phrase(word) {
+        let tokens: Vec<&str> = words_of(text).collect();
+        return !phrase_spans(&tokens, word).is_empty();
+    }
     words_of(text).any(|t| inflection_matches(t, word))
+}
+
+/// 带空格的是词组
+pub fn is_phrase(text: &str) -> bool {
+    text.trim().contains(char::is_whitespace)
+}
+
+/// 词组里代表「某人 / 某物」的占位词：在文本里对应 1–3 个任意词（take care of sb → take care of my sister）
+const PHRASE_PLACEHOLDERS: [&str; 8] = [
+    "sb",
+    "sth",
+    "somebody",
+    "something",
+    "someone",
+    "one's",
+    "sb's",
+    "oneself",
+];
+/// 可拆开的短语动词的小品词：两词短语动词中间允许插入 1–3 个词（pick up → pick it up）
+const PARTICLES: [&str; 14] = [
+    "up", "down", "out", "off", "on", "in", "away", "back", "over", "around", "about", "through",
+    "along", "aside",
+];
+
+/// 一个词是否是 part 的某种形式（规则屈折 + 不规则动词）
+fn token_is_form(token: &str, part: &str) -> bool {
+    inflection_matches(token, part)
+        || IRREGULAR_VERBS
+            .iter()
+            .find(|(base, _)| base.eq_ignore_ascii_case(part))
+            .is_some_and(|(_, forms)| forms.iter().any(|f| f.eq_ignore_ascii_case(token)))
+}
+
+/// 从 tokens[i] 起匹配 parts[k..]，返回匹配结束的位置（不含）
+fn phrase_match_from(tokens: &[&str], i: usize, parts: &[String], k: usize) -> Option<usize> {
+    if k == parts.len() {
+        return Some(i);
+    }
+    let part = parts[k].as_str();
+    if PHRASE_PLACEHOLDERS.contains(&part) {
+        return (1..=3)
+            .filter(|n| i + n <= tokens.len())
+            .find_map(|n| phrase_match_from(tokens, i + n, parts, k + 1));
+    }
+    if i < tokens.len() && token_is_form(tokens[i], part) {
+        if let Some(end) = phrase_match_from(tokens, i + 1, parts, k + 1) {
+            return Some(end);
+        }
+    }
+    // 可拆开的两词短语动词：动词和小品词之间可以插入宾语（pick it up）
+    if k == 1 && parts.len() == 2 && PARTICLES.contains(&part) {
+        return (1..=3)
+            .filter(|skip| i + skip < tokens.len())
+            .find(|skip| tokens[i + skip].eq_ignore_ascii_case(part))
+            .map(|skip| i + skip + 1);
+    }
+    None
+}
+
+/// 词组在一串单词里出现的位置（[开始, 结束)，不重叠）：每个词允许屈折变化（gave up、made a decision），
+/// 可拆开的短语动词中间允许插入宾语，占位词（sb / sth / one's）对应 1–3 个词
+pub fn phrase_spans(tokens: &[&str], phrase: &str) -> Vec<(usize, usize)> {
+    let parts: Vec<String> = phrase
+        .split_whitespace()
+        .map(|p| p.to_lowercase())
+        .collect();
+    if parts.is_empty() {
+        return Vec::new();
+    }
+    let mut spans = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        match phrase_match_from(tokens, i, &parts, 0) {
+            Some(end) if end > i => {
+                spans.push((i, end));
+                i = end;
+            }
+            _ => i += 1,
+        }
+    }
+    spans
 }
 
 /// 选词填空词库：答案（去重）+ 干扰词（不与答案重复，最多 3 个），按 `seed` 确定性打乱
@@ -254,6 +339,23 @@ pub fn valid_extra_word(word: &str) -> bool {
         && w.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
         && w.chars()
             .all(|c| c.is_ascii_alphabetic() || c == '-' || c == '\'')
+}
+
+/// 手动输入或 AI 给出的词汇是否合法：一个英文单词，或 2–6 个英文单词组成的词组（D45）
+pub fn valid_vocab(text: &str) -> bool {
+    let parts: Vec<&str> = text.split_whitespace().collect();
+    match parts.len() {
+        1 => valid_extra_word(parts[0]),
+        2..=6 => {
+            text.chars().count() <= 60
+                && parts.iter().all(|p| {
+                    p.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                        && p.chars()
+                            .all(|c| c.is_ascii_alphabetic() || c == '-' || c == '\'')
+                })
+        }
+        _ => false,
+    }
 }
 
 // ==================== 模型提交的二次校验 ====================
@@ -436,7 +538,7 @@ pub fn plan_from_submission(
                         required: false,
                         ..c.clone()
                     });
-                } else if free && valid_extra_word(&w) {
+                } else if free && valid_vocab(&w) {
                     used.insert(key);
                     picked += 1;
                     words.push(PassageTargetWord {
@@ -848,6 +950,29 @@ pub fn translation_from_submission(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn phrases_match_inflected_separable_and_placeholder_forms() {
+        let toks = |t: &'static str| words_of(t).collect::<Vec<_>>();
+        assert!(text_uses("She gave up smoking.", "give up"));
+        assert!(text_uses("He is giving up.", "give up"));
+        assert!(text_uses("Please pick it up.", "pick up"));
+        assert!(text_uses("Pick the red box up now.", "pick up"));
+        assert!(!text_uses("Pick a very big red box up.", "pick up"));
+        assert!(text_uses("They made a decision.", "make a decision"));
+        assert!(text_uses(
+            "I take care of my little sister.",
+            "take care of sb"
+        ));
+        assert!(text_uses("It broke the ice.", "break the ice"));
+        assert!(!text_uses("The ice broke.", "break the ice"));
+        assert!(!text_uses("Give me the cup.", "give up"));
+        assert_eq!(
+            phrase_spans(&toks("look after it and look after him"), "look after"),
+            vec![(0, 2), (4, 6)]
+        );
+        assert!(text_uses_any_form("We gave up.", "give up"));
+    }
     use crate::types::common::Id;
     use serde_json::json;
 
