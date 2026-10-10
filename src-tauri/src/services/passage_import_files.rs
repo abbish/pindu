@@ -36,10 +36,20 @@ pub fn docx_text(bytes: &[u8]) -> AppResult<String> {
                 paragraph.push_str(&text);
             }
             Ok(Event::GeneralRef(r)) if in_text => {
-                // &amp; 一类实体
-                let name = r.into_inner();
-                if let Some(c) = quick_xml::escape::resolve_predefined_entity(&name) {
-                    paragraph.push_str(c);
+                // &#34; / &#x2019; 字符引用与 &amp; 一类实体；认不出的原样保留，不丢字
+                match r.resolve_char_ref() {
+                    Ok(Some(c)) => paragraph.push(c),
+                    _ => {
+                        let name = r.xml10_content();
+                        match quick_xml::escape::resolve_predefined_entity(&name) {
+                            Some(c) => paragraph.push_str(c),
+                            None => {
+                                paragraph.push('&');
+                                paragraph.push_str(&name);
+                                paragraph.push(';');
+                            }
+                        }
+                    }
                 }
             }
             Ok(Event::Empty(e)) if e.name().as_ref() == "w:tab" => paragraph.push(' '),
@@ -96,6 +106,17 @@ mod tests {
             zip.finish().unwrap();
         }
         buf.into_inner()
+    }
+
+    #[test]
+    fn docx_character_references_are_kept() {
+        let xml = r#"<?xml version="1.0"?><w:document xmlns:w="w"><w:body>
+            <w:p><w:r><w:t>They said &#34;Hello&#34; at the caf&#xE9; &amp; it&#x2019;s fine &#xD800; &foo;.</w:t></w:r></w:p>
+            </w:body></w:document>"#;
+        assert_eq!(
+            docx_text(&docx(xml)).unwrap(),
+            "They said \"Hello\" at the caf\u{e9} & it\u{2019}s fine &#xD800; &foo;.\n\n"
+        );
     }
 
     #[test]
