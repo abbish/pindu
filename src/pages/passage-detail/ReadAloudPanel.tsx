@@ -194,7 +194,8 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
   const status = (() => {
     if (recall) return '回忆目标词';
     if (player.pausing) return '停顿中，请跟读';
-    if (player.current == null || !player.playing) return blind ? '盲听中' : '点击句首图标朗读单句，点击目标词查看单词';
+    // 盲听只是隐藏原文，不会自己开始播放：没在播时不显示状态，播放按钮写明「开始盲听」
+    if (player.current == null || !player.playing) return blind ? '' : '点击句首图标朗读单句，点击目标词查看单词';
     const round = prefs.repeat > 1 ? ` · 第 ${player.round}/${prefs.repeat} 遍` : '';
     return `第 ${player.current + 1}/${texts.length} 句${round}`;
   })();
@@ -255,7 +256,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
       <div className="flex items-center gap-2 border-b pb-4 select-none">
         <Button onClick={() => (player.playing ? stopAll() : player.play(player.current ?? 0))}>
           {player.playing ? <Pause /> : <Play />}
-          {player.playing ? '暂停' : player.current ? '从这句继续' : '朗读全文'}
+          {player.playing ? '暂停' : player.current ? '从这句继续' : blind ? '开始盲听' : '朗读全文'}
         </Button>
         <Button variant="outline" size="icon" aria-label="上一句" onClick={() => go(-1)} disabled={(player.current ?? 0) === 0}>
           <ChevronLeft />
