@@ -74,12 +74,13 @@ export const TTSSettings: React.FC = () => {
     if (result.success) setCacheStats(result.data);
   };
 
-  const loadData = async () => {
-    setLoading(true);
+  /** silent：保存后的刷新不换成骨架屏（否则页面高度塌掉、滚动跳回顶部，子组件也会重新挂载） */
+  const loadData = async (silent = false) => {
+    if (!silent) setLoading(true);
     const [configResult, voicesResult] = await Promise.all([ttsService.getTtsConfig(), ttsService.getTTSVoices()]);
     if (configResult.success) setConfig(configResult.data);
-    setLoadError(configResult.success ? null : configResult.error);
-    setVoices(voicesResult.success ? voicesResult.data : []);
+    if (!silent) setLoadError(configResult.success ? null : configResult.error);
+    if (voicesResult.success || !silent) setVoices(voicesResult.success ? voicesResult.data : []);
     setLoading(false);
   };
 
@@ -134,7 +135,7 @@ export const TTSSettings: React.FC = () => {
     }
     toast.showSuccess('已保存语音合成配置');
     setShowEdit(false);
-    await loadData();
+    await loadData(true);
   };
 
   /** 直接在页面上改的设置（音色、语速）：立即保存 */
@@ -142,7 +143,7 @@ export const TTSSettings: React.FC = () => {
     const result = await ttsService.updateTtsConfig(request);
     if (!result.success) return toast.showError('无法保存', result.error);
     toast.showSuccess(done);
-    await loadData();
+    await loadData(true);
   };
   const chooseVoice = (voiceId: string) => {
     if (!config || voiceId === config.defaultVoiceId) return;
@@ -184,7 +185,7 @@ export const TTSSettings: React.FC = () => {
     return (
       <SettingsPanel title={title}>
         {!loading && loadError ? (
-          <PageError title="无法加载语音合成配置" message={loadError} onRetry={loadData} />
+          <PageError title="无法加载语音合成配置" message={loadError} onRetry={() => loadData()} />
         ) : (
           <>
             <Skeleton className="h-48 rounded-xl" />
