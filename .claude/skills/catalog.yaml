@@ -1,5 +1,5 @@
 version: 1
-purpose: RedLark 仓库级开发 Skill 注册表（Claude Code）。触发语义以各 SKILL.md frontmatter 为准；本文件只提供注册、分组和校验依据。
+purpose: RedLark 仓库级 Skill 注册表（Claude Code），覆盖开发与产品传播。触发语义以各 SKILL.md frontmatter 为准；本文件只提供注册、分组和校验依据。
 
 usage:
   root_instruction: CLAUDE.md
@@ -10,6 +10,7 @@ usage:
     - .claude/skills/deliver-contract-and-data/references/time-and-timezone.md
     - .claude/skills/deliver-backend-rust/references/sqlx-migration-standards.md
     - .claude/skills/sdd-verify/references/verification-methods.md
+    - .claude/skills/promo-video-review/references/quality-standard.md
 
 groups:
   workflow:
@@ -20,8 +21,23 @@ groups:
     description: 维护跨会话 work record 和长期回归保护
   engineering-governance:
     description: 维护 CLAUDE.md、Skill 目录与可执行 gate
+  product-communication:
+    description: 策划、制作与审查产品宣传视频
 
 skills:
+  - id: promo-video-script
+    group: product-communication
+    path: .claude/skills/promo-video-script/SKILL.md
+    summary: 为产品宣传视频策划或修改剧本，收敛卖点、素材、分镜、文案与时间轴
+  - id: promo-video-produce
+    group: product-communication
+    path: .claude/skills/promo-video-produce/SKILL.md
+    summary: 按当前剧本制作或修改产品宣传视频，生成本地成片、封面与可复现导出记录
+  - id: promo-video-review
+    group: product-communication
+    path: .claude/skills/promo-video-review/SKILL.md
+    summary: 审查产品宣传视频，以实际成片核对技术质量、视觉、事实、首帧与片尾
+
   - id: sdd-work
     group: workflow
     path: .claude/skills/sdd-work/SKILL.md

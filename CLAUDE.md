@@ -308,19 +308,22 @@ export const fooService = new FooService();
 **改 AI 行为**
 `src-tauri/src/prompts/agent/*.md`（提示词）/ `agent/src/tools/*.ts`（工具与校验）→ `agent::tasks` 的结果校正 → `npm run agent:build` + 重新编译 → `agent/eval/` 前后对比 + 设置页「测试」与真实 Provider 验证 → 在 DECISIONS.md 追加决策。
 
-## 10. 开发 Harness（SDD Skills）
+## 10. 仓库 Skills（开发与产品传播）
 
-多步骤开发工作由 `.claude/skills/<id>/SKILL.md` 定义流程，本文件只保留共通事实与硬约束。完整导航见 `.claude/skills/README.md`。
+多步骤工作由 `.claude/skills/<id>/SKILL.md` 定义流程，本文件只保留共通事实与硬约束。完整导航见 `.claude/skills/README.md`。
 
 **开始任何任务前**：读本文件 → `git status --short` 保护他人未提交改动 → 如有匹配的 `.claude/work/<work-id>/` 先读 `progress.md` → 按 Skill 的 description 选最小匹配入口并完整读取其 `SKILL.md`。
 
 | 场景 | 入口 |
 | --- | --- |
+| 产品宣传片策划、剧本与分镜 | `promo-video-script`（剧本管理：`docs/videos/README.md`） |
+| 按剧本生成宣传片、换封面或修改画面 | `promo-video-produce` |
+| 宣传片审片、清晰度与元素定位检查 | `promo-video-review` |
 | 端到端 feature / bugfix / refactor / improvement | `sdd-work`（再分流到 plan / analyze / implement / verify） |
-| 只要方案、拆批次 | `sdd-plan` |
+| 软件开发方案、拆批次 | `sdd-plan` |
 | 原因不清、数据不对、命令调用失败 | `sdd-analyze`（证据地图：`sdd-analyze/references/redlark-diagnostic-map.md`） |
 | 执行一个已明确的批次 | `sdd-implement` → 调度 `deliver-backend-rust` / `deliver-frontend-react` / `deliver-contract-and-data` / `deliver-ai-prompt` |
-| 验收、测一下 | `sdd-verify`（方法：`sdd-verify/references/verification-methods.md`） |
+| 软件功能验收、测一下 | `sdd-verify`（方法：`sdd-verify/references/verification-methods.md`） |
 | 续跑、交接 | `harness-context-memory` |
 | 把失败补成测试 | `harness-regression-curation` |
 | 改本文件 / Skill / hook | `harness-governance` |

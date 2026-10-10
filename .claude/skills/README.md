@@ -1,8 +1,18 @@
-# RedLark Development Skills
+# RedLark Repository Skills
 
-本目录是 Claude Code 在 RedLark 仓库中的开发 workflow 与工程能力入口（SDD harness）。根规则在 `CLAUDE.md`；本目录定义多步骤流程；`catalog.yaml` 只做注册与分组；`bash scripts/validate-skills.sh` 校验结构。
+本目录是 Claude Code 在 RedLark 仓库中的开发 workflow、工程能力与产品传播入口。根规则在 `CLAUDE.md`；本目录定义多步骤流程；`catalog.yaml` 只做注册与分组；`bash scripts/validate-skills.sh` 校验结构。
 
 设计源自 ai4se-requirements-assistant 的 `.agents/skills` harness，按 RedLark（Tauri 2 + Rust 三层 + React，单客户端）裁剪：不设 `.agents` + 符号链接双层，不含 SSE/Agent runtime 与 UAT 发布层。
+
+## Product Communication
+
+- `promo-video-script`：宣传片策划、卖点与分镜、剧本和字幕修订；只要求规划时不渲染。
+- `promo-video-produce`：按当前剧本生成成片，或调整封面、文案、镜头和片尾；沿用已有授权，交付前衔接审片。
+- `promo-video-review`：检查实际导出视频的清晰度、定位、功能真实性、首帧、片尾与技术质量；纯 review 交付问题，已授权优化时衔接修片。
+
+剧本管理入口：`docs/videos/README.md`；制作与审片工具：`docs/videos/tools.md`；公共质量标准：`promo-video-review/references/quality-standard.md`。单片设置保存在对应剧本中。
+
+宣传视频的策划、制作和审片走以上入口；应用的视频库、导入、剪辑、学习功能开发仍走 `sdd-work`。修改 Skill 和通用工具走 `harness-governance`，按实际改动验证。
 
 ## Workflow
 

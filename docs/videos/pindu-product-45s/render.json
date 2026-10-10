@@ -1,0 +1,423 @@
+{
+  "script": "docs/videos/pindu-product-45s/script.md",
+  "script_version": "1.0",
+  "script_sha256": "497797929a3ff876f913477810f65b8e910e6fc2e41d7c42518120a4811412bb",
+  "subtitles": "docs/videos/pindu-product-45s/subtitles.srt",
+  "renderer": "docs/videos/pindu-product-45s/render.py",
+  "title": "拼读 Pindu.app 产品宣传片",
+  "duration": 45,
+  "fps": 30,
+  "size": [
+    1920,
+    1080
+  ],
+  "scenes": [
+    {
+      "id": "overview",
+      "start": 0,
+      "end": 5
+    },
+    {
+      "id": "ai-vocabulary",
+      "start": 5,
+      "end": 11
+    },
+    {
+      "id": "ai-passage",
+      "start": 11,
+      "end": 17
+    },
+    {
+      "id": "ai-video",
+      "start": 17,
+      "end": 23
+    },
+    {
+      "id": "video-learning",
+      "start": 23,
+      "end": 29
+    },
+    {
+      "id": "ai-tutor",
+      "start": 29,
+      "end": 35
+    },
+    {
+      "id": "practice-plan",
+      "start": 35,
+      "end": 40
+    },
+    {
+      "id": "ending",
+      "start": 40,
+      "end": 45
+    }
+  ],
+  "assets": {
+    "words": {
+      "path": "docs/screenshots/wordbook.png",
+      "provenance": "产品文档截图",
+      "crop": [
+        350,
+        125,
+        1585,
+        1040
+      ],
+      "width": 1000,
+      "label": "词汇本 · 出国旅行与购物"
+    },
+    "passage": {
+      "path": "docs/screenshots/passage.png",
+      "provenance": "产品文档截图",
+      "crop": [
+        357,
+        123,
+        1565,
+        983
+      ],
+      "width": 1000,
+      "label": "短文阅读 · AI 生成与练习题"
+    },
+    "plan": {
+      "path": "docs/screenshots/plan.png",
+      "provenance": "产品文档截图",
+      "crop": [
+        355,
+        130,
+        1570,
+        925
+      ],
+      "width": 1000,
+      "label": "学习计划 · 每日学习与复习"
+    },
+    "practice": {
+      "path": "docs/screenshots/practice.png",
+      "provenance": "产品文档截图",
+      "crop": [
+        29,
+        142,
+        938,
+        777
+      ],
+      "width": 1000,
+      "label": "单词练习 · 拼读"
+    },
+    "tutor": {
+      "path": "docs/screenshots/tutor.png",
+      "provenance": "产品文档截图",
+      "crop": [
+        1117,
+        127,
+        1574,
+        744
+      ],
+      "width": 555,
+      "label": "AI 老师 · 拼读"
+    },
+    "clips": {
+      "path": "docs/screenshots/clips.png",
+      "provenance": "产品文档截图",
+      "crop": [
+        353,
+        141,
+        1568,
+        966
+      ],
+      "width": 1000,
+      "label": "视频库 · 拼读"
+    },
+    "editor": {
+      "path": "docs/screenshots/editor.png",
+      "provenance": "产品文档截图",
+      "crop": [
+        9,
+        42,
+        1588,
+        1068
+      ],
+      "width": 1000,
+      "label": "视频切片 · 拼读"
+    },
+    "home": {
+      "path": "docs/screenshots/home.png",
+      "provenance": "产品文档截图",
+      "full_crop": [
+        0,
+        0,
+        1600,
+        1074
+      ],
+      "focus_crop": [
+        0,
+        208,
+        780,
+        732
+      ]
+    },
+    "movie": {
+      "path": "docs/screenshots/editor.png",
+      "provenance": "产品文档截图中的 Tears of Steel 影像；示意动画",
+      "crop": [
+        326,
+        230,
+        1148,
+        573
+      ],
+      "size": [
+        930,
+        388
+      ],
+      "credit": {
+        "author": "Blender Foundation",
+        "license": "CC BY 3.0",
+        "source": "https://mango.blender.org/",
+        "changes": "裁切与缩放"
+      }
+    }
+  },
+  "text": {
+    "brand_glyph": "拼",
+    "brand_name": "拼读",
+    "brand_latin": "Pindu.app",
+    "header_tagline": "AI 准备素材  /  学习 · 练习 · 复习",
+    "footer_brand": "PINDU.APP",
+    "intro_line1": "把英语素材，",
+    "intro_line2": "变成每天的学习。",
+    "intro_badge": "AI 帮你准备，拼读陪你学练",
+    "outro_line1": "词汇、短文、视频，",
+    "outro_line2": "一起学，一起练。",
+    "outro_body": "AI 准备素材，AI 老师讲解，学习接着练习。",
+    "outro_cta": "下载拼读，开始今天的学习。",
+    "outro_url": "github.com/abbish/pindu",
+    "outro_platforms": "macOS  ·  Windows  ·  Linux",
+    "outro_ai_note": "AI 功能需配置服务密钥",
+    "film_credit": "示例影像：Tears of Steel · © Blender Foundation · CC BY 3.0",
+    "film_source": "mango.blender.org · 示范画面经裁切",
+    "scenario_title": "你的学习场景",
+    "scenario_items": "机场 · 酒店 · 购物",
+    "targets_title": "围绕目标词生成",
+    "targets_items": "robot · message · model",
+    "video_title": "视频学习",
+    "illustration_label": "功能示意动画",
+    "video_headline": "视频，不止看。",
+    "video_body": "看懂台词，开口跟读，听一句再拼。",
+    "video_sentence": "Are you ready?",
+    "video_translation": "你准备好了吗？",
+    "video_click_hint": "点击台词定位播放 · 重点词学习 · 句子分析",
+    "video_record_hint": "听原声 → 录音跟读 → 回放对比",
+    "video_listen_hint": "听原声，按顺序拼出句子。",
+    "video_check_hint": "再听  ·  慢速  ·  核对",
+    "video_success": "拼出完整句子 ✓",
+    "tutor_note": "按学习者调整讲解深度",
+    "plan_steps": "加入计划 → 每日学习 → 到期复习",
+    "word_card_title": "今天的词组",
+    "word_card_line1": "boarding",
+    "word_card_line2": "pass",
+    "word_card_translation": "登机牌",
+    "word_card_prompt": "问问它的用法 →"
+  },
+  "palette": {
+    "ink": "#143A36",
+    "teal": "#087E76",
+    "mint": "#C6F2E6",
+    "yellow": "#F4DF63",
+    "gray": "#58706B",
+    "paper": "#F4F7F3",
+    "white": "#FFFFFF"
+  },
+  "copies": {
+    "1": {
+      "label": "AI 词汇生成",
+      "lines": [
+        "按学习场景，",
+        "AI 生成词汇。"
+      ],
+      "body": [
+        "拼读、释义、例句，一起补齐。"
+      ]
+    },
+    "2": {
+      "label": "AI 短文生成",
+      "lines": [
+        "用要学的词，",
+        "AI 生成短文。"
+      ],
+      "body": [
+        "配逐句译文，还能生成练习题。"
+      ]
+    },
+    "3": {
+      "label": "AI 视频整理",
+      "lines": [
+        "把视频，",
+        "变成学习片段。"
+      ],
+      "body": [
+        "AI 整理台词、翻译，规划场景切片。"
+      ]
+    },
+    "5": {
+      "label": "AI 老师",
+      "lines": [
+        "不懂的地方，",
+        "问 AI 老师。"
+      ],
+      "body": [
+        "拼读规律、用法辨析、句子分析，",
+        "都可以继续追问。"
+      ]
+    },
+    "6": {
+      "label": "学习 · 练习 · 复习",
+      "lines": [
+        "学过，再练过。",
+        "按计划复习。"
+      ],
+      "body": [
+        "词汇拼写、短文阅读与听力练习，",
+        "视频跟读与听句拼句。"
+      ]
+    }
+  },
+  "footer_labels": [
+    "软件全景",
+    "AI 词汇",
+    "AI 短文",
+    "AI 视频",
+    "视频学习",
+    "AI 老师",
+    "学习练习",
+    "下载"
+  ],
+  "intro_materials": [
+    "词汇本",
+    "短文库",
+    "视频库"
+  ],
+  "video_steps": [
+    "视频与字幕",
+    "AI 规划",
+    "精确切片"
+  ],
+  "video_tabs": [
+    "场景学习",
+    "跟读",
+    "听力"
+  ],
+  "video_modes": [
+    "逐句学习",
+    "跟读录音",
+    "听句拼句"
+  ],
+  "record_labels": [
+    "原声",
+    "我的跟读"
+  ],
+  "video_answer": [
+    "Are",
+    "you",
+    "ready",
+    "?"
+  ],
+  "video_descriptions": [
+    "逐句台词 · 重点词 · 句子分析",
+    "听原声 · 自己录音 · 回放对比",
+    "先听原声 · 用单词卡拼出句子"
+  ],
+  "practice_cards": [
+    [
+      "词汇",
+      "拼写回忆",
+      "看 · 说 · 盖 · 写 · 查"
+    ],
+    [
+      "短文",
+      "阅读 / 听力",
+      "填空 · 选择 · 判断"
+    ],
+    [
+      "视频",
+      "跟读 / 拼句",
+      "听原声 · 开口说 · 拼句"
+    ]
+  ],
+  "highlights": {
+    "passage_quiz": [
+      1372,
+      133,
+      1508,
+      181
+    ],
+    "video_ai_plan": [
+      238,
+      111,
+      268,
+      147
+    ],
+    "video_split": [
+      1395,
+      48,
+      1584,
+      91
+    ]
+  },
+  "motion": {
+    "intro_focus_start": 3,
+    "intro_focus_duration": 1.1,
+    "words_crossfade": [
+      3.7,
+      4.15
+    ],
+    "quiz_highlight": 2.1,
+    "video_crossfade": [
+      1.8,
+      2.25
+    ],
+    "ai_plan_highlight": [
+      2.6,
+      4
+    ],
+    "practice_crossfade": [
+      2.7,
+      3.2
+    ],
+    "scene_transition": 0.4,
+    "outro_transition": 0.35
+  },
+  "encoding": {
+    "crf": 15,
+    "preset": "medium"
+  },
+  "review": {
+    "cover_time": 0,
+    "cover_psnr_min": 38,
+    "ending_start": 40,
+    "ending_static": true,
+    "ending_max_mae": 2,
+    "sample_times": [
+      0,
+      1.7,
+      4.6,
+      7.7,
+      8.92,
+      9.9,
+      14,
+      18.9,
+      20.2,
+      22,
+      24.4,
+      26,
+      28.7,
+      32,
+      37,
+      39,
+      39.8,
+      40,
+      44.966
+    ],
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "color_space": "bt709"
+  },
+  "video_name": "pindu-product.mp4"
+}
