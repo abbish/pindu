@@ -122,6 +122,16 @@ impl WordAnalysisJob {
             )));
         }
 
+        // AI 标签只给新建的词汇本打（保存前还没有单词）；已有单词的词汇本不再追加，用户删掉的标签不会被加回来
+        let was_empty = crate::repositories::wordbook_repository::WordBookRepository::new(
+            self.pool.clone(),
+            self.logger.clone(),
+        )
+        .find_by_id(self.book_id)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|b| b.total_words == 0);
         ctx.stage("保存到词汇本");
         let saved = WordBookService::new(self.pool.clone(), self.logger.clone())
             .create_word_book_from_analysis(CreateWordBookFromAnalysisRequest {
@@ -135,7 +145,9 @@ impl WordAnalysisJob {
                 tag_ids: None,
             })
             .await?;
-        self.add_tags().await;
+        if was_empty {
+            self.add_tags().await;
+        }
         self.logger.info(
             "WORD_ANALYSIS",
             &format!(
