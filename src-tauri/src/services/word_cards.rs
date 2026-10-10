@@ -139,20 +139,37 @@ impl WordCardService {
                 "「{word}」不在这篇短文里"
             )));
         }
-        if passage.target_words.iter().any(|t| {
-            t.word.eq_ignore_ascii_case(word)
-                    // 单词之间按变形判重（birds 与 bird）；词组只与相同的词组判重
-                    || (!passage_rules::is_phrase(word)
-                        && !passage_rules::is_phrase(&t.word)
-                        && passage_rules::text_uses(word, &t.word))
-        }) {
-            return Err(AppError::ValidationError(format!("「{word}」已经是目标词")));
-        }
-        let stored = proper_noun_form(&passage, word).unwrap_or_else(|| word.to_lowercase());
+        // 选中的是变形（fossils、studied、gave up 里的 gave）时，词汇本或单词卡里有原形就按原形加入
         let repository = PassageRepository::new(self.pool.clone());
-        let known = repository
+        let mut stored = proper_noun_form(&passage, word).unwrap_or_else(|| word.to_lowercase());
+        let mut known = repository
             .word_ids_by_text(std::slice::from_ref(&stored))
             .await?;
+        if !known.contains_key(&stored.to_lowercase()) && !passage_rules::is_phrase(&stored) {
+            let bases = passage_rules::base_candidates(&stored);
+            if !bases.is_empty() {
+                let found = repository.word_ids_by_text(&bases).await?;
+                let carded = WordCardRepository::new(self.pool.clone())
+                    .find_many(&bases)
+                    .await?;
+                if let Some(base) = bases
+                    .iter()
+                    .find(|b| found.contains_key(*b) || carded.contains_key(*b))
+                {
+                    stored = base.clone();
+                    known = found;
+                }
+            }
+        }
+        // 判重：同一个词（含变形，双向：birds 与 bird）或同一个词组（gave up 与 give up）
+        let same = |a: &str, b: &str| {
+            a.eq_ignore_ascii_case(b)
+                || (passage_rules::is_phrase(a) == passage_rules::is_phrase(b)
+                    && (passage_rules::text_uses(a, b) || passage_rules::text_uses(b, a)))
+        };
+        if passage.target_words.iter().any(|t| same(&t.word, &stored)) {
+            return Err(AppError::ValidationError(format!("「{word}」已经是目标词")));
+        }
         passage.target_words.push(PassageTargetWord {
             word_id: known.get(&stored.to_lowercase()).copied(),
             word: stored,

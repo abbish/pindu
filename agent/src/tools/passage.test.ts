@@ -139,3 +139,16 @@ test('导入材料翻译：每句都要译、编号不重复、水平与重点�
   assert.match(problems, /level/);
   assert.match(problems, /英文单词/);
 });
+
+test('用词判断与 Rust 同规则：不规则动词、词组变形与拆开、占位词、连字符', async () => {
+  const { uses } = await import('./passage.ts');
+  const tok = (s: string) => (s.match(/[A-Za-z']+/g) ?? []);
+  assert.ok(uses(tok('Tom bought a cake.'), 'buy'));
+  assert.ok(uses(tok('She made a decision.'), 'make a decision'));
+  assert.ok(!uses(tok('She made a big decision.'), 'make a decision'));
+  assert.ok(uses(tok('Please pick it up.'), 'pick up'));
+  assert.ok(!uses(tok('He looked carefully after it.'), 'look after'));
+  assert.ok(uses(tok('Take care of my sister.'), 'take care of sb'));
+  assert.ok(uses(tok('A well-known fact.'), 'well-known'));
+  assert.ok(uses(tok('The constructor works.'), 'constructor'));
+});

@@ -2,7 +2,7 @@
 // 校验不通过时抛错，模型看到问题列表后只改被指出的地方再重交；Rust 侧（services::passage_rules）会按请求再校验一次。
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { IRREGULAR_VERBS } from "./irregular.ts";
+import { irregularForms } from "./irregular.ts";
 import { Type, type Static } from "typebox";
 
 /** token 是否是 word 本身或常见屈折形式（与 Rust passage_rules::inflection_matches 同规则） */
@@ -19,24 +19,42 @@ export function inflectionMatches(token: string, word: string): boolean {
 }
 
 const wordsOf = (text: string) => (text.match(/[A-Za-z']+/g) ?? []).map(w => w.replace(/^'+|'+$/g, "")).filter(Boolean);
-/** 正文是否用到这个单词或词组（词组：各个词按顺序出现、中间可插入少量词，占位词不要求） */
-const uses = (tokens: string[], word: string) => {
-  const parts = word.toLowerCase().trim().split(/\s+/).filter(p => !PLACEHOLDERS.has(p));
-  const isForm = (t: string, p: string) => inflectionMatches(t, p) || (IRREGULAR_VERBS[p] ?? []).includes(t.toLowerCase());
-  if (parts.length <= 1) return tokens.some(t => isForm(t, parts[0] ?? word));
-  return tokens.some((t, start) => {
-    if (!isForm(t, parts[0])) return false;
-    let i = start + 1;
-    for (const p of parts.slice(1)) {
-      let found = -1;
-      for (let j = i; j < Math.min(tokens.length, i + 4); j++) if (isForm(tokens[j], p)) { found = j; break; }
-      if (found < 0) return false;
-      i = found + 1;
-    }
-    return true;
-  });
-};
+/** 词组里代表某人 / 某物的占位词：对应 1–3 个任意词 */
 const PLACEHOLDERS = new Set(["sb", "sth", "somebody", "something", "someone", "one's", "sb's", "oneself"]);
+/** 可拆开的两词短语动词的小品词：中间允许插入 1–3 个词（pick it up） */
+const PARTICLES = new Set(["up", "down", "out", "off", "on", "in", "away", "back", "over", "around", "about", "through", "along", "aside"]);
+const isForm = (t: string, p: string) => inflectionMatches(t, p) || irregularForms(p).includes(t.toLowerCase());
+
+/** 从 tokens[i] 起匹配 parts[k..]，返回结束位置（与 Rust passage_rules::phrase_match_from、前端 utils/passage.ts 同规则） */
+function matchFrom(tokens: string[], i: number, parts: string[], k: number): number | null {
+  if (k === parts.length) return i;
+  const part = parts[k];
+  if (PLACEHOLDERS.has(part)) {
+    for (let n = 1; n <= 3 && i + n <= tokens.length; n++) {
+      const end = matchFrom(tokens, i + n, parts, k + 1);
+      if (end !== null) return end;
+    }
+    return null;
+  }
+  if (i < tokens.length && isForm(tokens[i], part)) {
+    const end = matchFrom(tokens, i + 1, parts, k + 1);
+    if (end !== null) return end;
+  }
+  if (k === 1 && parts.length === 2 && PARTICLES.has(part)) {
+    for (let skip = 1; skip <= 3 && i + skip < tokens.length; skip++) {
+      if (tokens[i + skip].toLowerCase() === part) return i + skip + 1;
+    }
+  }
+  return null;
+}
+
+/** 正文是否用到这个单词或词组（与 Rust passage_rules::text_uses 同规则：单词含变形与不规则动词；词组与连字符词按片段匹配） */
+export const uses = (tokens: string[], word: string) => {
+  const w = word.trim().toLowerCase();
+  if (!/[\s-]/.test(w)) return tokens.some(t => isForm(t, w));
+  const parts = w.split(/[\s-]+/).filter(Boolean);
+  return tokens.some((_, start) => matchFrom(tokens, start, parts, 0) !== null);
+};
 const fail = (problems: string[]) => {
   throw new Error(`提交未通过校验（${problems.length} 处），请修正后重新提交：\n- ${problems.join("\n- ")}`);
 };

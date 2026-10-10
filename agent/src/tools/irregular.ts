@@ -81,3 +81,9 @@ export const IRREGULAR_VERBS: Record<string, string[]> = {
   win: ['won'],
   write: ['wrote', 'written'],
 };
+
+/** 不规则动词的变形（只查表里自己的键：constructor、toString 等不会取到原型上的属性） */
+export const irregularForms = (base: string): string[] => {
+  const key = base.toLowerCase();
+  return Object.hasOwn(IRREGULAR_VERBS, key) ? IRREGULAR_VERBS[key] : [];
+};

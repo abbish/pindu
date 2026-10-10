@@ -122,7 +122,10 @@ pub fn vocab_kind(text: &str) -> &'static str {
 
 /// 词汇文本归一：去首尾空白、连续空白合成一个空格（"give  up" 与 "give up" 是同一条）
 pub fn normalize_vocab(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+    text.replace(['\u{2019}', '\u{2018}'], "'")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn default_vocab_kind() -> String {

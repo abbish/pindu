@@ -2,7 +2,7 @@
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import { IRREGULAR_VERBS } from "./irregular.ts";
+import { irregularForms } from "./irregular.ts";
 
 /** 规则名称表（与提示词一致，格式「专业术语 | 直观描述」） */
 export const PHONICS_RULES = [
@@ -61,7 +61,7 @@ const PLACEHOLDERS = new Set(["sb", "sth", "somebody", "something", "someone", "
 /** 一个词是否是 word 的常见变形（复数、过去式、-ing、比较级等） */
 function tokenIsForm(token: string, word: string): boolean {
   const w = word.toLowerCase();
-  if ((IRREGULAR_VERBS[w] ?? []).includes(token)) return true;
+  if (irregularForms(w).includes(token)) return true;
   const bare = token.replace(/'s$/, "");
   const stems = [w];
   if (/[ey]$/.test(w) && w.length > 2) stems.push(w.slice(0, -1));

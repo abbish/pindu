@@ -99,6 +99,44 @@ pub fn inflection_matches(token: &str, word: &str) -> bool {
     })
 }
 
+/// 一个单词可能的原形（按屈折规则反推，含不规则动词），都满足 [`inflection_matches`]；不含它自己
+pub fn base_candidates(token: &str) -> Vec<String> {
+    let t = token.trim().to_lowercase();
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |c: String| {
+        if c.len() >= 2 && c != t && !out.contains(&c) && inflection_matches(&t, &c) {
+            out.push(c);
+        }
+    };
+    for suffix in ["ies", "ied", "ier", "iest"] {
+        if let Some(stem) = t.strip_suffix(suffix) {
+            push(format!("{stem}y"));
+        }
+    }
+    for suffix in ["ing", "ed", "er", "est"] {
+        if let Some(stem) = t.strip_suffix(suffix) {
+            // 双写辅音（stopped → stop）、去 e（making → make）、直接加（played → play）
+            let chars: Vec<char> = stem.chars().collect();
+            if chars.len() >= 2 && chars[chars.len() - 1] == chars[chars.len() - 2] {
+                push(chars[..chars.len() - 1].iter().collect());
+            }
+            push(format!("{stem}e"));
+            push(stem.to_string());
+        }
+    }
+    for suffix in ["es", "s", "d"] {
+        if let Some(stem) = t.strip_suffix(suffix) {
+            push(stem.to_string());
+        }
+    }
+    for (base, forms) in IRREGULAR_VERBS {
+        if forms.contains(&t.as_str()) && !out.iter().any(|x| x == base) {
+            out.push(base.to_string());
+        }
+    }
+    out
+}
+
 /// 一段英文里的单词（字母与撇号）
 pub fn words_of(text: &str) -> impl Iterator<Item = &str> {
     text.split(|c: char| !c.is_ascii_alphabetic() && c != '\'')
@@ -111,13 +149,14 @@ pub fn english_word_count(sentences: &[PassageSentence]) -> usize {
     sentences.iter().map(|s| words_of(&s.en).count()).sum()
 }
 
-/// 文本里是否出现了某个词（含屈折形式）；词组按 [`phrase_spans`] 匹配
+/// 文本里是否出现了某个词（含屈折形式与不规则动词，与前端 utils/passage.ts::textUses、sidecar 工具同规则）；
+/// 词组与带连字符的词（well-known，分词时拆成两个词）按 [`phrase_spans`] 匹配
 pub fn text_uses(text: &str, word: &str) -> bool {
-    if is_phrase(word) {
+    if is_phrase(word) || word.contains('-') {
         let tokens: Vec<&str> = words_of(text).collect();
         return !phrase_spans(&tokens, word).is_empty();
     }
-    words_of(text).any(|t| inflection_matches(t, word))
+    words_of(text).any(|t| token_is_form(t, word))
 }
 
 /// 带空格的是词组
@@ -180,8 +219,10 @@ fn phrase_match_from(tokens: &[&str], i: usize, parts: &[String], k: usize) -> O
 /// 词组在一串单词里出现的位置（[开始, 结束)，不重叠）：每个词允许屈折变化（gave up、made a decision），
 /// 可拆开的短语动词中间允许插入宾语，占位词（sb / sth / one's）对应 1–3 个词
 pub fn phrase_spans(tokens: &[&str], phrase: &str) -> Vec<(usize, usize)> {
+    // 连字符词（well-known）与分词一致，拆成两个词
     let parts: Vec<String> = phrase
-        .split_whitespace()
+        .split(|c: char| c.is_whitespace() || c == '-')
+        .filter(|p| !p.is_empty())
         .map(|p| p.to_lowercase())
         .collect();
     if parts.is_empty() {
@@ -891,16 +932,7 @@ const IRREGULAR_VERBS: &[(&str, &[&str])] = &[
 
 /// 文本里是否出现了某个词：含规则屈折形式与常见不规则动词变化
 pub fn text_uses_any_form(text: &str, word: &str) -> bool {
-    if text_uses(text, word) {
-        return true;
-    }
-    let lower = word.to_lowercase();
-    IRREGULAR_VERBS
-        .iter()
-        .find(|(base, _)| *base == lower)
-        .is_some_and(|(_, forms)| {
-            words_of(text).any(|t| forms.iter().any(|f| t.eq_ignore_ascii_case(f)))
-        })
+    text_uses(text, word)
 }
 
 /// 导入材料的翻译结果（英文原文不经模型，以导入请求的句子为准）
@@ -1383,5 +1415,24 @@ mod tests {
         assert_eq!(token_in_sentence("Pick it up.", "pick up"), None);
         assert_eq!(token_in_sentence("I like toys.", "toys"), Some("toys"));
         assert!(grade_cloze("gave up", " gave  up "));
+    }
+
+    #[test]
+    fn base_candidates_reverse_inflections() {
+        assert!(base_candidates("fossils").contains(&"fossil".to_string()));
+        assert!(base_candidates("studied").contains(&"study".to_string()));
+        assert!(base_candidates("making").contains(&"make".to_string()));
+        assert!(base_candidates("stopped").contains(&"stop".to_string()));
+        assert!(base_candidates("went").contains(&"go".to_string()));
+        assert!(base_candidates("cat").is_empty());
+    }
+
+    #[test]
+    fn uses_irregular_forms_and_hyphenated_words() {
+        assert!(text_uses("Tom bought a cake.", "buy"));
+        assert!(text_uses("It is a well-known fact.", "well-known"));
+        assert!(text_uses("It is a well-known fact.", "a well-known fact"));
+        assert!(text_uses("She made a decision.", "make a decision"));
+        assert!(!text_uses("It is known.", "well-known"));
     }
 }

@@ -222,13 +222,19 @@ const IRREGULAR_VERBS: Record<string, string[]> = {
   win: ['won'],
   write: ['wrote', 'written'],
 };
+/** 不规则动词的变形（只查表里自己的键：constructor、toString 等不会取到原型上的属性） */
+const irregularForms = (base: string): string[] => {
+  const key = base.toLowerCase();
+  return Object.prototype.hasOwnProperty.call(IRREGULAR_VERBS, key) ? IRREGULAR_VERBS[key] : [];
+};
+
 /** 词组里代表某人 / 某物的占位词：对应 1–3 个任意词 */
 const PLACEHOLDERS = new Set(['sb', 'sth', 'somebody', 'something', 'someone', "one's", "sb's", 'oneself']);
 /** 可拆开的两词短语动词的小品词：中间允许插入 1–3 个词（pick it up） */
 const PARTICLES = new Set(['up', 'down', 'out', 'off', 'on', 'in', 'away', 'back', 'over', 'around', 'about', 'through', 'along', 'aside']);
 
 const isFormOf = (token: string, part: string) =>
-  inflectionMatches(token, part) || (IRREGULAR_VERBS[part.toLowerCase()] ?? []).includes(token.toLowerCase());
+  inflectionMatches(token, part) || irregularForms(part).includes(token.toLowerCase());
 
 function matchFrom(words: string[], i: number, parts: string[], k: number): number | null {
   if (k === parts.length) return i;
@@ -371,4 +377,21 @@ export function recallBlanks(sentence: string, targets: string[]): BlankPart[] {
     i = j - 1;
   }
   return parts;
+}
+
+const SELECTABLE_VOCAB = /^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,5}$/;
+
+/**
+ * 读原文时选中的文字能不能加成目标词（与后端 valid_vocab 同规则）：一个英文单词（至少 2 个字母）或 2–6 个词的词组，
+ * 弯撇号按直撇号处理；已经是目标词的不行（同一个词含变形双向判断：birds 与 bird；同一个词组：gave up 与 give up）。
+ */
+export function canAddTarget(raw: string, targets: string[]): boolean {
+  const text = raw.replace(/[\u2018\u2019]/g, "'").trim().replace(/\s+/g, ' ');
+  if (!SELECTABLE_VOCAB.test(text) || text.length > 60) return false;
+  if (!isPhrase(text) && text.length < 2) return false;
+  return !targets.some((t) => {
+    if (t.toLowerCase() === text.toLowerCase()) return true;
+    if (isPhrase(t) !== isPhrase(text)) return false;
+    return textUses(text, t) || textUses(t, text);
+  });
 }
