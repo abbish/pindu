@@ -84,12 +84,7 @@ redlark-agent [--no-session | --session-dir <dir> [--session <file>]]
 
 每个业务能力 = 一个**任务定义**：系统提示词 + 工具白名单 + 默认思考档 + 结果工具。
 
-| 任务 | 工具 | 结果 | 默认思考 |
-|---|---|---|---|
-| 提词 | `tokenize_text`（确定性分词计数）、`submit_words`（terminate） | `submit_words` 参数 | low |
-| 拼读分析 | `submit_phonics`（自带校验，不通过退回重交） | `submit_phonics` 参数 | low |
-| 学习计划 | `submit_learning_order`（顺序 + 难度 / 优先级；日程由 Rust 计算，D13） | `submit_learning_order` 参数 | low |
-| 场景对话 / 练习助手 | `lookup_word`、`record_mistake`、读取学习进度等 | 流式文本 + 工具副作用 | low |
+现有任务（提词、拼读分析、学习顺序、单词讲解与 AI 老师、例句、短文规划 / 写作 / 出题 / 评分 / 导入翻译、视频字幕整理 / 规划、各类「给建议」、句子分析等）的提示词、工具与调用方以 `CLAUDE.md` §4.4 的任务表为准，本文不再重复维护一份。
 
 原则：**确定性的工作放进工具**（分词计数、格式校验、日期排期），模型只做判断与生成；结构化结果一律通过 `submit_*` 工具交付，不从文本中解析 JSON / CSV。
 
