@@ -32,7 +32,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -132,20 +131,24 @@ const ListeningPlayer: React.FC<{ player: ListeningPlayerHandle; total: number; 
   );
 };
 
-// ==================== 选词填空空位 ====================
+// ==================== 选词填空 ====================
 
+/**
+ * 原文里的空位：点一下选中它（当前空位高亮），再在「选词填空」卡片的词库里点词填入。
+ * 交卷后显示对错（错的划掉，标出正确答案）。
+ */
 const ClozeBlank: React.FC<{
   index: number;
   value: string;
-  bank: string[];
-  used: Set<string>;
+  /** 当前要填的空 */
+  active: boolean;
   result?: ClozeResult;
   /** 提交时还没填（标红提示） */
   missing?: boolean;
   /** 用于提交时定位到第一个没作答的空 */
   id?: string;
-  onFill: (word: string) => void;
-}> = ({ index, value, bank, used, result, missing, id, onFill }) => {
+  onActivate: () => void;
+}> = ({ index, value, active, result, missing, id, onActivate }) => {
   if (result) {
     return result.correct ? (
       <span className="rounded bg-success-soft px-1.5 font-medium text-success">{result.answer}</span>
@@ -157,36 +160,88 @@ const ClozeBlank: React.FC<{
     );
   }
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          id={id}
-          type="button"
-          className={cn(
-            'mx-0.5 inline-flex min-w-20 items-baseline justify-center rounded-md border-b-2 px-2 align-baseline outline-none transition-colors select-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-            value ? 'border-primary bg-accent font-medium text-accent-foreground' : 'border-muted-foreground/40 bg-muted text-muted-foreground hover:bg-accent',
-            missing && 'border-destructive bg-destructive/10 text-destructive hover:bg-destructive/15',
-          )}
-          aria-label={`第 ${index + 1} 空${value ? `：${value}` : missing ? '：还没有填' : ''}`}
-          aria-invalid={missing || undefined}
-        >
-          {value || `(${index + 1})`}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {bank.map((w) => (
-          <DropdownMenuItem key={w} onSelect={() => onFill(w)} disabled={used.has(w.toLowerCase()) && w !== value}>
-            {w}
-          </DropdownMenuItem>
+    <button
+      id={id}
+      type="button"
+      onClick={onActivate}
+      className={cn(
+        'mx-0.5 inline-flex min-w-20 items-baseline justify-center rounded-md border-b-2 border-dashed px-2 align-baseline outline-none transition-colors select-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        value ? 'border-solid border-primary bg-accent font-medium text-accent-foreground' : 'border-muted-foreground/50 bg-muted text-muted-foreground hover:bg-accent',
+        active && 'ring-2 ring-primary ring-offset-1 ring-offset-background',
+        missing && 'border-destructive bg-destructive/10 text-destructive hover:bg-destructive/15',
+      )}
+      aria-label={`第 ${index + 1} 空${value ? `：${value}` : missing ? '：还没有填' : ''}`}
+      aria-pressed={active}
+      aria-invalid={missing || undefined}
+    >
+      {value || `(${index + 1})`}
+    </button>
+  );
+};
+
+/**
+ * 「选词填空」卡片（题目列表第一张）：各空位（点选切换）→ 词库（点词填入当前空，自动跳到下一个没填的空）。
+ * 一个词只能用一次，用过的灰掉；当前空已填时可以清空。
+ */
+const ClozeCard: React.FC<{
+  blanks: { id: number; value: string; missing: boolean }[];
+  activeId: number | null;
+  bank: string[];
+  used: Set<string>;
+  onActivate: (id: number) => void;
+  onPick: (word: string) => void;
+  onClear: () => void;
+  /** 嵌在别的区块里（听句填空）：不画外框与标题 */
+  embedded?: boolean;
+}> = ({ blanks, activeId, bank, used, onActivate, onPick, onClear, embedded }) => {
+  const activeIndex = blanks.findIndex((b) => b.id === activeId);
+  const active = blanks[activeIndex];
+  const body = (
+    <>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {blanks.map((b, i) => (
+          <button
+            key={b.id}
+            type="button"
+            onClick={() => onActivate(b.id)}
+            className={cn(
+              'h-8 min-w-12 rounded-md border px-2.5 text-sm tabular-nums transition-colors',
+              b.value ? 'border-primary/50 bg-accent text-accent-foreground' : 'border-dashed text-muted-foreground',
+              b.id === activeId && 'ring-2 ring-primary',
+              b.missing && 'border-destructive text-destructive'
+            )}
+            aria-pressed={b.id === activeId}
+          >
+            ({i + 1}){b.value && ` ${b.value}`}
+          </button>
         ))}
-        {value && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => onFill('')}>清空</DropdownMenuItem>
-          </>
+        {active?.value && (
+          <Button variant="ghost" size="sm" className="h-8" onClick={onClear}>
+            清空第 {activeIndex + 1} 空
+          </Button>
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </div>
+      <div className="flex flex-wrap gap-2 border-t pt-3">
+        {bank.map((w) => {
+          const taken = used.has(w.toLowerCase()) && w.toLowerCase() !== active?.value.toLowerCase();
+          return (
+            <Button key={w} variant="outline" size="sm" className="h-9 rounded-full px-4 text-base" disabled={taken || !active} onClick={() => onPick(w)}>
+              {w}
+            </Button>
+          );
+        })}
+      </div>
+    </>
+  );
+  if (embedded) return <div className="flex flex-col gap-3">{body}</div>;
+  return (
+    <Card className="gap-3 px-5 py-4">
+      <div className="flex items-baseline gap-2">
+        <h3 className="font-semibold">选词填空</h3>
+        <span className="text-sm text-muted-foreground">{active ? `正在填第 ${activeIndex + 1} 空` : `${blanks.length} 空`}</span>
+      </div>
+      {body}
+    </Card>
   );
 };
 
@@ -336,6 +391,8 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
   const [attempt, setAttempt] = useState<PassageAttempt | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  /** 选词填空当前选中的空（null = 第一个没填的空） */
+  const [activeBlank, setActiveBlank] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [regrading, setRegrading] = useState(false);
   const [submitError, setSubmitError] = useState<{
@@ -512,6 +569,34 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
   const valueOf = (q: PassageQuestion) => (finished ? ((q.kind === 'cloze' ? clozeResultOf(q.id)?.given : resultOf(q.id)?.given) ?? '') : (answers[q.id] ?? ''));
   const usedWords = new Set(clozeQuestions.map((q) => (answers[q.id] ?? '').toLowerCase()).filter(Boolean));
   const blankNumber = new Map(clozeQuestions.map((q, i) => [q.id, i]));
+  /** 当前要填的空：没选过时是第一个没填的空 */
+  const currentBlank = activeBlank ?? clozeQuestions.find((q) => !(answers[q.id] ?? '').trim())?.id ?? clozeQuestions[0]?.id ?? null;
+  /** 点词：填入当前空，跳到下一个没填的空（往后找，找不到从头找） */
+  const pickWord = (word: string) => {
+    if (currentBlank === null) return;
+    setAnswer(currentBlank, word);
+    const order = clozeQuestions.map((q) => q.id);
+    const from = order.indexOf(currentBlank);
+    const rest = [...order.slice(from + 1), ...order.slice(0, from)];
+    const next = rest.find((id) => !(answers[id] ?? '').trim());
+    setActiveBlank(next ?? currentBlank);
+  };
+  const clozeCard = (embedded = false) =>
+    clozeQuestions.length > 0 && !finished ? (
+      <ClozeCard
+        embedded={embedded}
+        blanks={clozeQuestions.map((q) => ({ id: q.id, value: answers[q.id] ?? '', missing: isMissing(q.id) }))}
+        activeId={currentBlank}
+        bank={set.clozeBank}
+        used={usedWords}
+        onActivate={(id) => {
+          setActiveBlank(id);
+          document.getElementById(questionDomId(id))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }}
+        onPick={pickWord}
+        onClear={() => currentBlank !== null && setAnswer(currentBlank, '')}
+      />
+    ) : null;
 
   /** 阅读模式的正文：选词填空的句子按空位拆开 */
   const renderSentence = (index: number) => {
@@ -525,12 +610,11 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
           key={j}
           index={blankNumber.get(part.questionId) ?? 0}
           value={question ? valueOf(question) : ''}
-          bank={set.clozeBank}
-          used={usedWords}
+          active={!finished && currentBlank === part.questionId}
           result={finished ? clozeResultOf(part.questionId) : undefined}
           missing={isMissing(part.questionId)}
           id={questionDomId(part.questionId)}
-          onFill={(w) => setAnswer(part.questionId, w)}
+          onActivate={() => setActiveBlank(part.questionId)}
         />
       );
     });
@@ -542,6 +626,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
 
   const questionsSection = (
         <section className="flex flex-col gap-3">
+          {mode === 'reading' && clozeCard()}
           {otherQuestions.map((q, i) => (
             <QuestionItem
               key={q.id}
@@ -654,14 +739,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
                     <p className="pt-1.5 text-lg leading-loose">{renderSentence(idx)}</p>
                   </div>
                 ))}
-              <div className="flex flex-wrap items-center gap-1.5 border-t pt-3 select-none">
-                <span className="mr-1 text-xs text-muted-foreground">词库</span>
-                {set.clozeBank.map((w) => (
-                  <span key={w} className={cn('rounded-full border px-2.5 py-0.5 text-sm', usedWords.has(w.toLowerCase()) && 'line-through opacity-40')}>
-                    {w}
-                  </span>
-                ))}
-              </div>
+              {clozeCard(true)}
             </section>
           )}
           {questionsSection}
@@ -682,16 +760,6 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
             )}
           </div>
           {showText && <PassageReader sentences={passage.sentences} translation={showZh ? 'all' : 'off'} renderSentence={mode === 'reading' || finished ? renderSentence : undefined} />}
-          {mode === 'reading' && !finished && clozeQuestions.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 border-t pt-3 select-none">
-              <span className="mr-1 text-xs text-muted-foreground">词库</span>
-              {set.clozeBank.map((w) => (
-                <span key={w} className={cn('rounded-full border px-2.5 py-0.5 text-sm', usedWords.has(w.toLowerCase()) && 'line-through opacity-40')}>
-                  {w}
-                </span>
-              ))}
-            </div>
-          )}
         </section>
 
         {questionsSection}
