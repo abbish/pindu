@@ -101,6 +101,47 @@ fn status_text(status: &str) -> &str {
     }
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PlanPassageReadArgs {
+    pub plan_id: i64,
+    pub passage_id: i64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MonthArgs {
+    pub year: i32,
+    /// 1–12
+    pub month: i32,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct StatsArgs {
+    /// How many recent days (default 14, at most 90)
+    #[serde(default)]
+    pub days: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PreviewPlanArgs {
+    pub book_ids: Vec<i64>,
+    #[serde(default)]
+    pub daily_new_words: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CandidatesArgs {
+    #[serde(default)]
+    pub book_ids: Vec<i64>,
+    #[serde(default)]
+    pub plan_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SessionArgs {
+    /// From unfinished_practice
+    pub session_id: String,
+}
+
 #[tool_router(router = plans_router, vis = "pub(super)")]
 impl PinduTools {
     #[tool(
@@ -519,11 +560,251 @@ impl PinduTools {
             (Err(e), _) | (_, Err(e)) => failed("没能查看学习统计", e),
         }
     }
-}
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct StatsArgs {
-    /// How many recent days (default 14, at most 90)
-    #[serde(default)]
-    pub days: Option<i64>,
+    #[tool(
+        description = "Mark a read-only passage task of a plan as read (tasks without a question set).",
+        annotations(read_only_hint = false, destructive_hint = false)
+    )]
+    async fn mark_passage_read(
+        &self,
+        Parameters(args): Parameters<PlanPassageReadArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::complete_plan_passage_reading(
+            self.app.clone(),
+            args.plan_id,
+            args.passage_id,
+        )
+        .await
+        {
+            Ok(()) => done(
+                json!({ "done": true }),
+                "记下了这篇短文已读完".to_string(),
+                None,
+            ),
+            Err(e) => failed("没能标记读完", e),
+        }
+    }
+
+    #[tool(
+        description = "Practice history of a plan: each session's date, time spent, words passed, and the words not passed (mistakes). Also lists unfinished sessions that can be continued.",
+        annotations(read_only_hint = true)
+    )]
+    async fn practice_history(
+        &self,
+        Parameters(args): Parameters<PlanArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let sessions =
+            match crate::handlers::get_plan_practice_sessions(self.app.clone(), args.plan_id).await
+            {
+                Ok(s) => s,
+                Err(e) => return failed("没能查看练习记录", e),
+            };
+        let data: Vec<Value> = sessions
+            .iter()
+            .take(30)
+            .map(|s| {
+                let missed: Vec<String> = s
+                    .word_states
+                    .iter()
+                    .filter(|w| w.completed && !w.passed)
+                    .map(|w| w.word_info.word.clone())
+                    .collect();
+                json!({ "date": s.schedule_date, "completed": s.completed, "minutes": s.active_time / 60000,
+                        "words": s.word_states.len(), "passed": s.word_states.iter().filter(|w| w.passed).count(),
+                        "missed": missed })
+            })
+            .collect();
+        done(
+            json!(data),
+            format!("看了练习记录：{} 次", sessions.len()),
+            None,
+        )
+    }
+
+    #[tool(
+        description = "Memory levels of a plan's words: not started / learning / mastered, how many reviews are due today and the next review date.",
+        annotations(read_only_hint = true)
+    )]
+    async fn plan_memory(
+        &self,
+        Parameters(args): Parameters<PlanArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::get_plan_memory_overview(self.app.clone(), args.plan_id).await {
+            Ok(m) => done(
+                serde_json::to_value(&m).unwrap_or(Value::Null),
+                "看了单词的记忆情况".to_string(),
+                None,
+            ),
+            Err(e) => failed("没能查看记忆情况", e),
+        }
+    }
+
+    #[tool(
+        description = "Statistics of one plan: time spent, study days, accuracy, words that are often wrong, parts of speech.",
+        annotations(read_only_hint = true)
+    )]
+    async fn plan_stats(
+        &self,
+        Parameters(args): Parameters<PlanArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::get_study_plan_statistics(self.app.clone(), args.plan_id).await {
+            Ok(s) => done(
+                serde_json::to_value(&s).unwrap_or(Value::Null),
+                "看了这个计划的统计".to_string(),
+                None,
+            ),
+            Err(e) => failed("没能查看计划统计", e),
+        }
+    }
+
+    #[tool(
+        description = "Study calendar of a month: which days had study tasks and whether they were done, plus monthly totals.",
+        annotations(read_only_hint = true)
+    )]
+    async fn calendar_month(
+        &self,
+        Parameters(args): Parameters<MonthArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::get_calendar_month_data(
+            self.app.clone(),
+            args.year,
+            args.month,
+            Some(false),
+        )
+        .await
+        {
+            Ok(m) => done(
+                serde_json::to_value(&m).unwrap_or(Value::Null),
+                format!("看了 {} 年 {} 月的学习日历", args.year, args.month),
+                None,
+            ),
+            Err(e) => failed("没能查看学习日历", e),
+        }
+    }
+
+    #[tool(
+        description = "Preview a plan before creating it: how many days the new words take, when it ends, about how many minutes a day.",
+        annotations(read_only_hint = true)
+    )]
+    async fn preview_plan(
+        &self,
+        Parameters(args): Parameters<PreviewPlanArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::preview_study_plan(
+            self.app.clone(),
+            args.book_ids.clone(),
+            args.daily_new_words.unwrap_or(10),
+        )
+        .await
+        {
+            Ok(r) => {
+                let m = &r.plan_metadata;
+                done(
+                    json!({ "words": m.total_words, "days": m.study_period_days, "start": m.start_date, "end": m.end_date,
+                            "newWordDays": r.daily_plans.iter().filter(|d| !d.words.is_empty()).count() }),
+                    format!(
+                        "预览了计划：{} 个词，共 {} 天",
+                        m.total_words, m.study_period_days
+                    ),
+                    None,
+                )
+            }
+            Err(e) => failed("没能预览计划", e),
+        }
+    }
+
+    #[tool(
+        description = "Arrange a plan's words again from easy to hard (only words not practised yet; runs in the background).",
+        annotations(read_only_hint = false, destructive_hint = false)
+    )]
+    async fn reorder_plan(
+        &self,
+        Parameters(args): Parameters<PlanArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::start_study_plan_ordering(self.app.clone(), args.plan_id).await {
+            Ok(job) => {
+                crate::mcp::job_notice::track(&job, false);
+                done(
+                    json!({ "started": true }),
+                    "开始按从易到难重新排学习顺序（后台进行）".to_string(),
+                    None,
+                )
+            }
+            Err(e) => failed("没能重新排学习顺序", e),
+        }
+    }
+
+    #[tool(
+        description = "Passages that fit a plan (or some word books), ranked by how many of their words they use, with their question sets — to pick passages for create_plan / set_plan_passages.",
+        annotations(read_only_hint = true)
+    )]
+    async fn plan_passage_candidates(
+        &self,
+        Parameters(args): Parameters<CandidatesArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let request = crate::types::passage::PlanPassageCandidatesRequest {
+            book_ids: args.book_ids.clone(),
+            plan_id: args.plan_id,
+        };
+        match crate::handlers::get_plan_passage_candidates(self.app.clone(), request).await {
+            Ok(list) => {
+                let data: Vec<Value> = list
+                    .iter()
+                    .take(30)
+                    .map(|c| json!({ "passageId": c.passage.id, "title": c.passage.title, "level": c.passage.level,
+                                     "sharedWords": c.overlap,
+                                     "sets": c.sets.iter().map(|s| json!({ "id": s.id, "name": s.name, "mode": s.mode })).collect::<Vec<_>>() }))
+                    .collect();
+                done(
+                    json!(data),
+                    format!("找了适合的短文：{} 篇", list.len()),
+                    None,
+                )
+            }
+            Err(e) => failed("没能找适合的短文", e),
+        }
+    }
+
+    #[tool(
+        description = "Unfinished word practice sessions (left in the middle) that can be continued or discarded.",
+        annotations(read_only_hint = true)
+    )]
+    async fn unfinished_practice(&self) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::get_incomplete_practice_sessions(self.app.clone()).await {
+            Ok(list) => {
+                let data: Vec<Value> = list
+                    .iter()
+                    .map(|s| json!({ "sessionId": s.session_id, "planId": s.plan_id, "scheduleId": s.schedule_id, "plan": s.plan_title,
+                                     "date": s.schedule_date, "words": s.word_states.len(),
+                                     "done": s.word_states.iter().filter(|w| w.completed).count() }))
+                    .collect();
+                done(
+                    json!(data),
+                    format!("看了没练完的练习：{} 次", list.len()),
+                    None,
+                )
+            }
+            Err(e) => failed("没能查看没练完的练习", e),
+        }
+    }
+
+    #[tool(
+        description = "Discard an unfinished practice session (its answers so far are dropped). The learner is asked to confirm.",
+        annotations(read_only_hint = false, destructive_hint = true)
+    )]
+    async fn discard_practice(
+        &self,
+        Parameters(args): Parameters<SessionArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::cancel_practice_session(self.app.clone(), args.session_id.clone())
+            .await
+        {
+            Ok(()) => done(
+                json!({ "discarded": true }),
+                "放弃了这次没练完的练习".to_string(),
+                None,
+            ),
+            Err(e) => failed("没能放弃这次练习", e),
+        }
+    }
 }

@@ -2,24 +2,65 @@
 
 use super::*;
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PassageWordsToBookArgs {
+    pub passage_id: i64,
+    pub book_id: i64,
+    /// Words from passage_new_words / the passage vocabulary
+    pub words: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListPassagesArgs {
+    /// Only passages written from this word book
+    #[serde(default)]
+    pub book_id: Option<i64>,
+    /// generated / imported
+    #[serde(default)]
+    pub origin: Option<String>,
+    /// Text in the title
+    #[serde(default)]
+    pub search: Option<String>,
+}
+
 #[tool_router(router = passages_router, vis = "pub(super)")]
 impl PinduTools {
     #[tool(
-        description = "List the learner's passages (短文) with id, title, level and vocabulary.",
+        description = "List the learner's passages (id, title, level, vocabulary, question sets). Filter by word book (passages written from it), origin (generated = written by AI, imported = from the learner's material) or a search text in the title.",
         annotations(read_only_hint = true)
     )]
-    async fn list_passages(&self) -> Result<CallToolResult, ErrorData> {
-        match self.passages().list(None, None, None).await {
+    async fn list_passages(
+        &self,
+        Parameters(args): Parameters<ListPassagesArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let origin = args
+            .origin
+            .as_deref()
+            .filter(|o| matches!(*o, "generated" | "imported"));
+        match self.passages().list(args.book_id, None, origin).await {
             Ok(list) => {
-                let data: Vec<Value> = list
+                let query = args
+                    .search
+                    .as_deref()
+                    .map(|q| q.trim().to_lowercase())
+                    .filter(|q| !q.is_empty());
+                let shown: Vec<&crate::types::passage::PassageSummary> = list
+                    .iter()
+                    .filter(|p| {
+                        query
+                            .as_ref()
+                            .is_none_or(|q| p.title.to_lowercase().contains(q))
+                    })
+                    .collect();
+                let data: Vec<Value> = shown
                     .iter()
                     .map(|p| {
-                        json!({ "id": p.id, "title": p.title, "level": p.level, "words": p.word_count,
+                        json!({ "id": p.id, "title": p.title, "level": p.level, "words": p.word_count, "origin": p.origin,
+                                "questionSets": p.question_sets,
                                 "vocabulary": p.target_words.iter().map(|w| w.word.clone()).collect::<Vec<_>>() })
                     })
                     .collect();
-                let step = format!("看了你的短文库：共 {} 篇", list.len());
-                done(json!(data), step, None)
+                done(json!(data), format!("看了短文库：{} 篇", shown.len()), None)
             }
             Err(e) => failed("没能查看短文库", e),
         }
@@ -401,6 +442,95 @@ impl PinduTools {
                 None,
             ),
             Err(e) => failed("没能查看短文练习成绩", e),
+        }
+    }
+
+    #[tool(
+        description = "Key words of a passage that are not in any word book yet (word, meaning) — candidates to collect.",
+        annotations(read_only_hint = true)
+    )]
+    async fn passage_new_words(
+        &self,
+        Parameters(args): Parameters<PassageArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::get_passage_new_words(self.app.clone(), args.passage_id).await {
+            Ok(words) => {
+                let data: Vec<Value> = words
+                    .iter()
+                    .map(|w| json!({ "word": w.word, "meaning": w.meaning }))
+                    .collect();
+                done(
+                    json!(data),
+                    format!("看了短文里还没收进词汇本的词：{} 个", words.len()),
+                    None,
+                )
+            }
+            Err(e) => failed("没能查看短文的生词", e),
+        }
+    }
+
+    #[tool(
+        description = "Add key words of a passage to a word book (spelling analysis in the background, then they become this passage's vocabulary linked to the book).",
+        annotations(read_only_hint = false, destructive_hint = false)
+    )]
+    async fn add_passage_words_to_book(
+        &self,
+        Parameters(args): Parameters<PassageWordsToBookArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let request = crate::types::passage::AddPassageWordsRequest {
+            passage_id: args.passage_id,
+            book_id: args.book_id,
+            words: args
+                .words
+                .iter()
+                .map(|w| w.trim().to_string())
+                .filter(|w| !w.is_empty())
+                .collect(),
+        };
+        let count = request.words.len();
+        match crate::handlers::add_passage_words_to_book(self.app.clone(), request).await {
+            Ok(_) => {
+                let book = self
+                    .word_books()
+                    .get_word_book(args.book_id)
+                    .await
+                    .map(|b| b.title)
+                    .unwrap_or_default();
+                done(
+                    json!({ "added": count }),
+                    format!("把短文里的 {} 个词加进了《{}》", count, book),
+                    Some(
+                        json!({ "kind": "words", "id": args.book_id, "title": preview(&args.words, 3), "meta": format!("加进《{}》", book) }),
+                    ),
+                )
+            }
+            Err(e) => failed("没能把这些词加进词汇本", e),
+        }
+    }
+
+    #[tool(
+        description = "Prepare word cards (spelling, phonetic, examples) for a passage's vocabulary that is not in any word book, so the learner can tap them while reading. Runs in the background.",
+        annotations(read_only_hint = false, destructive_hint = false)
+    )]
+    async fn prepare_word_cards(
+        &self,
+        Parameters(args): Parameters<PassageArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::start_word_cards(self.app.clone(), args.passage_id).await {
+            Ok(Some(job)) => {
+                crate::mcp::job_notice::track(&job, false);
+                done(
+                    json!({ "started": true }),
+                    "开始准备单词卡（后台进行）".to_string(),
+                    None,
+                )
+            }
+            Ok(None) => done(
+                json!({ "started": false, "note": "All word cards are ready." }),
+                "单词卡都已准备好".to_string(),
+                None,
+            ),
+            Err(e) => failed("没能准备单词卡", e),
         }
     }
 }

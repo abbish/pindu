@@ -28,20 +28,11 @@ mod words;
 
 /// 没有出现在正文里的词汇（单词按词形，went 算 go；词组连着出现、可变形）
 fn missing_vocabulary(text: &str, words: &[NewWord]) -> Vec<String> {
-    let tokens: Vec<&str> = crate::services::passage_rules::words_of(text).collect();
     words
         .iter()
         .map(|w| crate::types::wordbook::normalize_vocab(w.word.trim()))
         .filter(|w| !w.is_empty())
-        .filter(|w| {
-            let key = w.to_lowercase();
-            let found = if crate::services::passage_rules::is_phrase(&key) {
-                !crate::lemma::phrase_spans(&tokens, &key, &[]).is_empty()
-            } else {
-                tokens.iter().any(|t| crate::lemma::is_form_of(t, &key))
-            };
-            !found
-        })
+        .filter(|w| !crate::services::passage_rules::text_uses(text, &w.to_lowercase()))
         .collect()
 }
 
@@ -170,6 +161,23 @@ pub struct DeleteWordsArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExamplesArgs {
     pub word_id: i64,
+    /// append (default) or replace
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExampleText {
+    /// English sentence using the word
+    pub en: String,
+    /// Chinese translation
+    pub zh: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SaveExamplesArgs {
+    pub word_id: i64,
+    pub examples: Vec<ExampleText>,
     /// append (default) or replace
     #[serde(default)]
     pub mode: Option<String>,

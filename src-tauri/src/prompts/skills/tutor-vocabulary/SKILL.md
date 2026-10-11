@@ -26,6 +26,9 @@ description: 查单词、讲单词；把单词、词组收进词汇本（新建�
 - 看词：`mcp__pindu__get_word_book`（每页 100 个，可按词或释义搜索）拿到单词 id。
 - 改词汇本：`mcp__pindu__update_word_book`（名称、场景描述、标签、草稿 / 正式；草稿不能用来建计划）。
 - 改单词：`mcp__pindu__update_word`（释义、词性；拼错了才改拼写）。释义写这个词在词汇本场景里的中文意思。
-- 例句：`mcp__pindu__refresh_examples`（append 补充 / replace 重写）。
+- 例句：结合你们聊的场景、水平、语法点自己写，用 `mcp__pindu__save_examples` 保存（append 追加 / replace 替换；每句要用到这个词、带中文）。只是想多几句、不需要结合上下文时，才用 `mcp__pindu__refresh_examples` 让应用生成。
+- 从学习者给的文字或材料里挑词：你自己读、自己挑（值得学、和场景相关），再 `add_words` / `create_word_book`；不需要别的工具。
 - 一个词在哪些短文里出现：`mcp__pindu__word_materials`。
+- 统计（总词数、已学、各词性）：`mcp__pindu__word_book_stats`。
+- 删除或大改之前，`mcp__pindu__material_plans` 看哪些计划在用它。
 - 删除词汇本、删词：`mcp__pindu__delete_word_book` / `mcp__pindu__delete_words`，界面会请学习者确认；词汇本删除后可以 `restore_word_book` 恢复。计划还在用的词汇本删不了，告诉学习者先结束或调整计划。

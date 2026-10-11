@@ -6,21 +6,39 @@ use tauri::Emitter;
 /// 打开哪个页面（前端监听 `tutor-open-page` 后跳转）
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct OpenPageArgs {
-    /// word_book / passage / plan / video（需要 id），或 word_books / passages / videos / plans / calendar / home
+    /// word_book / passage / plan / video / practice（开始这个计划今天的练习）/ passage_practice（做某套题，id 为题组 id）/ continue_practice（接着没练完的那次），
+    /// 或 word_books / passages / videos / plans / calendar / home
     pub target: String,
-    /// The id of the word book / passage / plan / video
+    /// The id of the word book / passage / plan / video / question set
     #[serde(default)]
     pub id: Option<i64>,
+    /// passage_practice: reading or listening (must match the question set)
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// continue_practice: the session from unfinished_practice (empty = the latest)
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 /// 目标 → 页面键与参数（navigation.ts 的路由表）
-pub fn page_of(target: &str, id: Option<i64>) -> Option<(&'static str, Value)> {
+pub fn page_of(target: &str, id: Option<i64>, mode: Option<&str>) -> Option<(&'static str, Value)> {
     let with_id = |page: &'static str, key: &str| id.map(|id| (page, json!({ key: id })));
     match target {
         "word_book" => with_id("wordbook-detail", "id"),
         "passage" => with_id("passage-detail", "passageId"),
         "plan" => with_id("plan-detail", "planId"),
         "video" => with_id("video-editor", "videoId"),
+        // 与计划卡「开始学习」同一套规则（前端 TutorBridge → startPlanPractice）
+        "practice" => with_id("__practice", "planId"),
+        "continue_practice" => None, // 需要会话：见 open_page 里的处理
+        "passage_practice" => id.map(|id| {
+            let mode = if mode == Some("listening") {
+                "listening"
+            } else {
+                "reading"
+            };
+            ("passage-practice", json!({ "setId": id, "mode": mode }))
+        }),
         "word_books" => Some(("wordbooks", Value::Null)),
         "passages" => Some(("passages", Value::Null)),
         "videos" => Some(("videos", Value::Null)),
@@ -59,17 +77,72 @@ pub struct JobArgs {
     pub title: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TagMaterialsArgs {
+    /// word_book / passage / video
+    pub kind: String,
+    pub ids: Vec<i64>,
+    /// Tag names to add (existing names preferred)
+    #[serde(default)]
+    pub add: Vec<String>,
+    /// Tag names to remove
+    #[serde(default)]
+    pub remove: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReadAloudArgs {
+    /// English word or sentence
+    pub text: String,
+    /// Read slowly
+    #[serde(default)]
+    pub slow: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MaterialArgs {
+    /// word_book / passage
+    pub kind: String,
+    pub id: i64,
+}
+
 #[tool_router(router = organize_router, vis = "pub(super)")]
 impl PinduTools {
     #[tool(
-        description = "Open a page of the app for the learner: a word book, passage, study plan (where they start today's practice) or video (in the clip editor) by id, or a list page (word_books / passages / videos / plans / calendar / home). Use when the learner asks to open / go to / start something; the app switches to that page.",
+        description = "Open a page of the app for the learner: a word book, passage, study plan or video (clip editor) by id; `practice` starts today's practice of a plan (id = plan id, same as the plan's Start button); `passage_practice` opens a question set to answer (id = set id, mode reading / listening); `continue_practice` continues an unfinished practice (session_id from unfinished_practice); or a list page (word_books / passages / videos / plans / calendar / home). Use when the learner asks to open / go to / start something.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn open_page(
         &self,
         Parameters(args): Parameters<OpenPageArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let Some((page, params)) = page_of(args.target.trim(), args.id) else {
+        // 接着练没练完的那次：用 unfinished_practice 给的会话
+        if args.target.trim() == "continue_practice" {
+            let sessions = crate::handlers::get_incomplete_practice_sessions(self.app.clone())
+                .await
+                .unwrap_or_default();
+            let Some(s) = sessions.iter().find(|s| {
+                args.session_id
+                    .as_deref()
+                    .is_none_or(|id| id == s.session_id)
+            }) else {
+                return failed(
+                    "没能接着练",
+                    AppError::ValidationError("没有没练完的练习".to_string()),
+                );
+            };
+            let _ = self.app.emit(
+                "tutor-open-page",
+                json!({ "page": "word-practice", "params": { "planId": s.plan_id, "scheduleId": s.schedule_id, "sessionId": s.session_id } }),
+            );
+            return done(
+                json!({ "opened": "word-practice" }),
+                "接着上次的练习".to_string(),
+                None,
+            );
+        }
+        let Some((page, params)) = page_of(args.target.trim(), args.id, args.mode.as_deref())
+        else {
             return failed(
                 "没能打开页面",
                 AppError::ValidationError("不认识这个页面，或者缺少 id".to_string()),
@@ -195,6 +268,106 @@ impl PinduTools {
                 "没能停止任务",
                 AppError::ValidationError("这个任务已经结束了".to_string()),
             )
+        }
+    }
+
+    #[tool(
+        description = "Add and / or remove tags on several materials at once (kind word_book / passage / video).",
+        annotations(read_only_hint = false, destructive_hint = false)
+    )]
+    async fn tag_materials(
+        &self,
+        Parameters(args): Parameters<TagMaterialsArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let add = match self.tag_ids(&args.add).await {
+            Ok(ids) => ids,
+            Err(e) => return failed("没能改标签", e),
+        };
+        let tags = match crate::handlers::get_tags(self.app.clone()).await {
+            Ok(t) => t,
+            Err(e) => return failed("没能改标签", e),
+        };
+        let remove: Vec<i64> = tags
+            .iter()
+            .filter(|t| args.remove.iter().any(|n| n.trim() == t.tag.name))
+            .map(|t| t.tag.id)
+            .collect();
+        match crate::handlers::update_material_tags(
+            self.app.clone(),
+            args.kind.clone(),
+            args.ids.clone(),
+            add,
+            remove,
+        )
+        .await
+        {
+            Ok(n) => done(
+                json!({ "changed": n }),
+                format!("改了 {} 份素材的标签", n),
+                None,
+            ),
+            Err(e) => failed("没能改标签", e),
+        }
+    }
+
+    #[tool(
+        description = "Read an English word or sentence aloud to the learner with the app's voice (plays in the app).",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_aloud(
+        &self,
+        Parameters(args): Parameters<ReadAloudArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let text = args.text.trim().to_string();
+        if text.is_empty() || text.chars().count() > 500 {
+            return failed(
+                "没能朗读",
+                AppError::ValidationError("要读的内容为空或太长（500 字以内）".to_string()),
+            );
+        }
+        let style = if text.contains(' ') {
+            "sentence"
+        } else {
+            "word"
+        };
+        let _ = self.app.emit(
+            "tutor-speak",
+            json!({ "text": text, "style": style, "slow": args.slow.unwrap_or(false) }),
+        );
+        done(
+            json!({ "playing": true }),
+            format!("读了：{}", text.chars().take(40).collect::<String>()),
+            None,
+        )
+    }
+
+    #[tool(
+        description = "Which study plans use a word book, passage or video clip (check before deleting or changing it).",
+        annotations(read_only_hint = true)
+    )]
+    async fn material_plans(
+        &self,
+        Parameters(args): Parameters<MaterialArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match crate::handlers::get_material_linked_plans(
+            self.app.clone(),
+            args.kind.clone(),
+            args.id,
+        )
+        .await
+        {
+            Ok(plans) => {
+                let data: Vec<Value> = plans
+                    .iter()
+                    .map(|p| json!({ "id": p.id, "name": p.name, "status": p.unified_status }))
+                    .collect();
+                done(
+                    json!(data),
+                    format!("查了用到它的计划：{} 个", plans.len()),
+                    None,
+                )
+            }
+            Err(e) => failed("没能查用到它的计划", e),
         }
     }
 }

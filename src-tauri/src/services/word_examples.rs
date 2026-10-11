@@ -47,6 +47,56 @@ impl WordExampleService {
         Self { pool, logger }
     }
 
+    /// 保存给定的例句（AI 老师结合对话写的）：每句须用到这个词（按词形，词组可变形），没用到的整批退回；
+    /// 与已有例句重复的不再存；按 mode 追加或替换，返回该单词最新的全部例句
+    pub async fn save(
+        &self,
+        word_id: Id,
+        given: Vec<WordExample>,
+        mode: ExampleMode,
+    ) -> AppResult<Vec<WordExample>> {
+        let word = WordRepository::new(self.pool.clone(), self.logger.clone())
+            .find_by_id(word_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("单词不存在，可能已被删除".to_string()))?;
+        let key = word.word.trim().to_lowercase();
+        let missing: Vec<String> = given
+            .iter()
+            .filter(|e| !crate::services::passage_rules::text_uses(&e.sentence, &key))
+            .map(|e| e.sentence.clone())
+            .collect();
+        if !missing.is_empty() {
+            return Err(AppError::ValidationError(format!(
+                "这些例句里没有用到「{}」：{}",
+                word.word,
+                missing.join(" / ")
+            )));
+        }
+        let existing = if mode == ExampleMode::Append {
+            word.examples.clone()
+        } else {
+            Vec::new()
+        };
+        let submission = serde_json::json!({ "examples": given });
+        let new = tasks::examples_from_submission(&submission, &existing);
+        if new.is_empty() {
+            return Err(AppError::ValidationError(
+                "没有可以保存的例句（例句和译文都要写，且不能和已有的重复）".to_string(),
+            ));
+        }
+        if mode == ExampleMode::Append && word.examples.len() >= MAX_EXAMPLES {
+            return Err(AppError::ValidationError(format!(
+                "这个词已有 {} 条例句，可以改用替换",
+                MAX_EXAMPLES
+            )));
+        }
+        let examples = merge_examples(word.examples, new, mode);
+        let mut tx = self.pool.begin().await?;
+        replace_examples_conn(&mut tx, word_id, &examples).await?;
+        tx.commit().await?;
+        Ok(examples)
+    }
+
     /// 生成例句并写回，返回该单词最新的全部例句
     pub async fn generate(
         &self,

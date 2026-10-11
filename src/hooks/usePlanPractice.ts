@@ -14,6 +14,54 @@ import type { StudyPlanWithProgress } from '@/types';
  * 都没有 → 单词计划进入该练的日程，只练短文的计划打开详情。
  * 待开始的计划在第一次练习时由后端自动转为进行中；其他状态打开计划详情。首页与学习计划列表共用。
  */
+/** 开始某个计划今天的练习（计划卡「开始 / 继续学习」与 AI 老师共用；规则见上） */
+export async function startPlanPractice(
+  plan: StudyPlanWithProgress | undefined,
+  planId: number,
+  onNavigate: NavigateFn | undefined,
+  toast: ReturnType<typeof useToast>,
+  returnTo: PassagePracticeReturn = 'plan-detail'
+) {
+  if (!plan || (plan.unified_status !== 'Pending' && plan.unified_status !== 'Active')) {
+    onNavigate?.('plan-detail', { planId });
+    return;
+  }
+  const [schedules, passages] = await Promise.all([
+    calendarService.getTodayStudySchedules(),
+    passageService.getTodayPassageTasks(),
+  ]);
+  const step = nextStepOf(
+    plan.practice_content,
+    schedules.success ? schedules.data.find((t) => t.plan_id === planId) : undefined,
+    passages.success ? passages.data.filter((t) => t.planId === planId) : []
+  );
+  if (step.kind === 'passage') {
+    const t = step.task;
+    if (t.setId !== null) {
+      onNavigate?.('passage-practice', { setId: t.setId, mode: t.mode, planId, returnTo });
+    } else {
+      onNavigate?.('passage-detail', { passageId: t.passageId, fromPlan: { planId, planName: t.planName }, returnTo });
+    }
+    return;
+  }
+  if (plan.practice_content === 'passages') {
+    onNavigate?.('plan-detail', { planId });
+    return;
+  }
+  const result = await studyService.getStudyPlanSchedules(planId);
+  if (!result.success) {
+    toast.showError('无法开始练习', result.error);
+    return;
+  }
+  const target = pickPracticeSchedule(result.data);
+  if (target) {
+    onNavigate?.('word-practice', { planId, scheduleId: target.id, returnTo });
+  } else {
+    toast.showInfo('日程都已练完', '可以在计划详情里再练一次');
+    onNavigate?.('plan-detail', { planId });
+  }
+}
+
 export function usePlanPractice(
   plans: StudyPlanWithProgress[] | null | undefined,
   onNavigate?: NavigateFn,
@@ -23,47 +71,7 @@ export function usePlanPractice(
   const toast = useToast();
 
   return useCallback(
-    async (planId: number) => {
-      const plan = plans?.find((p) => p.id === planId);
-      if (!plan || (plan.unified_status !== 'Pending' && plan.unified_status !== 'Active')) {
-        onNavigate?.('plan-detail', { planId });
-        return;
-      }
-      const [schedules, passages] = await Promise.all([
-        calendarService.getTodayStudySchedules(),
-        passageService.getTodayPassageTasks(),
-      ]);
-      const step = nextStepOf(
-        plan.practice_content,
-        schedules.success ? schedules.data.find((t) => t.plan_id === planId) : undefined,
-        passages.success ? passages.data.filter((t) => t.planId === planId) : []
-      );
-      if (step.kind === 'passage') {
-        const t = step.task;
-        if (t.setId !== null) {
-          onNavigate?.('passage-practice', { setId: t.setId, mode: t.mode, planId, returnTo });
-        } else {
-          onNavigate?.('passage-detail', { passageId: t.passageId, fromPlan: { planId, planName: t.planName }, returnTo });
-        }
-        return;
-      }
-      if (plan.practice_content === 'passages') {
-        onNavigate?.('plan-detail', { planId });
-        return;
-      }
-      const result = await studyService.getStudyPlanSchedules(planId);
-      if (!result.success) {
-        toast.showError('无法开始练习', result.error);
-        return;
-      }
-      const target = pickPracticeSchedule(result.data);
-      if (target) {
-        onNavigate?.('word-practice', { planId, scheduleId: target.id, returnTo });
-      } else {
-        toast.showInfo('日程都已练完', '可以在计划详情里再练一次');
-        onNavigate?.('plan-detail', { planId });
-      }
-    },
+    (planId: number) => startPlanPractice(plans?.find((p) => p.id === planId), planId, onNavigate, toast, returnTo),
     [plans, onNavigate, toast, returnTo]
   );
 }

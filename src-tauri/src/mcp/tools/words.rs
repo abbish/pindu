@@ -2,6 +2,13 @@
 
 use super::*;
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct OptionalBookArgs {
+    /// One word book; empty = all
+    #[serde(default)]
+    pub book_id: Option<i64>,
+}
+
 #[tool_router(router = words_router, vis = "pub(super)")]
 impl PinduTools {
     #[tool(
@@ -332,7 +339,7 @@ impl PinduTools {
     }
 
     #[tool(
-        description = "Add more example sentences to a word (mode \"append\") or rewrite them (mode \"replace\"), using the app's example writer that checks level and correctness.",
+        description = "Let the app's example writer generate more example sentences for a word (mode \"append\") or rewrite them (\"replace\"). It does not know this conversation; when the learner wants examples about something you discussed, write them yourself and use save_examples instead.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn refresh_examples(
@@ -402,6 +409,64 @@ impl PinduTools {
                 )
             }
             Err(e) => failed("没能查这个词出现在哪", e),
+        }
+    }
+
+    #[tool(
+        description = "Save example sentences you wrote for a word (use what you and the learner discussed: the scene, level, a grammar point). Each sentence must use the word (any form) and have a Chinese translation. mode \"append\" (default) adds them, \"replace\" replaces all examples.",
+        annotations(read_only_hint = false, destructive_hint = false)
+    )]
+    async fn save_examples(
+        &self,
+        Parameters(args): Parameters<SaveExamplesArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        use crate::agent::tasks::ExampleMode;
+        use crate::services::word_examples::WordExampleService;
+        let mode = if args.mode.as_deref() == Some("replace") {
+            ExampleMode::Replace
+        } else {
+            ExampleMode::Append
+        };
+        let given = args
+            .examples
+            .iter()
+            .map(|e| crate::types::wordbook::WordExample {
+                sentence: e.en.trim().to_string(),
+                translation: e.zh.trim().to_string(),
+            })
+            .collect();
+        match WordExampleService::new(self.pool(), self.logger())
+            .save(args.word_id, given, mode)
+            .await
+        {
+            Ok(examples) => done(
+                json!({ "examples": examples.iter().map(|e| json!({ "en": e.sentence, "zh": e.translation })).collect::<Vec<_>>() }),
+                format!("保存了例句（现在共 {} 句）", examples.len()),
+                None,
+            ),
+            Err(e) => failed("没能保存例句", e),
+        }
+    }
+
+    #[tool(
+        description = "Statistics of word books: overall (books, words, learned) or one book's parts of speech and kinds.",
+        annotations(read_only_hint = true)
+    )]
+    async fn word_book_stats(
+        &self,
+        Parameters(args): Parameters<OptionalBookArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let result = match args.book_id {
+            Some(id) => crate::handlers::get_word_book_statistics(self.app.clone(), id)
+                .await
+                .map(|s| serde_json::to_value(&s).unwrap_or(Value::Null)),
+            None => crate::handlers::get_global_word_book_statistics(self.app.clone())
+                .await
+                .map(|s| serde_json::to_value(&s).unwrap_or(Value::Null)),
+        };
+        match result {
+            Ok(v) => done(v, "看了词汇本的统计".to_string(), None),
+            Err(e) => failed("没能查看词汇本统计", e),
         }
     }
 }

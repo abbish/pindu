@@ -22,7 +22,7 @@ description: 写一篇练习用的短文、把一段英文存成短文、给短�
 
 ## 出题：`mcp__pindu__create_question_set`
 
-- 先 `mcp__pindu__list_passages` 找到短文 id；刚存的短文翻译好后才会出现在列表里，还没出现时告诉学习者稍后再来出题。
+- 先 `mcp__pindu__list_passages`（可按词汇本、AI 写的 / 导入的、标题筛选）找到短文 id；刚存的短文翻译好后才会出现在列表里，还没出现时告诉学习者稍后再来出题。
 - 阅读理解用 reading，听力用 listening；题量默认 3 道选择 + 2 道判断，学习者有要求就按要求。
 - 出题在后台进行，做好后会通知你。
 
@@ -35,3 +35,6 @@ description: 写一篇练习用的短文、把一段英文存成短文、给短�
 - 题组：`mcp__pindu__get_question_set` 看题目和答案（可以和学习者一起讲题）；`rename_question_set` 改名。
 - 删除短文、题组：`mcp__pindu__delete_passage` / `mcp__pindu__delete_question_set`，界面会请学习者确认；没结束的计划还在用的删不了。
 - 练习成绩：`mcp__pindu__passage_results`。
+- 短文里还不在词汇本的重点词：`mcp__pindu__passage_new_words`；收进词汇本：`mcp__pindu__add_passage_words_to_book`（后台做拼读分析，之后成为这篇短文关联词汇本的词汇）。只想读的时候点得开单词卡：`mcp__pindu__prepare_word_cards`。
+- 重新挑这篇的词汇：你读完正文自己挑（值得学、水平合适、和场景相关），用 `set_passage_vocabulary` 加 / 去。
+- 讲句子：直接在回答里讲（结构、成分、语法点、用法），不需要工具。
