@@ -38,6 +38,18 @@ fn missing_vocabulary(text: &str, words: &[NewWord]) -> Vec<String> {
         .collect()
 }
 
+/// 任务状态的说法（给 AI 老师转述）
+fn job_status_text(status: crate::jobs::JobStatus) -> &'static str {
+    use crate::jobs::JobStatus::*;
+    match status {
+        Queued => "排队中",
+        Running => "进行中",
+        Succeeded => "已完成",
+        Failed => "没能完成",
+        Cancelled => "已停止",
+    }
+}
+
 /// 一次最多查 / 收多少个词
 const MAX_WORDS: usize = 200;
 
@@ -245,6 +257,8 @@ impl PinduTools {
             },
         )
         .await?;
+        // 拼读分析只影响词什么时候出现在词汇本里：记下来源，不用结束时通知
+        super::job_notice::track(&job, false);
         Ok((new, skipped, Some(job)))
     }
 }
@@ -381,6 +395,50 @@ impl PinduTools {
             }
             (Err(e), _) | (_, Err(e)) => failed("没能查看学习情况", e),
         }
+    }
+
+    #[tool(
+        description = "Check background jobs (writing / saving passages, generating questions, spelling analysis of new words): status, progress and current stage. Running jobs and those finished in the last hour; `fromThisConversation` marks the ones you started here. Use it whenever the learner asks about progress, and before saying something you started is ready.",
+        annotations(read_only_hint = true)
+    )]
+    async fn background_jobs(&self) -> Result<CallToolResult, ErrorData> {
+        let since = crate::time::minutes_ago_utc(60);
+        let here = super::job_notice::current_conversation();
+        let jobs = self.app.state::<crate::jobs::Jobs>().list();
+        let shown: Vec<&crate::jobs::Job> = jobs
+            .iter()
+            .filter(|j| {
+                j.status.is_active()
+                    || j.finished_at
+                        .as_deref()
+                        .is_some_and(|t| t >= since.as_str())
+            })
+            .collect();
+        let data: Vec<Value> = shown
+            .iter()
+            .map(|j| {
+                let from_here = here.is_some() && super::job_notice::origin_of(&j.id) == here;
+                json!({
+                    "title": j.title,
+                    "status": job_status_text(j.status),
+                    "progress": (j.total > 0).then(|| format!("{}/{}", j.current, j.total)),
+                    "stage": j.stage,
+                    "error": j.error.as_ref().and_then(|e| e.get("message")).cloned(),
+                    "fromThisConversation": from_here,
+                })
+            })
+            .collect();
+        let running = shown.iter().filter(|j| j.status.is_active()).count();
+        let step = if shown.is_empty() {
+            "看了后台任务：没有进行中的".to_string()
+        } else {
+            format!(
+                "看了后台任务：{} 个进行中，{} 个刚结束",
+                running,
+                shown.len() - running
+            )
+        };
+        done(json!(data), step, None)
     }
 
     #[tool(
@@ -593,7 +651,7 @@ impl PinduTools {
         {
             Ok(job) => {
                 // 结束时通知这个对话（AI 老师接着说）
-                super::job_notice::watch(&job);
+                super::job_notice::track(&job, true);
                 let name = title.clone().unwrap_or_else(|| "新短文".to_string());
                 let step = format!("存成短文《{}》，后台在翻译", name);
                 let output = json!({ "kind": "passage", "title": name, "meta": format!("约 {} 词", preview.total_words), "jobId": job });
@@ -642,7 +700,7 @@ impl PinduTools {
         match crate::handlers::start_question_set_generation(self.app.clone(), request).await {
             Ok(job) => {
                 // 结束时通知这个对话（AI 老师接着说）
-                super::job_notice::watch(&job);
+                super::job_notice::track(&job, true);
                 let output = json!({ "kind": "questions", "id": passage.id, "title": format!("{}题", label),
                                      "meta": format!("《{}》", passage.title), "jobId": job });
                 done(

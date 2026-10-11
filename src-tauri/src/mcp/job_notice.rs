@@ -9,20 +9,39 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use tauri::{AppHandle, Manager};
 
-/// 任务 id → 对话 id
+/// 结束时要通知的任务：任务 id → 对话 id
 static WATCHED: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
+/// AI 老师提交的任务来自哪个对话（查看后台任务时标出「这个对话发起的」）
+static ORIGIN: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
 
 tokio::task_local! {
     /// 当前这次工具调用来自哪个对话（MCP 请求头）
     pub static CONVERSATION: Option<String>;
 }
 
-/// 这个任务结束时通知当前对话
-pub fn watch(job_id: &str) {
-    let conversation = CONVERSATION.try_with(|c| c.clone()).ok().flatten();
-    if let (Some(conversation), Ok(mut watched)) = (conversation, WATCHED.lock()) {
-        watched.insert(job_id.to_string(), conversation);
+/// 当前这次工具调用来自的对话
+pub fn current_conversation() -> Option<String> {
+    CONVERSATION.try_with(|c| c.clone()).ok().flatten()
+}
+
+/// 记下任务来自当前对话；`notify` 时任务结束通知这个对话
+pub fn track(job_id: &str, notify: bool) {
+    let Some(conversation) = current_conversation() else {
+        return;
+    };
+    if let Ok(mut origin) = ORIGIN.lock() {
+        origin.insert(job_id.to_string(), conversation.clone());
     }
+    if notify {
+        if let Ok(mut watched) = WATCHED.lock() {
+            watched.insert(job_id.to_string(), conversation);
+        }
+    }
+}
+
+/// 任务来自哪个对话（AI 老师提交的才有）
+pub fn origin_of(job_id: &str) -> Option<String> {
+    ORIGIN.lock().ok().and_then(|o| o.get(job_id).cloned())
 }
 
 /// 给 AI 老师看的一句话：任务名 + 结果（短文 id 方便接着出题）

@@ -27,6 +27,11 @@ pub fn days_ago_utc(days: i64) -> String {
     format_instant(Utc::now() - chrono::Duration::days(days))
 }
 
+/// `minutes` 分钟前的此刻（UTC 规范格式）
+pub fn minutes_ago_utc(minutes: i64) -> String {
+    format_instant(Utc::now() - chrono::Duration::minutes(minutes))
+}
+
 /// 把 UTC 时刻格式化为规范字符串
 pub fn format_instant(at: DateTime<Utc>) -> String {
     at.to_rfc3339_opts(SecondsFormat::Millis, true)

@@ -164,7 +164,7 @@ const TurnItems: React.FC<{ turn: Extract<ViewTurn, { role: 'agent' }> }> = ({ t
             className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
             aria-expanded={open}
           >
-            {failed ? <CircleAlert className="size-3.5 text-destructive" /> : <Check className="size-3.5" />}
+            {failed && <CircleAlert className="size-3.5 text-destructive" />}
             <span>
               处理了 {turn.steps.length} 步{turn.seconds ? ` · 用时 ${formatSeconds(turn.seconds)}` : ''}
             </span>
