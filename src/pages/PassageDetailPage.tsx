@@ -25,8 +25,8 @@ import { ReadAloudPanel } from './passage-detail/ReadAloudPanel';
 import { ClipStudyPanel } from './passage-detail/ClipStudyPanel';
 import { videoService } from '@/services/videoService';
 import { MaterialTags } from '@/components/MaterialTags/MaterialTags';
-import { useJob, useJobs, useOnJobFinished } from '@/hooks/useJobs';
-import { JobPanel, activeJobFor } from '@/components/Jobs';
+import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { JobPanel } from '@/components/Jobs';
 import { isJobActive } from '@/types/job';
 import { jobErrorText } from '@/components/Jobs';
 import type { PassageVideo } from '@/types/video';
@@ -119,14 +119,16 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>(initialTab ?? 'text');
   const [focusWord, setFocusWord] = useState<string | null>(null);
-  /** 正在给这篇出题的后台任务（离开再回来也接得上；这个页面开着时由页面提示结果） */
+  /** 正在给这篇出题的后台任务（全局任务列表里取：可以同时生成几套，离开再回来也接得上；这个页面开着时由页面提示结果） */
   const jobs = useJobs();
-  const runningQs = passageId === undefined ? undefined : activeJobFor(jobs, ['question_set'], 'passageId', passageId);
-  const [qsJobId, setQsJobId] = useState<string | null>(null);
-  const qsJob = useJob(qsJobId ?? runningQs?.id ?? null);
+  /** 这种方式（阅读 / 听力）正在生成的题组，按提交顺序 */
+  const generatingSets = (mode: PassageMode) =>
+    jobs.filter((j) => {
+      const params = j.link?.params as { passageId?: number; mode?: PassageMode } | undefined;
+      return j.kind === 'question_set' && isJobActive(j) && params?.passageId === passageId && (params?.mode ?? 'reading') === mode;
+    });
   useOnJobFinished((job) => {
     if (job.kind !== 'question_set' || (job.link?.params as { passageId?: number } | null)?.passageId !== passageId) return;
-    setQsJobId(null);
     if (job.status === 'succeeded') {
       const r = job.result as { name?: string; count?: number } | null;
       toast.showSuccess(`已生成「${r?.name ?? '题组'}」`, `共 ${r?.count ?? 0} 题`);
@@ -142,8 +144,6 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const [showGenerate, setShowGenerate] = useState(false);
   /** 生成题组弹窗打开时选中的方式 */
   const [generateMode, setGenerateMode] = useState<PassageMode>('reading');
-  /** 正在生成的题组是哪一类（进度显示在那个页签） */
-  const [qsJobMode, setQsJobMode] = useState<PassageMode>('reading');
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** 改标题：输入框里的文字（null = 没在改） */
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -511,12 +511,14 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         {(['reading', 'listening'] as const).map((mode) => (
           <TabsContent key={mode} value={mode === 'reading' ? 'sets' : 'listening'}>
-            {qsJob && isJobActive(qsJob) && qsJobMode === mode && (
-              <div className="mb-3">
-                <JobPanel job={qsJob} title="正在生成题组" actions={{ stop: true }} />
+            {generatingSets(mode).length > 0 && (
+              <div className="mb-3 flex flex-col gap-3">
+                {generatingSets(mode).map((job) => (
+                  <JobPanel key={job.id} job={job} title="正在生成题组" actions={{ stop: true }} />
+                ))}
               </div>
             )}
-            {setsOf(mode).length === 0 ? (
+            {setsOf(mode).length === 0 && generatingSets(mode).length === 0 ? (
               <EmptyState icon={mode === 'listening' ? <Headphones /> : <FileQuestion />} title={mode === 'listening' ? '还没有听力题组' : '还没有阅读理解题组'}>
                 <Button onClick={() => openGenerate(mode)}>
                   <Sparkles />
@@ -541,9 +543,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         level={passage.level}
         mode={generateMode}
         existingSets={{ reading: setsOf('reading').length, listening: setsOf('listening').length }}
-        onStarted={(jobId, mode) => {
-          setQsJobId(jobId);
-          setQsJobMode(mode);
+        onStarted={(_jobId, mode) => {
           // 到生成的那一类题组的页签看进度
           setTab(mode === 'listening' ? 'listening' : 'sets');
         }}

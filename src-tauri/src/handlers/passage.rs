@@ -326,14 +326,24 @@ pub async fn start_question_set_generation(
         let paths = agent_paths(&app)?;
         let svc = service(&app);
         let passage = svc.get(request.passage_id).await?;
+        let listening = request.mode.as_deref() == Some("listening");
+        // 任务带上方式：页面按它把进度放进「阅读理解」/「听力练习」页签，任务面板点开也到那个页签
         let spec = JobSpec {
             kind: "question_set",
-            title: format!("出阅读理解题 · {}", passage.title),
+            title: format!(
+                "{} · {}",
+                if listening { "出听力题" } else { "出阅读理解题" },
+                passage.title
+            ),
             lane: Lane::Agent,
             detached: true,
             link: Some(JobLink::new(
                 "passage-detail",
-                serde_json::json!({ "passageId": request.passage_id }),
+                serde_json::json!({
+                    "passageId": request.passage_id,
+                    "mode": if listening { "listening" } else { "reading" },
+                    "tab": if listening { "listening" } else { "sets" },
+                }),
             )),
         };
         Ok(app.state::<Jobs>().spawn(spec, move |_ctx| async move {
