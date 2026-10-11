@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { nextPinned } from '@/utils/stickToBottom';
+import { NEAR_BOTTOM, nextPinned } from '@/utils/stickToBottom';
 
 /**
  * 对话区的贴底跟随（规则见 utils/stickToBottom.ts）。内容的高度变化（流式文字逐帧长出来、步骤展开、图片加载）
@@ -46,15 +46,19 @@ export function useStickToBottom() {
     if (next !== pinned.current) setPinned(next);
   }, [setPinned]);
 
-  // 内容变高 / 变矮：跟随时滚到底
+  // 内容变高 / 变矮、对话区变大变小（输入框长高、窗口缩放）：跟随时滚到底；
+  // 不跟随时如果已经到底（如内容收起后不用滚了），恢复跟随、收起「回到最新」
   useEffect(() => {
-    if (!content) return;
+    const el = scrollRef.current;
+    if (!content || !el) return;
     const observer = new ResizeObserver(() => {
       if (pinned.current) jump(false);
+      else if (el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM) setPinned(true);
     });
     observer.observe(content);
+    observer.observe(el);
     return () => observer.disconnect();
-  }, [content, jump]);
+  }, [content, jump, setPinned]);
 
   return { scrollRef, contentRef: setContent, onScroll, atBottom, scrollToBottom };
 }

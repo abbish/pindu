@@ -4,13 +4,13 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { forgetJobs, useJobs } from '@/hooks/useJobs';
 import { jobService } from '@/services/jobService';
-import type { NavigateFn } from '@/navigation';
+import type { JobsTab, NavigateFn } from '@/navigation';
 import { isJobActive, type Job } from '@/types/job';
 import { defaultJobsTab } from '@/utils/jobSeen';
 import { JobItem } from '@/components/Jobs/JobItem';
 import { actionProps, useJobActions } from '@/components/Jobs/useJobActions';
 
-type Filter = 'active' | 'done' | 'failed';
+type Filter = JobsTab;
 
 const FILTERS: { value: Filter; label: string; match: (job: Job) => boolean; empty: string }[] = [
   { value: 'active', label: '进行中', match: isJobActive, empty: '没有正在进行的任务' },
@@ -19,10 +19,11 @@ const FILTERS: { value: Filter; label: string; match: (job: Job) => boolean; emp
 ];
 
 /** 后台任务：进行中与这次打开应用以来结束的任务（侧边栏「后台任务」、macOS「窗口 → 后台任务」） */
-export const JobsPage: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) => {
+/** tab：要打开的页签（失败提示的「查看」打开「失败」）；没给时有进行中的看进行中，否则看最近结束的任务所在的页签 */
+export const JobsPage: React.FC<{ tab?: JobsTab; onNavigate: NavigateFn }> = ({ tab, onNavigate }) => {
   const jobs = useJobs();
   const actions = useJobActions(onNavigate);
-  const [filter, setFilter] = useState<Filter>(() => defaultJobsTab(jobs));
+  const [filter, setFilter] = useState<Filter>(() => tab ?? defaultJobsTab(jobs));
   const current = FILTERS.find((f) => f.value === filter)!;
   const shown = jobs.filter(current.match);
   const finishedIds = jobs.filter((j) => !isJobActive(j)).map((j) => j.id);

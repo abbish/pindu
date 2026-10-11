@@ -135,7 +135,8 @@ function App() {
       case 'tutor':
         return <TutorPage key={route.params?.at} initialPrompt={route.params?.prompt} conversationId={route.params?.conversationId} openAt={route.params?.openAt} onNavigate={navigate} />;
       case 'jobs':
-        return <JobsPage onNavigate={navigate} />;
+        // 每次打开（菜单、失败提示的「查看」）重新选页签
+        return <JobsPage key={route.params?.at} tab={route.params?.tab} onNavigate={navigate} />;
       case 'settings':
         return <SettingsPage onNavigate={navigate} />;
       default: {

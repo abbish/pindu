@@ -32,6 +32,10 @@ test("推荐下一步的参数：写法偏差在校验前整理好，最多 3 �
   assert.deepEqual(normalizeReplies({ replies: ["讲几个难词", "出几道题考我", "写篇短文", "建个计划"] }), ["讲几个难词", "出几道题考我", "写篇短文"]);
   assert.deepEqual(normalizeReplies({ items: [" 考考我 ", "", "考考我", 3] }), ["考考我"]);
   assert.deepEqual(normalizeReplies(undefined), []);
+  // replies 是空的、给了别的写法：接着看下一个
+  assert.deepEqual(normalizeReplies({ replies: [], item: "考考我" }), ["考考我"]);
+  // 太长的截到 30 个字（不为长度再来一轮）
+  assert.equal(normalizeReplies({ replies: ["很".repeat(40)] })[0].length, 30);
 });
 
 test("拦下时的说明：界面按开头认出没同意 / 只查看（与 src/utils/tutorTranscript.ts 的 TOOL_OUTCOMES 一致）", () => {

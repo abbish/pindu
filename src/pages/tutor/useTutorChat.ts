@@ -95,11 +95,16 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
   }, []);
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
-  const refreshList = useCallback(async () => {
-    listing ??= tutorService.list().finally(() => {
-      listing = null;
-    });
-    const result = await listing;
+  /** fresh：不复用进行中的请求（它可能早于刚开的新对话） */
+  const refreshList = useCallback(async (fresh = false) => {
+    if (fresh || !listing) {
+      const started = tutorService.list();
+      listing = started;
+      void started.finally(() => {
+        if (listing === started) listing = null;
+      });
+    }
+    const result = await listing!;
     setListLoading(false);
     if (result.success) setConversations(result.data);
   }, [setConversations]);
@@ -156,6 +161,8 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
       if (!result.success) {
         buffer.current = { id: null, events: new Map(), holding: false };
         toast.showError('无法打开这个对话', result.error);
+        // 回到新对话：不然接下来发的消息会发进这个打不开的对话
+        setActiveId(null);
         return;
       }
       const asks = result.data.pendingAsks.map((raw) => toAsk(raw)).filter((a): a is TutorAsk => a !== null);
@@ -206,21 +213,26 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
             }
       );
       // 新对话：id 由后端返回，期间的事件先存着
-      if (!conversationId) buffer.current = { id: null, events: new Map(), holding: true };
+      const pendingNew = conversationId ? null : { id: null, events: new Map<string, SeqEvent[]>(), holding: true };
+      if (pendingNew) buffer.current = pendingNew;
       const result = await tutorService.send({ conversationId: conversationId ?? undefined, message, images, files });
+      // 等待期间学习者换到了别的对话（或又开了新对话）：不把界面拉回来，新对话照样出现在列表里
+      const stillHere = activeRef.current === conversationId && (!pendingNew || buffer.current === pendingNew);
       if (!result.success) {
-        if (!conversationId) buffer.current = { id: null, events: new Map(), holding: false };
-        setTranscript((s) => ({ ...s, running: false, pendingUser: null }));
+        if (pendingNew && buffer.current === pendingNew) buffer.current = { id: null, events: new Map(), holding: false };
+        if (stillHere) setTranscript((s) => ({ ...s, running: false, pendingUser: null }));
         toast.showError('没能发出去', result.error);
         return false;
       }
-      if (!conversationId) {
+      if (pendingNew) {
         const id = result.data;
-        setActiveId(id);
-        const later = release(id);
-        setTranscript((s) => later.reduce((state, e) => applyEvent(state, e.event), s));
+        if (stillHere) {
+          setActiveId(id);
+          const later = release(id);
+          setTranscript((s) => later.reduce((state, e) => applyEvent(state, e.event), s));
+        }
         // 后端列表已经带上刚开的对话（标题先用第一句话，起好标题后更新）：马上刷新
-        void refreshList();
+        void refreshList(true);
       }
       return true;
     },

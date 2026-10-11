@@ -263,7 +263,7 @@ export type ViewTurn =
       suggestions: string[];
       /** 用时（秒）：学习者发出消息到最后一条回答；还没有时间时为空 */
       seconds?: number;
-      /** 这一轮从什么时候开始（学习者发出消息的时刻，ms）：进行中显示已用时间；还没确认的消息为空 */
+      /** 这一轮从什么时候开始（学习者发出消息 / 系统提示的时刻，ms）：进行中显示已用时间；消息还没确认、或由运行自己开始时为空 */
       startedAt?: number;
       error?: string;
       stopped?: boolean;
@@ -349,24 +349,38 @@ function userText(message: PiUserMessage): { text: string; images: string[]; fil
 /** 不算「做了的事」、不显示成步骤的工具：界面元信息（推荐下一步显示成按钮，标题进对话列表）与 pi 找工具的 tool_search */
 const META_TOOLS = new Set(['suggest_replies', 'name_conversation', 'tool_search']);
 
-/** 状态 → 界面轮次：用户一条一轮；之后的 assistant 消息与工具结果按发生顺序合成 AI 的一轮 */
+/** 一条 assistant 消息以这些原因结束时，这一次运行就结束了（error 不算：pi 可能还会自动重试） */
+const RUN_ENDED = new Set(['stop', 'aborted', 'length']);
+
+/**
+ * 状态 → 界面轮次：用户一条一轮；之后的 assistant 消息与工具结果按发生顺序合成 AI 的一轮。
+ * 轮次与内容的 key 在一轮的整个过程中不变（正在写 → 写完、消息待确认 → 已确认），界面不因此重建（展开状态、逐字显示都保留）：
+ * AI 的一轮按它前面第几个学习者消息 / 系统提示编号，内容按消息的时刻编号（正在写的消息与写完的是同一个时刻）。
+ */
 export function toTurns(state: TranscriptState): ViewTurn[] {
   const turns: ViewTurn[] = [];
   const results = new Map<string, PiToolResultMessage>();
   for (const m of state.messages) if (m.role === 'toolResult') results.set(m.toolCallId, m);
+  const lastAssistant = state.messages.map((m) => m.role).lastIndexOf('assistant');
 
   let agent: Extract<ViewTurn, { role: 'agent' }> | null = null;
-  /** 这一轮从学习者哪条消息开始（算用时） */
+  /** 这一轮从学习者哪条消息开始（算用时）；还没确认的消息没有时刻 */
   let askedAt: number | undefined;
-  const agentTurn = (key: string) => {
+  /** 前面有几个学习者消息 / 系统提示（AI 那一轮的 key） */
+  let anchors = 0;
+  /** 最后一条消息已经结束运行的轮次 */
+  const ended = new WeakSet<object>();
+  const agentTurn = (key = `t${anchors}`) => {
     if (!agent) {
       agent = { role: 'agent', key, items: [], steps: [], suggestions: [], running: false, startedAt: askedAt };
       turns.push(agent);
     }
     return agent;
   };
-  const addAssistant = (message: PiAssistantMessage, key: string) => {
-    const turn = agentTurn(key);
+  /** live：这条消息属于正在进行的运行（没有结果的工具调用算进行中，否则算已停止） */
+  const addAssistant = (message: PiAssistantMessage, live: boolean) => {
+    const turn = agentTurn();
+    const key = `a${message.timestamp}`;
     message.content.forEach((block, i) => {
       const last = turn.items[turn.items.length - 1];
       if (block.type === 'text' && block.text.trim()) {
@@ -375,7 +389,7 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
         const replies = block.arguments?.replies;
         if (Array.isArray(replies)) turn.suggestions = replies.filter((r): r is string => typeof r === 'string');
       } else if (block.type === 'toolCall' && !META_TOOLS.has(block.name)) {
-        const s = step(block, results.get(block.id), state.tools[block.id], state.running);
+        const s = step(block, results.get(block.id), state.tools[block.id], live);
         if (!s) return;
         turn.steps.push(s);
         // 连着的工具调用放在一组
@@ -390,33 +404,51 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
     if (message.stopReason === 'error') turn.error = message.errorMessage || '';
     else delete turn.error;
     if (message.stopReason === 'aborted') turn.stopped = true;
+    if (message.stopReason && RUN_ENDED.has(message.stopReason)) ended.add(turn);
+    else ended.delete(turn);
   };
 
   state.messages.forEach((m, i) => {
     if (m.role === 'user') {
       agent = null;
       askedAt = m.timestamp;
-      turns.push({ role: 'user', key: `u${m.timestamp}-${i}`, ...userText(m) });
+      anchors += 1;
+      turns.push({ role: 'user', key: `u${anchors}`, ...userText(m) });
     } else if (m.role === 'assistant') {
-      addAssistant(m, `a${m.timestamp}-${i}`);
+      const live = state.running && !state.partial && i === lastAssistant && m.stopReason !== 'aborted' && m.stopReason !== 'error';
+      addAssistant(m, live);
     } else if (m.role === 'custom' && m.display) {
       agent = null;
       askedAt = m.timestamp;
+      anchors += 1;
       const text = typeof m.content === 'string' ? m.content : m.content.map((b) => b.text).join('');
-      turns.push({ role: 'notice', key: `n${m.timestamp}-${i}`, text });
+      turns.push({ role: 'notice', key: `n${anchors}`, text });
     }
   });
   if (state.pendingUser) {
     agent = null;
-    turns.push({ role: 'user', key: 'pending', ...state.pendingUser, pending: true });
+    askedAt = undefined;
+    anchors += 1;
+    turns.push({ role: 'user', key: `u${anchors}`, ...state.pendingUser, pending: true });
   }
-  if (state.partial) addAssistant(state.partial, 'partial');
+  if (state.partial) addAssistant(state.partial, true);
   if (state.running) {
     const last = turns[turns.length - 1];
-    const turn = last?.role === 'agent' ? last : agentTurn('running');
+    // 上一轮已经结束、新的运行还没有消息（如后台任务的通知触发的运行，pi 先发 agent_start）：另起一轮，不把结束了的那轮改回进行中
+    const current = last?.role === 'agent' && !ended.has(last) ? last : null;
+    if (!current) agent = null;
+    const turn = current ?? agentTurn(last?.role === 'agent' ? `t${anchors}-next` : undefined);
+    if (!current) turn.startedAt = undefined;
     turn.running = true;
     // 还在跑（自动重试中）：不显示错误
     delete turn.error;
+  }
+  // 核对后没有再交（AI 放弃了）：这一步就是没做成
+  for (const turn of turns) {
+    if (turn.role !== 'agent' || turn.running) continue;
+    turn.steps.forEach((s, i) => {
+      if (s.status === 'revised' && !turn.steps.slice(i + 1).some((later) => later.tool === s.tool)) s.status = 'error';
+    });
   }
   return turns;
 }
@@ -425,6 +457,7 @@ function step(
   call: PiToolCallBlock,
   result: PiToolResultMessage | undefined,
   live: TranscriptState['tools'][string] | undefined,
+  /** 这条调用所在的消息属于正在进行的运行 */
   running: boolean
 ): ViewStep | null {
   const details = result?.details ?? live?.details;
@@ -433,7 +466,9 @@ function step(
   // pi 自带的 read（读 skill）没有 reason，按读的是哪个 skill 说
   const reason = typeof call.arguments?.reason === 'string' ? call.arguments.reason.trim() : '';
   // 没有结果也不在运行：被停止了
-  let status: ViewStep['status'] = result ? (result.isError ? 'error' : 'done') : (live?.status ?? (running ? 'running' : 'skipped'));
+  // 进程中途退出时没有 tool_execution_end：不在运行就不再算进行中
+  const liveStatus = live?.status === 'running' && !running ? undefined : live?.status;
+  let status: ViewStep['status'] = result ? (result.isError ? 'error' : 'done') : (liveStatus ?? (running ? 'running' : 'skipped'));
   let note: string | undefined;
   if (status === 'error') {
     const outcome = TOOL_OUTCOMES.find((o) => o.match.test((result ? blocksText(result.content) : live?.text) ?? ''));

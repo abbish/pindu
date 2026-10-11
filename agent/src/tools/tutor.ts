@@ -14,7 +14,7 @@ export const suggestRepliesTool = defineTool({
   description:
     "Call once at the very end of every reply, after your answer text: 2-3 short things the learner could say next (in Chinese, in the learner's own voice, at most 20 characters each, only things you can actually do). This ends your turn.",
   parameters: Type.Object({
-    replies: Type.Array(Type.String({ maxLength: 30 }), { minItems: 1, maxItems: 3 }),
+    replies: Type.Array(Type.String({ maxLength: 30 }), { maxItems: 3 }),
   }),
   // 模型常见的写法偏差（写成 item / reply、给了一个字符串、多给了几条）在校验前整理好（pi 的 prepareArguments），不为这个多来回一轮
   prepareArguments: (args: unknown) => ({ replies: normalizeReplies(args) }),
@@ -27,15 +27,18 @@ export const suggestRepliesTool = defineTool({
   },
 });
 
-/** 推荐下一步的参数整理：接受 replies / reply / item / items，字符串或数组；去空、去重，最多 3 条 */
+/** 推荐下一步的参数整理：依次看 replies / items / reply / item（字符串或数组，前一个没有可用的再看下一个）；去空、去重，每条最多 30 个字，最多 3 条 */
 export function normalizeReplies(args: unknown): string[] {
   const a = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
-  const raw = a.replies ?? a.items ?? a.reply ?? a.item ?? (typeof args === "string" ? args : undefined);
-  const list = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])
-    .filter((r): r is string => typeof r === "string")
-    .map(r => r.trim())
-    .filter(Boolean);
-  return [...new Set(list)].slice(0, 3);
+  const sources = typeof args === "string" ? [args] : [a.replies, a.items, a.reply, a.item];
+  for (const raw of sources) {
+    const list = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])
+      .filter((r): r is string => typeof r === "string")
+      .map(r => [...r.trim()].slice(0, 30).join(""))
+      .filter(Boolean);
+    if (list.length > 0) return [...new Set(list)].slice(0, 3);
+  }
+  return [];
 }
 
 /** 给对话起标题（第一轮回答时由模型起，存成 pi 的会话名；已经有名字（含学习者改过的）时不覆盖） */

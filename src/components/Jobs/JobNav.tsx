@@ -47,7 +47,7 @@ const JobsPopoverBody: React.FC<{ title: string; jobs: Job[]; onNavigate: Naviga
           className="w-full justify-center"
           onClick={() => {
             onClose();
-            onNavigate('jobs');
+            onNavigate('jobs', { at: Date.now() });
           }}
         >
           查看全部任务
@@ -62,18 +62,24 @@ const JobsPopoverBody: React.FC<{ title: string; jobs: Job[]; onNavigate: Naviga
  * 有进行中的任务时显示数量并呼吸；结束了还没看过时是一个小点（绿色完成、红色失败），点开浮层或进入这个模块后消失。
  * 点开是这个模块的任务浮层，底部「查看全部任务」进入任务页。侧栏收起成图标时只在图标角上显示小点。
  */
-export const ModuleJobBadge: React.FC<{ module: JobModule; label: string; current: boolean; onNavigate: NavigateFn }> = ({ module, label, current, onNavigate }) => {
+export const ModuleJobBadge: React.FC<{ module: JobModule; label: string; activePage: string; onNavigate: NavigateFn }> = ({
+  module,
+  label,
+  activePage,
+  onNavigate,
+}) => {
   const jobs = useJobs().filter((j) => j.module === module);
   const seen = useNavSeen();
   const [open, setOpen] = useState(false);
 
   const active = jobs.filter(isJobActive);
-  // 正在看这个模块时，刚结束的任务已经在页面上看到了
-  const unseen = current ? [] : jobs.filter((j) => isJobUnseen(j, seen, NAV_SEEN_SINCE));
+  // 正在看这个模块或任务页时，刚结束的任务已经在页面上看到了
+  const unseen = activePage === module || activePage === JOBS_PAGE ? [] : jobs.filter((j) => isJobUnseen(j, seen, NAV_SEEN_SINCE));
   if (active.length === 0 && unseen.length === 0 && !open) return null;
 
   const failed = unseen.some((j) => j.status === 'failed');
-  const title = active.length > 0 ? `${active.length} 个任务进行中` : failed ? '有任务没有完成' : '任务已完成';
+  const title =
+    active.length > 0 ? `${active.length} 个任务进行中${failed ? '，有任务没有完成' : ''}` : failed ? '有任务没有完成' : '任务已完成';
   const dotColor = failed ? 'bg-destructive' : 'bg-success';
 
   const handleOpenChange = (value: boolean) => {
@@ -94,8 +100,10 @@ export const ModuleJobBadge: React.FC<{ module: JobModule; label: string; curren
         <PopoverTrigger asChild>
           <SidebarMenuAction aria-label={`${label}：${title}`} title={title} className="aspect-auto w-auto min-w-5 px-0.5">
             {active.length > 0 ? (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[11px] leading-none font-medium text-primary-foreground tabular-nums motion-safe:animate-pulse">
+              <span className="relative flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[11px] leading-none font-medium text-primary-foreground tabular-nums motion-safe:animate-pulse">
                 {active.length}
+                {/* 还有任务在跑时，没看过的失败也要看得到 */}
+                {failed && <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-destructive ring-1 ring-sidebar" />}
               </span>
             ) : (
               <span className={cn('size-2 rounded-full', dotColor)} />
@@ -114,15 +122,18 @@ export const ModuleJobBadge: React.FC<{ module: JobModule; label: string; curren
  * 侧边栏底部固定的「后台任务」入口（设置上方）：进入任务页。
  * 有进行中的任务时右侧显示数量（不呼吸，与模块上的标记区分）；有没看过的失败时图标带红点，进入任务页后消失。
  */
-export const JobsNavItem: React.FC<{ current: boolean; onNavigate: NavigateFn }> = ({ current, onNavigate }) => {
+export const JobsNavItem: React.FC<{ activePage: string; onNavigate: NavigateFn }> = ({ activePage, onNavigate }) => {
   const jobs = useJobs();
   const seen = useNavSeen();
+  const current = activePage === JOBS_PAGE;
   const active = jobs.filter(isJobActive).length;
-  const unseenFailure = !current && jobs.some((j) => j.status === 'failed' && isJobUnseen(j, seen, NAV_SEEN_SINCE));
+  // 正在看它所属的模块时，那个模块的失败已经看到了
+  const unseenFailure =
+    !current && jobs.some((j) => j.status === 'failed' && j.module !== activePage && isJobUnseen(j, seen, NAV_SEEN_SINCE));
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton isActive={current} tooltip={active > 0 ? `后台任务 · ${active} 个进行中` : '后台任务'} className="relative" onClick={() => onNavigate(JOBS_PAGE)}>
+      <SidebarMenuButton isActive={current} tooltip={active > 0 ? `后台任务 · ${active} 个进行中` : '后台任务'} className="relative" onClick={() => onNavigate('jobs', { at: Date.now() })}>
         <ListTodo />
         <span>后台任务</span>
         {unseenFailure && <span aria-hidden className="absolute top-1.5 left-5 size-2 rounded-full bg-destructive" />}

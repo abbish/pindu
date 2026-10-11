@@ -42,16 +42,25 @@ fn missing_vocabulary(text: &str, words: &[NewWord]) -> Vec<MissingWord> {
         .filter(|w| !w.is_empty())
         .filter(|w| !text_uses(text, &w.to_lowercase()))
         .map(|word| {
-            // 逐个词换成它的原形，看正文里有没有用到
+            // 逐个词换成它的原形，看正文里有没有用到。本身就是词典里的词时只认加词尾的规则变化
+            // （reported → report、studied → study）：saw（锯子）、left（左边）不换成 see / leave，那是另一个词
             let tokens: Vec<String> = word
                 .to_lowercase()
                 .split_whitespace()
                 .map(str::to_string)
                 .collect();
             let base = tokens.iter().enumerate().find_map(|(i, token)| {
+                let headword = crate::lemma::known(token);
                 crate::lemma::lemmas(token)
                     .into_iter()
                     .filter(|l| l != token)
+                    .filter(|l| {
+                        let stem: String = l
+                            .chars()
+                            .take(l.chars().count().saturating_sub(1))
+                            .collect();
+                        !headword || token.starts_with(&stem)
+                    })
                     .map(|l| {
                         let mut t = tokens.clone();
                         t[i] = l;
@@ -568,6 +577,15 @@ mod tests {
                     base: None
                 },
             ]
+        );
+        // 本身就是词典里的词（saw 锯子）：不提示换成 see，照常说没出现
+        let saw = missing_vocabulary("I can see the tree.", &words(&["saw"]));
+        assert_eq!(
+            saw,
+            [MissingWord {
+                word: "saw".into(),
+                base: None
+            }]
         );
         let (model, step) = vocabulary_revision(&missing);
         assert!(model.contains("没有出现在正文里：got through"), "{model}");

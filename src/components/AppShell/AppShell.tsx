@@ -208,7 +208,7 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
                           <Icon />
                           <span>{label}</span>
                         </SidebarMenuButton>
-                        {jobs && <ModuleJobBadge module={jobs} label={label} current={active === key} onNavigate={onNavigate} />}
+                        {jobs && <ModuleJobBadge module={jobs} label={label} activePage={active} onNavigate={onNavigate} />}
                         {key === 'tutor' && <TutorActivityBadge current={active === key} onNavigate={onNavigate} />}
                       </SidebarMenuItem>
                     ))}
@@ -227,7 +227,7 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
                   <span>{theme === 'dark' ? '浅色模式' : '深色模式'}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <JobsNavItem current={active === 'jobs'} onNavigate={onNavigate} />
+              <JobsNavItem activePage={active} onNavigate={onNavigate} />
               <SidebarMenuItem>
                 <SidebarMenuButton isActive={active === 'settings'} tooltip="设置" onClick={() => onNavigate('settings')}>
                   <Settings />

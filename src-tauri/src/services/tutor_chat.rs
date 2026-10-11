@@ -258,15 +258,15 @@ impl TutorChatService {
     pub async fn open(&self, env: &ChatEnv<'_>, id: &str) -> AppResult<TutorOpened> {
         let session = self.session(env, Some(id)).await?;
         // 先取界面现状再取消息：之后的事件（序号更大）界面接着补，已经算进消息的由界面去重
-        let (seq, replay) = session.snapshot();
+        let live = session.snapshot();
         let data = session.request("get_messages", Value::Null).await?;
         Ok(TutorOpened {
             id: session.id.clone(),
             messages: data.get("messages").cloned().unwrap_or(json!([])),
-            running: session.is_running(),
-            pending_asks: session.pending_ui(),
-            seq,
-            replay,
+            running: live.running,
+            pending_asks: live.asks,
+            seq: live.seq,
+            replay: live.replay,
         })
     }
 
@@ -336,6 +336,8 @@ impl TutorChatService {
             .iter()
             .map(|i| json!({ "type": "image", "data": i.data, "mimeType": i.mime_type }))
             .collect();
+        session.send(&text, images).await?;
+        // 发出去了才记：第一句没发出去时不在列表里留一个打不开的对话
         if request.conversation_id.is_none() {
             let first = if !message.is_empty() {
                 message.to_string()
@@ -352,7 +354,6 @@ impl TutorChatService {
             };
             session.note_first_message(&first);
         }
-        session.send(&text, images).await?;
         Ok(session.id.clone())
     }
 

@@ -318,7 +318,7 @@ pub async fn start_question_set_generation(
     app: AppHandle,
     request: GenerateQuestionSetRequest,
 ) -> AppResult<String> {
-    use crate::jobs::{JobLink, JobModule, JobSpec, Jobs, Lane};
+    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
     let logger = app.state::<Logger>();
     logger.api_request(
         "start_question_set_generation",
@@ -331,10 +331,11 @@ pub async fn start_question_set_generation(
         // 名称不合适的提交时就拒绝，不等 AI 出完题才报错
         svc.check_new_set_name(&request).await?;
         let listening = request.mode.as_deref() == Some("listening");
+        let (module, clip) = passage_job_place(&app, request.passage_id).await?;
         // 任务带上方式：页面按它把进度放进「阅读理解」/「听力练习」页签，任务面板点开也到那个页签
         let spec = JobSpec {
             kind: "question_set",
-            module: Some(JobModule::Passages),
+            module: Some(module),
             title: format!(
                 "{} · {}",
                 if listening { "出听力题" } else { "出阅读理解题" },
@@ -348,6 +349,7 @@ pub async fn start_question_set_generation(
                     "passageId": request.passage_id,
                     "mode": if listening { "listening" } else { "reading" },
                     "tab": if listening { "listening" } else { "sets" },
+                    "clip": clip,
                 }),
             )),
         };
@@ -658,11 +660,29 @@ fn running_word_cards(jobs: &crate::jobs::Jobs, passage_id: i64) -> Option<Strin
         .map(|j| j.id)
 }
 
+/// 短文任务归哪个模块：视频切出的场景片段在视频库里看，任务也记在视频库，「打开」带上 clip（面包屑与侧边栏在视频库下）
+async fn passage_job_place(
+    app: &AppHandle,
+    passage_id: i64,
+) -> AppResult<(crate::jobs::JobModule, bool)> {
+    let clip = crate::repositories::video_repository::VideoRepository::clip_of_passage(
+        app.state::<SqlitePool>().inner(),
+        passage_id,
+    )
+    .await?
+    .is_some();
+    Ok(if clip {
+        (crate::jobs::JobModule::Videos, true)
+    } else {
+        (crate::jobs::JobModule::Passages, false)
+    })
+}
+
 /// 给这篇短文里还没有单词卡的未收录目标词生成单词卡（后台任务）。都有了返回 None；
 /// 这篇已经有在跑的同类任务时返回它的 id
 #[tauri::command]
 pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Option<String>> {
-    use crate::jobs::{JobLink, JobModule, JobSpec, Jobs, Lane};
+    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
     use crate::services::agent_settings::{AgentSettingsService, AgentTaskKind};
     use crate::services::prompt_profile::PromptProfileService;
     let logger = app.state::<Logger>();
@@ -697,15 +717,16 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
         let meanings = context.meanings.clone();
         let analyzer = super::word_analysis::phonics_analyzer(&app, &model, profile, context)?;
         let words: Vec<String> = missing.into_iter().map(|t| t.word).collect();
+        let (module, clip) = passage_job_place(&app, passage_id).await?;
         let spec = JobSpec {
             kind: "word_cards",
-            module: Some(JobModule::Passages),
+            module: Some(module),
             title: format!("生成单词卡 · {}", passage.title),
             lane: Lane::Agent,
             detached: true,
             link: Some(JobLink::new(
                 "passage-detail",
-                serde_json::json!({ "passageId": passage_id }),
+                serde_json::json!({ "passageId": passage_id, "clip": clip }),
             )),
         };
         // 检查与提交之间不能有 await：几乎同时的两次请求（如页面重复挂载）只提交一个任务

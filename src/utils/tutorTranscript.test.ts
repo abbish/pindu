@@ -20,8 +20,8 @@ test('流式回答：增量拼成正文，message_end 以完整消息为准', ()
   assert.equal(turns.length, 2);
   assert.deepEqual(turns[1], {
     role: 'agent',
-    key: 'partial',
-    items: [{ kind: 'text', key: 'partial-0', text: '行程表' }],
+    key: 't1',
+    items: [{ kind: 'text', key: 'a2-0', text: '行程表' }],
     steps: [],
     suggestions: [],
     running: true,
@@ -307,6 +307,7 @@ test('没成功的工具调用：找工具、参数格式不对不显示；核�
           call('d', 'mcp__pindu__delete_words', '删除 itinerary'),
           call('e', 'mcp__pindu__create_plan', '建计划'),
           call('f', 'mcp__pindu__get_plan', '看计划'),
+          call('g', 'mcp__pindu__save_passage', '保存短文'),
         ],
         stopReason: 'toolUse',
         timestamp: 2,
@@ -318,6 +319,18 @@ test('没成功的工具调用：找工具、参数格式不对不显示；核�
     fail('d', 'mcp__pindu__delete_words', 'The learner did not confirm, so nothing was changed. Do not retry unless they ask again.'),
     fail('e', 'mcp__pindu__create_plan', 'The learner set the AI teacher to view only, so nothing in Pindu can be created, changed or deleted.'),
     fail('f', 'mcp__pindu__get_plan', '没能查看计划：数据库出错', { redlark: { step: '没能查看计划：数据库出错' } }),
+    {
+      type: 'message_end',
+      message: {
+        role: 'toolResult',
+        toolCallId: 'g',
+        toolName: 'mcp__pindu__save_passage',
+        content: [{ type: 'text', text: '{}' }],
+        details: { redlark: { step: '开始整理短文' } },
+        isError: false,
+        timestamp: 4,
+      },
+    },
   ]);
   const agent = toTurns(state)[1];
   assert.deepEqual(
@@ -327,8 +340,94 @@ test('没成功的工具调用：找工具、参数格式不对不显示；核�
       ['skipped', '删除 itinerary（你没有同意，没有改动）'],
       ['skipped', '建计划（只查看，没有改动）'],
       ['error', '没能查看计划：数据库出错'],
+      ['done', '开始整理短文'],
     ]
   );
+});
+
+test('核对后没有再交（AI 放弃了）：这一步就是没做成', () => {
+  const state = run([
+    { type: 'message_end', message: user },
+    {
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'toolCall', id: 'c', name: 'mcp__pindu__save_passage', arguments: { reason: '保存短文' } }],
+        stopReason: 'toolUse',
+        timestamp: 2,
+      },
+    },
+    {
+      type: 'message_end',
+      message: {
+        role: 'toolResult',
+        toolCallId: 'c',
+        toolName: 'mcp__pindu__save_passage',
+        content: [{ type: 'text', text: '这些词没有出现在正文里：report' }],
+        details: { redlark: { step: '核对词汇：report 还没写进正文，重新整理', check: true } },
+        isError: true,
+        timestamp: 3,
+      },
+    },
+    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '没能存好。' }], stopReason: 'stop', timestamp: 4 } },
+  ]);
+  const agent = toTurns(state)[1];
+  assert.deepEqual(agent.role === 'agent' && agent.steps.map((s) => s.status), ['error']);
+});
+
+test('一轮的 key 从正在写到写完不变；后台任务通知开始的新运行另起一轮，不把上一轮改回进行中', () => {
+  const answer = { role: 'assistant' as const, content: [{ type: 'text' as const, text: '行程表。' }], stopReason: 'stop', timestamp: 2 };
+  const streaming = run([
+    { type: 'agent_start' },
+    { type: 'message_end', message: user },
+    { type: 'message_start', message: { ...answer, content: [], stopReason: undefined } as never },
+  ]);
+  const before = toTurns(streaming)[1];
+  const done = run([{ type: 'message_end', message: answer }], streaming);
+  const after = toTurns(done)[1];
+  assert.equal(before.key, after.key);
+  assert.equal(before.role === 'agent' && before.items.length, 0);
+  assert.equal(after.role === 'agent' && after.items[0].key, 'a2-0');
+
+  // 上一次运行结束后，通知触发的新运行（pi 先发 agent_start，通知消息随后才到）
+  const next = run([{ type: 'agent_settled' }, { type: 'agent_start' }], done);
+  const turns = toTurns(next);
+  assert.equal(turns.length, 3);
+  assert.equal(turns[1].role === 'agent' && turns[1].running, false);
+  assert.equal(turns[2].role === 'agent' && turns[2].running, true);
+  assert.equal(turns[2].role === 'agent' && turns[2].startedAt, undefined);
+});
+
+test('刚发出、还没确认的消息：进行中的计时不从上一个问题算起', () => {
+  const state = { ...run([{ type: 'message_end', message: user }]), running: true, pendingUser: { text: '再来一个', images: [], files: [] } };
+  const turns = toTurns(state);
+  const agent = turns[turns.length - 1];
+  assert.equal(agent.role === 'agent' && agent.startedAt, undefined);
+});
+
+test('以前停止的步骤在新一轮运行时不再转圈；进程退出后进行中的步骤不再转圈', () => {
+  const call = { type: 'toolCall' as const, id: 'old', name: 'mcp__pindu__save_passage', arguments: { reason: '保存短文' } };
+  const state = run([
+    { type: 'message_end', message: user },
+    { type: 'message_end', message: { role: 'assistant', content: [call], stopReason: 'aborted', timestamp: 2 } },
+    { type: 'message_end', message: { ...user, timestamp: 5 } },
+    { type: 'agent_start' },
+  ]);
+  const old = toTurns(state)[1];
+  assert.deepEqual(old.role === 'agent' && old.steps.map((s) => s.status), ['skipped']);
+
+  const call2 = { type: 'toolCall' as const, id: 'live', name: 'mcp__pindu__save_passage', arguments: { reason: '保存短文' } };
+  const closed = run(
+    [
+      { type: 'message_end', message: { role: 'assistant', content: [call2], stopReason: 'toolUse', timestamp: 6 } },
+      { type: 'tool_execution_start', toolCallId: 'live', toolName: 'mcp__pindu__save_passage' },
+      { type: 'redlark_closed' },
+    ],
+    state
+  );
+  const turns = toTurns(closed);
+  const last = turns[turns.length - 1];
+  assert.deepEqual(last.role === 'agent' && last.steps.map((s) => s.status), ['skipped']);
 });
 
 test('工具刚结束、结果消息还没到：按执行事件里的说明同样分类，不先闪成出错', () => {

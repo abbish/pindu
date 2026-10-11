@@ -46,8 +46,8 @@ export interface RouteParams {
    * conversationId：打开这个对话（侧边栏「AI 老师」标记的浮层），openAt 区分两次打开同一个
    */
   tutor: { prompt?: string; at?: number; conversationId?: string; openAt?: number } | undefined;
-  /** 后台任务：进行中与已结束的全部任务 */
-  jobs: undefined;
+  /** 后台任务：进行中与已结束的全部任务。tab：打开哪个页签（失败提示的「查看」打开「失败」）；at 区分两次打开 */
+  jobs: { tab?: JobsTab; at?: number } | undefined;
   settings: undefined;
 }
 
@@ -57,6 +57,9 @@ export type PageKey = keyof RouteParams;
 export type PassagePracticeReturn = 'plan-detail' | 'home' | 'calendar';
 /** 短文详情的页签 */
 export type PassageDetailTab = 'video' | 'text' | 'words' | 'sets' | 'listening';
+
+/** 后台任务页的页签 */
+export type JobsTab = 'active' | 'done' | 'failed';
 
 /** 顶部导航中的一级页面 */
 export type TopLevelPage = 'home' | 'plans' | 'wordbooks' | 'passages' | 'videos' | 'tag' | 'calendar' | 'tutor' | 'jobs' | 'settings';

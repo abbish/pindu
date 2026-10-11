@@ -32,7 +32,7 @@ export const JobCenter: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) 
   useEffect(() => {
     void startJobSync();
     const unlisteners = [
-      listen('menu-show-jobs', () => onNavigate('jobs')),
+      listen('menu-show-jobs', () => onNavigate('jobs', { at: Date.now() })),
       listen<string[]>('quit-requested', (event) => setQuitTitles(event.payload)),
     ];
     return () => unlisteners.forEach((p) => p.then((off) => off()));
@@ -56,7 +56,7 @@ export const JobCenter: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) 
           type: 'error',
           title: `没有完成：${job.title}`,
           message: jobErrorText(job),
-          action: { label: '查看', onClick: () => onNavigate('jobs') },
+          action: { label: '查看', onClick: () => onNavigate('jobs', { tab: 'failed', at: Date.now() }) },
         });
       }
     }

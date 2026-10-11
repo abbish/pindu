@@ -40,6 +40,14 @@ pub struct ChatSession {
     emit: Emit,
 }
 
+/// 打开对话时交给界面的现状
+pub struct LiveSnapshot {
+    pub seq: u64,
+    pub replay: Vec<Value>,
+    pub running: bool,
+    pub asks: Vec<Value>,
+}
+
 /// 界面要的对话现状（pi 只在一条消息写完后才把它放进 `get_messages`）
 #[derive(Default)]
 struct Live {
@@ -51,6 +59,8 @@ struct Live {
     queue: Option<Value>,
     /// 正在重试 / 整理之前的对话（`auto_retry_start` / `compaction_start` 原样）
     notice: Option<Value>,
+    /// 正在执行的工具（toolCallId → 最近一次 `tool_execution_start` / `_update` 原样，带进度 details）
+    tools: std::collections::BTreeMap<String, Value>,
     /// 上次推送的（在回答，等学习者回答）
     activity: (bool, bool),
 }
@@ -73,10 +83,21 @@ impl Live {
             Some("queue_update") => self.queue = Some(raw.clone()),
             Some("auto_retry_start" | "compaction_start") => self.notice = Some(raw.clone()),
             Some("auto_retry_end" | "compaction_end") => self.notice = None,
+            Some("tool_execution_start" | "tool_execution_update") => {
+                if let Some(id) = raw.get("toolCallId").and_then(Value::as_str) {
+                    self.tools.insert(id.to_string(), raw.clone());
+                }
+            }
+            Some("tool_execution_end") => {
+                if let Some(id) = raw.get("toolCallId").and_then(Value::as_str) {
+                    self.tools.remove(id);
+                }
+            }
             Some("agent_settled" | "redlark_closed") => {
                 self.partial = None;
                 self.queue = None;
                 self.notice = None;
+                self.tools.clear();
             }
             _ => {}
         }
@@ -88,6 +109,7 @@ impl Live {
         if let Some(message) = &self.partial {
             events.push(json!({ "type": "message_start", "message": message }));
         }
+        events.extend(self.tools.values().cloned());
         events.extend(self.queue.clone());
         events.extend(self.notice.clone());
         events
@@ -163,12 +185,22 @@ impl ChatSession {
         self.first_message.lock().ok().and_then(|f| f.clone())
     }
 
-    /// 界面现状：（当时的序号，重建现状的事件）。打开对话时先取它再取消息，之后的事件界面接着补
-    pub fn snapshot(&self) -> (u64, Vec<Value>) {
-        self.live
-            .lock()
-            .map(|live| (live.seq, live.replay()))
-            .unwrap_or_default()
+    /// 界面现状（同一时刻取的序号、重建事件、在不在回答、没回答的提问）。打开对话时先取它再取消息，之后的事件界面接着补
+    pub fn snapshot(&self) -> LiveSnapshot {
+        match self.live.lock() {
+            Ok(live) => LiveSnapshot {
+                seq: live.seq,
+                replay: live.replay(),
+                running: self.is_running(),
+                asks: self.pending_ui(),
+            },
+            Err(_) => LiveSnapshot {
+                seq: 0,
+                replay: Vec::new(),
+                running: self.is_running(),
+                asks: self.pending_ui(),
+            },
+        }
     }
 
     /// 还没回答的提问（带 timeout 的过期后 pi 已按默认值收回，不再返回）
@@ -233,9 +265,19 @@ impl ChatSession {
         } else {
             // 先置为运行中：`agent_start` 事件到来前的再次发送按插话处理
             self.running.store(true, Ordering::SeqCst);
-            if let Err(e) = self.request("prompt", fields).await {
-                self.running.store(false, Ordering::SeqCst);
-                return Err(e);
+            match self.request("prompt", fields).await {
+                // 扩展命令（/pindu-job 等）当场处理完：不会有 agent_start / agent_settled
+                Ok(data) if data.get("disposition").and_then(Value::as_str) == Some("handled") => {
+                    self.running.store(false, Ordering::SeqCst);
+                    self.publish_activity();
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    self.running.store(false, Ordering::SeqCst);
+                    // 期间可能已经推过「在回答」（如进程启动时的通知事件）
+                    self.publish_activity();
+                    return Err(e);
+                }
             }
         }
         Ok(())
@@ -592,7 +634,7 @@ mod tests {
             .publish(json!({"type": "queue_update", "steering": ["再举个例子"], "followUp": []}));
         session.publish(json!({"type": "auto_retry_start", "attempt": 1}));
 
-        let (seq, replay) = session.snapshot();
+        let LiveSnapshot { seq, replay, .. } = session.snapshot();
         // 序号就是最后一条推送的
         assert_eq!(seq, seen.lock().unwrap().last().unwrap().0);
         assert_eq!(
@@ -612,11 +654,33 @@ mod tests {
             json!({"type": "message_end", "message": {"role": "assistant", "content": []}}),
         );
         assert_eq!(
-            session.snapshot().1,
+            session.snapshot().replay,
             vec![json!({"type": "queue_update", "steering": ["再举个例子"], "followUp": []})]
         );
         session.publish(json!({"type": "agent_settled"}));
-        assert!(session.snapshot().1.is_empty());
+        assert!(session.snapshot().replay.is_empty());
+    }
+
+    #[test]
+    fn snapshot_keeps_tools_still_running() {
+        let (session, _) = recording();
+        session.publish(
+            json!({"type": "tool_execution_start", "toolCallId": "t1", "toolName": "save_passage"}),
+        );
+        session.publish(json!({"type": "tool_execution_update", "toolCallId": "t1", "partialResult": {"details": {"p": 1}}}));
+        session.publish(
+            json!({"type": "tool_execution_start", "toolCallId": "t2", "toolName": "get_plan"}),
+        );
+        session
+            .publish(json!({"type": "tool_execution_end", "toolCallId": "t2", "isError": false}));
+        assert_eq!(
+            session.snapshot().replay,
+            vec![
+                json!({"type": "tool_execution_update", "toolCallId": "t1", "partialResult": {"details": {"p": 1}}})
+            ]
+        );
+        session.publish(json!({"type": "agent_settled"}));
+        assert!(session.snapshot().replay.is_empty());
     }
 
     #[test]
@@ -625,7 +689,7 @@ mod tests {
         session
             .publish(json!({"type": "message_start", "message": {"role": "user", "content": []}}));
         session.publish(json!({"type": "message_end", "message": {"role": "user", "content": []}}));
-        assert!(session.snapshot().1.is_empty());
+        assert!(session.snapshot().replay.is_empty());
     }
 
     #[test]
@@ -640,7 +704,7 @@ mod tests {
         b.publish(json!({"type": "turn_start"}));
         a.publish(json!({"type": "turn_start"}));
         assert_eq!(*seen.lock().unwrap(), vec![1, 2, 3]);
-        assert_eq!(b.snapshot().0, 2);
+        assert_eq!(b.snapshot().seq, 2);
     }
 
     #[tokio::test]
