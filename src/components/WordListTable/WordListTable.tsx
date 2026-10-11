@@ -29,7 +29,7 @@ const MaterialCount: React.FC<{ count: WordMaterialCount | undefined; onOpen?: (
       className="inline-flex items-center gap-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none"
       onClick={onOpen}
       disabled={!onOpen}
-      title={`${count.clips} 个视频片段 · ${count.passages} 篇短文`}
+      title={`${count.clips} 个场景片段 · ${count.passages} 篇短文`}
     >
       {count.clips > 0 && (
         <span className="inline-flex items-center gap-0.5">

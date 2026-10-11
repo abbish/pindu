@@ -114,7 +114,7 @@ export const PlanPassagePicker: React.FC<PlanPassagePickerProps> = ({ items, onC
               <span className="w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  {it.isVideo && <Clapperboard className="size-3.5 shrink-0 text-muted-foreground" aria-label="视频片段" />}
+                  {it.isVideo && <Clapperboard className="size-3.5 shrink-0 text-muted-foreground" aria-label="场景片段" />}
                   <span className="truncate text-sm font-medium">{it.title}</span>
                   {it.locked && (
                     <Badge variant="outline" className="shrink-0 border-transparent bg-success-soft font-normal text-success">
@@ -184,7 +184,7 @@ export const PlanPassagePicker: React.FC<PlanPassagePickerProps> = ({ items, onC
       )}
       <Button variant="outline" size="sm" onClick={() => setAdding(true)} disabled={disabled}>
         <Plus />
-        添加短文或视频片段
+        添加短文或场景片段
       </Button>
       <AddPassagesDialog
         open={adding}
@@ -240,7 +240,7 @@ const AddPassagesDialog: React.FC<{
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="sm:max-w-2xl" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>添加短文或视频片段</DialogTitle>
+          <DialogTitle>添加短文或场景片段</DialogTitle>
         </DialogHeader>
         {candidates === null ? (
           <div className="space-y-2">
@@ -271,7 +271,7 @@ const AddPassagesDialog: React.FC<{
                     [
                       ['all', '全部'],
                       ['text', '短文'],
-                      ['video', '视频片段'],
+                      ['video', '场景片段'],
                     ] as const
                   ).map(([v, label]) => (
                     <ToggleGroupItem key={v} value={v} className="h-8 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm">
@@ -290,7 +290,7 @@ const AddPassagesDialog: React.FC<{
                       <Checkbox checked={checked} onCheckedChange={() => toggle(c.passage.id)} className="mt-0.5" />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5 text-sm font-medium">
-                          {c.passage.origin === 'video' && <Clapperboard className="size-3.5 shrink-0 text-muted-foreground" aria-label="视频片段" />}
+                          {c.passage.origin === 'video' && <Clapperboard className="size-3.5 shrink-0 text-muted-foreground" aria-label="场景片段" />}
                           <span className="truncate">{c.passage.title}</span>
                         </span>
                         <span className="block text-xs text-muted-foreground">

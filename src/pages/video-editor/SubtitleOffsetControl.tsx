@@ -65,7 +65,7 @@ export const SubtitleOffsetControl: React.FC<SubtitleOffsetControlProps> = ({ of
           </div>
         )}
         <div className="flex items-center justify-between gap-2">
-          {hasClips ? <span className="text-xs text-muted-foreground">已切出的短片不受影响</span> : <span />}
+          {hasClips ? <span className="text-xs text-muted-foreground">已切出的场景片段不受影响</span> : <span />}
           <Button variant="ghost" size="sm" disabled={offsetMs === 0} onClick={() => onChange(0)}>
             <RotateCcw />
             还原

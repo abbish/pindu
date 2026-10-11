@@ -27,7 +27,7 @@ export interface TagManagerDialogProps {
 
 /** 「词汇本 3 · 短文 5 · 视频 1」 */
 const usageText = (t: TagUsage) =>
-  [t.wordBooks && `词汇本 ${t.wordBooks}`, t.passages && `短文 ${t.passages}`, t.clips && `片段 ${t.clips}`, t.videos && `视频 ${t.videos}`].filter(Boolean).join(' · ') ||
+  [t.wordBooks && `词汇本 ${t.wordBooks}`, t.passages && `短文 ${t.passages}`, t.clips && `场景片段 ${t.clips}`, t.videos && `视频 ${t.videos}`].filter(Boolean).join(' · ') ||
   '没有素材';
 
 /**

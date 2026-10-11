@@ -20,7 +20,7 @@ export interface TagPageProps {
 type Kind = 'clips' | 'passages' | 'wordbooks' | 'videos';
 
 const KINDS: { key: Kind; label: string; count: (t: TagUsage) => number }[] = [
-  { key: 'clips', label: '片段', count: (t) => t.clips },
+  { key: 'clips', label: '场景片段', count: (t) => t.clips },
   { key: 'passages', label: '短文', count: (t) => t.passages },
   { key: 'wordbooks', label: '词汇本', count: (t) => t.wordBooks },
   { key: 'videos', label: '原始视频', count: (t) => t.videos },

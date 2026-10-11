@@ -120,8 +120,8 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
     return (
       <EmptyState
         icon={<Clapperboard />}
-        title={cutting ? '正在切出片段' : '还没有片段'}
-        description={cutting ? undefined : '在原始视频里规划切分后，切出的片段会出现在这里'}
+        title={cutting ? '正在切出场景片段' : '还没有场景片段'}
+        description={cutting ? undefined : '在原始视频里规划切分后，切出的场景片段会出现在这里'}
         action={cutting ? '查看进度' : '去原始视频'}
         onAction={onGoSources}
       />
@@ -199,7 +199,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
           ))}
         </div>
       ) : visible.length === 0 ? (
-        <EmptyState icon={<SearchX />} title="没有匹配的片段" />
+        <EmptyState icon={<SearchX />} title="没有匹配的场景片段" />
       ) : (
         <>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
@@ -214,7 +214,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
                 { label: '打开学习', icon: <Play />, onSelect: () => onOpen(c) },
                 { label: '播放', icon: <ListVideo />, onSelect: () => setPlaylist([c]) },
                 ...(onOpenEditor ? [{ label: '在剪辑编辑器里查看', icon: <Scissors />, onSelect: () => onOpenEditor(c.videoId) }] : []),
-                { label: '删除片段…', icon: <Trash2 />, onSelect: () => setToDelete([c]), destructive: true, separator: true },
+                { label: '删除场景片段…', icon: <Trash2 />, onSelect: () => setToDelete([c]), destructive: true, separator: true },
               ]}
             />
           ))}
@@ -226,8 +226,8 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
       <BatchDeleteDialog
         items={toDelete}
         onClose={() => setToDelete(null)}
-        unit="段片段"
-        description="片段的视频、短文与练习记录都会删除，不能恢复；原始视频不受影响，可以重新切出来。计划里还在用的片段不会删除。"
+        unit="个场景片段"
+        description="场景片段的视频、短文与练习记录都会删除，不能恢复；原始视频不受影响，可以重新切出来。计划里还在用的场景片段不会删除。"
         nameOf={(c) => c.title}
         remove={(c) => passageService.deletePassage(c.id)}
         onDone={() => {

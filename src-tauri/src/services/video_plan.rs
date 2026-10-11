@@ -424,7 +424,7 @@ impl VideoPlanJob {
         let segments = finish_segments(segments);
         if segments.is_empty() {
             return Err(AppError::ExternalServiceError(
-                "没有找到适合学习的片段，可以换个要求再试".to_string(),
+                "没有找到适合学习的场景片段，可以换个要求再试".to_string(),
             ));
         }
         let count = segments.len();

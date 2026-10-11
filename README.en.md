@@ -6,11 +6,11 @@
 
 Course readings, documents you need at work and videos you want to understand can all be starting points for learning English.
 
-Pindu is a desktop English learning tool that helps you turn these materials into vocabulary, passages and video clips. Practise reading, listening, spelling and shadowing, then keep learning each day with study plans and review.
+Pindu is a desktop English learning tool that helps you turn these materials into vocabulary, passages and scene clips. Practise reading, listening, spelling and shadowing, then keep learning each day with study plans and review.
 
 - **Learn English that matters to you**: start with content you want to read, understand or use, and choose the words and phrases worth learning.
 - **Turn materials into learning resources**: import text, documents or local videos with subtitles, and add translations, vocabulary notes and exercises.
-- **Keep learning over time**: add vocabulary, passages and video clips to a plan with daily tasks and vocabulary review.
+- **Keep learning over time**: add vocabulary, passages and scene clips to a plan with daily tasks and vocabulary review.
 
 Available for macOS, Windows and Linux. No account is required. See [usage costs](#usage-costs) for fees and the [installation guide](./INSTALL.md) (Chinese) for setup and service configuration.
 
@@ -57,21 +57,21 @@ Import articles, course readings or work documents and study words and phrases i
 
 ### Video library
 
-Turn videos you want to understand into clips you can study repeatedly, using their dialogue for listening and shadowing practice.
+Cut videos you want to understand into scene clips you can study repeatedly, using their dialogue for listening and shadowing practice.
 
 - Import a local video with its subtitles to organize and translate the subtitles and get a proposed plan for cutting the video into scenes.
 - In the clip editor you can preview clips, adjust in and out points and correct the subtitle timing. Clips are cut precisely once you confirm the plan.
-- Each clip can be studied in three ways: line-by-line study, shadowing with recording, and listen-and-spell. Clips can be added to study plans.
-- Searching for an English word finds every clip in which it is spoken.
+- Each scene clip can be studied in three ways: line-by-line study, shadowing with recording, and listen-and-spell. Scene clips can be added to study plans.
+- Searching for an English word finds every scene clip in which it is spoken.
 - Video processing needs no additional software installation.
 
-![Video clips](docs/screenshots/clips.png)
+![Scene clips](docs/screenshots/clips.png)
 
 ![Clip editor](docs/screenshots/editor.png)
 
 ### Study plans and practice
 
-Add vocabulary books, passages and video clips to a study plan so each day has specific material to learn.
+Add vocabulary books, passages and scene clips to a study plan so each day has specific material to learn.
 
 - Choose vocabulary books and a daily number of new words, and the schedule is arranged automatically. Plans can be paused; the schedule shifts when you resume.
 - New words are practised in three steps:
@@ -79,7 +79,7 @@ Add vocabulary books, passages and video clips to a study plan so each day has s
   2. English hidden; spell from memory.
   3. Chinese meaning, syllables and pronunciation only.
 - Vocabulary reviews follow a memory level with intervals of 1, 3, 7, 14 and 30 days. A correct answer moves the word up a level and a mistake sends it back to the first. Reviews that are due are added to the day's tasks automatically.
-- Passages and video clips can also be scheduled as reading or listening tasks.
+- Passages and scene clips can also be scheduled as reading or listening tasks.
 
 ![Word practice](docs/screenshots/practice.png)
 
@@ -91,7 +91,7 @@ Ask about words, usage or sentences you do not understand as you study, and foll
 
 - Word cards offer explanations of meanings, spelling patterns, related words, usage, commonly confused words and memory aids.
 - The depth of explanations follows the learner profile (primary school, secondary school or adult).
-- Sentences in passages and video clips can also be discussed with the tutor.
+- Sentences in passages and scene clips can also be discussed with the tutor.
 
 ![AI tutor](docs/screenshots/tutor.png)
 

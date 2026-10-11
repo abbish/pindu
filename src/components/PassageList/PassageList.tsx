@@ -284,7 +284,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
         items={toDelete}
         onClose={() => setToDelete(null)}
         unit="篇短文"
-        description="将同时删除题组与练习记录；视频片段的视频文件也会删除。未结束的学习计划中使用的短文不会删除。"
+        description="将同时删除题组与练习记录；场景片段的视频文件也会删除。未结束的学习计划中使用的短文不会删除。"
         nameOf={(p) => p.title}
         remove={(p) => passageService.deletePassage(p.id)}
         onDone={() => {

@@ -223,12 +223,12 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     const result = await passageService.deletePassage(passage.id);
     setConfirmDelete(false);
     if (result.success) {
-      toast.showSuccess(isClip ? '已删除片段' : '已删除短文');
+      toast.showSuccess(isClip ? '已删除场景片段' : '已删除短文');
       if (fromPlan) backToPlan();
       else if (isClip) onNavigate?.('videos', { tab: 'clips' });
       else onNavigate?.('passages');
     } else {
-      toast.showError(isClip ? '无法删除片段' : '无法删除短文', result.error);
+      toast.showError(isClip ? '无法删除场景片段' : '无法删除短文', result.error);
     }
   };
 
@@ -376,7 +376,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
                 <Trash2 />
-                {isClip ? '删除片段…' : '删除短文…'}
+                {isClip ? '删除场景片段…' : '删除短文…'}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -586,18 +586,18 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {isClip ? '删除片段' : '删除短文'}「{passage.title}」？
+              {isClip ? '删除场景片段' : '删除短文'}「{passage.title}」？
             </AlertDialogTitle>
             <AlertDialogDescription>
               {isClip
-                ? `将同时删除片段视频、${passage.questionSets.length} 个题组与练习记录；原始视频不受影响。`
+                ? `将同时删除这个场景片段的视频、${passage.questionSets.length} 个题组与练习记录；原始视频不受影响。`
                 : `将同时删除 ${passage.questionSets.length} 个题组与练习记录；词汇本与学习计划不受影响。`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={removePassage}>
-              {isClip ? '删除片段' : '删除短文'}
+              {isClip ? '删除场景片段' : '删除短文'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

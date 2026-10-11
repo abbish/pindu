@@ -220,7 +220,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
       const result = videoId ? await videoService.getVideo(videoId) : null;
       if (result?.success) setDetail((d) => (d ? { ...d, clips: result.data.clips, video: result.data.video, cues: result.data.cues } : d));
       if (job.status === 'failed') toast.showError('切分没有完成', jobErrorText(job));
-      else if (job.status === 'succeeded') toast.showSuccess(`已生成 ${(job.result as { created?: number } | null)?.created ?? 0} 段短片`);
+      else if (job.status === 'succeeded') toast.showSuccess(`已生成 ${(job.result as { created?: number } | null)?.created ?? 0} 个场景片段`);
       return;
     }
     if (job.kind !== 'video_plan') return;
@@ -712,7 +712,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
                         <TooltipTrigger asChild>
                           <Check className="mt-0.5 size-3.5 shrink-0 text-success" />
                         </TooltipTrigger>
-                        <TooltipContent>已切出短片</TooltipContent>
+                        <TooltipContent>已切出场景片段</TooltipContent>
                       </Tooltip>
                     )}
                     {allIssues[i].length > 0 && (

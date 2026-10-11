@@ -109,7 +109,7 @@ export const PlanMenu: React.FC<PlanMenuProps> = ({
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={onViewClips}>
                 <Clapperboard />
-                查看切出的片段（{clipCount}）
+                查看场景片段（{clipCount}）
               </DropdownMenuItem>
             </>
           )}
@@ -150,7 +150,7 @@ export const PlanMenu: React.FC<PlanMenuProps> = ({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>删除规划「{current?.name}」？</AlertDialogTitle>
-            <AlertDialogDescription>规划里的片段安排会删除；已经切出的片段保留在视频库里。</AlertDialogDescription>
+            <AlertDialogDescription>规划里的片段安排会删除；已经切出的场景片段保留在视频库里。</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>

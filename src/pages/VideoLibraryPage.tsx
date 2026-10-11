@@ -66,7 +66,7 @@ const VIDEO_SORTS: SortOption<Video>[] = [
   { value: 'recent', label: '最近导入', compare: byInstant((v) => v.createdAt) },
   { value: 'name', label: '名称', compare: byText((v) => v.title) },
   { value: 'long', label: '时长最长', compare: byNumber((v) => v.durationMs) },
-  { value: 'clips', label: '片段最多', compare: byNumber((v) => v.clipCount) },
+  { value: 'clips', label: '场景片段最多', compare: byNumber((v) => v.clipCount) },
 ];
 
 const STATUS_LABEL: Record<Video['status'], string> = {
@@ -167,8 +167,8 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
   const practiced = (clips ?? []).filter((c) => c.completedAttempts > 0).length;
   const tagCount = new Set((clips ?? []).flatMap((c) => c.tags.map((t) => t.id))).size;
   const metrics = [
-    { label: '片段', value: clips?.length ?? 0, unit: '段', icon: Clapperboard, hint: clipMs > 0 ? formatDuration(clipMs, 'clock') : undefined },
-    { label: '练过的片段', value: practiced, unit: '段', icon: Target },
+    { label: '场景片段', value: clips?.length ?? 0, unit: '段', icon: Clapperboard, hint: clipMs > 0 ? formatDuration(clipMs, 'clock') : undefined },
+    { label: '练过的场景片段', value: practiced, unit: '段', icon: Target },
     { label: '标签', value: tagCount, unit: '个', icon: Tags },
     { label: '原始视频', value: videos?.length ?? 0, unit: '个', icon: Film, hint: videos && videos.length > 0 ? formatBytes(videos.reduce((s, v) => s + v.sizeBytes, 0)) : undefined },
   ];
@@ -186,7 +186,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
       <Tabs value={shownTab} onValueChange={(v) => setTab(v as 'clips' | 'sources')} className={cn(embedded && 'hidden')}>
         <TabsList>
           <TabsTrigger value="clips">
-            片段
+            场景片段
             {clips && <span className="text-muted-foreground tabular-nums">{clips.length}</span>}
           </TabsTrigger>
           <TabsTrigger value="sources">
@@ -210,7 +210,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
         <EmptyState
           icon={<Clapperboard />}
           title="还没有视频"
-          description="导入视频和字幕后，可以切成场景短片"
+          description="导入视频和字幕后，可以切成场景片段"
           action="导入视频"
           actionIcon={<Plus />}
           onAction={() => setImporting(true)}
@@ -247,7 +247,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
             const checked = selection.selected.has(video.id);
             const actions: CardAction[] = [
               { label: '在剪辑编辑器里打开', icon: <Scissors />, onSelect: () => open(video), disabled: !clickable },
-              ...(video.clipCount > 0 ? [{ label: '查看切出的片段', icon: <Clapperboard />, onSelect: () => onNavigate?.('videos', { tab: 'clips', videoId: video.id }) }] : []),
+              ...(video.clipCount > 0 ? [{ label: '查看场景片段', icon: <Clapperboard />, onSelect: () => onNavigate?.('videos', { tab: 'clips', videoId: video.id }) }] : []),
               {
                 label: '改名…',
                 icon: <Pencil />,
@@ -366,7 +366,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
         items={toDelete}
         onClose={() => setToDelete(null)}
         unit="个视频"
-        description="视频文件、字幕、切分规划以及切出的片段都会删除，不能恢复；计划里还在用片段的视频不会删除。你电脑上原来的视频文件不受影响。"
+        description="视频文件、字幕、切分规划以及切出的场景片段都会删除，不能恢复；计划里还在用场景片段的视频不会删除。你电脑上原来的视频文件不受影响。"
         nameOf={(v) => v.title}
         remove={(v) => videoService.delete(v.id)}
         onDone={() => {

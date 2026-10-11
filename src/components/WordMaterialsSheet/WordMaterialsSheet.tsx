@@ -88,7 +88,7 @@ export const WordMaterialsList: React.FC<WordMaterialsListProps> = ({ word, word
     );
   }
   if (clips.length + passages.length === 0) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">{clipsOnly ? '还没有视频片段用到这个词' : '还没有素材用到这个词'}</p>;
+    return <p className="py-8 text-center text-sm text-muted-foreground">{clipsOnly ? '还没有场景片段用到这个词' : '还没有素材用到这个词'}</p>;
   }
   return (
     <div className="space-y-5">
@@ -97,7 +97,7 @@ export const WordMaterialsList: React.FC<WordMaterialsListProps> = ({ word, word
           {!clipsOnly && (
             <h3 className="flex items-center gap-1.5 text-sm font-medium">
               <Clapperboard className="size-4" />
-              视频片段
+              场景片段
             </h3>
           )}
           {clips.map((m) => (
@@ -171,7 +171,7 @@ const ClipItem: React.FC<{ item: WordMaterial; word: string; playing: boolean; o
           <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.title}</span>
           {m.key && <Badge variant="secondary">重点</Badge>}
           {onOpen && (
-            <Button variant="ghost" size="icon" className="size-7" aria-label="打开片段" onClick={onOpen}>
+            <Button variant="ghost" size="icon" className="size-7" aria-label="打开场景片段" onClick={onOpen}>
               <ExternalLink />
             </Button>
           )}

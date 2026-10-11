@@ -613,8 +613,9 @@ async fn passage_video(
     Ok(Some(crate::types::video::PassageVideo {
         video_id: clip.video_id,
         video_title: title,
-        clip_url: path(&clip.file)
-            .ok_or_else(|| AppError::NotFound("短片文件不见了，可能已被删除".to_string()))?,
+        clip_url: path(&clip.file).ok_or_else(|| {
+            AppError::NotFound("场景片段的视频文件不见了，可能已被删除".to_string())
+        })?,
         poster_url: clip.poster_file.as_deref().and_then(path),
         start_ms: clip.start_ms,
         end_ms: clip.end_ms,
