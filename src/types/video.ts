@@ -25,8 +25,6 @@ export interface Video {
   error: string | null;
   cueCount: number;
   clipCount: number;
-  /** 用到它切出的场景片段的学习计划数 */
-  linkedPlans: number;
   /** 字幕时间纠偏（毫秒，正数 = 字幕延后）；详情里的 cues 已按它换算 */
   subtitleOffsetMs: number;
   /** 标签（列表里有；详情里为空） */

@@ -54,7 +54,7 @@ class TagService extends BaseService {
   }
 
   /** 一个词出现在哪些短文 / 视频切片里（重点词在前） */
-  /** 用到这个素材的学习计划（短文含场景片段；视频 = 用到它切出的场景片段） */
+  /** 用到这个素材的学习计划（词汇本 / 短文与场景片段） */
   async getLinkedPlans(kind: MaterialKind, refId: number): Promise<ApiResult<StudyPlanWithProgress[]>> {
     return this.executeWithLoading(() => this.client.invoke<StudyPlanWithProgress[]>('get_material_linked_plans', { kind, refId }));
   }

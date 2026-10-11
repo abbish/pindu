@@ -574,8 +574,7 @@ impl StudyPlanRepository {
         Ok(result)
     }
 
-    /// 查询用到某个素材的学习计划（词汇本：计划里有它的单词；短文 / 场景片段：计划里有这篇；
-    /// 原始视频：计划里有它切出的场景片段），最新建的在前
+    /// 查询用到某个素材的学习计划（词汇本：计划里有它的单词；短文 / 场景片段：计划里有这篇），最新建的在前
     pub async fn find_linked_plans(
         &self,
         kind: MaterialKind,
@@ -589,9 +588,11 @@ impl StudyPlanRepository {
             MaterialKind::Passage => {
                 "SELECT pp.plan_id FROM study_plan_passages pp WHERE pp.passage_id = ?"
             }
+            // 计划用的是切出的场景片段，原始视频本身不进计划
             MaterialKind::Video => {
-                "SELECT pp.plan_id FROM study_plan_passages pp
-                 JOIN video_clips vc ON vc.passage_id = pp.passage_id WHERE vc.video_id = ?"
+                return Err(AppError::ValidationError(
+                    "原始视频不关联学习计划，请查看它的场景片段".to_string(),
+                ))
             }
         };
         let query = format!(

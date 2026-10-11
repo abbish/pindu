@@ -11,7 +11,7 @@ import { tagService } from '@/services/tagService';
 import { PLAN_STATUS, type StudyPlanWithProgress, type UnifiedStudyPlanStatus } from '@/types/study';
 import type { MaterialKind } from '@/types/material';
 
-/** 用到这个素材的学习计划（词汇本 / 短文与场景片段 / 原始视频共用）；refId 为空时不加载 */
+/** 用到这个素材的学习计划（词汇本 / 短文与场景片段共用）；refId 为空时不加载 */
 export function useLinkedPlans(kind: MaterialKind, refId: number | null | undefined) {
   const [plans, setPlans] = useState<StudyPlanWithProgress[] | null>(null);
   const [error, setError] = useState<string | null>(null);

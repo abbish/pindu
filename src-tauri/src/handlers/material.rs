@@ -166,7 +166,7 @@ pub async fn get_book_word_materials(
     super::finish(&logger, "get_book_word_materials", result)
 }
 
-/// 用到这个素材的学习计划；kind = word_book / passage（含场景片段）/ video（用到它切出的场景片段）
+/// 用到这个素材的学习计划；kind = word_book / passage（含场景片段）
 #[tauri::command]
 pub async fn get_material_linked_plans(
     app: AppHandle,

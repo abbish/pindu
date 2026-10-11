@@ -356,7 +356,7 @@ impl StudyPlanService {
         self.repository.find_plan_schedules(plan_id).await
     }
 
-    /// 获取用到某个素材（词汇本 / 短文与场景片段 / 原始视频）的学习计划
+    /// 获取用到某个素材（词汇本 / 短文与场景片段）的学习计划
     pub async fn get_linked_plans(
         &self,
         kind: MaterialKind,
@@ -1246,11 +1246,10 @@ mod tests {
         assert_eq!(plans[0].progress_percentage, 100.0);
     }
 
-    /// 短文、场景片段、原始视频都能查到用到它的计划，列表上的计划数与之一致
+    /// 短文、场景片段都能查到用到它的计划，列表上的计划数与之一致；原始视频不关联计划
     #[tokio::test]
     async fn linked_plans_of_passages_clips_and_videos() {
         use crate::repositories::passage_repository::PassageRepository;
-        use crate::repositories::video_repository::VideoRepository;
         let (service, pool, fx, _) = setup(1, "normal").await;
         let now = "2026-10-11T00:00:00.000Z";
         let mut ids = Vec::new();
@@ -1305,7 +1304,6 @@ mod tests {
             (MaterialKind::Passage, text, vec![fx.plan_id]),
             (MaterialKind::Passage, clip, vec![fx.plan_id]),
             (MaterialKind::Passage, unused, vec![]),
-            (MaterialKind::Video, video, vec![fx.plan_id]),
         ] {
             assert_eq!(
                 plan_ids(service.get_linked_plans(kind, id).await.unwrap()),
@@ -1319,8 +1317,10 @@ mod tests {
             .unwrap();
         let count = |id: Id| passages.iter().find(|p| p.id == id).unwrap().linked_plans;
         assert_eq!((count(text), count(clip), count(unused)), (1, 1, 0));
-        let videos = VideoRepository::list(pool.as_ref()).await.unwrap();
-        assert_eq!(videos[0].linked_plans, 1);
+        assert!(service
+            .get_linked_plans(MaterialKind::Video, video)
+            .await
+            .is_err());
     }
 
     #[test]
