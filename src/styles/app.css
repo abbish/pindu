@@ -210,15 +210,7 @@
     @apply ml-0.5 animate-pulse text-primary;
   }
 
-  /* AI 老师正在做：文字上扫过一道光、三个点依次闪动（系统要求减少动态效果时不动） */
-  .text-shimmer {
-    background: linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%);
-    background-size: 250% 100%;
-    background-clip: text;
-    -webkit-background-clip: text;
-    color: transparent;
-    animation: text-shimmer 2.2s linear infinite;
-  }
+  /* AI 老师正在做：三个点依次闪动（系统要求减少动态效果时不动） */
   .typing-dots > span {
     @apply size-1 rounded-full bg-muted-foreground;
     animation: typing-dot 1.2s ease-in-out infinite;
@@ -226,16 +218,10 @@
   .typing-dots > span:nth-child(2) { animation-delay: 0.2s; }
   .typing-dots > span:nth-child(3) { animation-delay: 0.4s; }
   @media (prefers-reduced-motion: reduce) {
-    .text-shimmer,
     .typing-dots > span {
       animation: none;
     }
   }
-}
-
-@keyframes text-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: -150% 0; }
 }
 
 @keyframes typing-dot {

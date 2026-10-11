@@ -113,7 +113,7 @@ export const AgentTurnView: React.FC<{
         )}
 
         {/* 最下面：还在做（等学习者回答时由提问卡片接手） */}
-        {turn.running && !ask && <WorkingIndicator label={notice ?? workingLabel(turn)} />}
+        {turn.running && !ask && <WorkingIndicator notice={notice} />}
 
         {turn.error !== undefined && <TurnError raw={turn.error} />}
         {turn.stopped && <div className="text-xs text-muted-foreground">已停止</div>}
@@ -206,25 +206,17 @@ const RunningTitle: React.FC<{ startedAt?: number }> = ({ startedAt }) => {
   return <span className="tabular-nums">处理中 · 已用 {formatSeconds(seconds)}</span>;
 };
 
-/** 最下面的「正在做」：三个依次闪动的点 + 扫过一道光的说明 */
-const WorkingIndicator: React.FC<{ label: string }> = ({ label }) => (
-  <div className="flex items-center gap-2 text-sm" role="status">
+/** 最下面的「正在做」：三个依次闪动的点；只有在重试 / 整理之前的对话时附一句说明 */
+const WorkingIndicator: React.FC<{ notice: string | null }> = ({ notice }) => (
+  <div className="flex h-5 items-center gap-2 text-sm text-muted-foreground" role="status" aria-label={notice ?? '正在处理'}>
     <span className="typing-dots flex items-center gap-0.5" aria-hidden>
       <span />
       <span />
       <span />
     </span>
-    <span className="text-shimmer">{label}</span>
+    {notice && <span>{notice}</span>}
   </div>
 );
-
-/** 正在做什么：在调用工具 / 在写回答 / 在想下一步 */
-function workingLabel(turn: Extract<ViewTurn, { role: 'agent' }>): string {
-  const last = turn.items[turn.items.length - 1];
-  if (last?.kind === 'text') return '正在回答';
-  if (last?.kind === 'steps' && last.steps.some((s) => s.status === 'running')) return '正在处理';
-  return '正在思考';
-}
 
 /** 用时：不到 1 分钟写秒，否则写几分几秒 */
 function formatSeconds(seconds: number): string {
