@@ -33,6 +33,8 @@ pub struct ChatSession {
     pending_ui: Mutex<Vec<(Instant, Value)>>,
     /// 界面要的现状与最近的序号；推送事件时持锁，保证序号与推送顺序一致
     live: Mutex<Live>,
+    /// 新对话的第一句话与发出时刻：pi 写进会话文件之前，对话列表先用它显示这个对话
+    first_message: Mutex<Option<(String, String)>>,
     /// 事件序号（ChatHub 的所有对话共用，进程重启后也只增不减）
     seq: Arc<AtomicU64>,
     emit: Emit,
@@ -104,6 +106,7 @@ impl ChatSession {
             last_used: Mutex::new(Instant::now()),
             pending_ui: Mutex::new(Vec::new()),
             live: Mutex::new(Live::default()),
+            first_message: Mutex::new(None),
             seq,
             emit,
         }
@@ -146,6 +149,18 @@ impl ChatSession {
         if let Ok(mut live) = self.live.lock() {
             self.publish_activity_locked(&mut live);
         }
+    }
+
+    /// 记下新对话的第一句话（只记第一次）
+    pub fn note_first_message(&self, text: &str) {
+        if let Ok(mut first) = self.first_message.lock() {
+            first.get_or_insert_with(|| (text.to_string(), crate::time::now_utc()));
+        }
+    }
+
+    /// 新对话的第一句话与发出时刻
+    pub fn first_message(&self) -> Option<(String, String)> {
+        self.first_message.lock().ok().and_then(|f| f.clone())
     }
 
     /// 界面现状：（当时的序号，重建现状的事件）。打开对话时先取它再取消息，之后的事件界面接着补
@@ -339,6 +354,11 @@ impl ChatHub {
             .filter(|s| s.is_running())
             .map(|s| s.id.clone())
             .collect()
+    }
+
+    /// 全部常驻的对话进程
+    pub async fn sessions(&self) -> Vec<Arc<ChatSession>> {
+        self.sessions.lock().await.values().cloned().collect()
     }
 
     /// 在回答或在等学习者回答的对话：（id，在回答，等回答）

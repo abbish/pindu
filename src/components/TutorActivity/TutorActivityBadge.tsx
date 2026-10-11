@@ -21,8 +21,8 @@ const ROW_META: Record<RowState, { label: string; icon: React.ComponentType<{ cl
 };
 
 /**
- * 侧边栏「AI 老师」右侧：对话在回答时转圈 + 数量（开着几个对话同时在做就是几）；有对话停下来等你回答（确认、选择）时
- * 换成「等你回答」的标记；不在 AI 老师页面时有对话答完了，是一个小点，进入 AI 老师或点开浮层后消失。
+ * 侧边栏「AI 老师」右侧：与后台任务同样的数量标记——对话在回答时主色、呼吸的数量（开着几个对话同时在做就是几）；
+ * 有对话停下来等你回答（确认、选择）时换成醒目色的数量；不在 AI 老师页面时有对话答完了，是一个小点，进入 AI 老师或点开浮层后消失。
  * 点开列出这些对话，点一个直接打开。侧栏收起成图标时只在图标角上显示。不是后台任务（D58）。
  */
 export const TutorActivityBadge: React.FC<{ current: boolean; onNavigate: NavigateFn }> = ({ current, onNavigate }) => {
@@ -69,25 +69,19 @@ export const TutorActivityBadge: React.FC<{ current: boolean; onNavigate: Naviga
       <span
         aria-hidden
         className={cn(
-          'pointer-events-none absolute top-1.5 left-5 hidden size-2.5 rounded-full group-data-[collapsible=icon]:block',
-          asking.length > 0
-            ? 'bg-warning'
-            : running.length > 0
-              ? 'border-2 border-primary border-t-transparent motion-safe:animate-spin'
-              : 'bg-success'
+          'pointer-events-none absolute top-1.5 left-5 hidden size-2 rounded-full group-data-[collapsible=icon]:block',
+          asking.length > 0 ? 'bg-warning' : running.length > 0 ? 'bg-primary motion-safe:animate-pulse' : 'bg-success'
         )}
       />
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <SidebarMenuAction aria-label={`AI 老师：${title}`} title={title} className="aspect-auto w-auto min-w-5 px-0.5">
             {asking.length > 0 ? (
-              <span className="flex h-4 items-center gap-0.5 rounded-full bg-warning-soft px-1 text-[11px] leading-none font-medium text-warning tabular-nums">
-                <MessageCircleQuestionMark className="size-3" />
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[11px] leading-none font-medium text-background tabular-nums">
                 {asking.length}
               </span>
             ) : running.length > 0 ? (
-              <span className="flex h-4 items-center gap-0.5 text-[11px] leading-none font-medium text-primary tabular-nums">
-                <Loader2 className="size-3 motion-safe:animate-spin" />
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[11px] leading-none font-medium text-primary-foreground tabular-nums motion-safe:animate-pulse">
                 {running.length}
               </span>
             ) : (

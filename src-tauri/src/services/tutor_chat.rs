@@ -122,11 +122,9 @@ impl TutorChatService {
         hub: &ChatHub,
     ) -> AppResult<Vec<TutorConversation>> {
         let (session_dir, cwd) = dirs(paths);
-        if !session_dir.exists() {
-            return Ok(Vec::new());
-        }
         let sessions = match hub.cached_list() {
             Some(cached) => cached,
+            None if !session_dir.exists() => Vec::new(),
             None => {
                 let listed = list_sessions(paths, &session_dir, &cwd).await?;
                 hub.cache_list(listed.clone());
@@ -135,6 +133,20 @@ impl TutorChatService {
         };
         let flags = self.flags().await;
         let running = hub.running_ids().await;
+        // 刚发出第一句话的新对话：pi 还没写进会话文件（或列表缓存早于写入），先按第一句话列出来
+        let fresh: Vec<FreshConversation> = hub
+            .sessions()
+            .await
+            .into_iter()
+            .filter_map(|s| {
+                s.first_message().map(|(title, created)| FreshConversation {
+                    id: s.id.clone(),
+                    title,
+                    created,
+                    running: s.is_running(),
+                })
+            })
+            .collect();
         let mut list: Vec<TutorConversation> = sessions
             .into_iter()
             .filter(|s| s.message_count > 0)
@@ -156,6 +168,7 @@ impl TutorChatService {
                 }
             })
             .collect();
+        add_fresh(&mut list, fresh, &flags);
         list.sort_by(|a, b| b.modified.cmp(&a.modified));
         Ok(list)
     }
@@ -323,6 +336,22 @@ impl TutorChatService {
             .iter()
             .map(|i| json!({ "type": "image", "data": i.data, "mimeType": i.mime_type }))
             .collect();
+        if request.conversation_id.is_none() {
+            let first = if !message.is_empty() {
+                message.to_string()
+            } else if !request.files.is_empty() {
+                attachment_line(
+                    &request
+                        .files
+                        .iter()
+                        .map(|f| f.name.clone())
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                "图片".to_string()
+            };
+            session.note_first_message(&first);
+        }
         session.send(&text, images).await?;
         Ok(session.id.clone())
     }
@@ -418,8 +447,75 @@ impl TutorChatService {
     }
 }
 
+/// 刚发出第一句话、还没出现在 pi 会话列表里的对话
+struct FreshConversation {
+    id: String,
+    title: String,
+    created: String,
+    running: bool,
+}
+
+/// 把还没列出来的新对话补进列表（已经在列表里的以 pi 的为准）
+fn add_fresh(
+    list: &mut Vec<TutorConversation>,
+    fresh: Vec<FreshConversation>,
+    flags: &HashMap<String, TutorFlags>,
+) {
+    for f in fresh {
+        if list.iter().any(|c| c.id == f.id) {
+            continue;
+        }
+        let flag = flags.get(&f.id).cloned().unwrap_or_default();
+        list.push(TutorConversation {
+            title: f.title.trim().chars().take(MAX_TITLE_CHARS).collect(),
+            modified: f.created.clone(),
+            created: f.created,
+            message_count: 1,
+            pinned: flag.pinned,
+            archived: flag.archived,
+            running: f.running,
+            id: f.id,
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fresh_conversations_are_listed_until_pi_lists_them() {
+        let listed = TutorConversation {
+            id: "a".into(),
+            title: "起好的标题".into(),
+            created: "2026-10-11T10:00:00.000Z".into(),
+            modified: "2026-10-11T10:00:05.000Z".into(),
+            message_count: 4,
+            pinned: false,
+            archived: false,
+            running: true,
+        };
+        let mut list = vec![listed];
+        let fresh = |id: &str| FreshConversation {
+            id: id.into(),
+            title: format!("  帮我准备{id}  "),
+            created: "2026-10-11T11:00:00.000Z".into(),
+            running: true,
+        };
+        let flags = HashMap::from([(
+            "b".to_string(),
+            TutorFlags {
+                pinned: true,
+                archived: false,
+            },
+        )]);
+        add_fresh(&mut list, vec![fresh("a"), fresh("b")], &flags);
+        // a 已经由 pi 列出：保留 pi 的标题；b 按第一句话补上，带上置顶
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].title, "起好的标题");
+        assert_eq!(list[1].title, "帮我准备b");
+        assert_eq!(list[1].modified, "2026-10-11T11:00:00.000Z");
+        assert!(list[1].pinned && list[1].running);
+    }
+
     use super::*;
     use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
     use rmcp::model::CallToolResult;
@@ -626,6 +722,11 @@ mod tests {
             )
             .await
             .unwrap();
+        // 刚发出第一句话：马上出现在对话列表里（pi 还没写会话文件时用第一句话作标题）
+        let listed = service.list(&paths, &hub).await.unwrap();
+        let fresh = listed.iter().find(|c| c.id == id);
+        println!("发出后马上列：{:?}", fresh.map(|c| &c.title));
+        assert!(fresh.is_some(), "新对话应马上出现在列表里");
         // 回答写到一半时打开对话：快照里有正在写的回答，序号不小于已经推送的增量
         for _ in 0..300 {
             let streamed = events

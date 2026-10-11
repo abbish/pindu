@@ -219,11 +219,12 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
         setActiveId(id);
         const later = release(id);
         setTranscript((s) => later.reduce((state, e) => applyEvent(state, e.event), s));
-        refreshSoon();
+        // 后端列表已经带上刚开的对话（标题先用第一句话，起好标题后更新）：马上刷新
+        void refreshList();
       }
       return true;
     },
-    [setActiveId, refreshSoon, toast]
+    [setActiveId, refreshList, toast]
   );
 
   /** 停止；返回被清掉的排队消息（放回输入框） */
