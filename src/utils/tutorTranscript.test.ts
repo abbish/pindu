@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, dropAsk, emptyTranscript, friendlyError, splitAttachments, splitSuggestions, toAsk, toTurns, type TranscriptState } from './tutorTranscript.ts';
+import { applyEvent, dropAsk, emptyTranscript, friendlyError, splitAttachments, toAsk, toTurns, type TranscriptState } from './tutorTranscript.ts';
 import type { PiEvent } from '../types/tutor.ts';
 
 const run = (events: PiEvent[], state: TranscriptState = emptyTranscript()) => events.reduce(applyEvent, state);
@@ -187,28 +187,28 @@ test('排队的消息：按 pi 的完整队列显示，结束时清空', () => {
   assert.deepEqual(run([{ type: 'agent_settled' }], queued).queue, []);
 });
 
-test('推荐下一步：拆出来、清理、去重，流式时挡住半截分隔行', () => {
-  const text = '行程表的意思。\n\n<<<下一步>>>\n- 用它造个句子\n- 「把它加进《机场英语》」\n2. 再给我两个例句\n- 第四条不要\n';
-  assert.deepEqual(splitSuggestions(text), {
-    body: '行程表的意思。',
-    suggestions: ['用它造个句子', '把它加进《机场英语》', '再给我两个例句'],
-  });
-  // 学习者说过的不再推荐
-  assert.deepEqual(splitSuggestions(text, ['用它造个句子！']).suggestions, ['把它加进《机场英语》', '再给我两个例句', '第四条不要']);
-  // 流式：分隔行只写了一半
-  assert.equal(splitSuggestions('好的。\n\n<<<下').body, '好的。');
-  assert.equal(splitSuggestions('a < b').body, 'a < b');
-  // 兼容「追问」
-  assert.deepEqual(splitSuggestions('答。\n<<<追问>>>\n- 为什么').suggestions, ['为什么']);
-
+test('推荐下一步来自 suggest_replies 工具；它和起标题都不算步骤', () => {
   const done = run([
     { type: 'message_end', message: user },
-    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text }], stopReason: 'stop', timestamp: 2 } },
+    {
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: '行程表的意思。' },
+          { type: 'toolCall', id: 't', name: 'name_conversation', arguments: { title: '查 itinerary' } },
+          { type: 'toolCall', id: 's', name: 'suggest_replies', arguments: { replies: ['用它造个句子', '再来两个例句'] } },
+        ],
+        stopReason: 'toolUse',
+        timestamp: 2,
+      },
+    },
   ]);
   const agent = toTurns(done)[1];
   assert.ok(agent.role === 'agent');
-  assert.equal(agent.suggestions.length, 3);
-  assert.deepEqual(agent.items.map((i) => i.kind === 'text' && i.text), ['行程表的意思。']);
+  assert.deepEqual(agent.suggestions, ['用它造个句子', '再来两个例句']);
+  assert.deepEqual(agent.steps, []);
+  assert.deepEqual(agent.items.map((i) => i.kind), ['text']);
 });
 
 test('一轮的用时：学习者发出到最后一条回答', () => {

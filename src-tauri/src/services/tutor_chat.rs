@@ -758,26 +758,21 @@ mod tests {
                 .is_empty(),
             "回答后不再挂着"
         );
-        let last_text = events
+        let suggestions: Vec<String> = events
             .lock()
             .unwrap()
             .iter()
-            .rev()
-            .find(|e| {
-                e["type"] == "message_end"
-                    && e["message"]["role"] == "assistant"
-                    && e["message"]["stopReason"] == "stop"
+            .filter(|e| e["type"] == "tool_execution_end" && e["toolName"] == "suggest_replies")
+            .filter_map(|e| {
+                e["result"]["details"]["redlark"]["suggestions"]
+                    .as_array()
+                    .cloned()
             })
-            .map(|e| e["message"]["content"].to_string())
-            .unwrap_or_default();
-        let next = last_text
-            .split("<<<下一步>>>")
-            .nth(1)
-            .unwrap_or("（没有推荐）")
-            .chars()
-            .take(200)
-            .collect::<String>();
-        println!("推荐下一步：{}", next);
+            .flatten()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+        println!("推荐下一步：{:?}", suggestions);
+        assert!(!suggestions.is_empty(), "回答后应调用 suggest_replies");
 
         // 问进度：应查看后台任务（不凭素材猜）
         let settled_before = count("agent_settled");

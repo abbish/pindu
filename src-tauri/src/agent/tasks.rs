@@ -914,9 +914,11 @@ pub fn word_tutor_task(profile: &PromptProfile) -> AgentTask {
     }
 }
 
-/// AI 老师独立对话可用的工具：问学习者（pi 扩展 UI）、读对话资料夹里的文件（只读，与素材阅读同一套）+ 拼读的 MCP 服务
-pub const TUTOR_CHAT_TOOLS: [&str; 7] = [
+/// AI 老师独立对话可用的工具：问学习者（pi 扩展 UI）、推荐下一步与给对话起标题（界面元信息，结构化交付）、读对话资料夹里的文件（只读，与素材阅读同一套）+ 拼读的 MCP 服务
+pub const TUTOR_CHAT_TOOLS: [&str; 9] = [
     "ask_user",
+    "suggest_replies",
+    "name_conversation",
     "list_material",
     "read_pdf_text",
     "view_pdf_page",

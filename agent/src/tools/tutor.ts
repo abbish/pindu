@@ -1,9 +1,44 @@
 // AI 老师独立对话：ask_user（问学习者，经 pi 的扩展 UI 交给拼读界面）与拼读 MCP 服务的接入。
-import { uuidv7 } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { MATERIAL_TOOLS } from "./material.ts";
 import { withReason } from "./reason.ts";
+
+/**
+ * 回答末尾推荐学习者接下来可以说的话：模型调用一次，界面显示成按钮；调用后这一轮直接结束（pi 的 terminate），不再多一次回复。
+ * 结构化交付，不从回答正文里解析。
+ */
+export const suggestRepliesTool = defineTool({
+  name: "suggest_replies",
+  label: "推荐下一步",
+  description:
+    "Call once at the very end of every reply, after your answer text: 2-3 short things the learner could say next (in Chinese, in the learner's own voice, at most 20 characters each, only things you can actually do). This ends your turn.",
+  parameters: Type.Object({
+    replies: Type.Array(Type.String({ maxLength: 30 }), { minItems: 1, maxItems: 3 }),
+  }),
+  async execute(_id, { replies }) {
+    return {
+      content: [{ type: "text", text: "Shown to the learner." }],
+      details: { redlark: { suggestions: replies } },
+      terminate: true,
+    };
+  },
+});
+
+/** 给对话起标题（第一轮回答时由模型起，存成 pi 的会话名；已经有名字（含学习者改过的）时不覆盖） */
+function nameConversationTool(pi: ExtensionAPI) {
+  return defineTool({
+    name: "name_conversation",
+    label: "给对话起标题",
+    description:
+      "In your first reply of a conversation, give it a short Chinese title (at most 12 characters) summarizing what the learner wants. It does not end your turn.",
+    parameters: Type.Object({ title: Type.String({ minLength: 1, maxLength: 20 }) }),
+    async execute(_id, { title }) {
+      if (!pi.getSessionName()) pi.setSessionName(title.trim());
+      return { content: [{ type: "text", text: "Named." }], details: undefined };
+    },
+  });
+}
 
 /** 拼读 MCP 服务在 pi 里的名字：工具为 `mcp__pindu__<tool>` */
 export const PINDU_SERVER = "pindu";
@@ -41,6 +76,8 @@ export function registerPindu(pi: ExtensionAPI) {
   const url = process.env.REDLARK_MCP_URL;
   const token = process.env.REDLARK_MCP_TOKEN;
   if (!url || !token) return;
+  pi.registerTool(suggestRepliesTool);
+  pi.registerTool(nameConversationTool(pi));
   // AI 老师用的自带工具也带上调用意图（重新注册同名工具即替换）；素材阅读任务不受影响
   for (const tool of [askUserTool, ...MATERIAL_TOOLS.filter(t => t.name !== "submit_material")]) {
     pi.registerTool(withReason(tool));
@@ -61,7 +98,6 @@ export function registerPindu(pi: ExtensionAPI) {
     const details = (event as { details?: unknown }).details;
     return { details: { ...(details && typeof details === "object" ? details : {}), redlark } };
   });
-  registerAutoTitle(pi);
   registerJobNotice(pi);
   registerConfirmGate(pi);
 }
@@ -107,66 +143,6 @@ function registerJobNotice(pi: ExtensionAPI) {
       );
     },
   });
-}
-
-/** 标题最长（字符） */
-const MAX_TITLE = 16;
-
-/** 第一轮回答完后，用当前模型给对话起个短标题（pi 的会话名）；学习者改过名或已有名字时不动 */
-function registerAutoTitle(pi: ExtensionAPI) {
-  let tried = false;
-  pi.on("agent_settled", async (event, ctx) => {
-    if (tried || event.aborted || pi.getSessionName() || !ctx.model) return;
-    const first = ctx.sessionManager.getBranch().find(e => e.type === "message" && e.message.role === "user");
-    const text = first?.type === "message" && "content" in first.message ? messageText(first.message.content) : "";
-    if (!text.trim()) return;
-    tried = true;
-    try {
-      const reply = await ctx.modelRegistry.complete(
-        ctx.model,
-        {
-          messages: [
-            {
-              role: "user",
-              content: [{ type: "text", text: titlePrompt(text) }],
-              timestamp: Date.now(),
-            },
-          ],
-        },
-        { cacheRetention: "none", sessionId: uuidv7() },
-      );
-      const title = cleanTitle(reply.content.filter(c => c.type === "text").map(c => c.text).join(""));
-      if (title && !pi.getSessionName()) pi.setSessionName(title);
-    } catch {
-      // 起不了标题时沿用第一条消息
-    }
-  });
-}
-
-function messageText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.map(b => (b && typeof b === "object" && "text" in b ? String((b as { text: unknown }).text) : "")).join("\n");
-}
-
-export function titlePrompt(firstMessage: string): string {
-  return [
-    "给下面这段对话起一个中文标题，概括学习者想做的事，不超过 12 个字，不要标点和引号，只输出标题。",
-    "学习者的第一句话：",
-    firstMessage.replace(/〔附件：[^〕]*〕/g, "（附带了文件）").slice(0, 500),
-  ].join("\n");
-}
-
-/** 模型给的标题：去掉引号、句末标点与多余空白，限制长度 */
-export function cleanTitle(raw: string): string {
-  const line = raw.split("\n").map(l => l.trim()).find(Boolean) ?? "";
-  return line
-    .replace(/^(标题[:：]\s*)/, "")
-    .replace(/[。.!！?？]+$/, "")
-    .replace(/^["'“”‘’「」《》]+|["'“”‘’「」《》]+$/g, "")
-    .replace(/[。.!！?？]+$/, "")
-    .trim()
-    .slice(0, MAX_TITLE);
 }
 
 /** MCP 结果（pi 的 structuredContent 是整个 CallToolResult）里拼读给界面的部分 */

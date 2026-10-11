@@ -520,4 +520,5 @@
   8. **素材内容由 AI 老师自己写**：原来的「写短文」工具另起一次 AI 调用，拿不到对话上下文（学习者水平、刚讲的语法点、想要的情节），去掉。AI 老师结合上下文写正文，用 `save_passage` 保存并带上词汇；程序按词形核对每个词都在正文里（没出现的退回让它改），翻译在后台做（导入材料同一条路径，合成一篇）。建词汇本、加词本来就是 AI 老师选词写释义，不受影响。
   9. **后台任务结束通知对话**：sidecar 连 MCP 时带请求头 `X-Pindu-Conversation`，工具分发时放进 task-local，存短文、出题提交任务时登记（`mcp/job_notice.rs`）；任务结束（jobs 事件回调）时对仍在运行的对话发 RPC `prompt` `/pindu-job <JSON>`，sidecar 的扩展命令用 pi 的 `sendMessage`（customType `pindu-job`，`triggerTurn`，忙时 `deliverAs: followUp`）放进会话，AI 老师接着说；界面显示成系统提示。对话已闲置关闭时不唤醒，任务在后台任务列表里照常可见。拼读分析（加词）不通知。
   10. **业务能力覆盖**（用户要求：除系统设置外，大部分业务 AI 老师都能代替人工）：去掉「只新增」的限制，工具按业务域补齐（覆盖表 `.claude/work/ai-tutor/mcp-coverage.md`）。会删除 / 结束的操作用 pi 文档的权限控制写法确认：工具注解 `destructive_hint`，sidecar 的 `tool_call` 处理器 `ctx.ui.confirm`（标题用 reason），取消就 `block`；修改类直接做。练习本身仍在练习页里做（`open_page` 打开），视频导入与切分在视频库 / 剪辑编辑器里做。skills 按域：词汇本、短文与题组、学习计划、视频、整理与界面、读材料。
+  11. **界面元信息也由模型结构化交付**（review）：推荐下一步原来让模型在正文末尾写 `<<<下一步>>>` 再由前端正则拆出、流式时挡半截分隔行；自动标题原来另调一次模型再用正则清理。改为 sidecar 工具：`suggest_replies`（回答末尾调用一次，details 交给界面，`terminate: true` 直接结束这一轮）与 `name_conversation`（第一轮回答时起标题，`pi.setSessionName`，已有名字不覆盖）；界面不把它们算作步骤。
 
