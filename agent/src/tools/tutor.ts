@@ -110,7 +110,7 @@ export function registerPindu(pi: ExtensionAPI) {
     // 按需加载（pi 的 deferred）：常用的直接声明给模型，其余不占每次请求的上下文，模型用 tool_search 找到再加载
     exposure: "deferred",
     toolExposure: Object.fromEntries(DIRECT_TOOLS.map(name => [name, "direct"])),
-    description: "拼读的业务功能：词汇本与单词、短文与题组、学习计划与练习、视频与场景片段、标签、后台任务；不在工具列表里的用 tool_search 按名称或用途搜索加载",
+    description: "Pindu features not yet in your tool list (editing / deleting materials, plan adjustments, video cutting, tags, detailed statistics). Search with English tool names or English keywords, e.g. delete_words, plan_cuts.",
     timeout: 120,
   });
   pi.on("tool_result", event => {

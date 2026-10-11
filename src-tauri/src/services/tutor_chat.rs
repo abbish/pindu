@@ -449,6 +449,18 @@ mod tests {
     #[tool_router]
     impl FakePindu {
         #[tool(
+            description = "Learning statistics: words learned, accuracy, streak days, and the words got wrong most recently.",
+            annotations(read_only_hint = true)
+        )]
+        async fn study_stats(&self) -> Result<CallToolResult, ErrorData> {
+            crate::mcp::tool_result(
+                json!({ "streakDays": 3, "troubleWords": [{ "word": "vet", "meaning": "兽医", "wrong": 2 }] }),
+                "看了学习统计".to_string(),
+                None,
+            )
+        }
+
+        #[tool(
             description = "Deletes words from a word book. The learner is asked to confirm.",
             annotations(read_only_hint = false, destructive_hint = true)
         )]
@@ -774,6 +786,32 @@ mod tests {
         println!("推荐下一步：{:?}", suggestions);
         assert!(!suggestions.is_empty(), "回答后应调用 suggest_replies");
 
+        // 直接可用的工具不应先去 tool_search
+        let before = events.lock().unwrap().len();
+        let settled_before = count("agent_settled");
+        service
+            .send(
+                &env,
+                &request(Some(id.clone()), "根据我最近容易错的词考考我"),
+            )
+            .await
+            .unwrap();
+        wait(settled_before + 1).await;
+        let called: Vec<String> = events.lock().unwrap()[before..]
+            .iter()
+            .filter(|e| e["type"] == "tool_execution_end")
+            .filter_map(|e| e["toolName"].as_str().map(str::to_string))
+            .collect();
+        println!("考考我这一轮的工具：{:?}", called);
+        assert!(
+            called.iter().any(|t| t == "mcp__pindu__study_stats"),
+            "应直接用学习统计"
+        );
+        assert!(
+            !called.iter().any(|t| t == "tool_search"),
+            "直接可用的工具不用搜"
+        );
+
         // 问进度：应查看后台任务（不凭素材猜）
         let settled_before = count("agent_settled");
         service
@@ -890,7 +928,7 @@ mod tests {
             .filter_map(|m| m["role"].as_str())
             .collect();
         println!("消息角色：{:?}", roles);
-        assert_eq!(roles.iter().filter(|r| **r == "user").count(), 4);
+        assert_eq!(roles.iter().filter(|r| **r == "user").count(), 5);
         // 按需加载：一开始只声明直接可用的拼读工具，删词（deferred）由 tool_search 加载
         let first_tools: Vec<String> = opened.messages[0]["toolsAdded"]
             .as_array()

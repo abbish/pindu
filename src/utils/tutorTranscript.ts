@@ -293,8 +293,8 @@ function userText(message: PiUserMessage): { text: string; images: string[]; fil
   };
 }
 
-/** 界面元信息工具：不算「做了的事」，不显示成步骤（推荐下一步显示成按钮，标题进对话列表） */
-const META_TOOLS = new Set(['suggest_replies', 'name_conversation']);
+/** 不算「做了的事」、不显示成步骤的工具：界面元信息（推荐下一步显示成按钮，标题进对话列表）与 pi 找工具的 tool_search */
+const META_TOOLS = new Set(['suggest_replies', 'name_conversation', 'tool_search']);
 
 /** 状态 → 界面轮次：用户一条一轮；之后的 assistant 消息与工具结果按发生顺序合成 AI 的一轮 */
 export function toTurns(state: TranscriptState): ViewTurn[] {
