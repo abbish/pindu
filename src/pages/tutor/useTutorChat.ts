@@ -12,6 +12,20 @@ import { applyEvent, emptyTranscript, type TranscriptState } from '@/utils/tutor
 /** 离开再回来时打开上次的对话 */
 let lastConversationId: string | null = null;
 
+const IMAGE_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
+/** 图片的类型（按扩展名判断：WebView 有时不给 File.type）；不是图片返回 null */
+export function imageMime(file: File): string | null {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return IMAGE_MIME[ext] ?? (file.type.startsWith('image/') ? file.type : null);
+}
+
 /** 要发送的附件 */
 export interface Attachment {
   file: File;
@@ -121,13 +135,15 @@ export function useTutorChat(initialPrompt?: string) {
     async (text: string, attachments: Attachment[] = []): Promise<boolean> => {
       const message = text.trim();
       // 图片（选的、粘贴的截图）直接随消息发；其它文件放进对话的资料夹，AI 老师用工具读
-      const imageFiles = attachments.filter((a) => a.file.type.startsWith('image/'));
-      const otherFiles = attachments.filter((a) => !a.file.type.startsWith('image/'));
+      const imageFiles = attachments.filter((a) => imageMime(a.file));
+      const otherFiles = attachments.filter((a) => !imageMime(a.file));
       if (!message && attachments.length === 0) return false;
       let images: TutorImage[];
       let files: TutorFileUpload[];
       try {
-        images = await Promise.all(imageFiles.map(async (a) => ({ data: await readBase64(a.file), mimeType: a.file.type })));
+        images = await Promise.all(
+          imageFiles.map(async (a) => ({ data: await readBase64(a.file), mimeType: imageMime(a.file) ?? 'image/png' }))
+        );
         files = await Promise.all(otherFiles.map(async (a) => ({ name: a.file.name, data: await readBase64(a.file) })));
       } catch {
         toast.showError('无法读取文件');

@@ -152,7 +152,7 @@ const TurnItems: React.FC<{ turn: Extract<ViewTurn, { role: 'agent' }> }> = ({ t
             </span>
             <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
           </button>
-          {open && <div className="flex flex-col gap-3 border-l-2 border-border pl-3">{process.map((item) => render(item, false))}</div>}
+          {open && <div className="flex flex-col gap-3">{process.map((item) => render(item, false))}</div>}
         </div>
       )}
       {shown.map((item, i) => render(item, i === shown.length - 1))}

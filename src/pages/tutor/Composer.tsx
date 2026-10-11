@@ -2,14 +2,19 @@ import React, { useEffect, useRef } from 'react';
 import { ArrowUp, Clock, FileText, Paperclip, Pencil, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import type { Attachment } from './useTutorChat';
+import { useToast } from '@/components';
+import { AI_MATERIAL_EXTENSIONS, IMPORT_FILE_EXTENSIONS, IMPORT_MAX_FILE_BYTES } from '@/utils/passageImport';
+import { imageMime, type Attachment } from './useTutorChat';
 
 /** 一次最多带几个附件（图片 8 张、文件 5 个，与后端一致） */
 const MAX_IMAGES = 8;
 const MAX_FILES = 5;
-/** 可以发的文件 */
-const ACCEPT = '.pdf,.docx,image/png,image/jpeg,image/webp,image/gif';
-const isImage = (f: File) => f.type.startsWith('image/');
+/** 可以发的文件：与导入材料相同（文本、字幕、Word、PDF、图片） */
+const EXTENSIONS = [...new Set([...IMPORT_FILE_EXTENSIONS, ...AI_MATERIAL_EXTENSIONS])];
+const ACCEPT = EXTENSIONS.join(',');
+const SHOWN = EXTENSIONS.filter((e) => e !== '.markdown' && e !== '.jpeg').join(' ');
+const isImage = (f: File) => imageMime(f) !== null;
+const extensionOf = (f: File) => `.${f.name.split('.').pop()?.toLowerCase() ?? ''}`;
 
 /**
  * 输入框：Enter 发送（Shift+Enter 换行）；可以选文件（PDF、Word、图片）或直接粘贴截图（图片显示缩略图）。
@@ -51,11 +56,27 @@ export const Composer: React.FC<{
     };
   }, [pickerRef]);
 
+  const toast = useToast();
+
   const add = (files: File[]) => {
+    // 不支持的、太大的说出来，不悄悄丢掉
+    // 粘贴的截图可能没有文件名，按类型认图片
+    const unsupported = files.filter((f) => !isImage(f) && !EXTENSIONS.includes(extensionOf(f)));
+    const tooBig = files.filter((f) => !unsupported.includes(f) && f.size > IMPORT_MAX_FILE_BYTES);
+    if (unsupported.length > 0) {
+      toast.showError(`不能发 ${unsupported.map((f) => f.name).join('、')}`, `可以发 ${SHOWN}`);
+    }
+    if (tooBig.length > 0) {
+      toast.showError(`${tooBig.map((f) => f.name).join('、')} 太大了`, `文件不能超过 ${IMPORT_MAX_FILE_BYTES / 1024 / 1024}MB`);
+    }
+    const ok = files.filter((f) => !unsupported.includes(f) && !tooBig.includes(f));
     const imageRoom = MAX_IMAGES - attachments.filter((a) => isImage(a.file)).length;
     const fileRoom = MAX_FILES - attachments.filter((a) => !isImage(a.file)).length;
-    const images = files.filter(isImage).slice(0, Math.max(0, imageRoom));
-    const others = files.filter((f) => !isImage(f) && /\.(pdf|docx)$/i.test(f.name)).slice(0, Math.max(0, fileRoom));
+    const images = ok.filter(isImage).slice(0, Math.max(0, imageRoom));
+    const others = ok.filter((f) => !isImage(f)).slice(0, Math.max(0, fileRoom));
+    if (images.length + others.length < ok.length) {
+      toast.showError('附件太多了', `一次最多 ${MAX_IMAGES} 张图片、${MAX_FILES} 个文件`);
+    }
     onAttachments([
       ...attachments,
       ...images.map((file) => ({ file, preview: URL.createObjectURL(file) })),
@@ -149,7 +170,7 @@ export const Composer: React.FC<{
           onChange={(e) => onDraft(e.target.value)}
           onPaste={(e) => {
             // 粘贴截图：作为图片附件（文字照常粘贴）
-            const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'));
+            const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/') || isImage(f));
             if (images.length > 0) {
               e.preventDefault();
               add(images);
@@ -172,7 +193,7 @@ export const Composer: React.FC<{
             className="size-8"
             onClick={() => picker.current?.click()}
             aria-label="添加文件"
-            title="添加文件（PDF、Word、图片）"
+            title="添加文件（PDF、Word、图片、文本）"
           >
             <Paperclip />
           </Button>

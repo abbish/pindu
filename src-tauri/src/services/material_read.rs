@@ -576,6 +576,9 @@ pub fn save_upload(dir: &Path, file_name: &str, data: &str) -> AppResult<PathBuf
     Ok(path)
 }
 
+/// 资料夹里直接收的文本类文件（与导入材料一致）
+const TEXT_MATERIAL_TYPES: [&str; 5] = ["txt", "md", "markdown", "srt", "vtt"];
+
 /// 文件名里只留字母、数字、汉字与 `-_.`（其余换成 `-`），避免路径与奇怪字符
 fn safe_stem(name: &str) -> String {
     let stem: String = Path::new(name)
@@ -618,6 +621,35 @@ fn unused_name(dir: &Path, stem: &str, ext: &str) -> String {
 /// Word 另存成文字（`<名字>.txt`）与内嵌图片。返回放进去的文件名
 pub fn add_to_folder(dir: &Path, file_name: &str, data: &str) -> AppResult<Vec<String>> {
     std::fs::create_dir_all(dir).map_err(io)?;
+    // 文本类（与导入材料相同的 txt / md / srt / vtt）：原样存成读文件工具认识的 .txt / .md
+    let ext = extension(Path::new(file_name.trim()));
+    if TEXT_MATERIAL_TYPES.contains(&ext.as_str()) {
+        use base64::Engine;
+        if data.len() / 4 * 3 > passage_import::MAX_FILE_BYTES + 3 {
+            return Err(AppError::ValidationError(format!(
+                "文件太大了，请选择 {}MB 以内的文件",
+                passage_import::MAX_FILE_BYTES / 1024 / 1024
+            )));
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data.trim())
+            .map_err(|_| AppError::ValidationError("文件内容读取失败，请重新选择".to_string()))?;
+        let target = unused_name(
+            dir,
+            &safe_stem(file_name),
+            if ext == "md" || ext == "markdown" {
+                "md"
+            } else {
+                "txt"
+            },
+        );
+        std::fs::write(
+            dir.join(&target),
+            String::from_utf8_lossy(&bytes).as_bytes(),
+        )
+        .map_err(io)?;
+        return Ok(vec![target]);
+    }
     // 临时目录放在同一个上级目录（同一磁盘，rename 不会跨卷失败）
     let incoming = dir
         .parent()
@@ -726,6 +758,34 @@ pub async fn read_material(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_keeps_names_and_stores_text_files_for_read_text() {
+        use base64::Engine;
+        let dir = std::env::temp_dir().join(format!("tutor-folder-{}", uuid::Uuid::new_v4()));
+        let b64 = |s: &str| base64::engine::general_purpose::STANDARD.encode(s);
+        assert_eq!(
+            add_to_folder(&dir, "第三单元 生词.txt", &b64("apple")).unwrap(),
+            ["第三单元-生词.txt"]
+        );
+        // 同名加序号；字幕存成 .txt，markdown 存成 .md
+        assert_eq!(
+            add_to_folder(&dir, "第三单元 生词.srt", &b64("1")).unwrap(),
+            ["第三单元-生词-2.txt"]
+        );
+        assert_eq!(
+            add_to_folder(&dir, "notes.markdown", &b64("# a")).unwrap(),
+            ["notes.md"]
+        );
+        assert!(add_to_folder(&dir, "slides.pptx", &b64("x")).is_err());
+        // 路径不会跳出资料夹
+        assert_eq!(
+            add_to_folder(&dir, "../../evil.txt", &b64("x")).unwrap(),
+            ["evil.txt"]
+        );
+        assert!(dir.join("evil.txt").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
     use serde_json::json;
 
     fn tool_end(name: &str, details: Value) -> AgentEvent {
