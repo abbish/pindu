@@ -32,11 +32,24 @@ pub fn track(job_id: &str, notify: bool) {
     if let Ok(mut origin) = ORIGIN.lock() {
         origin.insert(job_id.to_string(), conversation.clone());
     }
+    prune();
     if notify {
         if let Ok(mut watched) = WATCHED.lock() {
             watched.insert(job_id.to_string(), conversation);
         }
     }
+}
+
+/// 后台任务被移除后（任务只放内存，清除已完成 / 重启都会没）不再记它的来源，免得只增不减
+fn prune() {
+    let Ok(mut origin) = ORIGIN.lock() else {
+        return;
+    };
+    if origin.len() < 64 {
+        return;
+    }
+    let live: std::collections::HashSet<String> = crate::mcp::live_job_ids();
+    origin.retain(|id, _| live.contains(id));
 }
 
 /// 任务来自哪个对话（AI 老师提交的才有）

@@ -31,6 +31,22 @@ pub struct McpEndpoint {
 }
 
 static ENDPOINT: OnceCell<McpEndpoint> = OnceCell::const_new();
+/// 服务所在的应用（查当前还在的后台任务等）
+static APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
+
+/// 当前还在列表里的后台任务 id
+pub fn live_job_ids() -> std::collections::HashSet<String> {
+    use tauri::Manager;
+    APP.get()
+        .map(|app| {
+            app.state::<crate::jobs::Jobs>()
+                .list()
+                .into_iter()
+                .map(|j| j.id)
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
 /// 服务地址（第一次调用时启动）
 pub async fn endpoint(app: &AppHandle) -> AppResult<McpEndpoint> {
@@ -41,6 +57,7 @@ pub async fn endpoint(app: &AppHandle) -> AppResult<McpEndpoint> {
 }
 
 async fn start(app: AppHandle) -> AppResult<McpEndpoint> {
+    let _ = APP.set(app.clone());
     serve(move || Ok(tools::PinduTools::new(app.clone()))).await
 }
 

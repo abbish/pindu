@@ -76,7 +76,10 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
     if (!ok) {
       setDraft(keep.draft);
       setAttachments(keep.attachments);
+      return;
     }
+    // 发出后 pi 的消息里带着图片本身，预览地址用完就释放（稍等，先显示的消息还在用）
+    window.setTimeout(() => files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview)), 60_000);
   };
 
   // 从顶栏快速对话进来：开新对话并发出这句（只在进入时发一次）

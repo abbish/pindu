@@ -163,7 +163,10 @@ export const Composer: React.FC<{
                 )}
                 <button
                   type="button"
-                  onClick={() => onAttachments(attachments.filter((_, j) => j !== i))}
+                  onClick={() => {
+                    if (a.preview) URL.revokeObjectURL(a.preview);
+                    onAttachments(attachments.filter((_, j) => j !== i));
+                  }}
                   className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-foreground text-background opacity-0 group-hover:opacity-100"
                   aria-label="移除"
                   title="移除"

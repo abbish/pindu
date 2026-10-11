@@ -28,8 +28,6 @@ pub fn page_of(target: &str, id: Option<i64>, mode: Option<&str>) -> Option<(&'s
         "passage" => with_id("passage-detail", "passageId"),
         "plan" => with_id("plan-detail", "planId"),
         "video" => with_id("video-editor", "videoId"),
-        // 与计划卡「开始学习」同一套规则（前端 TutorBridge → startPlanPractice）
-        "practice" => with_id("__practice", "planId"),
         "continue_practice" => None, // 需要会话：见 open_page 里的处理
         "passage_practice" => id.map(|id| {
             let mode = if mode == Some("listening") {
@@ -73,8 +71,8 @@ pub struct TagArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct JobArgs {
-    /// Job title as shown by background_jobs
-    pub title: String,
+    /// Job id from background_jobs
+    pub job_id: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -116,6 +114,23 @@ impl PinduTools {
         &self,
         Parameters(args): Parameters<OpenPageArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        // 开始计划今天的练习：不是一个页面，由前端按计划卡「开始学习」的规则决定去哪（TutorBridge → startPlanPractice）
+        if args.target.trim() == "practice" {
+            let Some(plan_id) = args.id else {
+                return failed(
+                    "没能开始练习",
+                    AppError::ValidationError("缺少计划 id".to_string()),
+                );
+            };
+            let _ = self
+                .app
+                .emit("tutor-start-practice", json!({ "planId": plan_id }));
+            return done(
+                json!({ "started": plan_id }),
+                "开始今天的练习".to_string(),
+                None,
+            );
+        }
         // 接着练没练完的那次：用 unfinished_practice 给的会话
         if args.target.trim() == "continue_practice" {
             let sessions = crate::handlers::get_incomplete_practice_sessions(self.app.clone())
@@ -238,7 +253,7 @@ impl PinduTools {
     }
 
     #[tool(
-        description = "Stop a running background job (by its title from background_jobs). The learner is asked to confirm.",
+        description = "Stop a running background job (job id from background_jobs). The learner is asked to confirm.",
         annotations(read_only_hint = false, destructive_hint = true)
     )]
     async fn stop_job(
@@ -246,11 +261,11 @@ impl PinduTools {
         Parameters(args): Parameters<JobArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let jobs = self.app.state::<crate::jobs::Jobs>();
-        let title = args.title.trim();
         let Some(job) = jobs
             .list()
             .into_iter()
-            .find(|j| j.status.is_active() && j.title == title)
+            .find(|j| j.id == args.job_id.trim())
+            .filter(|j| j.status.is_active())
         else {
             return failed(
                 "没能停止任务",

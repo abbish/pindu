@@ -63,6 +63,7 @@ impl PinduTools {
             .map(|j| {
                 let from_here = here.is_some() && crate::mcp::job_notice::origin_of(&j.id) == here;
                 json!({
+                    "id": j.id,
                     "title": j.title,
                     "status": job_status_text(j.status),
                     "progress": (j.total > 0).then(|| format!("{}/{}", j.current, j.total)),

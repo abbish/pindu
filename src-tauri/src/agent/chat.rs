@@ -4,7 +4,7 @@
 //! - 事件：pi 的原始事件 JSON 原样交给 `Emit`（前端按 pi 的消息格式重建），
 //!   含 `extension_ui_request`（工具向用户提问），回答经 `respond_ui` 写回 `extension_ui_response`。
 //! - 进程退出（或被关闭）后从表里移除，并补发一条 `{"type":"redlark_closed"}`。
-//! - 闲置的进程在启动新对话时按 `IDLE_LIMIT` 关闭；应用内更新前也会关掉闲置的。
+//! - 闲置超过 `IDLE_LIMIT` 的进程每分钟回收一次（`start_reaper`）；应用内更新前也会关掉闲置的。
 
 use super::session::{AgentLaunch, AgentProcess};
 use crate::error::{AppError, AppResult};
@@ -159,9 +159,26 @@ pub struct ChatHub {
     sessions: Arc<tokio::sync::Mutex<HashMap<String, Arc<ChatSession>>>>,
     /// 上次用 pi 列出的对话（每次列都要起一个 sidecar）；对话有变化时清掉
     listed: Arc<Mutex<Option<Vec<SessionSummary>>>>,
+    /// 闲置回收已经在跑
+    reaper: Arc<AtomicBool>,
 }
 
 impl ChatHub {
+    /// 每分钟关掉闲置超过 IDLE_LIMIT 的对话进程（只启动一次）；再打开时 pi 从会话文件恢复
+    fn start_reaper(&self) {
+        if self.reaper.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let hub = self.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                tick.tick().await;
+                hub.close_idle(IDLE_LIMIT).await;
+            }
+        });
+    }
+
     /// 缓存的对话列表
     pub fn cached_list(&self) -> Option<Vec<SessionSummary>> {
         self.listed.lock().ok().and_then(|l| l.clone())
@@ -201,6 +218,7 @@ impl ChatHub {
 
     /// 启动一个对话进程（新对话或按会话 id 恢复），返回 pi 的会话 id
     pub async fn start(&self, launch: AgentLaunch, emit: Emit) -> AppResult<Arc<ChatSession>> {
+        self.start_reaper();
         self.close_idle(IDLE_LIMIT).await;
         let mut process = AgentProcess::spawn(launch).await?;
         let mut events = process.connection.take_events();

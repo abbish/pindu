@@ -15,7 +15,7 @@ description: 整理与界面：给词汇本、短文、视频打标签，改标�
 ## 后台任务
 
 - 学习者问进度、或你要说「做好了」之前：`mcp__pindu__background_jobs` 看真实的状态与进度，不要凭素材去猜。
-- 停止：`mcp__pindu__stop_job`（用任务名称，界面会请学习者确认）。
+- 停止：`mcp__pindu__stop_job`（任务 id 见 background_jobs，界面会请学习者确认）。
 
 ## 朗读
 
