@@ -3,13 +3,14 @@
  * 对话由 pi 会话保存（handlers/tutor.rs）；页面按 pi 的事件重建对话（utils/tutorTranscript.ts）。
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { GraduationCap, Loader2, MessageSquarePlus } from 'lucide-react';
+import { ArrowDown, GraduationCap, Loader2, MessageSquarePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { NavigateFn } from '@/navigation';
 import { toTurns } from '@/utils/tutorTranscript';
 import { Composer } from './tutor/Composer';
 import { ConversationList } from './tutor/ConversationList';
 import { AgentTurnView, NoticeRow, OutputsPopover, UserBubble } from './tutor/TurnViews';
+import { useStickToBottom } from './tutor/useStickToBottom';
 import { useTutorChat, type Attachment } from './tutor/useTutorChat';
 
 /**
@@ -41,7 +42,6 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
   /** 变化时输入框获得焦点、光标到末尾（开场示例用）；openPicker 打开选文件 */
   const [focusKey, setFocusKey] = useState(0);
   const openPicker = useRef<(() => void) | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   const turns = useMemo(() => toTurns(chat.transcript), [chat.transcript]);
   const outputs = useMemo(
@@ -51,12 +51,13 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
   const active = chat.conversations.find((c) => c.id === chat.activeId);
   const running = chat.transcript.running;
 
-  // 新内容到来时滚到底（用户往上翻看时不打扰）
-  const pinnedToBottom = useRef(true);
+  // 新内容到来时跟着滚到底；往上翻看时不打扰，显示「回到最新」
+  const stick = useStickToBottom();
+  const { scrollToBottom } = stick;
+  // 换了对话（或打开完）：从最新的地方看起
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el && pinnedToBottom.current) el.scrollTo({ top: el.scrollHeight });
-  }, [turns]);
+    scrollToBottom();
+  }, [chat.activeId, chat.loading, scrollToBottom]);
 
   const send = async (text: string, files: Attachment[] = attachments) => {
     // 有提问在等：输入的文字就是回答（不然消息会排在提问后面，两边互相等）
@@ -71,7 +72,7 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
     const keep = { draft, attachments };
     setDraft('');
     setAttachments([]);
-    pinnedToBottom.current = true;
+    scrollToBottom();
     const ok = await chat.send(text, files);
     if (!ok) {
       setDraft(keep.draft);
@@ -124,52 +125,59 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
           {outputs.length > 0 && <OutputsPopover outputs={outputs} onNavigate={onNavigate} />}
         </header>
 
-        <div
-          ref={scrollRef}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-          }}
-          className="min-h-0 flex-1 overflow-y-auto"
-        >
-          {chat.loading ? (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-              <Loader2 className="size-5 animate-spin" />
-            </div>
-          ) : turns.length > 0 ? (
-            <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-6">
-              {turns.map((turn, i) =>
-                turn.role === 'user' ? (
-                  <UserBubble key={turn.key} turn={turn} />
-                ) : turn.role === 'notice' ? (
-                  <NoticeRow key={turn.key} text={turn.text} />
-                ) : (
-                  <AgentTurnView
-                    key={turn.key}
-                    turn={turn}
-                    ask={i === turns.length - 1 ? (chat.transcript.asks[0] ?? null) : null}
-                    askCount={chat.transcript.asks.length}
-                    onExpireAsk={chat.expireAsk}
-                    notice={chat.transcript.notice}
-                    onAnswer={(reply) => void chat.answer(reply)}
-                    onSuggest={i === turns.length - 1 ? (text) => void send(text, []) : undefined}
-                    onNavigate={onNavigate}
-                  />
-                )
-              )}
-            </div>
-          ) : (
-            <EmptyState
-              onPick={(starter) => {
-                if (!starter.fill) {
-                  void send(starter.text, []);
-                  return;
-                }
-                setDraft(starter.text);
-                setFocusKey((k) => k + 1);
-                if (starter.attach) openPicker.current?.();
-              }}
-            />
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div ref={stick.scrollRef} onScroll={stick.onScroll} className="min-h-0 flex-1 overflow-y-auto">
+            {chat.loading ? (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            ) : turns.length > 0 ? (
+              <div ref={stick.contentRef} className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-6">
+                {turns.map((turn, i) =>
+                  turn.role === 'user' ? (
+                    <UserBubble key={turn.key} turn={turn} />
+                  ) : turn.role === 'notice' ? (
+                    <NoticeRow key={turn.key} text={turn.text} />
+                  ) : (
+                    <AgentTurnView
+                      key={turn.key}
+                      turn={turn}
+                      ask={i === turns.length - 1 ? (chat.transcript.asks[0] ?? null) : null}
+                      askCount={chat.transcript.asks.length}
+                      onExpireAsk={chat.expireAsk}
+                      notice={chat.transcript.notice}
+                      onAnswer={(reply) => void chat.answer(reply)}
+                      onSuggest={i === turns.length - 1 ? (text) => void send(text, []) : undefined}
+                      onNavigate={onNavigate}
+                    />
+                  )
+                )}
+              </div>
+            ) : (
+              <EmptyState
+                onPick={(starter) => {
+                  if (!starter.fill) {
+                    void send(starter.text, []);
+                    return;
+                  }
+                  setDraft(starter.text);
+                  setFocusKey((k) => k + 1);
+                  if (starter.attach) openPicker.current?.();
+                }}
+              />
+            )}
+          </div>
+          {!stick.atBottom && turns.length > 0 && (
+            <Button
+              variant="outline"
+              size="icon"
+              className="absolute bottom-3 left-1/2 size-8 -translate-x-1/2 rounded-full bg-background shadow-md"
+              aria-label="回到最新"
+              title="回到最新"
+              onClick={() => stick.scrollToBottom(true)}
+            >
+              <ArrowDown />
+            </Button>
           )}
         </div>
 
