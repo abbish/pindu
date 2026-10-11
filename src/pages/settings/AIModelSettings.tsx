@@ -1,6 +1,7 @@
 import { ModelCapabilities, capabilitiesOf } from '@/components/ModelCapabilities';
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, MoreHorizontal, Plus, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, MoreHorizontal, PlugZap, Plus, Search, XCircle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -566,11 +567,13 @@ export const AIModelSettings: React.FC = () => {
                   const test = tests[m.id];
                   const usable = m.isActive && provider.isActive;
                   return (
-                    <div key={m.id} className={cn('flex items-center gap-3 px-4 py-3', !m.isActive && 'opacity-60')}>
-                      <div className="min-w-0 flex-1">
+                    <div
+                      key={m.id}
+                      className={cn('grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-4 px-4 py-2.5', !m.isActive && 'opacity-60')}
+                    >
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2 text-sm font-medium">
-                          {m.displayName}
-                          <ModelCapabilities {...capabilitiesOf(m)} />
+                          <span className="truncate">{m.displayName}</span>
                           {m.isDefault && <Badge className="h-5">默认</Badge>}
                           {!m.isActive && (
                             <Badge variant="secondary" className="h-5">
@@ -578,21 +581,44 @@ export const AIModelSettings: React.FC = () => {
                             </Badge>
                           )}
                         </div>
-                        <div className="mt-0.5 truncate text-[13px] text-muted-foreground">
-                          <span className="font-mono text-xs select-text">{m.modelId}</span>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          <span className="font-mono select-text">{m.modelId}</span>
                           {paramText(m) && <span> · {paramText(m)}</span>}
                         </div>
-                        {test && test.status !== 'testing' && (
-                          <div className={cn('mt-0.5 inline-flex items-center gap-1 text-xs', test.status === 'ok' ? 'text-success' : 'text-destructive')}>
-                            {test.status === 'ok' ? <CheckCircle2 className="size-3.5" /> : <XCircle className="size-3.5" />}
-                            {test.status === 'ok' ? `测试通过，用时 ${test.ms} ms` : `测试失败：${test.message}`}
-                          </div>
-                        )}
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => handleTest(m)} disabled={test?.status === 'testing' || !usable}>
-                        {test?.status === 'testing' && <Loader2 className="animate-spin" />}
-                        {test?.status === 'testing' ? '测试中…' : '测试'}
-                      </Button>
+                      <ModelCapabilities {...capabilitiesOf(m)} />
+                      <div className="flex items-center gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8"
+                              aria-label="测试"
+                              onClick={() => handleTest(m)}
+                              disabled={test?.status === 'testing' || !usable}
+                            >
+                              {test?.status === 'testing' ? (
+                                <Loader2 className="animate-spin" />
+                              ) : test?.status === 'ok' ? (
+                                <CheckCircle2 className="text-success" />
+                              ) : test?.status === 'fail' ? (
+                                <XCircle className="text-destructive" />
+                              ) : (
+                                <PlugZap />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-72">
+                            {test?.status === 'testing'
+                              ? '测试中…'
+                              : test?.status === 'ok'
+                                ? `测试通过，用时 ${test.ms} ms`
+                                : test?.status === 'fail'
+                                  ? `测试失败：${test.message}`
+                                  : '测试'}
+                          </TooltipContent>
+                        </Tooltip>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button size="icon" variant="ghost" className="size-8" aria-label="更多操作" disabled={saving}>
@@ -615,6 +641,7 @@ export const AIModelSettings: React.FC = () => {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      </div>
                     </div>
                   );
                 })
