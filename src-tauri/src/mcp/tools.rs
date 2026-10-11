@@ -611,7 +611,7 @@ impl PinduTools {
         match crate::handlers::start_passage_generation(self.app.clone(), request).await {
             Ok(job) => {
                 let output =
-                    json!({ "kind": "passage", "title": "新短文", "meta": "正在写", "jobId": job });
+                    json!({ "kind": "passage", "title": "新短文", "jobId": job });
                 done(
                     json!({ "note": "The passage is being written in the background and will appear in the library." }),
                     "开始写一篇短文（后台进行）".to_string(),

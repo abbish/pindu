@@ -265,6 +265,12 @@ const AskCard: React.FC<{
   );
 };
 
+/** 后台任务做完后的说法（词汇本、词汇的拼读分析做完不用另说） */
+const DONE_TEXT: Partial<Record<StepOutput['kind'], string>> = {
+  passage: '已写好',
+  questions: '已出好',
+};
+
 /** 后台任务写好的短文（job.detail.items 里的第一篇） */
 function jobPassage(job: Job | undefined): { id: number; title?: string } | null {
   const items = (job?.detail as { items?: { passageId?: number | null; title?: string | null }[] } | null)?.items;
@@ -286,9 +292,12 @@ const OutputCard: React.FC<{ output: StepOutput; onNavigate: NavigateFn }> = ({ 
         <Icon className="size-4" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-xs text-muted-foreground">已收进{OUTPUT_LABEL[output.kind]}</div>
         <div className="truncate text-sm font-medium">{output.title}</div>
         {output.meta && <div className="truncate text-xs text-muted-foreground">{output.meta}</div>}
+        {/* 状态跟着后台任务走（工具结果只写素材本身的信息） */}
+        {job?.status === 'succeeded' && DONE_TEXT[output.kind] && (
+          <div className="truncate text-xs text-muted-foreground">{DONE_TEXT[output.kind]}</div>
+        )}
         {job && isJobActive(job) && (
           <div className="mt-2">
             <JobProgress job={job} />
