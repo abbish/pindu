@@ -66,8 +66,8 @@ export interface TranscriptState {
   messages: PiMessage[];
   /** 正在生成的 assistant 消息 */
   partial: PiAssistantMessage | null;
-  /** 工具执行状态（toolCallId → 状态与最新 details） */
-  tools: Record<string, { status: 'running' | 'done' | 'error'; details?: unknown }>;
+  /** 工具执行状态（toolCallId → 状态、最新 details、出错时的说明） */
+  tools: Record<string, { status: 'running' | 'done' | 'error'; details?: unknown; text?: string }>;
   running: boolean;
   /** 等学习者回答的提问（按到达顺序，一次答一个） */
   asks: TutorAsk[];
@@ -193,7 +193,10 @@ export function applyEvent(state: TranscriptState, event: PiEvent): TranscriptSt
       const e = event as Extract<PiEvent, { type: 'tool_execution_end' }>;
       return {
         ...state,
-        tools: { ...state.tools, [e.toolCallId]: { status: e.isError ? 'error' : 'done', details: e.result?.details } },
+        tools: {
+          ...state.tools,
+          [e.toolCallId]: { status: e.isError ? 'error' : 'done', details: e.result?.details, text: blocksText(e.result?.content) },
+        },
       };
     }
     case 'queue_update': {
@@ -235,7 +238,11 @@ export interface ViewStep {
   /** 用户能看懂的一句话 */
   label: string;
   detail?: string;
-  status: 'running' | 'done' | 'error';
+  /**
+   * revised：交稿前的核对没通过，AI 改好再交；skipped：没有改动——学习者没同意、只查看、停止了。
+   * 都不算出错，只有 error 显示成红色
+   */
+  status: 'running' | 'done' | 'error' | 'revised' | 'skipped';
   output?: StepOutput;
 }
 
@@ -279,11 +286,35 @@ function skillLabel(call: PiToolCallBlock, done: boolean): string | undefined {
   return `${done ? '看了' : '正在看'}「${SKILL_NAMES[skill]}」的做法`;
 }
 
-function redlarkDetails(details: unknown): { step?: string; detail?: string; output?: StepOutput } {
+/** check：交稿前的核对没通过（后端 mcp/tools needs_revision） */
+type RedlarkDetails = { step?: string; detail?: string; output?: StepOutput; check?: boolean };
+
+function redlarkDetails(details: unknown): RedlarkDetails {
   if (!details || typeof details !== 'object') return {};
   const r = (details as { redlark?: unknown }).redlark;
-  return r && typeof r === 'object' ? (r as { step?: string; detail?: string; output?: StepOutput }) : {};
+  return r && typeof r === 'object' ? (r as RedlarkDetails) : {};
 }
+
+const blocksText = (content: unknown): string | undefined =>
+  Array.isArray(content)
+    ? content
+        .filter((b): b is { type: 'text'; text: string } => b?.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text)
+        .join('\n')
+    : undefined;
+
+/**
+ * 没成功的工具调用怎么显示（按 pi 给的说明认）：
+ * - pi 找工具（调用了还没加载的工具）、参数格式不对：智能体自己换个方式再调，和 tool_search 一样不显示；
+ * - 学习者没同意、只查看（sidecar 确认门的说明，agent/src/tools/tutor.ts 的 DECLINED_REASON / VIEW_ONLY_REASON）、停止：没有改动，不算出错。
+ */
+const TOOL_OUTCOMES: { match: RegExp; hidden?: true; note?: string }[] = [
+  { match: /^Tool \S+ not found/, hidden: true },
+  { match: /^Validation failed for tool /, hidden: true },
+  { match: /^The learner did not confirm/, note: '你没有同意，没有改动' },
+  { match: /^The learner set the AI teacher to view only/, note: '只查看，没有改动' },
+  { match: /^Operation aborted/, note: '已停止' },
+];
 
 /** 消息末尾的附件标记（后端 `tutor_chat::attachment_line`）：〔附件：a.pdf、b.txt〕 */
 const ATTACHMENT_LINE = /\n*〔附件：([^〕]*)〕\s*$/;
@@ -343,6 +374,7 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
         if (Array.isArray(replies)) turn.suggestions = replies.filter((r): r is string => typeof r === 'string');
       } else if (block.type === 'toolCall' && !META_TOOLS.has(block.name)) {
         const s = step(block, results.get(block.id), state.tools[block.id], state.running);
+        if (!s) return;
         turn.steps.push(s);
         // 连着的工具调用放在一组
         if (last?.kind === 'steps') last.steps.push(s);
@@ -392,18 +424,34 @@ function step(
   result: PiToolResultMessage | undefined,
   live: TranscriptState['tools'][string] | undefined,
   running: boolean
-): ViewStep {
+): ViewStep | null {
   const details = result?.details ?? live?.details;
   const info = redlarkDetails(details);
-  // 没有结果也不在运行：被停止了
-  const status = result ? (result.isError ? 'error' : 'done') : (live?.status ?? (running ? 'running' : 'error'));
   // 进行中：模型写的调用意图（reason 参数）；做完：工具给的结果说明，没有就沿用意图。
   // pi 自带的 read（读 skill）没有 reason，按读的是哪个 skill 说
   const reason = typeof call.arguments?.reason === 'string' ? call.arguments.reason.trim() : '';
-  const label =
+  // 没有结果也不在运行：被停止了
+  let status: ViewStep['status'] = result ? (result.isError ? 'error' : 'done') : (live?.status ?? (running ? 'running' : 'skipped'));
+  let note: string | undefined;
+  if (status === 'error') {
+    const outcome = TOOL_OUTCOMES.find((o) => o.match.test((result ? blocksText(result.content) : live?.text) ?? ''));
+    if (outcome?.hidden) return null;
+    if (outcome) {
+      status = 'skipped';
+      note = outcome.note;
+    } else if (info.check) {
+      status = 'revised';
+    }
+  } else if (status === 'skipped') {
+    note ??= '已停止';
+  }
+  const base =
     status === 'running'
       ? reason || (skillLabel(call, false) ?? '正在处理')
-      : info.step || reason || (skillLabel(call, true) ?? '处理了一步');
+      : status === 'skipped'
+        ? reason || info.step || (skillLabel(call, false) ?? '这一步')
+        : info.step || reason || (skillLabel(call, true) ?? '处理了一步');
+  const label = note ? `${base}（${note}）` : base;
   return {
     id: call.id,
     tool: call.name,

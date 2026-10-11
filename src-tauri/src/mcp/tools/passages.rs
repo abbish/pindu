@@ -100,7 +100,7 @@ impl PinduTools {
     }
 
     #[tool(
-        description = "Save an English passage to the learner's library, kept exactly as given: a passage you wrote for the learner (based on everything discussed), or a text the learner shared. Give the words it is for in `vocabulary`; each must appear in the text. Translation (and a title if empty) is added in the background.",
+        description = "Save an English passage to the learner's library, kept exactly as given: a passage you wrote for the learner (based on everything discussed), or a text the learner shared. Give the words it is for in `vocabulary`, in dictionary form (\"come up\", not \"came up\"); each must appear in the text (any form). Translation (and a title if empty) is added in the background.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn save_passage(
@@ -110,13 +110,8 @@ impl PinduTools {
         // 词汇须出现在正文里（按词形，词组可变形）：没出现的退回给 AI 老师改
         let missing = missing_vocabulary(&args.text, &args.vocabulary);
         if !missing.is_empty() {
-            return failed(
-                "存短文前核对词汇",
-                AppError::ValidationError(format!(
-                    "这些词没有出现在正文里：{}。请改写正文让它们自然出现，或者从词汇里去掉",
-                    missing.join("、")
-                )),
-            );
+            let (model, step) = vocabulary_revision(&missing);
+            return needs_revision(model, step);
         }
         let preview_result = crate::handlers::prepare_passage_import(
             self.app.clone(),

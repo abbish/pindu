@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Bell, BookOpen, CalendarCheck, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus } from 'lucide-react';
+import { Ban, Bell, BookOpen, CalendarCheck, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus, RotateCcw } from 'lucide-react';
 import { JobProgress } from '@/components/Jobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -237,10 +237,19 @@ const StepList: React.FC<{ steps: ViewStep[] }> = ({ steps }) => (
   </ol>
 );
 
+/** 步骤状态的图标：只有真正出错的是红色；核对后改写、没有改动（没同意 / 只查看 / 停止）是普通的灰色 */
+const STEP_ICON: Record<ViewStep['status'], React.ComponentType<{ className?: string }>> = {
+  running: Loader2,
+  done: Check,
+  error: CircleAlert,
+  revised: RotateCcw,
+  skipped: Ban,
+};
+
 const StepRow: React.FC<{ step: ViewStep }> = ({ step }) => {
   const [open, setOpen] = useState(false);
   const running = step.status === 'running';
-  const Icon = running ? Loader2 : step.status === 'error' ? CircleAlert : Check;
+  const Icon = running ? Loader2 : STEP_ICON[step.status];
   return (
     <li className="text-sm">
       <button

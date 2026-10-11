@@ -26,14 +26,75 @@ mod study;
 mod videos;
 mod words;
 
-/// 没有出现在正文里的词汇（单词按词形，went 算 go；词组连着出现、可变形）
-fn missing_vocabulary(text: &str, words: &[NewWord]) -> Vec<String> {
+/// 正文里没用上的词汇（单词按词形，went 算 go；词组连着出现、可变形）
+#[derive(Debug, PartialEq)]
+struct MissingWord {
+    word: String,
+    /// 写成了变形（came up）、正文里用的是同一个原形的另一种形式时，该写的原形（come up）
+    base: Option<String>,
+}
+
+fn missing_vocabulary(text: &str, words: &[NewWord]) -> Vec<MissingWord> {
+    use crate::services::passage_rules::text_uses;
     words
         .iter()
         .map(|w| crate::types::wordbook::normalize_vocab(w.word.trim()))
         .filter(|w| !w.is_empty())
-        .filter(|w| !crate::services::passage_rules::text_uses(text, &w.to_lowercase()))
+        .filter(|w| !text_uses(text, &w.to_lowercase()))
+        .map(|word| {
+            // 逐个词换成它的原形，看正文里有没有用到
+            let tokens: Vec<String> = word
+                .to_lowercase()
+                .split_whitespace()
+                .map(str::to_string)
+                .collect();
+            let base = tokens.iter().enumerate().find_map(|(i, token)| {
+                crate::lemma::lemmas(token)
+                    .into_iter()
+                    .filter(|l| l != token)
+                    .map(|l| {
+                        let mut t = tokens.clone();
+                        t[i] = l;
+                        t.join(" ")
+                    })
+                    .find(|candidate| text_uses(text, candidate))
+            });
+            MissingWord { word, base }
+        })
         .collect()
+}
+
+/// 词汇核对没通过：给模型的修改要求（英文以外的说法与其他工具一致）+ 给学习者看的一句话
+fn vocabulary_revision(missing: &[MissingWord]) -> (String, String) {
+    let absent: Vec<&str> = missing
+        .iter()
+        .filter(|m| m.base.is_none())
+        .map(|m| m.word.as_str())
+        .collect();
+    let inflected: Vec<String> = missing
+        .iter()
+        .filter_map(|m| m.base.as_ref().map(|b| format!("{} → {}", m.word, b)))
+        .collect();
+    let mut model = Vec::new();
+    let mut user = Vec::new();
+    if !absent.is_empty() {
+        model.push(format!(
+            "这些词没有出现在正文里：{}。请改写正文让它们自然出现，或者从词汇里去掉",
+            absent.join("、")
+        ));
+        user.push(format!("{} 还没写进正文", absent.join("、")));
+    }
+    if !inflected.is_empty() {
+        model.push(format!(
+            "词汇要写原形（正文里用的是它的另一种形式，不用改正文）：{}",
+            inflected.join("；")
+        ));
+        user.push(format!("词汇改成原形 {}", inflected.join("；")));
+    }
+    (
+        model.join("。"),
+        format!("核对词汇：{}，重新整理", user.join("；")),
+    )
 }
 
 /// 任务状态的说法（给 AI 老师转述）
@@ -66,6 +127,16 @@ pub fn done(data: Value, step: String, output: Option<Value>) -> Result<CallTool
     let mut result = CallToolResult::structured(json!({ "data": data, "redlark": redlark }));
     // 模型只需要数据
     result.content = vec![ContentBlock::text(data.to_string())];
+    Ok(result)
+}
+
+/// 交给后台前的核对没通过：模型看到要改什么，改好再交；界面显示成「核对后重新整理」的一步，不算出错（`redlark.check`）
+fn needs_revision(model_message: String, step: String) -> Result<CallToolResult, ErrorData> {
+    let mut result = CallToolResult::structured_error(json!({
+        "data": { "error": model_message },
+        "redlark": { "step": step, "check": true },
+    }));
+    result.content = vec![ContentBlock::text(model_message)];
     Ok(result)
 }
 
@@ -462,9 +533,45 @@ mod tests {
         assert!(
             missing_vocabulary(text, &words(&["itinerary", "go", "check in", "Gate"])).is_empty()
         );
+        let missing = missing_vocabulary(text, &words(&["boarding pass", "luggage", ""]));
+        let names: Vec<&str> = missing.iter().map(|m| m.word.as_str()).collect();
+        assert_eq!(names, ["boarding pass", "luggage"]);
+        assert!(missing.iter().all(|m| m.base.is_none()));
+    }
+
+    #[test]
+    fn inflected_vocabulary_is_pointed_to_its_base_form() {
+        let text = "I hope these issues will not come up again. I wanted to report the problem.";
+        let words = |list: &[&str]| -> Vec<NewWord> {
+            list.iter()
+                .map(|w| NewWord {
+                    word: w.to_string(),
+                    meaning: None,
+                })
+                .collect()
+        };
+        // 词汇写成过去式、正文用的是原形：指出该写的原形；正文里确实没有的照常说没出现
+        let missing = missing_vocabulary(text, &words(&["came up", "reported", "got through"]));
         assert_eq!(
-            missing_vocabulary(text, &words(&["boarding pass", "luggage", ""])),
-            ["boarding pass", "luggage"]
+            missing,
+            [
+                MissingWord {
+                    word: "came up".into(),
+                    base: Some("come up".into())
+                },
+                MissingWord {
+                    word: "reported".into(),
+                    base: Some("report".into())
+                },
+                MissingWord {
+                    word: "got through".into(),
+                    base: None
+                },
+            ]
         );
+        let (model, step) = vocabulary_revision(&missing);
+        assert!(model.contains("没有出现在正文里：got through"), "{model}");
+        assert!(model.contains("came up → come up"), "{model}");
+        assert_eq!(step, "核对词汇：got through 还没写进正文；词汇改成原形 came up → come up；reported → report，重新整理");
     }
 }

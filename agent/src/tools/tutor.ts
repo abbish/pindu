@@ -16,6 +16,8 @@ export const suggestRepliesTool = defineTool({
   parameters: Type.Object({
     replies: Type.Array(Type.String({ maxLength: 30 }), { minItems: 1, maxItems: 3 }),
   }),
+  // 模型常见的写法偏差（写成 item / reply、给了一个字符串、多给了几条）在校验前整理好（pi 的 prepareArguments），不为这个多来回一轮
+  prepareArguments: (args: unknown) => ({ replies: normalizeReplies(args) }),
   async execute(_id, { replies }) {
     return {
       content: [{ type: "text", text: "Shown to the learner." }],
@@ -24,6 +26,17 @@ export const suggestRepliesTool = defineTool({
     };
   },
 });
+
+/** 推荐下一步的参数整理：接受 replies / reply / item / items，字符串或数组；去空、去重，最多 3 条 */
+export function normalizeReplies(args: unknown): string[] {
+  const a = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  const raw = a.replies ?? a.items ?? a.reply ?? a.item ?? (typeof args === "string" ? args : undefined);
+  const list = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])
+    .filter((r): r is string => typeof r === "string")
+    .map(r => r.trim())
+    .filter(Boolean);
+  return [...new Set(list)].slice(0, 3);
+}
 
 /** 给对话起标题（第一轮回答时由模型起，存成 pi 的会话名；已经有名字（含学习者改过的）时不覆盖） */
 function nameConversationTool(pi: ExtensionAPI) {
@@ -51,9 +64,11 @@ export const DIRECT_TOOLS = [
   "list_passages",
   "get_passage",
   "save_passage",
+  "create_question_set",
   "today",
   "list_plans",
   "get_plan",
+  "create_plan",
   "study_stats",
   "background_jobs",
   "open_page",
@@ -138,6 +153,14 @@ export function gateDecision(permission: string | undefined, hints: { readOnlyHi
   return hints?.destructiveHint === true ? "confirm" : "allow";
 }
 
+/**
+ * 拦下时给模型的说明。拦下的调用不经过 tool_result，结果里只有这句话：界面（utils/tutorTranscript.ts 的 TOOL_OUTCOMES）
+ * 按开头认出「没同意 / 只查看」，显示成没有改动的一步而不是出错，改这两句时同步。
+ */
+export const VIEW_ONLY_REASON =
+  "The learner set the AI teacher to view only, so nothing in Pindu can be created, changed or deleted. Tell them they can allow changes in Settings → AI 老师, or put the content in your answer instead.";
+export const DECLINED_REASON = "The learner did not confirm, so nothing was changed. Do not retry unless they ask again.";
+
 function registerConfirmGate(pi: ExtensionAPI) {
   const permission = process.env.REDLARK_TUTOR_PERMISSION;
   pi.on("tool_call", async (event, ctx) => {
@@ -146,13 +169,13 @@ function registerConfirmGate(pi: ExtensionAPI) {
     const decision = gateDecision(permission, hints);
     if (decision === "allow") return;
     if (decision === "block") {
-      return { block: true, reason: "The learner set the AI teacher to view only, so nothing in Pindu can be created, changed or deleted. Tell them they can allow changes in Settings → AI 老师, or put the content in your answer instead." };
+      return { block: true, reason: VIEW_ONLY_REASON };
     }
     const reason = String((event.input as { reason?: unknown }).reason ?? "").trim();
     const detail = hints?.destructiveHint === true ? "这一步会删除或结束，确认后才会执行。" : "这一步会改动你的内容，确认后才会执行。";
     const ok = await ctx.ui.confirm(reason || "确定要这样做吗？", detail, { signal: ctx.signal });
     if (!ok) {
-      return { block: true, reason: "The learner did not confirm, so nothing was changed. Do not retry unless they ask again." };
+      return { block: true, reason: DECLINED_REASON };
     }
   });
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gateDecision, pinduDetails, suggestRepliesTool } from "./tutor.ts";
+import { DECLINED_REASON, gateDecision, normalizeReplies, pinduDetails, suggestRepliesTool, VIEW_ONLY_REASON } from "./tutor.ts";
 
 test("MCP 结果里取出拼读给界面的部分", () => {
   const redlark = { step: "查了你的词汇本", output: { kind: "wordbook", id: 3 } };
@@ -25,4 +25,16 @@ test("改动前把关按 AI 老师的权限：默认只问删除，可改为改�
   assert.deepEqual([read, change, remove].map(h => gateDecision("view_only", h)), ["allow", "block", "block"]);
   // 没有注解的当作改动
   assert.equal(gateDecision("view_only", undefined), "block");
+});
+
+test("推荐下一步的参数：写法偏差在校验前整理好，最多 3 条", () => {
+  assert.deepEqual(normalizeReplies({ item: "帮我翻一句话" }), ["帮我翻一句话"]);
+  assert.deepEqual(normalizeReplies({ replies: ["讲几个难词", "出几道题考我", "写篇短文", "建个计划"] }), ["讲几个难词", "出几道题考我", "写篇短文"]);
+  assert.deepEqual(normalizeReplies({ items: [" 考考我 ", "", "考考我", 3] }), ["考考我"]);
+  assert.deepEqual(normalizeReplies(undefined), []);
+});
+
+test("拦下时的说明：界面按开头认出没同意 / 只查看（与 src/utils/tutorTranscript.ts 的 TOOL_OUTCOMES 一致）", () => {
+  assert.ok(DECLINED_REASON.startsWith("The learner did not confirm"));
+  assert.ok(VIEW_ONLY_REASON.startsWith("The learner set the AI teacher to view only"));
 });

@@ -104,7 +104,7 @@ test('工具的提问：按顺序排队，一次答一个，结束后清掉', ()
   assert.equal(toAsk({ id: 'c', method: 'confirm', title: '确定？', timeout: 5000 }, 1000)?.expiresAt, 6000);
 });
 
-test('停止：没有结果的步骤显示为没完成，回答标记已停止', () => {
+test('停止：没有结果的步骤显示为已停止（不算出错），回答标记已停止', () => {
   const call = { type: 'toolCall' as const, id: 'c1', name: 'view_image', arguments: { reason: '看一下截图' } };
   const state = run([
     { type: 'message_end', message: user },
@@ -112,8 +112,8 @@ test('停止：没有结果的步骤显示为没完成，回答标记已停止',
   ]);
   const agent = toTurns(state)[1];
   assert.equal(agent.role === 'agent' && agent.stopped, true);
-  assert.equal(agent.role === 'agent' && agent.steps[0].status, 'error');
-  assert.equal(agent.role === 'agent' && agent.steps[0].label, '看一下截图');
+  assert.equal(agent.role === 'agent' && agent.steps[0].status, 'skipped');
+  assert.equal(agent.role === 'agent' && agent.steps[0].label, '看一下截图（已停止）');
 });
 
 test('附件标记：拆成正文与文件名', () => {
@@ -285,4 +285,67 @@ test('打开时已经写完的回答：快照里没有半截，pi 的消息里�
   ]);
   assert.equal(state.messages.length, 2);
   assert.equal(state.partial, null);
+});
+
+test('没成功的工具调用：找工具、参数格式不对不显示；核对后改写、没同意、只查看不算出错；真正失败才是出错', () => {
+  const call = (id: string, name: string, reason: string) => ({ type: 'toolCall' as const, id, name, arguments: { reason } });
+  const fail = (id: string, name: string, text: string, details?: unknown) => ({
+    type: 'message_end' as const,
+    message: { role: 'toolResult' as const, toolCallId: id, toolName: name, content: [{ type: 'text' as const, text }], details, isError: true, timestamp: 3 },
+  });
+  const state = run([
+    { type: 'message_end', message: user },
+    {
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        content: [
+          call('a', 'mcp__pindu__create_question_set', '给短文出题'),
+          call('b', 'mcp__pindu__save_passage', '保存短文'),
+          call('c', 'mcp__pindu__save_passage', '保存短文'),
+          call('d', 'mcp__pindu__delete_words', '删除 itinerary'),
+          call('e', 'mcp__pindu__create_plan', '建计划'),
+          call('f', 'mcp__pindu__get_plan', '看计划'),
+        ],
+        stopReason: 'toolUse',
+        timestamp: 2,
+      },
+    },
+    fail('a', 'mcp__pindu__create_question_set', 'Tool mcp__pindu__create_question_set not found'),
+    fail('b', 'mcp__pindu__save_passage', 'Validation failed for tool "mcp__pindu__save_passage":\n  - text: required'),
+    fail('c', 'mcp__pindu__save_passage', '这些词没有出现在正文里：report', { redlark: { step: '核对词汇：report 还没写进正文，重新整理', check: true } }),
+    fail('d', 'mcp__pindu__delete_words', 'The learner did not confirm, so nothing was changed. Do not retry unless they ask again.'),
+    fail('e', 'mcp__pindu__create_plan', 'The learner set the AI teacher to view only, so nothing in Pindu can be created, changed or deleted.'),
+    fail('f', 'mcp__pindu__get_plan', '没能查看计划：数据库出错', { redlark: { step: '没能查看计划：数据库出错' } }),
+  ]);
+  const agent = toTurns(state)[1];
+  assert.deepEqual(
+    agent.role === 'agent' && agent.steps.map((s) => [s.status, s.label]),
+    [
+      ['revised', '核对词汇：report 还没写进正文，重新整理'],
+      ['skipped', '删除 itinerary（你没有同意，没有改动）'],
+      ['skipped', '建计划（只查看，没有改动）'],
+      ['error', '没能查看计划：数据库出错'],
+    ]
+  );
+});
+
+test('工具刚结束、结果消息还没到：按执行事件里的说明同样分类，不先闪成出错', () => {
+  const state = run([
+    { type: 'agent_start' },
+    { type: 'message_end', message: user },
+    {
+      type: 'message_end',
+      message: { role: 'assistant', content: [{ type: 'toolCall', id: 'a', name: 'mcp__pindu__delete_words', arguments: { reason: '删除 itinerary' } }], stopReason: 'toolUse', timestamp: 2 },
+    },
+    {
+      type: 'tool_execution_end',
+      toolCallId: 'a',
+      toolName: 'mcp__pindu__delete_words',
+      isError: true,
+      result: { content: [{ type: 'text', text: 'The learner did not confirm, so nothing was changed.' }] },
+    },
+  ]);
+  const agent = toTurns(state)[1];
+  assert.deepEqual(agent.role === 'agent' && agent.steps.map((s) => s.status), ['skipped']);
 });
