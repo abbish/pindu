@@ -202,3 +202,13 @@ test('推荐下一步：拆出来、清理、去重，流式时挡住半截分�
   assert.equal(agent.suggestions.length, 3);
   assert.deepEqual(agent.items.map((i) => i.kind === 'text' && i.text), ['行程表的意思。']);
 });
+
+test('一轮的用时：学习者发出到最后一条回答', () => {
+  const state = run([
+    { type: 'message_end', message: { role: 'user', content: '考考我', timestamp: 1_000 } },
+    { type: 'message_end', message: { role: 'assistant', content: [], stopReason: 'toolUse', timestamp: 4_000 } },
+    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '第 1 题' }], stopReason: 'stop', timestamp: 13_000 } },
+  ]);
+  const agent = toTurns(state)[1];
+  assert.equal(agent.role === 'agent' && agent.seconds, 12);
+});

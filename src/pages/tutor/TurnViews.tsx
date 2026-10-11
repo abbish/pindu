@@ -11,7 +11,7 @@ import { useJob } from '@/hooks/useJobs';
 import { isJobActive, type Job } from '@/types/job';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '@/navigation';
-import type { StepOutput, TutorAsk, ViewStep, ViewTurn } from '@/utils/tutorTranscript';
+import type { StepOutput, TutorAsk, ViewItem, ViewStep, ViewTurn } from '@/utils/tutorTranscript';
 
 const OUTPUT_ICON: Record<StepOutput['kind'], React.ComponentType<{ className?: string }>> = {
   wordbook: BookOpen,
@@ -78,18 +78,7 @@ export const AgentTurnView: React.FC<{
       </span>
       {/* pt-1：第一行文字（约 20px 高）与 28px 的头像居中对齐 */}
       <div className="flex min-w-0 flex-1 flex-col gap-3 pt-1">
-        {turn.items.map((item, i) =>
-          item.kind === 'text' ? (
-            <div
-              key={item.key}
-              className={cn('markdown-body select-text', turn.running && i === turn.items.length - 1 && 'markdown-streaming')}
-            >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
-            </div>
-          ) : (
-            <StepList key={item.key} steps={item.steps} />
-          )
-        )}
+        <TurnItems turn={turn} />
         {thinking(turn) && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
@@ -127,6 +116,57 @@ export const AgentTurnView: React.FC<{
     </div>
   );
 };
+
+/**
+ * 一轮的内容。运行中按顺序全部显示；结束后，最后一段回答之前的过程（工具调用与中途说的话）
+ * 收成一行「处理了 N 步 · 用时 X 秒」，点开再看，只把最后的回答留在外面。
+ */
+const TurnItems: React.FC<{ turn: Extract<ViewTurn, { role: 'agent' }> }> = ({ turn }) => {
+  const [open, setOpen] = useState(false);
+  const lastSteps = turn.items.map((i) => i.kind).lastIndexOf('steps');
+  const collapsible = !turn.running && lastSteps >= 0;
+  const process = collapsible ? turn.items.slice(0, lastSteps + 1) : [];
+  const shown = collapsible ? turn.items.slice(lastSteps + 1) : turn.items;
+  const failed = process.some((i) => i.kind === 'steps' && i.steps.some((s) => s.status === 'error'));
+  const render = (item: ViewItem, last: boolean) =>
+    item.kind === 'text' ? (
+      <div key={item.key} className={cn('markdown-body select-text', turn.running && last && 'markdown-streaming')}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
+      </div>
+    ) : (
+      <StepList key={item.key} steps={item.steps} />
+    );
+  return (
+    <>
+      {collapsible && (
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            aria-expanded={open}
+          >
+            {failed ? <CircleAlert className="size-3.5 text-destructive" /> : <Check className="size-3.5" />}
+            <span>
+              处理了 {turn.steps.length} 步{turn.seconds ? ` · 用时 ${formatSeconds(turn.seconds)}` : ''}
+            </span>
+            <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
+          </button>
+          {open && <div className="flex flex-col gap-3 border-l-2 border-border pl-3">{process.map((item) => render(item, false))}</div>}
+        </div>
+      )}
+      {shown.map((item, i) => render(item, i === shown.length - 1))}
+    </>
+  );
+};
+
+/** 用时：不到 1 分钟写秒，否则写几分几秒 */
+function formatSeconds(seconds: number): string {
+  if (seconds < 60) return `${seconds} 秒`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s ? `${m} 分 ${s} 秒` : `${m} 分钟`;
+}
 
 /** 正在等模型想下一步：还没有内容，或者最后一组工具都做完了（说话时正文在流式显示，不用另外提示） */
 function thinking(turn: Extract<ViewTurn, { role: 'agent' }>): boolean {

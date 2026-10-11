@@ -204,6 +204,8 @@ export type ViewTurn =
       steps: ViewStep[];
       /** 推荐的下一步（回答末尾 `<<<下一步>>>` 之后），点一下就发 */
       suggestions: string[];
+      /** 用时（秒）：学习者发出消息到最后一条回答；还没有时间时为空 */
+      seconds?: number;
       error?: string;
       stopped?: boolean;
       running: boolean;
@@ -313,6 +315,8 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
   for (const m of state.messages) if (m.role === 'toolResult') results.set(m.toolCallId, m);
 
   let agent: Extract<ViewTurn, { role: 'agent' }> | null = null;
+  /** 这一轮从学习者哪条消息开始（算用时） */
+  let askedAt: number | undefined;
   const agentTurn = (key: string) => {
     if (!agent) {
       agent = { role: 'agent', key, items: [], steps: [], suggestions: [], running: false };
@@ -334,6 +338,9 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
         else turn.items.push({ kind: 'steps', key: `${key}-${i}`, steps: [s] });
       }
     });
+    if (askedAt && message.timestamp > askedAt && message.stopReason && message.stopReason !== 'pending') {
+      turn.seconds = Math.max(1, Math.round((message.timestamp - askedAt) / 1000));
+    }
     if (message.stopReason === 'error') turn.error = message.errorMessage || 'AI 老师这次没能回答';
     if (message.stopReason === 'aborted') turn.stopped = true;
   };
@@ -341,6 +348,7 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
   state.messages.forEach((m, i) => {
     if (m.role === 'user') {
       agent = null;
+      askedAt = m.timestamp;
       turns.push({ role: 'user', key: `u${m.timestamp}-${i}`, ...userText(m) });
     } else if (m.role === 'assistant') {
       addAssistant(m, `a${m.timestamp}-${i}`);
