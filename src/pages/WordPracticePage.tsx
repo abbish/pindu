@@ -24,9 +24,7 @@ import { buildQueue, completedTaskCount, groupCountOf, queueWordFromState, sched
 import { activeTime as clockActive, pauseClock, resumeClock, startClock, totalTime as clockTotal, type PracticeClock } from '../utils/practiceClock';
 import { checkSpelling, type LetterMark } from '../utils/spellingCheck';
 import type { HintLevel } from '../utils/practiceReveal';
-import { type ExampleDisplayMode, type ExampleGenerateMode } from '../components/ExamplePanel';
-import { wordBookService } from '../services/wordbookService';
-import type { WordExample } from '../types';
+import { type ExampleDisplayMode } from '../components/ExamplePanel';
 import { WordSidePanel, type WordSideTab } from '../components/WordSidePanel';
 import { PracticeFeedback, type PracticeFeedbackData } from '../components/PracticeFeedback';
 
@@ -218,11 +216,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const [playingExample, setPlayingExample] = useState<number | null>(null);
   /** 右栏页签（换词时保持） */
   const [sideTab, setSideTab] = useState<WordSideTab>('examples');
-  /** AI 补充 / 重新生成后的例句（按单词覆盖会话里的例句） */
-  const [exampleOverrides, setExampleOverrides] = useState<Record<number, WordExample[]>>({});
-  /** 正在生成例句的单词与方式 */
-  const [examplesJob, setExamplesJob] = useState<{ wordId: number; mode: ExampleGenerateMode } | null>(null);
-  const examples = (currentWord && exampleOverrides[currentWord.id]) ?? currentWord?.examples ?? [];
+  const examples = currentWord?.examples ?? [];
   const writing = stage === 'write';
 
   // 进入不能看讲解的环节（盖·写）时，右栏切回默认的「例句」页签
@@ -636,24 +630,6 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       .finally(() => setPlayingExample(current => (current === index ? null : current)));
   }, [examples, playSentence, clearAutoPlay]);
 
-  // AI 补充 / 重新生成当前单词的例句
-  const handleGenerateExamples = useCallback(async (mode: ExampleGenerateMode) => {
-    if (!currentWord || examplesJob) return;
-    const wordId = currentWord.id;
-    setExamplesJob({ wordId, mode });
-    const result = await wordBookService.generateWordExamples(wordId, mode);
-    setExamplesJob(null);
-    if (result.success) {
-      const before = (exampleOverrides[wordId] ?? currentWord.examples ?? []).length;
-      setExampleOverrides(prev => ({ ...prev, [wordId]: result.data }));
-      toast.showSuccess(
-        mode === 'append' ? `已新增 ${Math.max(0, result.data.length - before)} 条例句` : `已重新生成 ${result.data.length} 条例句`
-      );
-    } else {
-      toast.showError('无法生成例句', result.error);
-    }
-  }, [currentWord, examplesJob, exampleOverrides, toast]);
-
   // 换题时清除例句高亮
   useEffect(() => {
     setPlayingExample(null);
@@ -820,8 +796,6 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
               playingIndex={playingExample}
               loadingIndex={audioPlayer.state.isLoading ? playingExample : null}
               onSelectExample={handlePlayExample}
-              generatingExamples={examplesJob?.wordId === currentWord!.id ? examplesJob.mode : null}
-              onGenerateExamples={handleGenerateExamples}
               explanationLocked={writing}
               explanationSuggested={stage === 'correction' || feedback?.type === 'fixed'}
             />

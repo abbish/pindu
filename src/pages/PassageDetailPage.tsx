@@ -63,15 +63,17 @@ export interface PassageDetailPageProps {
 
 const container = 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7';
 /** 侧栏的目标词：点开看单词卡；悬停时右侧出现移除 */
-const TargetChip: React.FC<{ word: string; meaning?: string | null; className?: string; onOpen: () => void; onRemove: () => void }> = ({ word, meaning, className, onOpen, onRemove }) => (
+const TargetChip: React.FC<{ word: string; meaning?: string | null; className?: string; onOpen: () => void; onRemove?: () => void }> = ({ word, meaning, className, onOpen, onRemove }) => (
   <span className={cn('group inline-flex items-center rounded-full text-xs hover:ring-1 hover:ring-primary/40', className)}>
     <button type="button" onClick={onOpen} className="rounded-full py-0.5 pl-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" title={meaning ?? undefined}>
       {word}
       {meaning && <span className="text-muted-foreground"> {meaning}</span>}
     </button>
-    <button type="button" onClick={onRemove} aria-label={`移除 ${word}`} className="ml-0.5 rounded-full p-0.5 pr-1.5 text-muted-foreground opacity-0 outline-none group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100">
+    {onRemove && (
+      <button type="button" onClick={onRemove} aria-label={`移除 ${word}`} className="ml-0.5 rounded-full p-0.5 pr-1.5 text-muted-foreground opacity-0 outline-none group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100">
       <X className="size-3" />
     </button>
+    )}
   </span>
 );
 
@@ -155,7 +157,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const toast = useToast();
   const [passage, setPassage] = useState<Passage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<string>(initialTab ?? 'text');
+  const [tab, setTab] = useState<string>(fromPlan && (initialTab === 'sets' || initialTab === 'listening') ? 'text' : (initialTab ?? 'text'));
   const [focusWord, setFocusWord] = useState<string | null>(null);
   /** 正在给这篇出题的后台任务（全局任务列表里取：可以同时生成几套，离开再回来也接得上；这个页面开着时由页面提示结果） */
   const jobs = useJobs();
@@ -179,6 +181,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const [clip, setClip] = useState<PassageVideo | null>(null);
   /** 视频片段：返回、删除都按片段说，删完回视频库 */
   const isClip = Boolean(openedAsClip) || passage?.origin === 'video';
+  /** 从学习计划进来：是在学、完成计划任务，不在这里准备或改动素材（不生成题组、不编辑、不改词汇与译文） */
+  const studying = Boolean(fromPlan);
   const [showGenerate, setShowGenerate] = useState(false);
   /** 生成题组弹窗打开时选中的方式 */
   const [generateMode, setGenerateMode] = useState<PassageMode>('reading');
@@ -383,6 +387,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           {passage.scene && <p className="text-sm text-muted-foreground select-text">{passage.scene}</p>}
           {passage.tags.length > 0 && <TagChips tags={passage.tags} />}
         </div>
+        {!studying && (
         <div className="flex shrink-0 gap-2">
           <Button onClick={() => openGenerate(tab === 'listening' ? 'listening' : 'reading')}>
             <Sparkles />
@@ -411,6 +416,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        )}
       </div>
 
       {/* 从计划打开：这篇短文在计划里的任务 */}
@@ -462,23 +468,28 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           <TabsTrigger value="words" className="gap-1.5 px-3">
             词汇<span className="text-xs text-muted-foreground tabular-nums">{passage.targetWords.length}</span>
           </TabsTrigger>
+          {/* 计划里练哪套题由任务定（任务卡上开始练习），不在这里挑题组 */}
+          {!studying && (
+            <>
           <TabsTrigger value="sets" className="gap-1.5 px-3">
             阅读理解<span className="text-xs text-muted-foreground tabular-nums">{setsOf('reading').length}</span>
           </TabsTrigger>
           <TabsTrigger value="listening" className="gap-1.5 px-3">
             听力练习<span className="text-xs text-muted-foreground tabular-nums">{setsOf('listening').length}</span>
           </TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         {clip && (
           <TabsContent value="video">
-            <ClipStudyPanel video={clip} sentences={passage.sentences} passage={passage} onAddTarget={addTarget} onOpenWord={openWord} onEditTranslation={editTranslation} onPractice={() => setTab('listening')} />
+            <ClipStudyPanel video={clip} sentences={passage.sentences} passage={passage} onAddTarget={studying ? undefined : addTarget} onOpenWord={openWord} onEditTranslation={studying ? undefined : editTranslation} onPractice={studying ? undefined : () => setTab('listening')} />
           </TabsContent>
         )}
 
         <TabsContent value="text">
           <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6">
-            <ReadAloudPanel passage={passage} onAddTarget={addTarget} onOpenWord={openWord} onEditTranslation={editTranslation} />
+            <ReadAloudPanel passage={passage} onAddTarget={studying ? undefined : addTarget} onOpenWord={openWord} onEditTranslation={studying ? undefined : editTranslation} />
 
             <aside className="flex flex-col gap-4">
               <Card className="gap-3 px-5 py-4">
@@ -489,7 +500,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                     <div className="text-xs text-muted-foreground">指定单词</div>
                     <div className="flex flex-wrap gap-1">
                       {required.map((w) => (
-                        <TargetChip key={w.word} word={w.word} className="bg-accent text-accent-foreground" onOpen={() => openWord(w.word)} onRemove={() => setRemoving(w.word)} />
+                        <TargetChip key={w.word} word={w.word} className="bg-accent text-accent-foreground" onOpen={() => openWord(w.word)} onRemove={studying ? undefined : () => setRemoving(w.word)} />
                       ))}
                     </div>
                   </div>
@@ -499,13 +510,13 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                     <div className="text-xs text-muted-foreground">{imported ? '重点词' : 'AI 选词'}</div>
                     <div className="flex flex-wrap gap-1">
                       {picked.map((w) => (
-                        <TargetChip key={w.word} word={w.word} meaning={w.meaning} className="bg-muted" onOpen={() => openWord(w.word)} onRemove={() => setRemoving(w.word)} />
+                        <TargetChip key={w.word} word={w.word} meaning={w.meaning} className="bg-muted" onOpen={() => openWord(w.word)} onRemove={studying ? undefined : () => setRemoving(w.word)} />
                       ))}
                     </div>
                   </div>
                 )}
               </Card>
-              {hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
+              {hasNewWords && !studying && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
             </aside>
           </div>
         </TabsContent>
@@ -513,23 +524,25 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         <TabsContent value="words">
           {passage.targetWords.length === 0 ? (
             <EmptyState icon={<BookOpen />} title="还没有词汇">
-              <Button onClick={() => setRepicking(true)}>
-                <WandSparkles />
-                挑选词汇
-              </Button>
+              {!studying && (
+                <Button onClick={() => setRepicking(true)}>
+                  <WandSparkles />
+                  挑选词汇
+                </Button>
+              )}
             </EmptyState>
           ) : (
           <TargetWordsPanel
             passage={passage}
             focusWord={focusWord}
-            onRemove={setRemoving}
+            onRemove={studying ? undefined : setRemoving}
             onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })}
-            footer={hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
+            footer={hasNewWords && !studying && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
           />
           )}
         </TabsContent>
 
-        {(['reading', 'listening'] as const).map((mode) => (
+        {!studying && (['reading', 'listening'] as const).map((mode) => (
           <TabsContent key={mode} value={mode === 'reading' ? 'sets' : 'listening'}>
             {generatingSets(mode).length > 0 && (
               <div className="mb-3 flex flex-col gap-3">
