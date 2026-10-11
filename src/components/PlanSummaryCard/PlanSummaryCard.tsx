@@ -43,12 +43,11 @@ export interface PlanSummaryCardProps {
 }
 
 
-function actionLabel(status: UnifiedStudyPlanStatus): string {
-  if (status === 'Draft') return '编辑计划';
-  if (status === 'Completed' || status === 'Terminated') return '重新学习';
+/** 主按钮：只有能练的计划有（还没练过「开始学习」，练过「继续学习」）；其他状态点卡片看详情 */
+function actionLabel(status: UnifiedStudyPlanStatus): string | null {
   if (status === 'Pending') return '开始学习';
   if (status === 'Active') return '继续学习';
-  return '查看详情';
+  return null;
 }
 
 /** 按日期算“第几天”：开始前 / 进行中 / 已过结束日 */
@@ -118,10 +117,11 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
 
   const accuracy = learnedWords > 0 ? `${Math.round(statistics?.average_accuracy_rate || 0)}%` : '—';
 
+  const action = actionLabel(status);
   const menuItems = (Item: typeof DropdownMenuItem | typeof ContextMenuItem) => (
     <>
+      {action && <Item onSelect={() => onAction(plan.id)}>{action}</Item>}
       <Item onSelect={() => onOpen(plan.id)}>查看详情</Item>
-      <Item onSelect={() => onAction(plan.id)}>{actionLabel(status)}</Item>
     </>
   );
 
@@ -221,15 +221,16 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
 
           {/* 主操作 */}
           <div className="flex items-center gap-1">
-            <Button
-              variant={status === 'Active' || status === 'Pending' ? 'default' : 'outline'}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAction(plan.id);
-              }}
-            >
-              {actionLabel(status)}
-            </Button>
+            {action && (
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAction(plan.id);
+                }}
+              >
+                {action}
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="更多操作" onClick={(e) => e.stopPropagation()}>

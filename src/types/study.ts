@@ -489,7 +489,7 @@ export const PLAN_STATUS: Record<UnifiedStudyPlanStatus, { label: string; badgeC
   Active: { label: '进行中', badgeClass: 'bg-accent text-accent-foreground' },
   Paused: { label: '已暂停', badgeClass: 'bg-warning-soft text-warning' },
   Completed: { label: '已完成', badgeClass: 'bg-success-soft text-success' },
-  Terminated: { label: '已终止', badgeClass: 'bg-destructive/10 text-destructive' },
+  Terminated: { label: '已结束', badgeClass: 'bg-secondary text-muted-foreground' },
   Deleted: { label: '已删除', badgeClass: 'bg-secondary text-muted-foreground' },
 };
 

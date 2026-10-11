@@ -43,6 +43,10 @@ const QUESTION_DIFFICULTIES: Option<Settings['questionDifficulty']>[] = [
   { value: 'standard', label: '标准' },
   { value: 'advanced', label: '提高' },
 ];
+const ORDERS: Option<string>[] = [
+  { value: 'easy', label: '从易到难' },
+  { value: 'book', label: '按词汇本里的顺序' },
+];
 const INTERVALS: Option<number>[] = PASSAGE_INTERVAL_OPTIONS.map((d) => ({ value: d, label: intervalLabel(d) }));
 
 /** 下拉选择一行 */
@@ -216,8 +220,8 @@ export const MaterialSettings: React.FC = () => {
         <SettingsRow label="短文间隔">
           <Choice label="短文间隔" value={s.planPassageIntervalDays} options={INTERVALS} onChange={(planPassageIntervalDays) => update({ planPassageIntervalDays })} />
         </SettingsRow>
-        <SettingsRow label="AI 排学习顺序" htmlFor="ms-ai-order">
-          <Switch id="ms-ai-order" checked={s.planAiOrder} onCheckedChange={(planAiOrder) => update({ planAiOrder })} />
+        <SettingsRow label="学习顺序">
+          <Choice label="学习顺序" value={s.planAiOrder ? 'easy' : 'book'} options={ORDERS} width="w-44" onChange={(v) => update({ planAiOrder: v === 'easy' })} />
         </SettingsRow>
       </SettingsSection>
     </SettingsPanel>
