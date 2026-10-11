@@ -182,12 +182,16 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="mf-thinking">思考档</Label>
-                <Select value={generation.thinkingLevel || DEFAULT} onValueChange={(v) => set({ thinkingLevel: v === DEFAULT ? '' : v })}>
+                <Select
+                  value={generation.thinkingLevel || DEFAULT}
+                  onValueChange={(v) => set({ thinkingLevel: v === DEFAULT ? '' : v })}
+                  disabled={!!catalogModel && !catalogModel.reasoning && !generation.thinkingLevel}
+                >
                   <SelectTrigger id="mf-thinking" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={DEFAULT}>默认</SelectItem>
+                    <SelectItem value={DEFAULT}>{catalogModel && !catalogModel.reasoning ? '不支持深度思考' : '默认（按任务自动选）'}</SelectItem>
                     {THINKING_LEVELS.filter((l) => thinkingOptions.includes(l) || l === generation.thinkingLevel).map((level) => (
                       <SelectItem key={level} value={level}>{THINKING_LABELS[level]}（{level}）</SelectItem>
                     ))}
@@ -202,7 +206,7 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                   value={generation.maxTokens}
                   onChange={(e) => set({ maxTokens: e.target.value })}
                   min={1}
-                  placeholder={catalogModel ? `默认 ${formatTokens(catalogModel.maxTokens)}` : '默认'}
+                  placeholder={catalogModel ? `默认（${formatTokens(catalogModel.maxTokens)}）` : '默认'}
                 />
               </div>
               <div className="space-y-1.5">
@@ -215,7 +219,7 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                   min={0}
                   max={2}
                   step={0.1}
-                  placeholder="默认"
+                  placeholder="默认（服务商设定）"
                 />
               </div>
               <div className="space-y-1.5">
@@ -224,7 +228,7 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                   id="mf-extra"
                   value={generation.extraParams}
                   onChange={(e) => set({ extraParams: e.target.value })}
-                  placeholder={'{"top_p": 0.95}'}
+                  placeholder={'例如 {"top_p": 0.95}'}
                   rows={2}
                   className="font-mono text-xs"
                 />

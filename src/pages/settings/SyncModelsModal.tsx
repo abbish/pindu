@@ -83,7 +83,6 @@ export const SyncModelsModal: React.FC<SyncModelsModalProps> = ({ provider, onCl
         name: model.id,
         displayName: model.name || model.id,
         modelId: model.id,
-        description: model.contextLength ? `上下文 ${model.contextLength.toLocaleString()} tokens` : undefined,
         // 目录中的模型由 pi 提供上限与能力；目录外的模型给一个保守的输出上限
         // 能否看图：目录模型交给 pi 目录；提供商列表给出时记下
         generation: model.inCatalog
