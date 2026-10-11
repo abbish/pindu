@@ -191,3 +191,17 @@ pub struct MaterialImportRequest {
     pub file_name: String,
     pub file_base64: String,
 }
+
+/// 交给 AI 读取的素材文件，用于往词汇本提取单词（单词海报、词汇表、课本页等）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MaterialWordsRequest {
+    pub file_name: String,
+    pub file_base64: String,
+    /// 素材里没有词汇表、只有文章时按这个范围提取：focus 重点词（默认）/ all 全部
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// 目标词汇本（读取它的场景描述）
+    #[serde(default)]
+    pub book_id: Option<i64>,
+}

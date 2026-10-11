@@ -21,6 +21,7 @@ use crate::types::material::{
     MaterialContent, MaterialPassage, MaterialPhrase, MaterialSentence, MaterialVocab,
 };
 use crate::types::passage::{ImportPreview, ImportPreviewItem, ImportSentence, ImportWord};
+use crate::types::word_analysis::ExtractedWord;
 use serde_json::Value;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -34,7 +35,6 @@ pub enum MaterialPurpose {
     /// 导入为短文（也收词组与词汇表）
     Passage,
     /// 提取单词（重点是词汇表）
-    #[allow(dead_code)] // 多模态素材 B4（提取单词）接入后去掉
     Words,
 }
 
@@ -409,6 +409,50 @@ pub fn to_import_preview(content: &MaterialContent, source_label: &str) -> Impor
     }
 }
 
+/// 素材里的词汇（词汇表 + 画线词组，词组按原形）→ 提词结果的单词，去重；释义与词性照材料
+pub fn to_extracted_words(content: &MaterialContent) -> Vec<ExtractedWord> {
+    let mut words: Vec<ExtractedWord> = Vec::new();
+    let mut push = |word: String, pos: Option<String>, meaning: Option<String>| {
+        let word = word.split_whitespace().collect::<Vec<_>>().join(" ");
+        if word.is_empty() || words.iter().any(|w| w.word.eq_ignore_ascii_case(&word)) {
+            return;
+        }
+        words.push(ExtractedWord {
+            word,
+            frequency: 1,
+            part_of_speech: pos,
+            meaning,
+        });
+    };
+    for v in &content.vocabulary {
+        push(v.word.clone(), v.pos.clone(), v.meaning.clone());
+    }
+    for p in &content.phrases {
+        push(
+            p.base.clone().unwrap_or_else(|| p.text.clone()),
+            None,
+            Some(p.meaning.clone()),
+        );
+    }
+    words
+}
+
+/// 素材正文（素材没有词汇表时按正文提取）
+pub fn passage_text(content: &MaterialContent) -> String {
+    content
+        .passages
+        .iter()
+        .map(|p| {
+            p.sentences
+                .iter()
+                .map(|s| s.en.as_str())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 fn purpose_line(purpose: MaterialPurpose) -> &'static str {
     match purpose {
         MaterialPurpose::Passage => "用途：导入为短文。请完整整理正文句子与材料里的逐句翻译，同时收下材料标出的词组和词汇表。",
@@ -618,6 +662,42 @@ mod tests {
     }
 
     #[test]
+    fn vocabulary_and_phrases_become_extracted_words() {
+        let content = MaterialContent {
+            phrases: vec![
+                MaterialPhrase {
+                    text: "got through".into(),
+                    base: Some("get through".into()),
+                    meaning: "通过".into(),
+                },
+                MaterialPhrase {
+                    text: "Gate".into(),
+                    base: None,
+                    meaning: "门".into(),
+                },
+            ],
+            vocabulary: vec![MaterialVocab {
+                word: "gate".into(),
+                ipa: Some("ɡeɪt".into()),
+                pos: Some("n.".into()),
+                meaning: Some("大门".into()),
+            }],
+            ..Default::default()
+        };
+        let words = to_extracted_words(&content);
+        let pairs: Vec<(&str, Option<&str>)> = words
+            .iter()
+            .map(|w| (w.word.as_str(), w.meaning.as_deref()))
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![("gate", Some("大门")), ("get through", Some("通过"))],
+            "词汇表优先、词组按原形、去重"
+        );
+        assert_eq!(words[0].part_of_speech.as_deref(), Some("n."));
+    }
+
+    #[test]
     fn without_text_layer_nothing_is_flagged() {
         let details = json!({"passages": [{"sentences": [{"en": "Hello there."}]}], "phrases": [], "vocabulary": []});
         let c = content_from_submission(&details, None, true);
@@ -660,12 +740,26 @@ mod tests {
             &model,
             &PromptProfile::default(),
             Path::new(&env("MATERIAL_FILE")),
-            MaterialPurpose::Passage,
+            if std::env::var("MATERIAL_PURPOSE").as_deref() == Ok("words") {
+                MaterialPurpose::Words
+            } else {
+                MaterialPurpose::Passage
+            },
             &logger,
             || false,
         )
         .await
         .unwrap();
+        let words = to_extracted_words(&content);
+        println!(
+            "提词候选 {}：{}",
+            words.len(),
+            words
+                .iter()
+                .map(|w| format!("{}={}", w.word, w.meaning.as_deref().unwrap_or("")))
+                .collect::<Vec<_>>()
+                .join("、")
+        );
         let sentences: Vec<_> = content.passages.iter().flat_map(|p| &p.sentences).collect();
         println!(
             "用时 {:.0}s 看图={} 句子 {}（待核对 {}，有译文 {}） 词组 {} 词汇 {} note={:?}",
@@ -679,6 +773,81 @@ mod tests {
             content.note
         );
         println!("{}", serde_json::to_string_pretty(&content).unwrap());
+    }
+
+    /// 导入短文全流程（真实调用翻译）：保存下来的素材内容 → 预览 → 导入到 MATERIAL_DB 的副本
+    /// MATERIAL_DB（会先拷贝）、MATERIAL_JSON（MaterialContent）、REDLARK_AGENT_BIN
+    #[tokio::test]
+    #[ignore]
+    async fn real_material_passage_import() {
+        use crate::services::passage_import_service::PassageImportService;
+        use crate::types::passage::ImportPassageRequest;
+        let env = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("需要环境变量 {}", k));
+        let root = std::env::temp_dir().join(format!("material-import-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let db = root.join("copy.db");
+        let src = sqlx::SqlitePool::connect(&format!("sqlite://{}?mode=ro", env("MATERIAL_DB")))
+            .await
+            .unwrap();
+        sqlx::query(&format!("VACUUM INTO '{}'", db.display()))
+            .execute(&src)
+            .await
+            .unwrap();
+        let pool = std::sync::Arc::new(
+            sqlx::SqlitePool::connect(&format!("sqlite://{}", db.display()))
+                .await
+                .unwrap(),
+        );
+        let content: MaterialContent =
+            serde_json::from_str(&std::fs::read_to_string(env("MATERIAL_JSON")).unwrap()).unwrap();
+        let preview = to_import_preview(&content, "bbc.pdf");
+        let item = &preview.items[0];
+        println!(
+            "预览：{} 篇，第一篇 {} 句，词汇 {}，提示 {:?}",
+            preview.items.len(),
+            item.sentences.len(),
+            item.words.len(),
+            preview.warnings
+        );
+        let request = ImportPassageRequest {
+            title: Some(item.title.clone()).filter(|t| !t.is_empty()),
+            sentences: item.sentences.clone(),
+            source_label: preview.source_label.clone(),
+            book_ids: vec![],
+            ai_key_words: false,
+            words: item.words.clone(),
+        };
+        let paths = AgentPaths {
+            program: PathBuf::from(env("REDLARK_AGENT_BIN")),
+            root: root.join("agent"),
+        };
+        let svc = PassageImportService::new(pool, crate::test_support::test_logger());
+        let passage = svc.import(&request, &paths, &|| false).await.unwrap();
+        let same_zh = passage
+            .sentences
+            .iter()
+            .zip(&item.sentences)
+            .filter(|(saved, pre)| {
+                pre.zh
+                    .as_deref()
+                    .is_some_and(|z| z.trim() == saved.zh.trim())
+            })
+            .count();
+        println!(
+            "已导入「{}」 水平 {} 句子 {}（沿用材料译文 {}） 词汇 {}：{}",
+            passage.title,
+            passage.level,
+            passage.sentences.len(),
+            same_zh,
+            passage.target_words.len(),
+            passage
+                .target_words
+                .iter()
+                .map(|t| t.word.as_str())
+                .collect::<Vec<_>>()
+                .join("、")
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 
     /// 用保存下来的一次真实结果重跑核对：MATERIAL_JSON、MATERIAL_FILE

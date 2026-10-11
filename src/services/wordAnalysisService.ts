@@ -23,6 +23,14 @@ class WordAnalysisService {
     return apiClient.invoke<WordExtractionResult>('extract_words_from_text', { text, mode, bookId });
   }
 
+  /**
+   * 从 PDF / 图片 / Word（单词海报、词汇表、课本页）提取单词：AI 阅读素材（后台任务）；
+   * 完成后 job.result 与 extractWordsFromText 的结果同结构
+   */
+  async startMaterialWords(request: { fileName: string; fileBase64: string; mode?: WordExtractionMode; bookId?: number }): Promise<ApiResult<string>> {
+    return apiClient.invoke<string>('start_material_words', { request });
+  }
+
   /** 按词汇本的场景描述给 4–6 条词汇需求的建议（场景下的子话题）；没有场景描述时为空 */
   async suggestVocabTopics(bookId: number, exclude: string[] = []): Promise<ApiResult<string[]>> {
     return apiClient.invoke<string[]>('suggest_vocab_topics', { bookId, exclude });

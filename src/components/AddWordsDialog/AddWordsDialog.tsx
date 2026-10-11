@@ -124,6 +124,9 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const [aiTags, setAiTags] = useState<string[]>([]);
   /** 分析任务 id 与结果 */
   const [jobId, setJobId] = useState<string | null>(null);
+  /** PDF / Word / 图片交给 AI 阅读的后台任务（提取单词用；读完进入选词） */
+  const [materialJobId, setMaterialJobId] = useState<string | null>(null);
+  const materialRunRef = useRef(0);
   const [outcome, setOutcome] = useState<WordAnalysisOutcome | null>(null);
   const [stopped, setStopped] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,8 +184,17 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
+  /** 停掉还在读的素材（返回、关闭、重来时） */
+  const stopMaterial = () => {
+    setMaterialJobId((id) => {
+      if (id) void jobService.cancel(id);
+      return null;
+    });
+  };
+
   const reset = () => {
     runRef.current += 1;
+    stopMaterial();
     setPhase('source');
     setCandidates([]);
     setJobId(null);
@@ -275,6 +287,56 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     return true;
   };
 
+  /** 生成 / 提取（含 AI 阅读素材）得到的单词 → 去掉本里已有的 → 进入选词 */
+  const applyResult = async (result: WordExtractionResult, run: number) => {
+    const existingResult = await wordBookService.findExistingWords(
+      bookId,
+      result.words.map((w) => w.word)
+    );
+    if (run !== runRef.current) return;
+    const existing = new Set(existingResult.success ? existingResult.data : []);
+    const next = toCandidates(result, existing);
+    if (next.length === 0) {
+      setPhase('source');
+      setError(source === 'ai' ? '未生成新单词，请调整描述后重试' : '未找到可学习的单词，请改用“全部单词”或更换文本');
+      return;
+    }
+    setCandidates(next);
+    setAiTags(result.tags ?? []);
+    setPhase('select');
+  };
+
+  /** PDF / Word / 图片：交给 AI 阅读，读完进入选词 */
+  const readMaterial = async (file: { fileName: string; fileBase64: string }) => {
+    const run = ++runRef.current;
+    materialRunRef.current = run;
+    setError(null);
+    setFileName(file.fileName);
+    setPhase('fetching');
+    const started = await wordAnalysisService.startMaterialWords({ ...file, mode, bookId });
+    if (run !== runRef.current) return;
+    if (!started.success) {
+      setPhase('source');
+      setError(errorText(started.error, '无法读取这份素材'));
+      return;
+    }
+    setMaterialJobId(started.data);
+  };
+
+  const materialJob = useJob(materialJobId);
+  useEffect(() => {
+    if (!materialJob || ['queued', 'running'].includes(materialJob.status)) return;
+    setMaterialJobId(null);
+    const run = materialRunRef.current;
+    if (run !== runRef.current || materialJob.status === 'cancelled') return;
+    if (materialJob.status !== 'succeeded') {
+      setPhase('source');
+      setError(jobErrorText(materialJob));
+      return;
+    }
+    void applyResult(materialJob.result as WordExtractionResult, run);
+  }, [materialJob]);
+
   const fetchWords = async () => {
     if (!canFetch) return;
     const run = ++runRef.current;
@@ -299,22 +361,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
         setError(errorText(fetched.error, source === 'ai' ? '无法生成单词' : '无法提取单词'));
         return;
       }
-      const result = fetched.data;
-      const existingResult = await wordBookService.findExistingWords(
-        bookId,
-        result.words.map((w) => w.word)
-      );
-      if (run !== runRef.current) return;
-      const existing = new Set(existingResult.success ? existingResult.data : []);
-      const next = toCandidates(result, existing);
-      if (next.length === 0) {
-        setPhase('source');
-        setError(source === 'ai' ? '未生成新单词，请调整描述后重试' : '未找到可学习的单词，请改用“全部单词”或更换文本');
-        return;
-      }
-      setCandidates(next);
-      setAiTags(result.tags ?? []);
-      setPhase('select');
+      await applyResult(fetched.data, run);
     } catch (err) {
       if (run !== runRef.current) return;
       setPhase('source');
@@ -441,7 +488,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
 
   const body = () => {
     if (phase === 'fetching') {
-      return <AiWorking title={source === 'ai' ? '正在生成单词' : '正在提取单词'} />;
+      return <AiWorking title={source === 'ai' ? '正在生成单词' : materialJobId ? 'AI 正在阅读素材' : '正在提取单词'} />;
     }
 
     switch (phase) {
@@ -519,6 +566,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                   maxChars={MAX_TEXT}
                   privacyNote
                   autoFocus
+                  onAiFile={readMaterial}
                 />
                 <div className="flex items-center justify-between gap-4">
                   <Label>提取范围</Label>
@@ -598,6 +646,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                 variant="outline"
                 onClick={() => {
                   runRef.current += 1;
+                  stopMaterial();
                   setPhase('source');
                 }}
               >

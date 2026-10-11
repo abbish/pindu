@@ -288,6 +288,7 @@ pub fn run() {
                 get_agent_catalog_models,
                 // 批量分析相关命令
                 extract_words_from_text,
+                start_material_words,
                 generate_words_from_intent,
                 suggest_vocab_topics,
                 start_word_analysis,

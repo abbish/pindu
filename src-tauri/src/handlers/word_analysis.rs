@@ -113,6 +113,106 @@ pub async fn extract_words_from_text(
     Ok(result)
 }
 
+/// 从 PDF / 图片 / Word（单词海报、词汇表、课本页）提取单词（后台任务，kind material_read）：
+/// AI 自主阅读素材，词汇表与画线词组直接成为候选（释义照材料）；素材只有文章、没有词汇表时，再按正文提取。
+/// 结果（与 extract_words_from_text 同结构）放在 job.result；只给发起的弹窗用，关闭时由前端取消
+#[tauri::command]
+pub async fn start_material_words(
+    app: AppHandle,
+    request: crate::types::material::MaterialWordsRequest,
+) -> AppResult<String> {
+    use crate::jobs::{JobSpec, Jobs, Lane};
+    use crate::services::material_read::{self, MaterialPurpose};
+    use crate::types::word_analysis::WordExtractionResult;
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "start_material_words",
+        Some(&format!(
+            "file: {}, base64 chars: {}, mode: {:?}, book_id: {:?}",
+            request.file_name,
+            request.file_base64.len(),
+            request.mode,
+            request.book_id
+        )),
+    );
+    let result = async {
+        let mode = request.mode.clone().unwrap_or_else(|| "focus".to_string());
+        if !matches!(mode.as_str(), "focus" | "all") {
+            return Err(AppError::ValidationError(format!(
+                "提取模式应为 focus 或 all，收到 {}",
+                mode
+            )));
+        }
+        let paths = super::agent_paths(&app)?;
+        let upload = material_read::save_upload(
+            &paths.root.join("materials"),
+            &request.file_name,
+            &request.file_base64,
+        )?;
+        let model = get_model_config(AgentTaskKind::Extract, None, &pool, &logger).await?;
+        let profile = PromptProfileService::load(pool.inner()).await?;
+        let scene = PromptProfileService::book_scene(
+            &Arc::new(pool.inner().clone()),
+            &Arc::new(logger.inner().clone()),
+            request.book_id,
+        )
+        .await?;
+        let tags = known_tags(&pool).await;
+        let extraction = word_extraction_service(&app)?;
+        let logger_arc = Arc::new(logger.inner().clone());
+        let name = request.file_name.trim().to_string();
+        let spec = JobSpec {
+            kind: "material_read",
+            title: format!("AI 阅读素材 · {name}"),
+            lane: Lane::Agent,
+            detached: false,
+            link: None,
+        };
+        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
+            ctx.stage("AI 正在阅读素材");
+            let content = material_read::read_material(
+                &paths,
+                &model,
+                &profile,
+                &upload,
+                MaterialPurpose::Words,
+                &logger_arc,
+                || ctx.is_cancelled(),
+            )
+            .await;
+            let _ = std::fs::remove_file(&upload);
+            let content = content?;
+            let words = material_read::to_extracted_words(&content);
+            let result = if !words.is_empty() {
+                WordExtractionResult {
+                    total_count: words.len(),
+                    unique_count: words.len(),
+                    words,
+                    tags: Vec::new(),
+                }
+            } else {
+                let text = material_read::passage_text(&content);
+                if text.trim().is_empty() {
+                    return Err(AppError::ValidationError(
+                        content
+                            .note
+                            .clone()
+                            .unwrap_or_else(|| "这份素材里没有找到英文单词".to_string()),
+                    ));
+                }
+                ctx.stage("正在从正文提取单词");
+                extraction
+                    .extract(&model, &profile, &scene, &text, &mode, &tags)
+                    .await?
+            };
+            serde_json::to_value(result).map_err(|e| AppError::InternalError(e.to_string()))
+        }))
+    }
+    .await;
+    super::finish(&logger, "start_material_words", result)
+}
+
 /// 按学习意图生成单词（“AI 生成”入口，替代提取的第一步）：
 /// 描述 1–500 字，数量 5–100；传 `book_id` 时避开词汇本里已有的词。
 #[tauri::command]
