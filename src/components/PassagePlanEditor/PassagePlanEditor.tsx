@@ -118,7 +118,7 @@ export const PassagePlanEditor: React.FC<PassagePlanEditorProps> = ({ items, not
               <Textarea value={item.idea} onChange={(e) => update(i, { idea: e.target.value })} disabled={locked} rows={4} className="resize-none text-sm" />
             </div>
             <div className="flex flex-wrap items-center gap-1">
-              <span className="mr-1 text-xs text-muted-foreground">目标词（{item.words.length}）</span>
+              <span className="mr-1 text-xs text-muted-foreground">词汇（{item.words.length}）</span>
               {item.words.map((w) => (
                 <Badge key={w.word} variant={w.required ? 'default' : 'secondary'} className={cn('font-normal', w.required && 'bg-accent text-accent-foreground')} title={w.required ? '指定单词' : 'AI 选词'}>
                   {w.word}

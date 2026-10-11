@@ -497,23 +497,31 @@ pub async fn remove_passage_target_word(
     finish(&logger, "remove_passage_target_word", result)
 }
 
-/// 重新挑选目标词：AI 从原文里挑 `count` 个建议（不保存）
+/// 重新挑选目标词：AI 按条件从原文里挑一组建议（不保存）
 #[tauri::command]
 pub async fn suggest_passage_target_words(
     app: AppHandle,
-    passage_id: i64,
-    count: i64,
+    request: crate::types::passage::SuggestTargetWordsRequest,
 ) -> AppResult<Vec<crate::types::passage::TargetWordSuggestion>> {
     let logger = app.state::<Logger>();
     logger.api_request(
         "suggest_passage_target_words",
-        Some(&format!("passage {passage_id} count {count}")),
+        Some(&format!(
+            "passage {} count {} difficulty {:?} frequency {:?} statuses {:?} instruction_chars {}",
+            request.passage_id,
+            request.count,
+            request.difficulty,
+            request.frequency,
+            request.statuses,
+            request
+                .instruction
+                .as_deref()
+                .map_or(0, |t| t.chars().count())
+        )),
     );
     let result = async {
         let paths = agent_paths(&app)?;
-        service(&app)
-            .suggest_target_words(passage_id, count, &paths)
-            .await
+        service(&app).suggest_target_words(&request, &paths).await
     }
     .await;
     finish(&logger, "suggest_passage_target_words", result)

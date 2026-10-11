@@ -207,10 +207,10 @@ export const ReadAloudPanel: React.FC<{
   };
 
   const status = (() => {
-    if (recall) return '回忆目标词';
+    if (recall) return '回忆词汇';
     if (player.pausing) return '停顿中，请跟读';
     // 盲听只是隐藏原文，不会自己开始播放：没在播时不显示状态，播放按钮写明「开始盲听」
-    if (player.current == null || !player.playing) return blind ? '' : '点击句首图标朗读单句，点击目标词查看单词';
+    if (player.current == null || !player.playing) return blind ? '' : '点击句首图标朗读单句，点击词汇查看单词';
     const round = prefs.repeat > 1 ? ` · 第 ${player.round}/${prefs.repeat} 遍` : '';
     return `第 ${player.current + 1}/${texts.length} 句${round}`;
   })();
@@ -249,7 +249,7 @@ export const ReadAloudPanel: React.FC<{
     return (
       <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-lg border bg-background px-3 py-2 text-sm select-none" role="group" aria-label="听后回忆">
         <Brain className="size-4 text-primary" />
-        <span className="mr-1 text-muted-foreground">{done ? (recall.revealed ? '已显示答案' : '正确') : '按顺序选择听到的目标词'}</span>
+        <span className="mr-1 text-muted-foreground">{done ? (recall.revealed ? '已显示答案' : '正确') : '按顺序选择听到的词汇'}</span>
         {!done &&
           recall.bank.map((w) => (
             <Button key={w} variant="outline" size="sm" className={cn('h-7', recall.wrong === w && 'border-destructive text-destructive')} onClick={() => pick(w)}>
@@ -346,7 +346,7 @@ export const ReadAloudPanel: React.FC<{
             </SettingRow>
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="ra-recall" className="text-sm font-normal">
-                朗读后回忆目标词
+                朗读后回忆词汇
               </Label>
               <Switch id="ra-recall" checked={prefs.recall} onCheckedChange={(v) => updatePrefs({ recall: v })} />
             </div>
@@ -358,7 +358,7 @@ export const ReadAloudPanel: React.FC<{
             </div>
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="ra-hl" className="text-sm font-normal">
-                高亮目标词
+                高亮词汇
               </Label>
               <Switch id="ra-hl" checked={prefs.highlight} onCheckedChange={(v) => updatePrefs({ highlight: v })} />
             </div>
@@ -369,7 +369,7 @@ export const ReadAloudPanel: React.FC<{
       {blindDone && !blind && <p className="-mt-1 rounded-md bg-accent/50 px-3 py-1.5 text-xs text-accent-foreground select-none">盲听结束，已显示原文</p>}
 
       <SelectionAction
-        label="加入目标词"
+        label="加入词汇"
         accept={(text) => Boolean(onAddTarget) && canAddTarget(text, targets)}
         onAction={(text) => onAddTarget?.(text)}
       >

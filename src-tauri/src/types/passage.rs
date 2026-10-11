@@ -44,6 +44,27 @@ pub struct TargetWordPick {
     pub meaning: Option<String>,
 }
 
+/// 重新挑选目标词的条件（与新建短文时「AI 选词」一致，另可写补充要求）
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestTargetWordsRequest {
+    pub passage_id: Id,
+    /// 最多挑几个
+    pub count: i64,
+    /// easy / medium / hard；空 = 不限
+    #[serde(default)]
+    pub difficulty: Option<String>,
+    /// common / advanced；空 = 不限
+    #[serde(default)]
+    pub frequency: Option<String>,
+    /// 来源词汇本里的词按学习情况筛（new / learning / wrong / mastered）；空 = 不限
+    #[serde(default)]
+    pub statuses: Vec<String>,
+    /// 用户的补充要求
+    #[serde(default)]
+    pub instruction: Option<String>,
+}
+
 /// 把短文的目标词整体换成这组（重新挑选后确认的）
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]

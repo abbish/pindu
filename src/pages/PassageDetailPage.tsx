@@ -63,7 +63,7 @@ const TargetChip: React.FC<{ word: string; meaning?: string | null; className?: 
       {word}
       {meaning && <span className="text-muted-foreground"> {meaning}</span>}
     </button>
-    <button type="button" onClick={onRemove} aria-label={`移除目标词 ${word}`} className="ml-0.5 rounded-full p-0.5 pr-1.5 text-muted-foreground opacity-0 outline-none group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100">
+    <button type="button" onClick={onRemove} aria-label={`移除 ${word}`} className="ml-0.5 rounded-full p-0.5 pr-1.5 text-muted-foreground opacity-0 outline-none group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100">
       <X className="size-3" />
     </button>
   </span>
@@ -151,6 +151,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   /** 改标题：输入框里的文字（null = 没在改） */
   const [renaming, setRenaming] = useState<string | null>(null);
   const [repicking, setRepicking] = useState(false);
+  /** 待确认移除的词 */
+  const [removing, setRemoving] = useState<string | null>(null);
   const [setToDelete, setSetToDelete] = useState<QuestionSetSummary | null>(null);
   usePageTitle(passage?.title);
 
@@ -284,11 +286,11 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const addTarget = async (word: string, stay = false, form?: string) => {
     const result = await passageService.addTargetWord(passage.id, word, form);
     if (!result.success) {
-      toast.showError('无法加入目标词', result.error);
+      toast.showError('无法加入词汇', result.error);
       return;
     }
     setPassage(result.data);
-    toast.showSuccess(`已加入目标词「${result.data.targetWords[result.data.targetWords.length - 1]?.word ?? word}」`);
+    toast.showSuccess(`已加入词汇「${result.data.targetWords[result.data.targetWords.length - 1]?.word ?? word}」`);
     if (!stay) openWord(result.data.targetWords[result.data.targetWords.length - 1]?.word ?? word);
   };
   /** 侧栏点目标词：到「目标词」页签看这个词的单词卡 */
@@ -297,13 +299,14 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     setTab('words');
   };
   const removeTarget = async (word: string) => {
+    setRemoving(null);
     const result = await passageService.removeTargetWord(passage.id, word);
     if (!result.success) {
-      toast.showError('无法移除目标词', result.error);
+      toast.showError('无法移除', result.error);
       return;
     }
     setPassage(result.data);
-    toast.showSuccess(`已移除目标词「${word}」`);
+    toast.showSuccess(`已移除「${word}」`);
   };
   const saveInfo = async (info: { title?: string; level?: string }) => {
     const result = await passageService.updateInfo(passage.id, info);
@@ -378,7 +381,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setRepicking(true)}>
                 <WandSparkles />
-                重新挑选目标词…
+                重新挑选词汇…
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
@@ -438,7 +441,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           </TabsTrigger>
           {passage.targetWords.length > 0 && (
             <TabsTrigger value="words" className="gap-1.5 px-3">
-              目标词<span className="text-xs text-muted-foreground tabular-nums">{passage.targetWords.length}</span>
+              词汇<span className="text-xs text-muted-foreground tabular-nums">{passage.targetWords.length}</span>
             </TabsTrigger>
           )}
           <TabsTrigger value="sets" className="gap-1.5 px-3">
@@ -459,19 +462,19 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             <aside className="flex flex-col gap-4">
               <Card className="gap-3 px-5 py-4">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold">目标词</h2>
+                  <h2 className="text-sm font-semibold">词汇</h2>
                   <Button variant="ghost" size="sm" className="-mr-2 h-7 text-xs text-muted-foreground" onClick={() => setRepicking(true)}>
                     <WandSparkles />
                     重新挑选
                   </Button>
                 </div>
-                {passage.targetWords.length === 0 && <p className="text-xs text-muted-foreground">还没有目标词</p>}
+                {passage.targetWords.length === 0 && <p className="text-xs text-muted-foreground">还没有词汇</p>}
                 {required.length > 0 && (
                   <div className="space-y-1.5">
                     <div className="text-xs text-muted-foreground">指定单词</div>
                     <div className="flex flex-wrap gap-1">
                       {required.map((w) => (
-                        <TargetChip key={w.word} word={w.word} className="bg-accent text-accent-foreground" onOpen={() => openWord(w.word)} onRemove={() => void removeTarget(w.word)} />
+                        <TargetChip key={w.word} word={w.word} className="bg-accent text-accent-foreground" onOpen={() => openWord(w.word)} onRemove={() => setRemoving(w.word)} />
                       ))}
                     </div>
                   </div>
@@ -481,7 +484,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                     <div className="text-xs text-muted-foreground">{imported ? '重点词' : 'AI 选词'}</div>
                     <div className="flex flex-wrap gap-1">
                       {picked.map((w) => (
-                        <TargetChip key={w.word} word={w.word} meaning={w.meaning} className="bg-muted" onOpen={() => openWord(w.word)} onRemove={() => void removeTarget(w.word)} />
+                        <TargetChip key={w.word} word={w.word} meaning={w.meaning} className="bg-muted" onOpen={() => openWord(w.word)} onRemove={() => setRemoving(w.word)} />
                       ))}
                     </div>
                   </div>
@@ -496,7 +499,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           <TargetWordsPanel
             passage={passage}
             focusWord={focusWord}
-            onRemove={(word) => void removeTarget(word)}
+            onRemove={setRemoving}
             onRepick={() => setRepicking(true)}
             onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })}
             footer={hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
@@ -544,9 +547,22 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         onOpenChange={setRepicking}
         onSaved={(p) => {
           setPassage(p);
-          toast.showSuccess(`已换成 ${p.targetWords.length} 个目标词`);
+          toast.showSuccess(`已换成 ${p.targetWords.length} 个词汇`);
         }}
       />
+
+      <AlertDialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>从这篇短文的词汇里移除「{removing}」？</AlertDialogTitle>
+            <AlertDialogDescription>词汇本里的单词和学习记录不受影响。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => removing && void removeTarget(removing)}>移除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={renaming !== null} onOpenChange={(o) => !o && setRenaming(null)}>
         <AlertDialogContent>

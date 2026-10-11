@@ -470,3 +470,4 @@
   3. 题组、计划里的短文任务、练习记录不受影响：题目按原文出，目标词只决定高亮、单词卡与计划挑短文时的相关度。
 - **未做**：学习计划的学习顺序不提供重排（开始后已有记忆等级在调整复习，重排会打乱已学进度）。
 - **证据**：`agent::tasks::tests::real_target_words_repick_with_kimi_k3`（《The Water Team's Big Idea》，原目标词 plan / more）：稳定挑出 save、waste、tap、meter、write down；收紧「个数是上限、不凑数」后不再为了凑满挑 more、number。
+- **补充（同日）**：重新挑选先设条件——数量、难度、词频与新建短文「AI 选词」一致；短文有词汇本 / 计划来源时可按学习情况筛来源词汇本里的词；另有补充要求（≤200 字，`{{instruction}}`，与挑词规则冲突时以规则为准），命令参数改为 `request: SuggestTargetWordsRequest`。移除单个词先确认。界面上「目标词」统一改称「词汇」（代码与文档里的内部名称不变）。

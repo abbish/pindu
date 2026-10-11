@@ -1845,22 +1845,33 @@ pub fn passage_target_words_task(profile: &PromptProfile) -> AgentTask {
     }
 }
 
-/// 重新挑选目标词：标题、原文、目标个数、来源词汇本里原文也用到的词、现在的目标词
-pub fn passage_target_words_message(
-    title: &str,
-    text: &str,
-    count: usize,
-    book_words: &[String],
-    current: &[String],
-) -> String {
+/// 重新挑选目标词的用户消息
+pub struct TargetWordsSpec<'a> {
+    pub title: &'a str,
+    /// 编号的原文
+    pub text: &'a str,
+    /// 最多挑几个
+    pub count: usize,
+    /// 挑词偏好（难度、常用程度；空 = 不限）
+    pub pick_prefs: &'a str,
+    /// 来源词汇本里、原文也用到的词（已按学习情况筛过）
+    pub book_words: &'a [String],
+    pub current: &'a [String],
+    /// 用户的补充要求
+    pub instruction: &'a str,
+}
+
+pub fn passage_target_words_message(spec: &TargetWordsSpec) -> String {
     prompts::message(
         MessageTemplate::PassageTargetWords,
         &[
-            ("title", title.trim()),
-            ("text", text.trim()),
-            ("count", &count.to_string()),
-            ("book_words", &book_words.join(", ")),
-            ("current", &current.join(", ")),
+            ("title", spec.title.trim()),
+            ("text", spec.text.trim()),
+            ("count", &spec.count.to_string()),
+            ("pick_prefs", spec.pick_prefs),
+            ("book_words", &spec.book_words.join(", ")),
+            ("current", &spec.current.join(", ")),
+            ("instruction", spec.instruction.trim()),
         ],
     )
 }
@@ -1886,7 +1897,7 @@ pub async fn suggest_target_words(
     let submission = run
         .outcome
         .last_successful_call("submit_target_words")
-        .ok_or_else(|| AppError::ExternalServiceError("没有挑出目标词，请再试一次".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有挑出词汇，请再试一次".to_string()))?;
     let words = crate::services::passage_rules::vocab_from_submission(
         submission.details.get("words"),
         full_text,
@@ -1894,7 +1905,7 @@ pub async fn suggest_target_words(
     );
     if words.is_empty() {
         return Err(AppError::ExternalServiceError(
-            "没有挑出原文里的目标词，请再试一次".to_string(),
+            "没有在原文里挑出词汇，请再试一次".to_string(),
         ));
     }
     Ok(words)
@@ -2692,13 +2703,20 @@ mod tests {
             .map(|(i, s)| format!("{}. {}", i + 1, s))
             .collect::<Vec<_>>()
             .join("\n");
-        let message = passage_target_words_message(
-            "The Water Team's Big Idea",
-            &text,
-            10,
-            &["plan".into(), "more".into()],
-            &["plan".into(), "more".into()],
-        );
+        let book_words: Vec<String> = vec!["plan".into(), "more".into()];
+        let instruction = std::env::var("TARGET_WORDS_INSTRUCTION").unwrap_or_default();
+        let message = passage_target_words_message(&TargetWordsSpec {
+            title: "The Water Team's Big Idea",
+            text: &text,
+            count: 10,
+            pick_prefs: &crate::services::passage_rules::pick_preferences(
+                Some("medium"),
+                Some("common"),
+            ),
+            book_words: &book_words,
+            current: &book_words,
+            instruction: &instruction,
+        });
         let started = Instant::now();
         let words = suggest_target_words(
             &paths,

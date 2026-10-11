@@ -110,7 +110,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
 
   const sentences = useMemo(() => (current ? passage.sentences.filter((s) => textUses(s.en, current.word, current.forms)) : []), [passage.sentences, current]);
 
-  if (words.length === 0) return <p className="py-10 text-center text-sm text-muted-foreground">这篇短文没有目标词</p>;
+  if (words.length === 0) return <p className="py-10 text-center text-sm text-muted-foreground">这篇短文还没有词汇</p>;
 
   const group = (required: boolean) => words.map((w, i) => ({ w, i })).filter(({ w }) => w.required === required);
 
@@ -142,7 +142,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
                         <button
                           type="button"
                           onClick={() => onRemove(w.word)}
-                          aria-label={`移除目标词 ${w.word}`}
+                          aria-label={`移除 ${w.word}`}
                           className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5 text-muted-foreground opacity-0 outline-none group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100"
                         >
                           <X className="size-3.5" />
@@ -158,7 +158,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
         {onRepick && (
           <Button variant="outline" size="sm" className="self-start" onClick={onRepick}>
             <WandSparkles />
-            重新挑选目标词
+            重新挑选词汇
           </Button>
         )}
         {footer}

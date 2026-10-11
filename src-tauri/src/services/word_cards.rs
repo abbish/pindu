@@ -142,7 +142,7 @@ impl WordCardService {
             .any(|t| same_target(&t.word, &target.word))
         {
             return Err(AppError::ValidationError(format!(
-                "「{}」已经是目标词",
+                "「{}」已经在词汇里",
                 word.trim()
             )));
         }
@@ -162,7 +162,7 @@ impl WordCardService {
             .retain(|t| !t.word.eq_ignore_ascii_case(word.trim()));
         if passage.target_words.len() == before {
             return Err(AppError::NotFound(format!(
-                "「{}」已经不是目标词",
+                "「{}」已经不在词汇里",
                 word.trim()
             )));
         }

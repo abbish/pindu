@@ -313,12 +313,12 @@ const AnalysisView: React.FC<{
                 <div className="text-xs text-muted-foreground">{p.meaning}</div>
               </div>
               {isTarget(p.base) ? (
-                <Badge variant="secondary">目标词</Badge>
+                <Badge variant="secondary">词汇</Badge>
               ) : (
                 onAddTarget && (
                   <Button variant="outline" size="sm" className="h-7" onClick={() => onAddTarget(p.base, p.text)}>
                     <Plus />
-                    加入目标词
+                    加入词汇
                   </Button>
                 )
               )}

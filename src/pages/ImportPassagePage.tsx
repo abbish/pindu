@@ -270,7 +270,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm">
                   <BookOpen />
-                  {bookIds.length > 0 ? `从 ${bookIds.length} 本词汇本标注目标词` : '从词汇本标注目标词'}
+                  {bookIds.length > 0 ? `从 ${bookIds.length} 本词汇本标注词汇` : '从词汇本标注词汇'}
                   <ChevronDown className="opacity-60" />
                 </Button>
               </PopoverTrigger>

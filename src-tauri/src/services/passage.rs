@@ -409,12 +409,20 @@ impl PassageService {
     /// 只返回建议，确认后由 `WordCardService::replace_target_words` 保存
     pub async fn suggest_target_words(
         &self,
-        passage_id: Id,
-        count: i64,
+        request: &crate::types::passage::SuggestTargetWordsRequest,
         paths: &AgentPaths,
     ) -> AppResult<Vec<crate::types::passage::TargetWordSuggestion>> {
+        let passage_id = request.passage_id;
         let passage = self.get(passage_id).await?;
-        let count = count.clamp(5, passage_rules::MAX_SUGGESTED_TARGETS as i64) as usize;
+        let count = request
+            .count
+            .clamp(5, passage_rules::MAX_SUGGESTED_TARGETS as i64) as usize;
+        let instruction = request.instruction.as_deref().unwrap_or("").trim();
+        if instruction.chars().count() > TOPIC_MAX {
+            return Err(AppError::ValidationError(format!(
+                "补充要求最多 {TOPIC_MAX} 个字"
+            )));
+        }
         let full = passage
             .sentences
             .iter()
@@ -439,7 +447,9 @@ impl PassageService {
         let mut book_words: Vec<String> = Vec::new();
         for book in books {
             for row in self.repository.book_candidates(book).await? {
-                if passage_rules::text_uses(&full, &row.word)
+                let statuses = passage_rules::learning_statuses(row.level, row.wrong);
+                if passage_rules::in_pick_statuses(&request.statuses, &statuses)
+                    && passage_rules::text_uses(&full, &row.word)
                     && !book_words.iter().any(|w| w.eq_ignore_ascii_case(&row.word))
                 {
                     book_words.push(row.word);
@@ -461,13 +471,19 @@ impl PassageService {
             .join("\n");
         let profile = PromptProfileService::load(&self.pool).await?;
         let model = self.model().await?;
-        let message = tasks::passage_target_words_message(
-            &passage.title,
-            &text,
-            count,
-            &book_words,
-            &current,
+        let pick_prefs = passage_rules::pick_preferences(
+            request.difficulty.as_deref(),
+            request.frequency.as_deref(),
         );
+        let message = tasks::passage_target_words_message(&tasks::TargetWordsSpec {
+            title: &passage.title,
+            text: &text,
+            count,
+            pick_prefs: &pick_prefs,
+            book_words: &book_words,
+            current: &current,
+            instruction,
+        });
         let words =
             tasks::suggest_target_words(paths, &model, &profile, &message, &full, &self.logger)
                 .await?;

@@ -720,9 +720,9 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                     />
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <Label>目标词数量</Label>
+                    <Label>词汇数量</Label>
                     <Select value={String(briefCount)} onValueChange={(v) => setBriefCount(Number(v))}>
-                      <SelectTrigger className="w-28" aria-label="目标词数量">
+                      <SelectTrigger className="w-28" aria-label="词汇数量">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

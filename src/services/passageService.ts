@@ -24,6 +24,7 @@ import type {
   PlanPassage,
   PlanPassageCandidate,
   PlanPassageCandidatesRequest,
+  SuggestTargetWordsRequest,
   TargetWordPick,
   TargetWordSuggestion,
   QuestionSet,
@@ -97,9 +98,9 @@ class PassageService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<Passage>('remove_passage_target_word', { passageId, word }));
   }
 
-  /** 重新挑选目标词：AI 从原文里挑 `count` 个建议（不保存） */
-  async suggestTargetWords(passageId: number, count: number): Promise<ApiResult<TargetWordSuggestion[]>> {
-    return this.executeWithLoading(() => this.client.invoke<TargetWordSuggestion[]>('suggest_passage_target_words', { passageId, count }));
+  /** 重新挑选词汇：AI 按条件从原文里挑一组建议（不保存） */
+  async suggestTargetWords(request: SuggestTargetWordsRequest): Promise<ApiResult<TargetWordSuggestion[]>> {
+    return this.executeWithLoading(() => this.client.invoke<TargetWordSuggestion[]>('suggest_passage_target_words', { request }));
   }
 
   /** 把目标词整体换成这组，返回更新后的短文 */

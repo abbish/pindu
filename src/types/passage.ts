@@ -21,6 +21,21 @@ export interface TargetWordSuggestion {
   forms: string[];
 }
 
+/** 重新挑选词汇的条件（与新建短文「AI 选词」一致，另可写补充要求） */
+export interface SuggestTargetWordsRequest {
+  passageId: number;
+  /** 最多挑几个 */
+  count: number;
+  /** 不传 = 不限 */
+  difficulty?: PickDifficulty;
+  /** 不传 = 不限 */
+  frequency?: PickFrequency;
+  /** 来源词汇本里的词按学习情况筛；空 = 不限 */
+  statuses: PickStatus[];
+  /** 用户的补充要求 */
+  instruction?: string;
+}
+
 /** 重新挑选目标词时确认的一个词 */
 export interface TargetWordPick {
   word: string;

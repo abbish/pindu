@@ -319,7 +319,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
         {mode === 'study' && (
           <div ref={textBox} className="min-h-0 flex-1 overflow-y-auto p-3">
             <SelectionAction
-              label="加入目标词"
+              label="加入词汇"
               accept={(text) => Boolean(onAddTarget) && canAddTarget(text, targetWords)}
               onAction={(text) => onAddTarget?.(text)}
             >
