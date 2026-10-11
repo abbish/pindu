@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, emptyTranscript, splitAttachments, splitSuggestions, toTurns, type TranscriptState } from './tutorTranscript.ts';
+import { applyEvent, dropAsk, emptyTranscript, splitAttachments, splitSuggestions, toAsk, toTurns, type TranscriptState } from './tutorTranscript.ts';
 import type { PiEvent } from '../types/tutor.ts';
 
 const run = (events: PiEvent[], state: TranscriptState = emptyTranscript()) => events.reduce(applyEvent, state);
@@ -85,15 +85,23 @@ test('同一条消息重复到达只算一次；先显示没确认的消息', ()
   assert.equal(run([{ type: 'message_end', message: user }], pending).pendingUser, null);
 });
 
-test('工具的提问：select 显示选项，结束后清掉', () => {
+test('工具的提问：按顺序排队，一次答一个，结束后清掉', () => {
   const asked = run([
     { type: 'agent_start' },
     { type: 'extension_ui_request', id: 'q1', method: 'select', title: '放哪？', options: ['加进《机场英语》', '新建一个词汇本'] },
+    { type: 'extension_ui_request', id: 'q2', method: 'editor', title: '改一下这段', prefill: 'Hello' },
+    // 重复到达（重新打开对话时补上的）只算一次
+    { type: 'extension_ui_request', id: 'q1', method: 'select', title: '放哪？', options: [] },
   ]);
-  assert.deepEqual(asked.ask?.options, ['加进《机场英语》', '新建一个词汇本']);
-  assert.equal(run([{ type: 'agent_settled' }], asked).ask, null);
+  assert.deepEqual(asked.asks.map((a) => a.id), ['q1', 'q2']);
+  assert.deepEqual(asked.asks[0].options, ['加进《机场英语》', '新建一个词汇本']);
+  assert.equal(asked.asks[1].prefill, 'Hello');
+  assert.deepEqual(dropAsk(asked, 'q1').asks.map((a) => a.id), ['q2']);
+  assert.deepEqual(run([{ type: 'agent_settled' }], asked).asks, []);
   // 通知类的不算提问
-  assert.equal(run([{ type: 'extension_ui_request', id: 'n', method: 'notify' }]).ask, null);
+  assert.deepEqual(run([{ type: 'extension_ui_request', id: 'n', method: 'notify' }]).asks, []);
+  // 带超时的记下过期时刻
+  assert.equal(toAsk({ id: 'c', method: 'confirm', title: '确定？', timeout: 5000 }, 1000)?.expiresAt, 6000);
 });
 
 test('停止：没有结果的步骤显示为没完成，回答标记已停止', () => {

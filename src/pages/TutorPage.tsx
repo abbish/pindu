@@ -59,6 +59,15 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
   }, [turns]);
 
   const send = async (text: string, files: Attachment[] = attachments) => {
+    // 有提问在等：输入的文字就是回答（不然消息会排在提问后面，两边互相等）
+    const ask = chat.transcript.asks[0];
+    if (ask && text.trim() && files.length === 0 && ask.method !== 'confirm') {
+      setDraft('');
+      await chat.answer({ value: text.trim() });
+      return;
+    }
+    // 确认类的提问：先当作「不用」，再把这句话发出去
+    if (ask?.method === 'confirm') await chat.answer({ confirmed: false });
     const keep = { draft, attachments };
     setDraft('');
     setAttachments([]);
@@ -125,7 +134,9 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
                   <AgentTurnView
                     key={turn.key}
                     turn={turn}
-                    ask={i === turns.length - 1 ? chat.transcript.ask : null}
+                    ask={i === turns.length - 1 ? (chat.transcript.asks[0] ?? null) : null}
+                    askCount={chat.transcript.asks.length}
+                    onExpireAsk={chat.expireAsk}
                     notice={chat.transcript.notice}
                     onAnswer={(reply) => void chat.answer(reply)}
                     onSuggest={i === turns.length - 1 ? (text) => void send(text, []) : undefined}
@@ -153,6 +164,7 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
           draft={draft}
           attachments={attachments}
           running={running}
+          answering={chat.transcript.asks.length > 0}
           focusKey={focusKey}
           pickerRef={openPicker}
           queue={chat.transcript.queue}

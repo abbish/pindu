@@ -231,6 +231,7 @@ impl TutorChatService {
             id: session.id.clone(),
             messages: data.get("messages").cloned().unwrap_or(json!([])),
             running: session.is_running(),
+            pending_asks: session.pending_ui(),
         })
     }
 
@@ -672,7 +673,12 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
         let asked = asked.expect("应通过 ask_user 提问");
-        let option = asked["options"][0].as_str().unwrap().to_string();
+        // 提问还在等时重新打开对话：提问随消息一起交回界面
+        let reopened = service.open(&env, &id).await.unwrap();
+        assert_eq!(reopened.pending_asks.len(), 1, "还没回答的提问应能拿回来");
+        assert_eq!(reopened.pending_asks[0]["id"], asked["id"]);
+        // 用自己的话回答（不在选项里）
+        let option = "都不要，新建一个「出国」词汇本".to_string();
         service
             .answer(
                 &hub,
@@ -687,7 +693,27 @@ mod tests {
             .await
             .unwrap();
         wait(2).await;
-        println!("提问：{} → 选了 {}", asked["title"], option);
+        println!("提问：{} → 回答 {}", asked["title"], option);
+        let answered_step = events
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|e| e["type"] == "tool_execution_end" && e["toolName"] == "ask_user")
+            .map(|e| e["result"]["details"]["redlark"]["step"].clone());
+        println!("提问这一步：{:?}", answered_step);
+        assert!(
+            answered_step.is_some_and(|s| s.as_str().unwrap_or("").contains("出国")),
+            "自己的话应作为回答"
+        );
+        assert!(
+            service
+                .open(&env, &id)
+                .await
+                .unwrap()
+                .pending_asks
+                .is_empty(),
+            "回答后不再挂着"
+        );
         let last_text = events
             .lock()
             .unwrap()

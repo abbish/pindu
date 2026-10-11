@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BookOpen, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus } from 'lucide-react';
 import { JobProgress } from '@/components/Jobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useJobActions } from '@/components/Jobs/useJobActions';
 import { useJob } from '@/hooks/useJobs';
@@ -64,12 +65,15 @@ export const UserBubble: React.FC<{ turn: Extract<ViewTurn, { role: 'user' }> }>
 export const AgentTurnView: React.FC<{
   turn: Extract<ViewTurn, { role: 'agent' }>;
   ask: TutorAsk | null;
+  /** 排队的提问数（含 ask） */
+  askCount?: number;
   notice: string | null;
   onAnswer: (reply: { value?: string; confirmed?: boolean; cancelled?: boolean }) => void;
+  onExpireAsk?: (id: string) => void;
   /** 最后一轮回答完后显示推荐下一步，点一下就发 */
   onSuggest?: (text: string) => void;
   onNavigate: NavigateFn;
-}> = ({ turn, ask, notice, onAnswer, onSuggest, onNavigate }) => {
+}> = ({ turn, ask, askCount = 1, notice, onAnswer, onExpireAsk, onSuggest, onNavigate }) => {
   const outputs = turn.steps.flatMap((s) => (s.output ? [s.output] : []));
   return (
     <div className="flex gap-3">
@@ -86,7 +90,7 @@ export const AgentTurnView: React.FC<{
           </div>
         )}
 
-        {ask && <AskCard ask={ask} onAnswer={onAnswer} />}
+        {ask && <AskCard key={ask.id} ask={ask} total={askCount} onAnswer={onAnswer} onExpire={onExpireAsk ?? (() => {})} />}
 
         {outputs.length > 0 && (
           <div className="grid gap-2 sm:grid-cols-2">
@@ -217,12 +221,25 @@ const StepRow: React.FC<{ step: ViewStep }> = ({ step }) => {
 /** 工具向用户的提问：选择 / 确认 / 输入 */
 const AskCard: React.FC<{
   ask: TutorAsk;
+  /** 还有几个提问在排队（含这一个） */
+  total: number;
   onAnswer: (reply: { value?: string; confirmed?: boolean; cancelled?: boolean }) => void;
-}> = ({ ask, onAnswer }) => {
-  const [value, setValue] = useState('');
+  onExpire: (id: string) => void;
+}> = ({ ask, total, onAnswer, onExpire }) => {
+  const [value, setValue] = useState(ask.prefill ?? '');
+  // 带超时的提问：过期后 pi 已按默认值收回
+  useEffect(() => {
+    if (!ask.expiresAt) return;
+    const timer = window.setTimeout(() => onExpire(ask.id), Math.max(0, ask.expiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [ask.id, ask.expiresAt, onExpire]);
+  const submit = () => value.trim() && onAnswer({ value: ask.method === 'editor' ? value : value.trim() });
   return (
     <div className="rounded-lg border p-3">
-      <div className="text-sm">{ask.title}</div>
+      <div className="flex items-start gap-2">
+        <div className="flex-1 text-sm">{ask.title}</div>
+        {total > 1 && <span className="shrink-0 text-xs text-muted-foreground">还有 {total - 1} 个问题</span>}
+      </div>
       {ask.message && <div className="mt-1 text-sm text-muted-foreground">{ask.message}</div>}
       <div className="mt-2 flex flex-wrap gap-2">
         {ask.method === 'select' &&
@@ -246,7 +263,7 @@ const AskCard: React.FC<{
             className="flex w-full gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              if (value.trim()) onAnswer({ value: value.trim() });
+              submit();
             }}
           >
             <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder={ask.placeholder} className="h-8" autoFocus />
@@ -255,12 +272,21 @@ const AskCard: React.FC<{
             </Button>
           </form>
         )}
+        {ask.method === 'editor' && (
+          <div className="flex w-full flex-col gap-2">
+            <Textarea value={value} onChange={(e) => setValue(e.target.value)} rows={4} className="text-sm" autoFocus />
+            <Button size="sm" className="self-end" onClick={submit} disabled={!value.trim()}>
+              回复
+            </Button>
+          </div>
+        )}
         {ask.method !== 'confirm' && (
           <Button size="sm" variant="ghost" onClick={() => onAnswer({ cancelled: true })}>
             跳过
           </Button>
         )}
       </div>
+      {ask.method === 'select' && <div className="mt-2 text-xs text-muted-foreground">都不合适？直接在下面输入你的回答。</div>}
     </div>
   );
 };

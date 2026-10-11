@@ -7,7 +7,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useToast } from '@/components';
 import { tutorService } from '@/services/tutorService';
 import type { PiEvent, TutorConversation, TutorEventPayload, TutorFileUpload, TutorImage } from '@/types/tutor';
-import { applyEvent, emptyTranscript, type TranscriptState } from '@/utils/tutorTranscript';
+import { applyEvent, dropAsk, emptyTranscript, toAsk, type TranscriptState, type TutorAsk } from '@/utils/tutorTranscript';
 
 /** 离开再回来时打开上次的对话 */
 let lastConversationId: string | null = null;
@@ -80,6 +80,11 @@ export function useTutorChat(initialPrompt?: string) {
     let disposed = false;
     void listen<TutorEventPayload>('tutor-event', ({ payload }) => {
       const { conversationId, event } = payload;
+      // pi 扩展的通知（如连不上拼读的工具服务）：轻提示
+      if (event.type === 'extension_ui_request' && 'method' in event && event.method === 'notify' && conversationId === activeRef.current) {
+        const { message, notifyType } = event as { message?: string; notifyType?: string };
+        if (message) (notifyType === 'error' ? toast.showError : notifyType === 'warning' ? toast.showWarning : toast.showInfo)(message);
+      }
       if (['agent_start', 'agent_settled', 'session_info_changed', 'redlark_closed'].includes(event.type)) refreshSoon();
       const b = buffer.current;
       if (b.holding && (b.id === null || b.id === conversationId)) {
@@ -116,7 +121,8 @@ export function useTutorChat(initialPrompt?: string) {
         toast.showError('无法打开这个对话', result.error);
         return;
       }
-      setTranscript(release(id, emptyTranscript(result.data.messages, result.data.running)));
+      const asks = result.data.pendingAsks.map((raw) => toAsk(raw)).filter((a): a is TutorAsk => a !== null);
+      setTranscript(release(id, emptyTranscript(result.data.messages, result.data.running, asks)));
     },
     [setActiveId, toast]
   );
@@ -211,17 +217,21 @@ export function useTutorChat(initialPrompt?: string) {
     [transcript.queue, toast]
   );
 
+  /** 回答排在最前面的提问 */
   const answer = useCallback(
     async (reply: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
       const id = activeRef.current;
-      const ask = transcript.ask;
+      const ask = transcript.asks[0];
       if (!id || !ask) return;
-      setTranscript((s) => ({ ...s, ask: null }));
+      setTranscript((s) => dropAsk(s, ask.id));
       const result = await tutorService.answer({ conversationId: id, requestId: ask.id, ...reply });
       if (!result.success) toast.showError('没能回复', result.error);
     },
-    [transcript.ask, toast]
+    [transcript.asks, toast]
   );
+
+  /** 带超时的提问过期了：pi 已按默认值收回，界面上拿掉 */
+  const expireAsk = useCallback((askId: string) => setTranscript((s) => dropAsk(s, askId)), []);
 
   const setFlags = useCallback(
     async (id: string, pinned: boolean, archived: boolean) => {
@@ -268,6 +278,7 @@ export function useTutorChat(initialPrompt?: string) {
     stop,
     dropQueued,
     answer,
+    expireAsk,
     setFlags,
     rename,
     remove,

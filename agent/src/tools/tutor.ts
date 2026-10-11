@@ -12,18 +12,23 @@ export const askUserTool = defineTool({
   name: "ask_user",
   label: "问学习者",
   description:
-    "Ask the learner to choose when there are clearly different ways to proceed (e.g. add to an existing word book or create a new one). Give 2-4 short options in Chinese. Returns the chosen option, or that the learner skipped. Do not use it for things you can decide yourself.",
+    "Ask the learner to choose when there are clearly different ways to proceed (e.g. add to an existing word book or create a new one). Give 2-4 short options in Chinese. The learner may pick an option, answer in their own words, or skip. Do not use it for things you can decide yourself.",
   parameters: Type.Object({
     question: Type.String({ description: "the question in Chinese, one sentence" }),
     options: Type.Array(Type.String(), { minItems: 2, maxItems: 4, description: "short options in Chinese" }),
   }),
   async execute(_id, { question, options }, signal, _onUpdate, ctx) {
     if (!ctx.hasUI) throw new Error("no learner is available to answer");
-    const choice = await ctx.ui.select(question, options, { signal });
-    const text = choice ? `The learner chose: ${choice}` : "The learner skipped the question; decide yourself or ask in your reply.";
+    // 界面上除了点选项，也可以直接在输入框里用自己的话回答（拼读把输入的文字作为回答传回）
+    const answer = (await ctx.ui.select(question, options, { signal }))?.trim();
+    const text = !answer
+      ? "The learner skipped the question; decide yourself or ask in your reply."
+      : options.includes(answer)
+        ? `The learner chose: ${answer}`
+        : `The learner answered in their own words: ${answer}`;
     return {
       content: [{ type: "text", text }],
-      details: { redlark: { step: choice ? `问了你：${question}（${choice}）` : `问了你：${question}（跳过）` } },
+      details: { redlark: { step: answer ? `问了你：${question}（${answer}）` : `问了你：${question}（跳过）` } },
     };
   },
 });

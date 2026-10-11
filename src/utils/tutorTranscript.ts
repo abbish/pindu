@@ -11,14 +11,45 @@ import type {
   PiUserMessage,
 } from '../types/tutor';
 
-/** 工具向用户的提问（pi extension_ui_request 的 select / confirm / input） */
+/** 工具向用户的提问（pi extension_ui_request 里要等回答的：select / confirm / input / editor） */
 export interface TutorAsk {
   id: string;
-  method: 'select' | 'confirm' | 'input';
+  method: 'select' | 'confirm' | 'input' | 'editor';
   title: string;
   message?: string;
   options: string[];
   placeholder?: string;
+  /** editor 预填的内容 */
+  prefill?: string;
+  /** 带 timeout 的提问：过期时刻（毫秒），过期后 pi 按默认值收回 */
+  expiresAt?: number;
+}
+
+const DIALOGS = ['select', 'confirm', 'input', 'editor'];
+
+/** pi 的 extension_ui_request → 提问；不是要等回答的返回 null */
+export function toAsk(raw: unknown, now = Date.now()): TutorAsk | null {
+  const e = (raw ?? {}) as {
+    id?: string;
+    method?: string;
+    title?: string;
+    message?: string;
+    options?: string[];
+    placeholder?: string;
+    prefill?: string;
+    timeout?: number;
+  };
+  if (!e.id || !e.method || !DIALOGS.includes(e.method)) return null;
+  return {
+    id: e.id,
+    method: e.method as TutorAsk['method'],
+    title: e.title ?? '',
+    message: e.message,
+    options: e.options ?? [],
+    placeholder: e.placeholder,
+    prefill: e.prefill,
+    expiresAt: typeof e.timeout === 'number' ? now + e.timeout : undefined,
+  };
 }
 
 /** 发出去、pi 还没确认的消息（先显示出来） */
@@ -37,7 +68,8 @@ export interface TranscriptState {
   /** 工具执行状态（toolCallId → 状态与最新 details） */
   tools: Record<string, { status: 'running' | 'done' | 'error'; details?: unknown }>;
   running: boolean;
-  ask: TutorAsk | null;
+  /** 等学习者回答的提问（按到达顺序，一次答一个） */
+  asks: TutorAsk[];
   /** 正在重试 / 整理之前的对话 */
   notice: string | null;
   pendingUser: PendingUser | null;
@@ -45,12 +77,12 @@ export interface TranscriptState {
   queue: string[];
 }
 
-export const emptyTranscript = (messages: PiMessage[] = [], running = false): TranscriptState => ({
+export const emptyTranscript = (messages: PiMessage[] = [], running = false, asks: TutorAsk[] = []): TranscriptState => ({
   messages,
   partial: null,
   tools: {},
   running,
-  ask: null,
+  asks,
   notice: null,
   pendingUser: null,
   queue: [],
@@ -61,6 +93,12 @@ const sameMessage = (a: PiMessage, b: PiMessage) =>
   a.timestamp === b.timestamp &&
   (a.role !== 'toolResult' || (b as PiToolResultMessage).toolCallId === a.toolCallId);
 
+/** 回答了（或过期了）一个提问 */
+export const dropAsk = (state: TranscriptState, id: string): TranscriptState => ({
+  ...state,
+  asks: state.asks.filter((a) => a.id !== id),
+});
+
 /** 一条 pi 事件 → 新状态 */
 export function applyEvent(state: TranscriptState, event: PiEvent): TranscriptState {
   switch (event.type) {
@@ -68,7 +106,7 @@ export function applyEvent(state: TranscriptState, event: PiEvent): TranscriptSt
       return { ...state, running: true };
     case 'agent_settled':
     case 'redlark_closed':
-      return { ...state, running: false, partial: null, ask: null, notice: null, queue: [] };
+      return { ...state, running: false, partial: null, asks: [], notice: null, queue: [] };
     case 'message_start': {
       const { message } = event as { message: PiMessage };
       if (message.role === 'assistant') return { ...state, partial: { ...message, content: [...message.content] } };
@@ -150,19 +188,9 @@ export function applyEvent(state: TranscriptState, event: PiEvent): TranscriptSt
     case 'compaction_end':
       return { ...state, notice: null };
     case 'extension_ui_request': {
-      const e = event as Extract<PiEvent, { type: 'extension_ui_request'; method: string; id: string }>;
-      if (e.method !== 'select' && e.method !== 'confirm' && e.method !== 'input') return state;
-      return {
-        ...state,
-        ask: {
-          id: e.id,
-          method: e.method,
-          title: e.title ?? '',
-          message: e.message,
-          options: e.options ?? [],
-          placeholder: e.placeholder,
-        },
-      };
+      const ask = toAsk(event);
+      if (!ask || state.asks.some((x) => x.id === ask.id)) return state;
+      return { ...state, asks: [...state.asks, ask] };
     }
     default:
       return state;

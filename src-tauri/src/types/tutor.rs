@@ -26,6 +26,8 @@ pub struct TutorOpened {
     pub id: String,
     pub messages: Value,
     pub running: bool,
+    /// 还在等学习者回答的提问（pi 的 extension_ui_request 原样）
+    pub pending_asks: Vec<Value>,
 }
 
 /// 随消息发送的图片（粘贴的截图等）

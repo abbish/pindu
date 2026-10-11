@@ -24,6 +24,8 @@ export const Composer: React.FC<{
   draft: string;
   attachments: Attachment[];
   running: boolean;
+  /** 有提问在等回答：输入的文字作为回答 */
+  answering?: boolean;
   /** 变化时获得焦点、光标移到末尾（开场示例填进来后） */
   focusKey?: number;
   /** 拿到「打开选文件」的函数（开场示例在点击时直接调用：选文件窗口要在用户点击里打开） */
@@ -36,7 +38,7 @@ export const Composer: React.FC<{
   onAttachments: (attachments: Attachment[]) => void;
   onSend: () => void;
   onStop: () => void;
-}> = ({ draft, attachments, running, focusKey, pickerRef, queue, onEditQueued, onRemoveQueued, onDraft, onAttachments, onSend, onStop }) => {
+}> = ({ draft, attachments, running, answering, focusKey, pickerRef, queue, onEditQueued, onRemoveQueued, onDraft, onAttachments, onSend, onStop }) => {
   const picker = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const canSend = draft.trim().length > 0 || attachments.length > 0;
@@ -202,7 +204,13 @@ export const Composer: React.FC<{
                 if (canSend) onSend();
               }
             }}
-            placeholder={running ? '补充一句（排队，AI 老师做完这一步就会看到）' : '问问题，或者让 AI 老师帮你做点什么…（可以直接粘贴截图）'}
+            placeholder={
+              answering
+                ? '直接输入你的回答，或者点上面的选项'
+                : running
+                  ? '补充一句（排队，AI 老师做完这一步就会看到）'
+                  : '问问题，或者让 AI 老师帮你做点什么…（可以直接粘贴截图）'
+            }
             rows={1}
             className="max-h-60 min-h-8 flex-1 resize-none border-0 px-1 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
           />

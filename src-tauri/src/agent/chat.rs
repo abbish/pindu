@@ -26,9 +26,38 @@ pub struct ChatSession {
     process: tokio::sync::Mutex<Option<AgentProcess>>,
     running: AtomicBool,
     last_used: Mutex<Instant>,
+    /// 还没回答的提问（pi 扩展 UI 的对话类请求，原始 JSON）：重新打开对话时交给界面
+    pending_ui: Mutex<Vec<(Instant, Value)>>,
 }
 
+/// pi 扩展 UI 里要等回答的请求（其余 notify / setStatus 等不用回）
+pub const DIALOG_METHODS: [&str; 4] = ["select", "confirm", "input", "editor"];
+
 impl ChatSession {
+    /// 还没回答的提问（带 timeout 的过期后 pi 已按默认值收回，不再返回）
+    pub fn pending_ui(&self) -> Vec<Value> {
+        let Ok(mut pending) = self.pending_ui.lock() else {
+            return Vec::new();
+        };
+        pending.retain(|(at, raw)| {
+            raw.get("timeout")
+                .and_then(Value::as_u64)
+                .is_none_or(|ms| at.elapsed() < Duration::from_millis(ms))
+        });
+        pending.iter().map(|(_, raw)| raw.clone()).collect()
+    }
+
+    fn forget_ui(&self, id: Option<&str>) {
+        if let Ok(mut pending) = self.pending_ui.lock() {
+            match id {
+                Some(id) => {
+                    pending.retain(|(_, r)| r.get("id").and_then(Value::as_str) != Some(id))
+                }
+                None => pending.clear(),
+            }
+        }
+    }
+
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)
     }
@@ -109,6 +138,7 @@ impl ChatSession {
     /// 回答工具向用户的提问（`extension_ui_request` 的 id）
     pub async fn respond_ui(&self, response: Value) -> AppResult<()> {
         self.touch();
+        self.forget_ui(response.get("id").and_then(Value::as_str));
         let mut guard = self.process.lock().await;
         let process = guard
             .as_mut()
@@ -179,6 +209,7 @@ impl ChatHub {
             process: tokio::sync::Mutex::new(Some(process)),
             running: AtomicBool::new(false),
             last_used: Mutex::new(Instant::now()),
+            pending_ui: Mutex::new(Vec::new()),
         });
         // 同一个会话已有进程（并发打开）：保留先到的
         {
@@ -198,7 +229,21 @@ impl ChatHub {
             while let Some((_, raw)) = events.recv().await {
                 match raw.get("type").and_then(Value::as_str) {
                     Some("agent_start") => pump.running.store(true, Ordering::SeqCst),
-                    Some("agent_settled") => pump.running.store(false, Ordering::SeqCst),
+                    Some("agent_settled") => {
+                        pump.running.store(false, Ordering::SeqCst);
+                        // 停止或结束后，没回答的提问已被 pi 收回
+                        pump.forget_ui(None);
+                    }
+                    Some("extension_ui_request")
+                        if raw
+                            .get("method")
+                            .and_then(Value::as_str)
+                            .is_some_and(|m| DIALOG_METHODS.contains(&m)) =>
+                    {
+                        if let Ok(mut pending) = pump.pending_ui.lock() {
+                            pending.push((Instant::now(), raw.clone()));
+                        }
+                    }
                     _ => {}
                 }
                 pump.touch();

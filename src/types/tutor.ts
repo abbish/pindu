@@ -21,6 +21,8 @@ export interface TutorOpened {
   id: string;
   messages: PiMessage[];
   running: boolean;
+  /** 还在等学习者回答的提问（pi 的 extension_ui_request 原样） */
+  pendingAsks: unknown[];
 }
 
 /** 随消息发送的图片（base64，不含 data: 前缀） */
@@ -145,6 +147,10 @@ export type PiEvent =
       message?: string;
       options?: string[];
       placeholder?: string;
+      prefill?: string;
+      timeout?: number;
+      /** notify：info / warning / error */
+      notifyType?: string;
     }
   /** 拼读补发：对话进程已结束 */
   | { type: 'redlark_closed' }
