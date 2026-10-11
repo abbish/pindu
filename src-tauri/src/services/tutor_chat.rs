@@ -125,7 +125,14 @@ impl TutorChatService {
         if !session_dir.exists() {
             return Ok(Vec::new());
         }
-        let sessions = list_sessions(paths, &session_dir, &cwd).await?;
+        let sessions = match hub.cached_list() {
+            Some(cached) => cached,
+            None => {
+                let listed = list_sessions(paths, &session_dir, &cwd).await?;
+                hub.cache_list(listed.clone());
+                listed
+            }
+        };
         let flags = self.flags().await;
         let running = hub.running_ids().await;
         let mut list: Vec<TutorConversation> = sessions
@@ -377,6 +384,7 @@ impl TutorChatService {
     pub async fn delete(&self, paths: &AgentPaths, hub: &ChatHub, id: &str) -> AppResult<()> {
         check_id(id)?;
         hub.close(id).await;
+        hub.invalidate_list();
         let _ = std::fs::remove_dir_all(files_dir(paths, id));
         let (session_dir, cwd) = dirs(paths);
         let sessions = list_sessions(paths, &session_dir, &cwd).await?;

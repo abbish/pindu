@@ -157,9 +157,29 @@ impl ChatSession {
 #[derive(Clone, Default)]
 pub struct ChatHub {
     sessions: Arc<tokio::sync::Mutex<HashMap<String, Arc<ChatSession>>>>,
+    /// 上次用 pi 列出的对话（每次列都要起一个 sidecar）；对话有变化时清掉
+    listed: Arc<Mutex<Option<Vec<SessionSummary>>>>,
 }
 
 impl ChatHub {
+    /// 缓存的对话列表
+    pub fn cached_list(&self) -> Option<Vec<SessionSummary>> {
+        self.listed.lock().ok().and_then(|l| l.clone())
+    }
+
+    pub fn cache_list(&self, list: Vec<SessionSummary>) {
+        if let Ok(mut l) = self.listed.lock() {
+            *l = Some(list);
+        }
+    }
+
+    /// 对话有变化（新对话、改名、一轮结束、删除）：下次重新列
+    pub fn invalidate_list(&self) {
+        if let Ok(mut l) = self.listed.lock() {
+            *l = None;
+        }
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -229,7 +249,9 @@ impl ChatHub {
             while let Some((_, raw)) = events.recv().await {
                 match raw.get("type").and_then(Value::as_str) {
                     Some("agent_start") => pump.running.store(true, Ordering::SeqCst),
+                    Some("session_info_changed") => hub.invalidate_list(),
                     Some("agent_settled") => {
+                        hub.invalidate_list();
                         pump.running.store(false, Ordering::SeqCst);
                         // 停止或结束后，没回答的提问已被 pi 收回
                         pump.forget_ui(None);

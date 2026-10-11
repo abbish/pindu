@@ -97,6 +97,7 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
         </div>
         <ConversationList
           conversations={chat.conversations}
+          loading={chat.listLoading}
           activeId={chat.activeId}
           onOpen={(id) => id !== chat.activeId && void chat.open(id)}
           onFlags={(id, pinned, archived) => void chat.setFlags(id, pinned, archived)}

@@ -2,7 +2,7 @@
  * AI 老师页的数据：对话列表、当前对话（按 pi 事件重建）、发送 / 停止 / 回答提问 / 置顶归档改名删除。
  * 对话由 pi 会话保存；回答经 `tutor-event` 推送，按对话 id 分发。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useToast } from '@/components';
 import { tutorService } from '@/services/tutorService';
@@ -11,6 +11,10 @@ import { applyEvent, dropAsk, emptyTranscript, toAsk, type TranscriptState, type
 
 /** 离开再回来时打开上次的对话 */
 let lastConversationId: string | null = null;
+/** 上次的对话列表：再进来时先显示，后台再刷新 */
+let lastConversations: TutorConversation[] | null = null;
+/** 正在进行的列表请求（同一时间只发一个） */
+let listing: ReturnType<typeof tutorService.list> | null = null;
 
 const IMAGE_MIME: Record<string, string> = {
   png: 'image/png',
@@ -43,7 +47,16 @@ const readBase64 = (file: File) =>
 
 export function useTutorChat(initialPrompt?: string) {
   const toast = useToast();
-  const [conversations, setConversations] = useState<TutorConversation[]>([]);
+  const [conversations, setConversationsState] = useState<TutorConversation[]>(lastConversations ?? []);
+  /** 第一次加载列表（还没有上次的列表可显示） */
+  const [listLoading, setListLoading] = useState(lastConversations === null);
+  const setConversations = useCallback((update: React.SetStateAction<TutorConversation[]>) => {
+    setConversationsState((prev) => {
+      const next = typeof update === 'function' ? update(prev) : update;
+      lastConversations = next;
+      return next;
+    });
+  }, []);
   const [activeId, setActiveIdState] = useState<string | null>(initialPrompt ? null : lastConversationId);
   const [transcript, setTranscript] = useState<TranscriptState>(emptyTranscript());
   const [loading, setLoading] = useState(false);
@@ -63,9 +76,13 @@ export function useTutorChat(initialPrompt?: string) {
   }, []);
 
   const refreshList = useCallback(async () => {
-    const result = await tutorService.list();
+    listing ??= tutorService.list().finally(() => {
+      listing = null;
+    });
+    const result = await listing;
+    setListLoading(false);
     if (result.success) setConversations(result.data);
-  }, []);
+  }, [setConversations]);
 
   // 列表刷新稍微合并一下（一轮结束时会有好几个事件）
   const refreshTimer = useRef<number | undefined>(undefined);
@@ -269,6 +286,7 @@ export function useTutorChat(initialPrompt?: string) {
 
   return {
     conversations,
+    listLoading,
     activeId,
     transcript,
     loading,

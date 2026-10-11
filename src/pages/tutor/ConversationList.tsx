@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { TutorConversation } from '@/types/tutor';
 import { formatRelativeDay } from '@/utils/datetime';
@@ -27,12 +28,14 @@ function groupOf(modified: string): string {
  */
 export const ConversationList: React.FC<{
   conversations: TutorConversation[];
+  /** 第一次加载：显示占位 */
+  loading?: boolean;
   activeId: string | null;
   onOpen: (id: string) => void;
   onFlags: (id: string, pinned: boolean, archived: boolean) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
-}> = ({ conversations, activeId, onOpen, onFlags, onRename, onDelete }) => {
+}> = ({ conversations, loading, activeId, onOpen, onFlags, onRename, onDelete }) => {
   const [showArchived, setShowArchived] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<TutorConversation | null>(null);
@@ -67,7 +70,14 @@ export const ConversationList: React.FC<{
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      {conversations.length === 0 && <div className="px-2 py-4 text-xs text-muted-foreground">还没有对话</div>}
+      {loading && conversations.length === 0 && (
+        <div className="flex flex-col gap-2 px-2 pt-1" aria-label="正在加载对话">
+          {[70, 85, 60, 75].map((w) => (
+            <Skeleton key={w} className="h-4" style={{ width: `${w}%` }} />
+          ))}
+        </div>
+      )}
+      {!loading && conversations.length === 0 && <div className="px-2 py-4 text-xs text-muted-foreground">还没有对话</div>}
       {groups.map(
         (g) =>
           g.items.length > 0 && (
