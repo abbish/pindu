@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clapperboard, Film, Pencil, Plus, Scissors, SearchX, Tags, Target, Trash2 } from 'lucide-react';
+import { Clapperboard, Film, Pencil, Plus, Scissors, SearchX, Tags, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
 import {
@@ -164,11 +164,9 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
   const cutting = (videos ?? []).some((v) => v.status === 'processing') || jobs.some((j) => isJobActive(j) && j.kind === 'video_process');
 
   const clipMs = (clips ?? []).reduce((sum, c) => sum + c.endMs - c.startMs, 0);
-  const practiced = (clips ?? []).filter((c) => c.completedAttempts > 0).length;
   const tagCount = new Set((clips ?? []).flatMap((c) => c.tags.map((t) => t.id))).size;
   const metrics = [
     { label: '场景片段', value: clips?.length ?? 0, unit: '段', icon: Clapperboard, hint: clipMs > 0 ? formatDuration(clipMs, 'clock') : undefined },
-    { label: '练过的场景片段', value: practiced, unit: '段', icon: Target },
     { label: '标签', value: tagCount, unit: '个', icon: Tags },
     { label: '原始视频', value: videos?.length ?? 0, unit: '个', icon: Film, hint: videos && videos.length > 0 ? formatBytes(videos.reduce((s, v) => s + v.sizeBytes, 0)) : undefined },
   ];
@@ -177,7 +175,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
     <div className={embedded ? 'flex flex-col gap-6' : 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7'}>
       {!embedded && header}
 
-      <section aria-label="视频库统计" className={cn('grid grid-cols-4 gap-3', embedded && 'hidden')}>
+      <section aria-label="视频库统计" className={cn('grid grid-cols-3 gap-3', embedded && 'hidden')}>
         {metrics.map((m) => (
           <MetricCard key={m.label} {...m} loading={videos === null && !loadError} />
         ))}

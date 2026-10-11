@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
-import { byInstant, byNumber, byText, sortItems, type SortOption } from '@/utils/sorting';
+import { byInstant, byText, sortItems, type SortOption } from '@/utils/sorting';
 import { ListPagination, usePagination } from '@/components/ListPagination';
 import { PageError } from '@/components/PageError';
 import { cn } from '@/lib/utils';
@@ -27,7 +27,7 @@ import {
 } from '@/components/MaterialSelection/MaterialSelection';
 import { passageService } from '@/services/passageService';
 import { formatRelative } from '@/utils/datetime';
-import { LEVEL_LABEL, MODE_LABEL, scopeDetailLabel, scoreSummary } from '@/utils/passage';
+import { LEVEL_LABEL, scopeDetailLabel } from '@/utils/passage';
 import type { PassageOrigin, PassageSource, PassageSummary } from '@/types/passage';
 
 export interface PassageListProps {
@@ -122,7 +122,6 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
           ) : (
             <div className="text-xs text-muted-foreground">
               {p.questionSets > 0 ? `${p.questionSets} 个题组` : '还没有题组'}
-              {p.lastAttempt && ` · 最近一次${MODE_LABEL[p.lastAttempt.mode]}：${scoreSummary(p.lastAttempt)}`}
             </div>
           )}
         </Card>
@@ -150,10 +149,8 @@ const CREATING_KINDS = ['passage_generate', 'passage_import'];
 /** 短文列表的排序项（片段同样适用：ClipSummary 继承 PassageSummary） */
 export const PASSAGE_SORTS: SortOption<PassageSummary>[] = [
   { value: 'recent', label: '最近添加', compare: byInstant((p) => p.createdAt) },
-  { value: 'practiced', label: '最近练习', compare: byInstant((p) => p.lastAttempt?.completedAt) },
   { value: 'name', label: '标题', compare: byText((p) => p.title) },
   { value: 'level', label: '难度', compare: byText((p) => p.level) },
-  { value: 'attempts', label: '练习最多', compare: byNumber((p) => p.completedAttempts) },
 ];
 
 /** 短文卡片网格（短文库、词汇本「短文」页签共用）：加载 / 空 / 错误三态，删除确认；排序由页面控制（sortBy） */

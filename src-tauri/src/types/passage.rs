@@ -506,8 +506,11 @@ pub struct PassageModeStatistics {
 pub struct PassageStatistics {
     /// 短文总数（按计划筛选时为引用了该计划的短文）
     pub total_passages: i64,
-    /// 阅读理解题组总数
+    /// 题组总数
     pub total_sets: i64,
+    /// 其中阅读理解题组 / 听力题组
+    pub reading_sets: i64,
+    pub listening_sets: i64,
     /// 练过的短文篇数
     pub passages: i64,
     pub reading: PassageModeStatistics,

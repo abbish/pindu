@@ -918,9 +918,11 @@ impl PassageRepository {
         .bind(plan_id)
         .fetch_all(self.pool.as_ref())
         .await?;
-        let (total_passages, total_sets): (i64, i64) = sqlx::query_as(
+        let (total_passages, total_sets, reading_sets): (i64, i64, i64) = sqlx::query_as(
             "SELECT COUNT(*),
-                    COALESCE(SUM((SELECT COUNT(*) FROM passage_question_sets qs WHERE qs.passage_id = p.id)), 0)
+                    COALESCE(SUM((SELECT COUNT(*) FROM passage_question_sets qs WHERE qs.passage_id = p.id)), 0),
+                    COALESCE(SUM((SELECT COUNT(*) FROM passage_question_sets qs
+                                  WHERE qs.passage_id = p.id AND qs.mode = 'reading')), 0)
              FROM passages p
              WHERE (?1 IS NULL AND NOT EXISTS (SELECT 1 FROM video_clips vc WHERE vc.passage_id = p.id))
                 OR EXISTS (SELECT 1 FROM passage_sources s
@@ -932,6 +934,8 @@ impl PassageRepository {
         let mut stats = PassageStatistics {
             total_passages,
             total_sets,
+            reading_sets,
+            listening_sets: total_sets - reading_sets,
             passages,
             ..Default::default()
         };

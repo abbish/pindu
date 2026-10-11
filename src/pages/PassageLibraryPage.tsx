@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BookOpen, ChevronDown, FileQuestion, FileText, FileUp, Headphones, Plus, Sparkles, Target } from 'lucide-react';
+import { BookOpen, ChevronDown, FileText, FileUp, Headphones, Plus, Sparkles } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -10,8 +10,7 @@ import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { PASSAGE_SORTS, PassageList } from '@/components/PassageList';
 import { SortSelect, useSortPref } from '@/components/SortSelect';
 import { passageService } from '@/services/passageService';
-import { formatDuration } from '@/utils/datetime';
-import type { PassageModeStatistics, PassageOrigin, PassageStatistics } from '@/types/passage';
+import type { PassageOrigin, PassageStatistics } from '@/types/passage';
 import type { NavigateFn } from '../navigation';
 
 export interface PassageLibraryPageProps {
@@ -26,15 +25,9 @@ const ORIGINS = [
   ['imported', '导入'],
 ] as const;
 
-const percent = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)}%`);
-
-/** 一种练习模式的提示行：次数 · 用时 */
-const modeHint = (label: string, m: PassageModeStatistics | undefined) =>
-  m && m.attempts > 0 ? `${label} ${m.attempts} 次 · ${formatDuration(m.totalTime)}` : `${label}未练习`;
-
 /**
- * 素材库 · 短文库：顶部统计（短文 / 题组 / 练习次数 / 阅读与听力正确率）+ 搜索 + 短文卡片网格。
- * 统计与单词练习口径独立；次要数据，加载失败时静默（不挡住列表）。
+ * 素材库 · 短文库：顶部统计（短文 / 阅读理解题组 / 听力题组）+ 搜索 + 短文卡片网格。
+ * 素材是题库与自由练习，不统计练没练（练习跟踪在学习计划里）；次要数据，加载失败时静默（不挡住列表）。
  */
 export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNavigate, tagId }) => {
   const embedded = tagId !== undefined;
@@ -58,13 +51,11 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
     loadStats();
   }, [loadStats]);
 
-  const attempts = (stats?.reading.attempts ?? 0) + (stats?.listening.attempts ?? 0);
+  // 素材是题库与自由练习：只统计素材本身，练习跟踪在学习计划里
   const metrics = [
-    { label: '短文', value: stats?.totalPassages ?? 0, unit: '篇', icon: FileText, hint: stats ? `练过 ${stats.passages} 篇` : undefined },
-    { label: '题组', value: stats?.totalSets ?? 0, unit: '个', icon: FileQuestion },
-    { label: '练习次数', value: attempts, unit: '次', icon: Target, hint: attempts > 0 ? formatDuration((stats?.reading.totalTime ?? 0) + (stats?.listening.totalTime ?? 0)) : undefined },
-    { label: '阅读正确率', value: percent(stats?.reading.objectiveAccuracy), icon: BookOpen, hint: modeHint('阅读', stats?.reading) },
-    { label: '听力正确率', value: percent(stats?.listening.objectiveAccuracy), icon: Headphones, hint: modeHint('听力', stats?.listening) },
+    { label: '短文', value: stats?.totalPassages ?? 0, unit: '篇', icon: FileText },
+    { label: '阅读理解题组', value: stats?.readingSets ?? 0, unit: '套', icon: BookOpen },
+    { label: '听力题组', value: stats?.listeningSets ?? 0, unit: '套', icon: Headphones },
   ];
 
   return (
@@ -96,7 +87,7 @@ export const PassageLibraryPage: React.FC<PassageLibraryPageProps> = ({ onNaviga
       />
       )}
 
-      <section aria-label="短文统计" className={cn('grid grid-cols-5 gap-3', embedded && 'hidden')}>
+      <section aria-label="短文统计" className={cn('grid grid-cols-3 gap-3', embedded && 'hidden')}>
         {metrics.map((m) => (
           <MetricCard key={m.label} {...m} loading={loadingStats} />
         ))}

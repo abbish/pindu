@@ -348,10 +348,18 @@ pub async fn start_question_set_generation(
                 }),
             )),
         };
-        Ok(app.state::<Jobs>().spawn(spec, move |_ctx| async move {
+        // 这套题的名称（空 = 保存时自动编号）、题量与难度：排队时页面就能把它显示成一套题组
+        let detail = serde_json::json!({
+            "name": request.name.as_deref().map(str::trim).filter(|n| !n.is_empty()),
+            "spec": request.spec,
+        });
+        let jobs = app.state::<Jobs>();
+        let id = jobs.spawn(spec, move |_ctx| async move {
             let set = svc.generate_question_set(&request, &paths).await?;
             Ok(serde_json::json!({ "setId": set.id, "name": set.name, "count": set.questions.len() }))
-        }))
+        });
+        jobs.set_detail(&id, detail);
+        Ok(id)
     }
     .await;
     finish(&logger, "start_question_set_generation", result)

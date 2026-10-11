@@ -280,7 +280,6 @@ const ClipCard: React.FC<{ clip: ClipSummary; subtitle?: string; selection: Sele
               </div>
               <div className="truncate text-xs text-muted-foreground">
                 {c.videoTitle} · 第 {c.seq} 段 · {c.level.toUpperCase()}
-                {c.completedAttempts > 0 && ` · 练过 ${c.completedAttempts} 次`}
               </div>
             </div>
             <CardMenuButton actions={actions} />

@@ -27,8 +27,11 @@ import { ClipStudyPanel } from './passage-detail/ClipStudyPanel';
 import { videoService } from '@/services/videoService';
 import { MaterialTags } from '@/components/MaterialTags/MaterialTags';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
-import { JobPanel } from '@/components/Jobs';
-import { isJobActive } from '@/types/job';
+import { STOPPING_STAGE, jobPercent } from '@/components/Jobs';
+import { isJobActive, type Job } from '@/types/job';
+import { useElapsed } from '@/hooks/useElapsed';
+import { jobService } from '@/services/jobService';
+import { Progress } from '@/components/ui/progress';
 import { jobErrorText } from '@/components/Jobs';
 import type { PassageVideo } from '@/types/video';
 import { NewWordsCard } from './passage-detail/NewWordsCard';
@@ -38,9 +41,9 @@ import { useToast } from '@/components/Toast/ToastContainer';
 import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
 import { studyService } from '@/services/studyService';
-import { formatDate, formatRelative } from '@/utils/datetime';
-import { LEVEL_LABEL, scoreSummary, specSummary } from '@/utils/passage';
-import type { Passage, PassageMode, PlanPassage, QuestionSetSummary } from '@/types/passage';
+import { formatDate, formatDuration, formatRelative } from '@/utils/datetime';
+import { LEVEL_LABEL, specSummary } from '@/utils/passage';
+import type { Passage, PassageMode, PlanPassage, QuestionSetSummary, QuestionSetSpec } from '@/types/passage';
 import type { NavigateFn, PassageDetailTab, PassagePracticeReturn, PlanContext } from '../navigation';
 import { PASSAGE_STATUS, taskLabel } from '@/components/PlanPassagePicker';
 
@@ -71,27 +74,29 @@ const TargetChip: React.FC<{ word: string; meaning?: string | null; className?: 
   </span>
 );
 
-/** 题组行：名称、题型与难度、最近成绩；开始练习；⋯ 删除（阅读、听力题组各是各的） */
-const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: () => void; onRename: () => void; onDelete: () => void }> = ({ set, onStart, onRename, onDelete }) => {
-  const mode = set.mode;
-  return (
+/** 题组卡片的外框与左侧图标（已生成的题组与生成中的共用，生成中的图标转圈） */
+const SetCard: React.FC<{ mode: PassageMode; busy?: boolean; children: React.ReactNode }> = ({ mode, busy, children }) => (
   <Card className="flex-row items-center gap-4 px-5 py-4">
     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-      {mode === 'listening' ? <Headphones className="size-5" /> : <FileQuestion className="size-5" />}
+      {busy ? <Loader2 className="size-5 animate-spin text-primary" /> : mode === 'listening' ? <Headphones className="size-5" /> : <FileQuestion className="size-5" />}
     </div>
+    {children}
+  </Card>
+);
+
+/** 题组：名称、题型与难度；开始练习；⋯ 改名 / 删除。素材里的题组是题库，不显示练没练（练习跟踪在学习计划里） */
+const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: () => void; onRename: () => void; onDelete: () => void }> = ({ set, onStart, onRename, onDelete }) => (
+  <SetCard mode={set.mode}>
     <div className="min-w-0 flex-1">
       <div className="flex items-center gap-2">
         <span className="font-semibold">{set.name}</span>
         <span className="text-xs text-muted-foreground">{formatRelative(set.createdAt)}</span>
       </div>
       <div className="mt-0.5 truncate text-sm text-muted-foreground">{specSummary(set.spec)}</div>
-      <div className="mt-0.5 text-xs text-muted-foreground">
-        {set.lastAttempt ? `最近一次：${scoreSummary(set.lastAttempt)}${set.completedAttempts > 1 ? ` · 共练 ${set.completedAttempts} 次` : ''}` : '未练习'}
-      </div>
     </div>
     <Button variant="outline" onClick={onStart}>
-      {mode === 'listening' ? <Headphones /> : <BookOpen />}
-      {set.completedAttempts > 0 ? '再练一次' : '开始练习'}
+      {set.mode === 'listening' ? <Headphones /> : <BookOpen />}
+      开始练习
     </Button>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -111,7 +116,33 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: () => void; o
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  </Card>
+  </SetCard>
+);
+
+/** 生成中的题组：和题组同样的卡片（名称、题型与难度在提交时就定了），右侧换成进度与停止 */
+const PendingSetRow: React.FC<{ job: Job; mode: PassageMode }> = ({ job, mode }) => {
+  const detail = job.detail as { name?: string | null; spec?: QuestionSetSpec } | null;
+  const [stopping, setStopping] = useState(false);
+  const elapsed = useElapsed(job.startedAt, true);
+  const status = stopping || job.stage === STOPPING_STAGE ? STOPPING_STAGE : job.status === 'queued' ? '排队中' : `正在出题${elapsed !== null ? ` · 已用 ${formatDuration(elapsed * 1000)}` : ''}`;
+  const stop = async () => {
+    setStopping(true);
+    if (!(await jobService.cancel(job.id)).success) setStopping(false);
+  };
+  return (
+    <SetCard mode={mode} busy>
+      <div className="min-w-0 flex-1" role="status">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold">{detail?.name || '新题组'}</span>
+          <span className="text-xs text-muted-foreground">{status}</span>
+        </div>
+        {detail?.spec && <div className="mt-0.5 truncate text-sm text-muted-foreground">{specSummary(detail.spec)}</div>}
+        <Progress value={jobPercent(job)} className="mt-2 h-1.5 w-full max-w-sm [&>[data-slot=progress-indicator]]:bg-brand" aria-label="生成进度" />
+      </div>
+      <Button variant="outline" onClick={stop} disabled={stopping}>
+        停止
+      </Button>
+    </SetCard>
   );
 };
 
@@ -532,7 +563,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             {generatingSets(mode).length > 0 && (
               <div className="mb-3 flex flex-col gap-3">
                 {generatingSets(mode).map((job) => (
-                  <JobPanel key={job.id} job={job} title="正在生成题组" actions={{ stop: true }} />
+                  <PendingSetRow key={job.id} job={job} mode={mode} />
                 ))}
               </div>
             )}

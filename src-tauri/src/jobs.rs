@@ -219,6 +219,11 @@ impl Jobs {
     }
 
     /// 全部任务，最新的在前
+    /// 提交后补上任务明细（排队时就要显示的信息，如要生成的题组的题量）
+    pub fn set_detail(&self, id: &str, detail: Value) {
+        self.update(id, true, |job| job.detail = Some(detail));
+    }
+
     pub fn list(&self) -> Vec<Job> {
         let entries = self.entries.lock().unwrap();
         entries.iter().rev().map(|e| e.job.clone()).collect()

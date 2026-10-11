@@ -372,6 +372,10 @@ export interface PassageStatistics {
   totalPassages: number;
   /** 阅读理解题组总数 */
   totalSets: number;
+  /** 其中阅读理解题组 */
+  readingSets: number;
+  /** 其中听力题组 */
+  listeningSets: number;
   /** 练过的短文篇数 */
   passages: number;
   reading: PassageModeStatistics;
