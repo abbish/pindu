@@ -77,7 +77,7 @@ pub async fn start_passage_import(
     app: AppHandle,
     request: crate::types::passage::ImportPassagesRequest,
 ) -> AppResult<String> {
-    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::jobs::{JobLink, JobModule, JobSpec, Jobs, Lane};
     use crate::types::passage::PassageItemStatus;
     let logger = app.state::<Logger>();
     logger.api_request(
@@ -94,7 +94,7 @@ pub async fn start_passage_import(
         let label = request.items[0].source_label.clone();
         let spec = JobSpec {
             kind: "passage_import",
-            module: Some("passages"),
+            module: Some(JobModule::Passages),
             title: if count == 1 {
                 format!("导入材料 · {label}")
             } else {
@@ -174,7 +174,7 @@ pub async fn start_material_import(
     app: AppHandle,
     request: crate::types::material::MaterialImportRequest,
 ) -> AppResult<String> {
-    use crate::jobs::{JobSpec, Jobs, Lane};
+    use crate::jobs::{JobModule, JobSpec, Jobs, Lane};
     use crate::services::agent_settings::{AgentSettingsService, AgentTaskKind};
     use crate::services::material_read::{self, MaterialPurpose};
     use crate::services::prompt_profile::PromptProfileService;
@@ -204,7 +204,7 @@ pub async fn start_material_import(
         let name = request.file_name.trim().to_string();
         let spec = JobSpec {
             kind: "material_read",
-            module: Some("passages"),
+            module: Some(JobModule::Passages),
             title: format!("读取素材 · {name}"),
             lane: Lane::Agent,
             detached: false,

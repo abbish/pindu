@@ -52,6 +52,16 @@ pub enum Lane {
     Media,
 }
 
+/// 任务属于哪个模块：序列化为侧边栏一级页面键，菜单上显示这个模块进行中的任务
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum JobModule {
+    WordBooks,
+    Passages,
+    Videos,
+    Plans,
+}
+
 /// 「打开」结果时跳转的页面（`navigation.ts` 的页面键与参数）
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -76,8 +86,7 @@ pub struct Job {
     pub id: String,
     /// 任务类型，如 `word_analysis`、`passage_generate`、`video_process`
     pub kind: String,
-    /// 属于哪个模块（侧边栏一级页面键：wordbooks / passages / videos / plans），菜单上显示进行中的数量
-    pub module: Option<String>,
+    pub module: Option<JobModule>,
     pub title: String,
     pub status: JobStatus,
     /// 当前阶段的说明，如「第 3/8 段 · 切分中」
@@ -101,8 +110,7 @@ pub struct Job {
 /// 提交任务时的描述
 pub struct JobSpec {
     pub kind: &'static str,
-    /// 属于哪个模块（侧边栏一级页面键），见 `Job::module`
-    pub module: Option<&'static str>,
+    pub module: Option<JobModule>,
     pub title: String,
     pub lane: Lane,
     pub detached: bool,
@@ -170,7 +178,7 @@ impl Jobs {
         let job = Job {
             id: id.clone(),
             kind: spec.kind.to_string(),
-            module: spec.module.map(str::to_string),
+            module: spec.module,
             title: spec.title,
             status: JobStatus::Queued,
             stage: None,
@@ -622,6 +630,20 @@ mod tests {
         jobs.clear_finished();
         let left: Vec<_> = jobs.list().into_iter().map(|j| j.id).collect();
         assert_eq!(left, vec!["j0"]);
+    }
+
+    #[test]
+    fn module_serializes_as_sidebar_page_key() {
+        let keys: Vec<_> = [
+            JobModule::WordBooks,
+            JobModule::Passages,
+            JobModule::Videos,
+            JobModule::Plans,
+        ]
+        .iter()
+        .map(|m| serde_json::to_value(m).unwrap())
+        .collect();
+        assert_eq!(keys, ["wordbooks", "passages", "videos", "plans"]);
     }
 
     #[test]

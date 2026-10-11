@@ -6,6 +6,7 @@ import { forgetJobs, useJobs } from '@/hooks/useJobs';
 import { jobService } from '@/services/jobService';
 import type { NavigateFn } from '@/navigation';
 import { isJobActive, type Job } from '@/types/job';
+import { defaultJobsTab } from '@/utils/jobSeen';
 import { JobItem } from '@/components/Jobs/JobItem';
 import { actionProps, useJobActions } from '@/components/Jobs/useJobActions';
 
@@ -21,7 +22,7 @@ const FILTERS: { value: Filter; label: string; match: (job: Job) => boolean; emp
 export const JobsPage: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) => {
   const jobs = useJobs();
   const actions = useJobActions(onNavigate);
-  const [filter, setFilter] = useState<Filter>(() => (jobs.some(isJobActive) || jobs.length === 0 ? 'active' : 'done'));
+  const [filter, setFilter] = useState<Filter>(() => defaultJobsTab(jobs));
   const current = FILTERS.find((f) => f.value === filter)!;
   const shown = jobs.filter(current.match);
   const finishedIds = jobs.filter((j) => !isJobActive(j)).map((j) => j.id);

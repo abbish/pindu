@@ -2,7 +2,7 @@
 
 use crate::agent::tasks::PhonicsContext;
 use crate::error::{AppError, AppResult};
-use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+use crate::jobs::{JobLink, JobModule, JobSpec, Jobs, Lane};
 use crate::logger::Logger;
 use crate::services::agent_settings::{AgentSettingsService, AgentTaskKind};
 use crate::services::phonics_analysis::PhonicsBatchAnalyzer;
@@ -121,7 +121,7 @@ pub async fn start_material_words(
     app: AppHandle,
     request: crate::types::material::MaterialWordsRequest,
 ) -> AppResult<String> {
-    use crate::jobs::{JobSpec, Jobs, Lane};
+    use crate::jobs::{JobModule, JobSpec, Jobs, Lane};
     use crate::services::material_read::{self, MaterialPurpose};
     use crate::types::word_analysis::WordExtractionResult;
     let pool = app.state::<SqlitePool>();
@@ -166,7 +166,7 @@ pub async fn start_material_words(
         let name = request.file_name.trim().to_string();
         let spec = JobSpec {
             kind: "material_read",
-            module: Some("wordbooks"),
+            module: Some(JobModule::WordBooks),
             title: format!("读取素材 · {name}"),
             lane: Lane::Agent,
             detached: false,
@@ -459,7 +459,7 @@ pub async fn start_word_analysis(
         };
         let spec = JobSpec {
             kind: "word_analysis",
-            module: Some("wordbooks"),
+            module: Some(JobModule::WordBooks),
             title: format!("分析 {} 个单词 · {}", job.words.len(), book.title),
             lane: Lane::Agent,
             detached: true,

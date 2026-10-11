@@ -236,7 +236,7 @@ pub async fn generate_study_plan_schedule(
 /// 任务完成后重排还没练过的日程；排不好或停止时保持原顺序。计划卡与详情页按 link.params.planId 显示进度
 #[tauri::command]
 pub async fn start_study_plan_ordering(app: AppHandle, plan_id: i64) -> AppResult<String> {
-    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::jobs::{JobLink, JobModule, JobSpec, Jobs, Lane};
     use crate::services::study_plan_generation::StudyPlanGenerator;
 
     let pool = app.state::<SqlitePool>();
@@ -254,7 +254,7 @@ pub async fn start_study_plan_ordering(app: AppHandle, plan_id: i64) -> AppResul
         let generator = StudyPlanGenerator::new(pool_arc, logger_arc, super::agent_paths(&app)?);
         let spec = JobSpec {
             kind: "plan_ordering",
-            module: Some("plans"),
+            module: Some(JobModule::Plans),
             title: format!("安排学习顺序 · {}", plan.name),
             lane: Lane::Agent,
             detached: true,

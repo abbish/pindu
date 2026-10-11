@@ -35,6 +35,7 @@ import { QuickAsk } from '@/components/QuickAsk';
 import { UpdateBanner } from '../UpdateBanner';
 import { markJobsSeen, useOnJobFinished } from '@/hooks/useJobs';
 import { refreshTagUsage, tagTotal, useTagUsage } from '@/hooks/useTagUsage';
+import type { JobModule } from '@/types/job';
 
 export interface AppShellProps {
   /** 当前页面键（决定侧边栏高亮与顶栏标题） */
@@ -54,14 +55,15 @@ export interface AppShellProps {
   children: React.ReactNode;
 }
 
-type NavItem = { key: TopLevelPage; label: string; icon: React.ComponentType };
+/** jobs：这个模块的后台任务显示在菜单右侧 */
+type NavItem = { key: TopLevelPage; label: string; icon: React.ComponentType; jobs?: JobModule };
 
 /** 侧边栏分组：一级功能（无标题）+ 素材库（词汇本、短文） */
 const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     items: [
       { key: 'home', label: '首页', icon: Home },
-      { key: 'plans', label: '计划', icon: ListChecks },
+      { key: 'plans', label: '计划', icon: ListChecks, jobs: 'plans' },
       { key: 'calendar', label: '日历', icon: CalendarDays },
       { key: 'tutor', label: 'AI 老师', icon: GraduationCap },
     ],
@@ -69,9 +71,9 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     label: '素材库',
     items: [
-      { key: 'wordbooks', label: '词汇本', icon: BookOpen },
-      { key: 'passages', label: '短文库', icon: FileText },
-      { key: 'videos', label: '视频库', icon: Clapperboard },
+      { key: 'wordbooks', label: '词汇本', icon: BookOpen, jobs: 'wordbooks' },
+      { key: 'passages', label: '短文库', icon: FileText, jobs: 'passages' },
+      { key: 'videos', label: '视频库', icon: Clapperboard, jobs: 'videos' },
     ],
   },
 ];
@@ -198,13 +200,13 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
                 {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {group.items.map(({ key, label, icon: Icon }) => (
+                    {group.items.map(({ key, label, icon: Icon, jobs }) => (
                       <SidebarMenuItem key={key}>
                         <SidebarMenuButton isActive={active === key} tooltip={label} onClick={() => onNavigate(key)}>
                           <Icon />
                           <span>{label}</span>
                         </SidebarMenuButton>
-                        <ModuleJobBadge module={key} label={label} current={active === key} onNavigate={onNavigate} />
+                        {jobs && <ModuleJobBadge module={jobs} label={label} current={active === key} onNavigate={onNavigate} />}
                       </SidebarMenuItem>
                     ))}
                   </SidebarMenu>

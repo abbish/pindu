@@ -2,6 +2,9 @@
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
+/** 任务属于哪个模块（侧边栏一级页面键），菜单上显示这个模块进行中的任务 */
+export type JobModule = 'wordbooks' | 'passages' | 'videos' | 'plans';
+
 /** 「打开」结果时跳转的页面（navigation.ts 的页面键与参数） */
 export interface JobLink {
   page: string;
@@ -12,8 +15,8 @@ export interface Job {
   id: string;
   /** 任务类型，如 word_analysis、plan_ordering */
   kind: string;
-  /** 属于哪个模块（侧边栏一级页面键：wordbooks / passages / videos / plans），菜单上显示进行中的数量 */
-  module: string | null;
+  /** 属于哪个模块；没有时只在任务页显示 */
+  module: JobModule | null;
   title: string;
   status: JobStatus;
   /** 当前阶段的说明 */

@@ -58,7 +58,7 @@ pub async fn start_passage_planning(
     request: GeneratePassageRequest,
     feedback: Option<String>,
 ) -> AppResult<String> {
-    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::jobs::{JobLink, JobModule, JobSpec, Jobs, Lane};
     let logger = app.state::<Logger>();
     logger.api_request(
         "start_passage_planning",
@@ -80,7 +80,7 @@ pub async fn start_passage_planning(
         let service = service(&app);
         let spec = JobSpec {
             kind: "passage_plan",
-            module: Some("passages"),
+            module: Some(JobModule::Passages),
             title: "规划短文内容".to_string(),
             lane: Lane::Agent,
             detached: true,
@@ -137,7 +137,7 @@ pub async fn start_passage_generation(
     app: AppHandle,
     request: crate::types::passage::GeneratePassagesRequest,
 ) -> AppResult<String> {
-    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::jobs::{JobLink, JobModule, JobSpec, Jobs, Lane};
     use crate::types::passage::PassageItemStatus;
     let logger = app.state::<Logger>();
     logger.api_request(
@@ -154,7 +154,7 @@ pub async fn start_passage_generation(
         let count = request.items.len();
         let spec = JobSpec {
             kind: "passage_generate",
-            module: Some("passages"),
+            module: Some(JobModule::Passages),
             title: if count == 1 && !request.items[0].title.trim().is_empty() {
                 format!("写短文 · {}", request.items[0].title)
             } else if count == 1 {
@@ -318,7 +318,7 @@ pub async fn start_question_set_generation(
     app: AppHandle,
     request: GenerateQuestionSetRequest,
 ) -> AppResult<String> {
-    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::jobs::{JobLink, JobModule, JobSpec, Jobs, Lane};
     let logger = app.state::<Logger>();
     logger.api_request(
         "start_question_set_generation",
@@ -334,7 +334,7 @@ pub async fn start_question_set_generation(
         // 任务带上方式：页面按它把进度放进「阅读理解」/「听力练习」页签，任务面板点开也到那个页签
         let spec = JobSpec {
             kind: "question_set",
-            module: Some("passages"),
+            module: Some(JobModule::Passages),
             title: format!(
                 "{} · {}",
                 if listening { "出听力题" } else { "出阅读理解题" },
@@ -662,7 +662,7 @@ fn running_word_cards(jobs: &crate::jobs::Jobs, passage_id: i64) -> Option<Strin
 /// 这篇已经有在跑的同类任务时返回它的 id
 #[tauri::command]
 pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Option<String>> {
-    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::jobs::{JobLink, JobModule, JobSpec, Jobs, Lane};
     use crate::services::agent_settings::{AgentSettingsService, AgentTaskKind};
     use crate::services::prompt_profile::PromptProfileService;
     let logger = app.state::<Logger>();
@@ -699,7 +699,7 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
         let words: Vec<String> = missing.into_iter().map(|t| t.word).collect();
         let spec = JobSpec {
             kind: "word_cards",
-            module: Some("passages"),
+            module: Some(JobModule::Passages),
             title: format!("生成单词卡 · {}", passage.title),
             lane: Lane::Agent,
             detached: true,

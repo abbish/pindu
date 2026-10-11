@@ -4,17 +4,15 @@ import { Button } from '@/components/ui/button';
 import { SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { markJobsSeen, useJobs, useJobsSeenAt } from '@/hooks/useJobs';
-import { instantMs } from '@/utils/datetime';
+import { JOBS_SINCE, markJobsSeen, useJobs, useJobsSeen } from '@/hooks/useJobs';
+import { isJobUnseen, JOBS_PAGE } from '@/utils/jobSeen';
 import type { NavigateFn } from '@/navigation';
-import { isJobActive, type Job } from '@/types/job';
+import { isJobActive, type Job, type JobModule } from '@/types/job';
 import { JobItem } from './JobItem';
 import { actionProps, useJobActions } from './useJobActions';
 
 /** 模块浮层里最多显示的已结束任务 */
 const RECENT_FINISHED = 5;
-
-const finishedAfter = (job: Job, at: number) => !isJobActive(job) && job.finishedAt != null && instantMs(job.finishedAt) > at;
 
 /** 任务浮层的内容：进行中在上、最近结束的在下，底部「查看全部任务」进入任务页 */
 const JobsPopoverBody: React.FC<{ title: string; jobs: Job[]; onNavigate: NavigateFn; onClose: () => void }> = ({ title, jobs, onNavigate, onClose }) => {
@@ -63,15 +61,14 @@ const JobsPopoverBody: React.FC<{ title: string; jobs: Job[]; onNavigate: Naviga
  * 有进行中的任务时显示数量并呼吸；结束了还没看过时是一个小点（绿色完成、红色失败），点开浮层或进入这个模块后消失。
  * 点开是这个模块的任务浮层，底部「查看全部任务」进入任务页。侧栏收起成图标时只在图标角上显示小点。
  */
-export const ModuleJobBadge: React.FC<{ module: string; label: string; current: boolean; onNavigate: NavigateFn }> = ({ module, label, current, onNavigate }) => {
+export const ModuleJobBadge: React.FC<{ module: JobModule; label: string; current: boolean; onNavigate: NavigateFn }> = ({ module, label, current, onNavigate }) => {
   const jobs = useJobs().filter((j) => j.module === module);
-  const seenAt = useJobsSeenAt(module);
+  const seen = useJobsSeen();
   const [open, setOpen] = useState(false);
 
   const active = jobs.filter(isJobActive);
-  const finished = jobs.filter((j) => !isJobActive(j));
   // 正在看这个模块时，刚结束的任务已经在页面上看到了
-  const unseen = current ? [] : finished.filter((j) => finishedAfter(j, seenAt));
+  const unseen = current ? [] : jobs.filter((j) => isJobUnseen(j, seen, JOBS_SINCE));
   if (active.length === 0 && unseen.length === 0 && !open) return null;
 
   const failed = unseen.some((j) => j.status === 'failed');
@@ -118,13 +115,13 @@ export const ModuleJobBadge: React.FC<{ module: string; label: string; current: 
  */
 export const JobsNavItem: React.FC<{ current: boolean; onNavigate: NavigateFn }> = ({ current, onNavigate }) => {
   const jobs = useJobs();
-  const seenAt = useJobsSeenAt('jobs');
+  const seen = useJobsSeen();
   const active = jobs.filter(isJobActive).length;
-  const unseenFailure = !current && jobs.some((j) => j.status === 'failed' && finishedAfter(j, seenAt));
+  const unseenFailure = !current && jobs.some((j) => j.status === 'failed' && isJobUnseen(j, seen, JOBS_SINCE));
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton isActive={current} tooltip={active > 0 ? `后台任务 · ${active} 个进行中` : '后台任务'} className="relative" onClick={() => onNavigate('jobs')}>
+      <SidebarMenuButton isActive={current} tooltip={active > 0 ? `后台任务 · ${active} 个进行中` : '后台任务'} className="relative" onClick={() => onNavigate(JOBS_PAGE)}>
         <ListTodo />
         <span>后台任务</span>
         {unseenFailure && <span aria-hidden className="absolute top-1.5 left-5 size-2 rounded-full bg-destructive" />}

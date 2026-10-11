@@ -6,16 +6,17 @@ import { isJobActive, type Job } from '../types/job';
 /**
  * 后台任务的全局状态（模块级单例，同 useUpdater 的写法）：启动时取一次列表，之后只听后端的 `job-updated` 事件。
  * - useJobs：全部任务（侧边栏的数量、任务页）
- * - useJobsSeenAt(key)：某个模块（或任务页）上次看过的时刻，之后结束的任务算没看过
+ * - useJobsSeen()：各模块与任务页上次看过的时刻（判断见 utils/jobSeen.ts）
  * - useJob(id)：发起页面订阅自己的任务；订阅期间这个任务算「有人在看」，完成时不再弹全局提示
  * - waitForJob(id)：等任务结束（结果只给页面用的前台任务）
  * - useOnJobFinished(cb)：任务结束时回调（如词汇本详情页在分析任务结束后刷新列表）
  */
 
 let jobs: Job[] = [];
-/** 模块键（侧边栏一级页面键，任务页为 jobs）→ 上次看过的时刻；没看过时以启动时刻为准 */
-const seenAt = new Map<string, number>();
-const appStart = Date.now();
+/** 模块键（侧边栏一级页面键，任务页为 jobs）→ 上次看过的时刻；每次整体替换，订阅方据此重画 */
+let seenAt: ReadonlyMap<string, number> = new Map();
+/** 打开应用的时刻：之前结束的任务不算没看过 */
+export const JOBS_SINCE = Date.now();
 const listeners = new Set<() => void>();
 const watched = new Map<string, number>();
 const waiters = new Map<string, ((job: Job) => void)[]>();
@@ -71,7 +72,7 @@ export function forgetJobs(ids: string[]) {
 
 /** 记下这个模块（或任务页）的任务已经看过 */
 export function markJobsSeen(key: string) {
-  seenAt.set(key, Date.now());
+  seenAt = new Map(seenAt).set(key, Date.now());
   notify();
 }
 
@@ -89,8 +90,8 @@ export function useJobs(): Job[] {
   return useSyncExternalStore(subscribe, () => jobs);
 }
 
-export function useJobsSeenAt(key: string): number {
-  return useSyncExternalStore(subscribe, () => seenAt.get(key) ?? appStart);
+export function useJobsSeen(): ReadonlyMap<string, number> {
+  return useSyncExternalStore(subscribe, () => seenAt);
 }
 
 /** 订阅一个任务；id 为空时返回 undefined */
