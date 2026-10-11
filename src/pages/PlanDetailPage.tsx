@@ -52,6 +52,8 @@ import type { PlanPassage } from '@/types/passage';
 import { intervalLabel } from '@/components/PlanPassagePicker';
 import { PageError } from '@/components/PageError';
 import { InlineError } from '@/components/InlineError';
+import { JobPanel, activeJobFor } from '@/components/Jobs';
+import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 
 type ViewMode = 'schedule' | 'words' | 'passages' | 'statistics' | 'settings';
 
@@ -143,6 +145,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
   const [actionError, setActionError] = useState<{ label: string; message: string } | null>(null);
 
   usePageTitle(plan?.name);
+  /** 新建后在后台按从易到难排学习顺序：排好前不开始练习，排完重新加载日程 */
+  const ordering = activeJobFor(useJobs(), ['plan_ordering'], 'planId', planId);
 
   const loadSchedules = useCallback(async () => {
     setSchedulesLoading(true);
@@ -201,6 +205,10 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useOnJobFinished((job) => {
+    if (job.kind === 'plan_ordering' && (job.link?.params as { planId?: number } | null)?.planId === planId) void loadAll();
+  });
 
   // 默认页签：只练短文的计划看短文，其余看日程（列表）
   const contentKind = plan?.practice_content;
@@ -455,6 +463,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
         </div>
       </div>
 
+      {ordering && <JobPanel job={ordering} title="正在安排学习顺序" actions={{ stop: true }} />}
+
       <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-3">
         {/* 今天 */}
         <Card className="gap-3 p-5">
@@ -471,7 +481,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
               {canPractice && todayLines.length > 0 && !hasTodayWork && nextText && <p className="text-xs text-muted-foreground">{nextText}</p>}
             </div>
             {canPractice && (hasTodayWork || withWords) && (
-              <Button onClick={startPractice} variant={hasTodayWork ? 'default' : 'outline'}>
+              <Button onClick={startPractice} variant={hasTodayWork ? 'default' : 'outline'} disabled={!!ordering} title={ordering ? '学习顺序排好后就能开始' : undefined}>
                 {hasTodayWork ? <Play /> : <RotateCw />}
                 {!hasTodayWork ? '再练一次' : status === 'Pending' ? '开始学习' : '继续学习'}
               </Button>
@@ -575,7 +585,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
           />
         </TabsContent>
         <TabsContent value="settings">
-          <PlanSettingsView plan={plan} onChanged={loadAll} />
+          <PlanSettingsView plan={plan} onChanged={loadAll} ordering={!!ordering} />
         </TabsContent>
         <TabsContent value="schedule">
           {withWords && scheduleAs === 'list' ? (
@@ -584,7 +594,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
               loading={schedulesLoading}
               sessions={sessions ?? []}
               today={today}
-              canPractice={canPractice}
+              canPractice={canPractice && !ordering}
               onStartPractice={(scheduleId) => onNavigate?.('word-practice', { planId: plan.id, scheduleId })}
             />
           ) : (

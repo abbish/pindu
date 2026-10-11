@@ -66,13 +66,11 @@ export class StudyService extends BaseService {
   }
 
   /**
-   * AI 排学习顺序并生成日程（前台任务）：返回任务 id，结果（StudyPlanAIResult）在任务完成时的 job.result 里；
-   * 页面离开时应取消任务
+   * 按从易到难给已建好的计划排学习顺序（后台任务 plan_ordering，离开页面继续）：返回任务 id；
+   * 完成后还没练过的日程按新顺序重排，排不好或停止时保持词汇本顺序
    */
-  async startStudyPlanOrdering(request: StudyPlanScheduleRequest): Promise<ApiResult<string>> {
-    return this.executeWithLoading(async () =>
-      this.client.invoke<string>('start_study_plan_ordering', { request: this.scheduleRequest(request) })
-    );
+  async startStudyPlanOrdering(planId: number): Promise<ApiResult<string>> {
+    return this.executeWithLoading(async () => this.client.invoke<string>('start_study_plan_ordering', { planId }));
   }
 
   /** 校验并转成后端的请求形状（snake_case 结构体字段） */

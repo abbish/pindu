@@ -232,42 +232,39 @@ pub async fn generate_study_plan_schedule(
     super::finish(&logger, "generate_study_plan_schedule", result)
 }
 
-/// AI 排学习顺序并生成日程（前台任务）：立即返回任务 id，结果（StudyPlanAIResult）在任务完成时随 job-updated 送达；
-/// 新建计划页离开时取消任务
+/// 按从易到难给计划排学习顺序（后台任务 kind plan_ordering，离开页面继续）：计划已按词汇本顺序建好，
+/// 任务完成后重排还没练过的日程；排不好或停止时保持原顺序。计划卡与详情页按 link.params.planId 显示进度
 #[tauri::command]
-pub async fn start_study_plan_ordering(
-    app: AppHandle,
-    request: StudyPlanScheduleRequest,
-) -> AppResult<String> {
-    use crate::jobs::{JobSpec, Jobs, Lane};
-    use crate::services::study_plan_generation::{validate_request, StudyPlanGenerator};
+pub async fn start_study_plan_ordering(app: AppHandle, plan_id: i64) -> AppResult<String> {
+    use crate::jobs::{JobLink, JobSpec, Jobs, Lane};
+    use crate::services::study_plan_generation::StudyPlanGenerator;
 
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
     logger.api_request(
         "start_study_plan_ordering",
-        Some(&format!(
-            "name: {}, daily_new_words: {}, wordbooks: {:?}",
-            request.name, request.daily_new_words, request.wordbook_ids
-        )),
+        Some(&format!("plan_id: {plan_id}")),
     );
     let result = async {
-        validate_request(&request)?;
-        let generator = StudyPlanGenerator::new(
-            Arc::new(pool.inner().clone()),
-            Arc::new(logger.inner().clone()),
-            super::agent_paths(&app)?,
-        );
+        let pool_arc = Arc::new(pool.inner().clone());
+        let logger_arc = Arc::new(logger.inner().clone());
+        let plan = StudyPlanService::new(pool_arc.clone(), logger_arc.clone())
+            .get_study_plan(plan_id)
+            .await?;
+        let generator = StudyPlanGenerator::new(pool_arc, logger_arc, super::agent_paths(&app)?);
         let spec = JobSpec {
             kind: "plan_ordering",
-            title: format!("安排学习顺序 · {}", request.name.trim()),
+            title: format!("安排学习顺序 · {}", plan.name),
             lane: Lane::Agent,
-            detached: false,
-            link: None,
+            detached: true,
+            link: Some(JobLink::new(
+                "plan-detail",
+                serde_json::json!({ "planId": plan_id }),
+            )),
         };
         Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
-            let schedule = generator.generate(&request, &ctx).await?;
-            Ok(serde_json::to_value(schedule).unwrap_or_default())
+            let result = generator.order_plan(plan_id, &ctx).await?;
+            Ok(serde_json::to_value(result).unwrap_or_default())
         }))
     }
     .await;

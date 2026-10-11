@@ -30,6 +30,8 @@ export interface PlanSettingsViewProps {
   plan: StudyPlanWithProgress;
   /** 计划改动后刷新整页数据 */
   onChanged: () => Promise<void> | void;
+  /** 正在后台排学习顺序 */
+  ordering?: boolean;
 }
 
 const EDITABLE: UnifiedStudyPlanStatus[] = ['Draft', 'Pending', 'Active', 'Paused'];
@@ -60,7 +62,7 @@ const paceSummary = (r: PlanPaceResult) =>
  * 名称与描述；每天新词数（只重排还没练过的新词日，已学的单词、复习与练习记录不变）；词汇本（列出 + 追加）；
  * 短文（练习内容、间隔、顺序与题组，整体保存，已完成的锁定；C4）。删除只在页头 ⋯ 菜单里（plan-ux B3）。
  */
-export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChanged }) => {
+export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChanged, ordering }) => {
   const toast = useToast();
   const editable = EDITABLE.includes(plan.unified_status as UnifiedStudyPlanStatus);
   const started = plan.unified_status === 'Active' || plan.unified_status === 'Paused';
@@ -106,6 +108,15 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
     }
     toast.showSuccess(`已改为每天 ${pace} 个新词`, paceSummary(result.data));
     await onChanged();
+  };
+
+  // 学习顺序：还没学的词按从易到难重新排（后台任务，进度显示在页头下面）
+  const [startingOrder, setStartingOrder] = useState(false);
+  const reorder = async () => {
+    setStartingOrder(true);
+    const result = await studyService.startStudyPlanOrdering(plan.id);
+    setStartingOrder(false);
+    if (!result.success) toast.showError('无法开始安排学习顺序', result.error);
   };
 
   // 词汇本
@@ -279,6 +290,12 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
               </Button>
             </div>
           )}
+          <SettingsRow label="学习顺序" description="把还没学的词按拼读规律从易到难重新排">
+            <Button variant="outline" size="sm" onClick={reorder} disabled={!editable || ordering || startingOrder}>
+              {(ordering || startingOrder) && <Loader2 className="animate-spin" />}
+              {ordering ? '正在安排…' : '从易到难重新排'}
+            </Button>
+          </SettingsRow>
         </SettingsSection>
       )}
 

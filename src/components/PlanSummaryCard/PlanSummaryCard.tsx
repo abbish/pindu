@@ -28,6 +28,8 @@ import { todayLine } from '@/utils/planToday';
 import { scheduleLabel } from '@/utils/incompletePractice';
 import { studyService } from '@/services/studyService';
 import { intervalLabel } from '@/components/PlanPassagePicker';
+import { JobProgress, activeJobFor } from '@/components/Jobs';
+import { useJobs } from '@/hooks/useJobs';
 
 export interface PlanSummaryCardProps {
   /** 学习计划 */
@@ -118,9 +120,11 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
   const accuracy = learnedWords > 0 ? `${Math.round(statistics?.average_accuracy_rate || 0)}%` : '—';
 
   const action = actionLabel(status);
+  /** 新建后在后台按从易到难排学习顺序：排好前不开始练习（否则先学到的是词汇本顺序） */
+  const ordering = activeJobFor(useJobs(), ['plan_ordering'], 'planId', plan.id);
   const menuItems = (Item: typeof DropdownMenuItem | typeof ContextMenuItem) => (
     <>
-      {action && <Item onSelect={() => onAction(plan.id)}>{action}</Item>}
+      {action && !ordering && <Item onSelect={() => onAction(plan.id)}>{action}</Item>}
       <Item onSelect={() => onOpen(plan.id)}>查看详情</Item>
     </>
   );
@@ -204,7 +208,9 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
                 />
               ))}
             </div>
-            {todayInfo ? (
+            {ordering ? (
+              <JobProgress job={ordering} fallback="正在安排学习顺序" />
+            ) : todayInfo ? (
               <div className={cn('truncate text-xs', todayInfo.warning ? 'text-warning' : 'text-muted-foreground')} title={todayInfo.text}>
                 {todayInfo.text}
               </div>
@@ -223,6 +229,8 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
           <div className="flex items-center gap-1">
             {action && (
               <Button
+                disabled={!!ordering}
+                title={ordering ? '学习顺序排好后就能开始' : undefined}
                 onClick={(e) => {
                   e.stopPropagation();
                   onAction(plan.id);

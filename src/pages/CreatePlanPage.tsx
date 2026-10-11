@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, RotateCw } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,20 +9,16 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useToast } from '@/components/Toast/ToastContainer';
-import { PlanningProgress } from '@/components/PlanningProgress';
 import { WordBookSelector, type WordBookOption } from '@/components/WordBookSelector';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { wordBookService } from '@/services/wordbookService';
 import { studyService } from '@/services/studyService';
 import { passageService } from '@/services/passageService';
 import { useAsyncData } from '@/hooks/useAsyncData';
-import { useJob, waitForJob } from '@/hooks/useJobs';
-import { jobService } from '@/services/jobService';
-import { jobErrorText } from '@/components/Jobs';
 import { addLocalDays, localToday } from '@/utils/datetime';
 import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { CONSOLIDATION_DAYS, DAILY_NEW_WORDS_OPTIONS, DEFAULT_DAILY_NEW_WORDS, estimatePlan } from '@/utils/planParams';
-import type { ApiResult, PracticeContent, StudyPlanAIResult } from '@/types';
+import type { PracticeContent, StudyPlanAIResult } from '@/types';
 import type { PlanPassageCandidate } from '@/types/passage';
 import {
   DEFAULT_PASSAGE_INTERVAL,
@@ -34,7 +30,6 @@ import {
 } from '@/components/PlanPassagePicker';
 import type { NavigateFn } from '@/navigation';
 import { PageError } from '@/components/PageError';
-import { messageOf } from '@/utils/errorHandler';
 import { InlineError } from '@/components/InlineError';
 
 export interface CreatePlanPageProps {
@@ -42,8 +37,8 @@ export interface CreatePlanPageProps {
   onNavigate?: NavigateFn;
 }
 
-/** 创建过程：idle 填写中 → planning AI 排序中 → failed AI 失败（可改用默认顺序）→ saving 保存中 */
-type Phase = 'idle' | 'planning' | 'failed' | 'saving';
+/** 创建过程：idle 填写中 → saving 保存中（从易到难的顺序在保存后由后台任务排） */
+type Phase = 'idle' | 'saving';
 
 /** 没填名称时按所选词汇本（只练短文时按短文）生成 */
 const autoName = (books: WordBookOption[], passages: PlanPassageDraft[]) => {
@@ -79,9 +74,6 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   /** 进行中的 AI 排序任务（离开页面或停止时取消） */
-  const jobRef = useRef<string | null>(null);
-  const [planJobId, setPlanJobId] = useState<string | null>(null);
-  const planJob = useJob(planJobId);
 
   const { data: rawBooks, loading: loadingBooks, error: loadError, refresh: reloadBooks } = useAsyncData(async () => {
     const result = await wordBookService.getAllWordBooks();
@@ -104,7 +96,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
   const chosenBooks = wordBooks.filter((b) => selectedBooks.includes(b.id));
   const suggestedName = autoName(chosenBooks, passages);
   const planName = name.trim() || suggestedName;
-  const busy = phase === 'planning' || phase === 'saving';
+  const busy = phase === 'saving';
 
   // 可加入的短文：按与所选词汇本的相关度排序
   const candidateBookIds = selectedBooks;
@@ -152,30 +144,12 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
     };
   }, [withWords, selectedBooks, dailyNewWords]);
 
-  // 离开页面时若仍在 AI 排序：取消任务（结果只给这个页面用，否则 AI 会在后台空跑、消耗额度）
-  useEffect(
-    () => () => {
-      if (jobRef.current) void jobService.cancel(jobRef.current);
-    },
-    []
-  );
-
-  const stopPlanning = async () => {
-    const id = jobRef.current;
-    jobRef.current = null;
-    setPhase('idle');
-    if (!id) return;
-    const cancelled = await jobService.cancel(id);
-    if (!cancelled.success) toast.showWarning('排序可能还在进行', cancelled.error);
-  };
-
-  /** 排日程（AI 或默认顺序）→ 保存为“待开始”→ 进入计划详情 */
   const passageFields = () =>
     withPassages ? { passages: toPassageInputs(passages), passageIntervalDays: passageInterval } : {};
 
-  const finish = (planId: number) => {
+  const finish = () => {
     toast.showSuccess(`已创建「${planName}」`);
-    onNavigate?.('plan-detail', { planId });
+    onNavigate?.('plans');
   };
 
   /** 只练短文：没有单词日程，直接保存 */
@@ -200,60 +174,48 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
       setPhase('idle');
       return;
     }
-    finish(saved.data);
+    finish();
   };
 
-  const create = async (withAi: boolean) => {
+  /** 按词汇本顺序排好日程并保存（马上能用）；选了从易到难时，再在后台重排还没学的词，进度显示在计划卡上 */
+  const create = async () => {
     if (!withWords) return createPassagesOnly();
     if (!planName || selectedBooks.length === 0) return;
-    if (withPassages && passages.length === 0) return;
     setError(null);
-    setPhase(withAi ? 'planning' : 'saving');
-    try {
-      const request = {
-        name: planName,
-        description: description.trim(),
-        dailyNewWords,
-        startDate: localToday(), // 第一次练习时会再平移到那一天
-        wordbookIds: selectedBooks,
-        useAi: withAi,
-      };
-      let scheduled: ApiResult<StudyPlanAIResult>;
-      if (withAi) {
-        const started = await studyService.startStudyPlanOrdering(request);
-        if (!started.success) throw new Error(started.error);
-        jobRef.current = started.data;
-        setPlanJobId(started.data);
-        const job = await waitForJob(started.data);
-        // 用户停止或已离开页面
-        if (jobRef.current !== started.data || job.status === 'cancelled') return;
-        jobRef.current = null;
-        if (job.status === 'failed') throw new Error(jobErrorText(job));
-        scheduled = { success: true, data: job.result as StudyPlanAIResult };
-      } else {
-        scheduled = await studyService.generateStudyPlanSchedule(request);
-      }
-      if (!scheduled.success) throw new Error(scheduled.error);
-      setPhase('saving');
-      const meta = scheduled.data.planMetadata;
-      const saved = await studyService.createStudyPlanWithSchedule({
-        name: planName,
-        description: description.trim(),
-        startDate: request.startDate,
-        endDate: meta.endDate,
-        aiPlanData: JSON.stringify(scheduled.data),
-        wordbookIds: selectedBooks,
-        status: 'normal',
-        practiceContent: content,
-        ...passageFields(),
-      });
-      if (!saved.success) throw new Error(saved.error);
-      finish(saved.data);
-    } catch (err) {
-      jobRef.current = null;
-      setError(messageOf(err) ?? '请再试一次');
-      setPhase(withAi ? 'failed' : 'idle');
+    setPhase('saving');
+    const request = {
+      name: planName,
+      description: description.trim(),
+      dailyNewWords,
+      startDate: localToday(), // 第一次练习时会再平移到那一天
+      wordbookIds: selectedBooks,
+      useAi: false,
+    };
+    const scheduled = await studyService.generateStudyPlanSchedule(request);
+    const saved = scheduled.success
+      ? await studyService.createStudyPlanWithSchedule({
+          name: planName,
+          description: description.trim(),
+          startDate: request.startDate,
+          endDate: scheduled.data.planMetadata.endDate,
+          aiPlanData: JSON.stringify(scheduled.data),
+          wordbookIds: selectedBooks,
+          status: 'normal',
+          practiceContent: content,
+          ...passageFields(),
+        })
+      : scheduled;
+    if (!saved.success) {
+      setError(saved.error);
+      setPhase('idle');
+      return;
     }
+    if (order === 'easy') {
+      const started = await studyService.startStudyPlanOrdering(saved.data);
+      if (!started.success) toast.showWarning('没能开始安排学习顺序', `计划先按词汇本里的顺序安排。${started.error}`);
+    }
+    toast.showSuccess(`已创建「${planName}」`);
+    onNavigate?.('plans');
   };
 
   if (loadError && !loadingBooks) {
@@ -271,7 +233,6 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
   const passageDays = passages.length > 0 ? (passages.length - 1) * passageInterval + 1 : 0;
   const wordsReady = !withWords || Boolean(meta);
   const canCreate = !busy && Boolean(planName) && (withWords || withPassages) && wordsReady;
-  const easyFirst = withWords && order === 'easy';
 
   const container = 'mx-auto flex w-full max-w-3xl flex-col gap-6 px-8 pt-7';
   const segmented = 'w-full rounded-lg bg-muted p-0.5';
@@ -425,45 +386,20 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
         </Card>
 
         {error && (
-          <InlineError
-            title={phase === 'failed' ? '没能排好学习顺序' : '无法创建计划'}
-            actions={
-              phase === 'failed' && (
-                <>
-                  <Button size="sm" variant="outline" className="bg-background" onClick={() => create(false)}>
-                    按词汇本顺序创建
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => create(true)}>
-                    <RotateCw />
-                    再试一次
-                  </Button>
-                </>
-              )
-            }
-          >
-            {error}
-          </InlineError>
+          <InlineError title="无法创建计划">{error}</InlineError>
         )}
       </div>
 
       {/* 底部操作栏 */}
       <div className="sticky bottom-0 mt-6 border-t bg-background/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-end gap-2 px-8 py-3">
-          {phase === 'planning' ? (
-            <div className="w-full">
-              <PlanningProgress job={planJob} onCancel={stopPlanning} />
-            </div>
-          ) : (
-            <>
-              <Button variant="ghost" onClick={() => onNavigate?.('plans')} disabled={phase === 'saving'}>
-                取消
-              </Button>
-              <Button onClick={() => create(easyFirst)} disabled={!canCreate}>
-                {phase === 'saving' && <Loader2 className="animate-spin" />}
-                {phase === 'saving' ? '正在创建…' : '创建计划'}
-              </Button>
-            </>
-          )}
+          <Button variant="ghost" onClick={() => onNavigate?.('plans')} disabled={busy}>
+            取消
+          </Button>
+          <Button onClick={() => void create()} disabled={!canCreate}>
+            {busy && <Loader2 className="animate-spin" />}
+            {busy ? '正在创建…' : '创建计划'}
+          </Button>
         </div>
       </div>
     </div>

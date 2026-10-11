@@ -17,7 +17,7 @@ pub struct OpenNewWord {
 }
 
 // “还没练过”的日程 = 没有任何练习会话、也没标记练完：
-//   COALESCE(s.status, '') != 'completed' AND NOT EXISTS (练习会话)；下面三处 SQL 写同一条件（静态 SQL 便于 check-sql 检查）
+//   COALESCE(s.status, '') != 'completed' AND NOT EXISTS (练习会话)；下面几处 SQL 写同一条件（静态 SQL 便于 check-sql 检查）
 
 /// 还没练过的日程里的新词，按日期、再按原排入顺序（保持 AI / 默认顺序）
 pub async fn open_new_words_conn(
@@ -44,6 +44,29 @@ pub async fn open_new_words_conn(
             priority: r.get(4),
             difficulty_level: r.get(5),
         })
+        .collect())
+}
+
+/// 还没练过的日程里的新词及其文字（给学习顺序排序用），顺序同 `open_new_words_conn`；
+/// 返回 (word_id, 单词, wordbook_id, 释义)
+pub async fn open_new_word_texts_conn(
+    conn: &mut SqliteConnection,
+    plan_id: Id,
+) -> AppResult<Vec<(Id, String, Id, Option<String>)>> {
+    let rows = sqlx::query(
+        "SELECT sw.word_id, w.word, sw.wordbook_id, w.meaning
+         FROM study_plan_schedule_words sw
+         JOIN study_plan_schedules s ON s.id = sw.schedule_id
+         JOIN words w ON w.id = sw.word_id
+         WHERE s.plan_id = ? AND sw.is_review = FALSE AND COALESCE(s.status, '') != 'completed' AND NOT EXISTS (SELECT 1 FROM practice_sessions ps WHERE ps.schedule_id = s.id)
+         ORDER BY s.schedule_date, sw.id"
+    )
+    .bind(plan_id)
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.get(0), r.get(1), r.get(2), r.get(3)))
         .collect())
 }
 

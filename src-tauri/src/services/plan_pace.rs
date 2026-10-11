@@ -1,6 +1,7 @@
 //! 计划就地调整（authoring-flows-redesign B5，用户决定：已开始的计划只做不丢数据的调整）：
 //! - 改每天新词数：只重排“还没练过的日程”里的新词，保持原顺序；
-//! - 追加词汇本：新词（未学，srs_box = 0）排在还没学的新词后面。
+//! - 追加词汇本：新词（未学，srs_box = 0）排在还没学的新词后面；
+//! - 重排学习顺序：还没学的新词按 AI 给的从易到难顺序重新排（新建计划后在后台进行，plan-ux B5）。
 //!
 //! 已练过的日程、复习条目、`study_plan_words.srs_*` 与练习记录一律不动；全部在一个事务里。
 
@@ -10,7 +11,7 @@ use crate::repositories::plan_pace_repository as repo;
 use crate::repositories::plan_passage_repository::PlanPassageRepository;
 use crate::repositories::study_plan_repository::StudyPlanRepository;
 use crate::services::study_planning::{
-    estimated_difficulty, CONSOLIDATION_DAYS, DAILY_NEW_WORDS_RANGE,
+    estimated_difficulty, PlanWord, WordAssessment, CONSOLIDATION_DAYS, DAILY_NEW_WORDS_RANGE,
 };
 use crate::types::common::Id;
 use chrono::{Duration, NaiveDate};
@@ -85,7 +86,7 @@ impl PlanPaceService {
         let mut tx = crate::services::srs::begin_write(&self.pool).await?;
         self.ensure_editable(&mut tx, plan_id).await?;
         let result = self
-            .relayout(&mut tx, plan_id, daily_new_words, Vec::new(), today)
+            .relayout(&mut tx, plan_id, daily_new_words, Vec::new(), None, today)
             .await?;
         tx.commit().await?;
         Ok(result)
@@ -135,7 +136,42 @@ impl PlanPaceService {
             }
         }
         let daily = repo::daily_new_words_conn(&mut tx, plan_id).await?;
-        let result = self.relayout(&mut tx, plan_id, daily, added, today).await?;
+        let result = self
+            .relayout(&mut tx, plan_id, daily, added, None, today)
+            .await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    /// 还没学的新词（给学习顺序排序用）
+    pub async fn open_words(&self, plan_id: Id) -> AppResult<Vec<PlanWord>> {
+        let mut conn = self.pool.acquire().await?;
+        Ok(repo::open_new_word_texts_conn(&mut conn, plan_id)
+            .await?
+            .into_iter()
+            .map(|(word_id, word, wordbook_id, meaning)| PlanWord {
+                word_id,
+                word,
+                wordbook_id,
+                meaning,
+            })
+            .collect())
+    }
+
+    /// 按给定顺序（从易到难）重排还没学的新词，并记下每个词的难度与优先级；
+    /// 不在 `order` 里的词（如排序期间新追加的）保持原来的先后排在后面。已练过的日程不动
+    pub async fn reorder_open(
+        &self,
+        plan_id: Id,
+        order: &[WordAssessment],
+        today: NaiveDate,
+    ) -> AppResult<PlanPaceResult> {
+        let mut tx = crate::services::srs::begin_write(&self.pool).await?;
+        self.ensure_editable(&mut tx, plan_id).await?;
+        let daily = repo::daily_new_words_conn(&mut tx, plan_id).await?;
+        let result = self
+            .relayout(&mut tx, plan_id, daily, Vec::new(), Some(order), today)
+            .await?;
         tx.commit().await?;
         Ok(result)
     }
@@ -147,6 +183,7 @@ impl PlanPaceService {
         plan_id: Id,
         daily: i32,
         extra: Vec<PendingWord>,
+        order: Option<&[WordAssessment]>,
         today: NaiveDate,
     ) -> AppResult<PlanPaceResult> {
         let added_words = extra.len();
@@ -176,6 +213,21 @@ impl PlanPaceService {
                 difficulty_level: w.difficulty_level,
             })
             .collect();
+        if let Some(order) = order {
+            let rank: std::collections::HashMap<Id, (usize, &WordAssessment)> = order
+                .iter()
+                .enumerate()
+                .map(|(i, a)| (a.word_id, (i, a)))
+                .collect();
+            for w in &mut pending {
+                if let Some((_, a)) = rank.get(&w.word_id) {
+                    w.priority = a.priority.clone();
+                    w.difficulty_level = a.difficulty;
+                }
+            }
+            // 稳定排序：排过的按给定顺序在前，没排到的保持原顺序在后
+            pending.sort_by_key(|w| rank.get(&w.word_id).map_or(usize::MAX, |(i, _)| *i));
+        }
         pending.extend(extra);
         let remaining_new_words = pending.len();
 
@@ -357,6 +409,75 @@ mod tests {
             )
             .await,
             3
+        );
+        crate::time::assert_instants_canonical(&pool).await;
+    }
+
+    #[tokio::test]
+    async fn reordering_follows_the_given_order_for_open_words_only() {
+        let pool = memory_pool().await;
+        let fx = plan_with_three_days(&pool).await;
+        // 第 1 天（word1、word2）练过：不参与重排
+        seed_session(&pool, &fx, "s1", true).await;
+        let service = PlanPaceService::new(pool.clone(), test_logger());
+        let today = NaiveDate::from_ymd_opt(2026, 10, 7).unwrap();
+        service.replan_pace(fx.plan_id, 2, today).await.unwrap();
+
+        let open: Vec<Id> = service
+            .open_words(fx.plan_id)
+            .await
+            .unwrap()
+            .iter()
+            .map(|w| w.word_id)
+            .collect();
+        assert_eq!(open, fx.word_ids[2..].to_vec());
+
+        // 给出的顺序：word6、word5、word3（word4 没排到，放最后）
+        let order: Vec<WordAssessment> = [5, 4, 2]
+            .iter()
+            .map(|&i| WordAssessment {
+                word_id: fx.word_ids[i],
+                difficulty: 1,
+                priority: "high".to_string(),
+            })
+            .collect();
+        service
+            .reorder_open(fx.plan_id, &order, today)
+            .await
+            .unwrap();
+        let after: Vec<Id> = service
+            .open_words(fx.plan_id)
+            .await
+            .unwrap()
+            .iter()
+            .map(|w| w.word_id)
+            .collect();
+        assert_eq!(
+            after,
+            vec![
+                fx.word_ids[5],
+                fx.word_ids[4],
+                fx.word_ids[2],
+                fx.word_ids[3]
+            ]
+        );
+        let difficulty: i64 = sqlx::query_scalar(
+            "SELECT difficulty_level FROM study_plan_schedule_words WHERE word_id = ? AND is_review = FALSE",
+        )
+        .bind(fx.word_ids[5])
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        assert_eq!(difficulty, 1);
+        // 练过的第 1 天不动
+        assert_eq!(
+            count(
+                &pool,
+                "SELECT new_words_count FROM study_plan_schedules WHERE plan_id = ? AND schedule_date = '2026-10-06'",
+                fx.plan_id
+            )
+            .await,
+            2
         );
         crate::time::assert_instants_canonical(&pool).await;
     }

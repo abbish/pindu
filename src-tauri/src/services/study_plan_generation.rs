@@ -1,13 +1,15 @@
-//! 学习计划生成：校验请求 → 读取单词 → agent 给出学习顺序与难度 / 优先级 → 确定性计算日程（DECISIONS D13）。
-//! AI 排序作为前台任务运行（jobs.rs，结果只给新建计划页用）：阶段与模型输出段数经任务进度推送，取消时中止 agent。
+//! 学习计划生成：校验请求 → 读取单词 → 按词汇本顺序确定性计算日程（DECISIONS D13）。
+//! 从易到难：计划建好后作为后台任务排（jobs.rs，detached）——agent 给出顺序与难度 / 优先级，
+//! 再重排还没练过的日程；阶段与模型输出段数经任务进度推送，取消时中止 agent、计划保持原顺序。
 
 use crate::agent::{tasks, AgentPaths};
 use crate::error::{AppError, AppResult};
 use crate::jobs::JobCtx;
 use crate::logger::Logger;
 use crate::repositories::word_repository::WordRepository;
+use crate::services::plan_pace::{PlanPaceResult, PlanPaceService};
 use crate::services::study_planning::{
-    build_schedule, normalize_order, PlanParams, PlanWord, DAILY_NEW_WORDS_RANGE,
+    build_schedule, normalize_order, PlanParams, PlanWord, WordAssessment, DAILY_NEW_WORDS_RANGE,
 };
 use crate::types::study::{StudyPlanAIResult, StudyPlanScheduleRequest};
 use sqlx::SqlitePool;
@@ -117,29 +119,24 @@ impl StudyPlanGenerator {
         }
     }
 
-    pub async fn generate(
-        &self,
-        request: &StudyPlanScheduleRequest,
-        ctx: &JobCtx,
-    ) -> AppResult<StudyPlanAIResult> {
-        validate_request(request)?;
+    /// 给已建好的计划排学习顺序（从易到难）：agent 评估还没学的新词 → 按顺序重排还没练过的日程。
+    /// 计划先按词汇本顺序建好、可以马上用；排不好时保持原顺序（plan-ux B5）
+    pub async fn order_plan(&self, plan_id: i64, ctx: &JobCtx) -> AppResult<PlanPaceResult> {
         let started = Instant::now();
-        ctx.stage("读取词汇本…");
-        let words = load_plan_words(&self.pool, &self.logger, &request.wordbook_ids).await?;
-
+        let pace = PlanPaceService::new(self.pool.clone(), self.logger.clone());
+        let words = pace.open_words(plan_id).await?;
+        if words.is_empty() {
+            return Err(AppError::ValidationError(
+                "计划里没有还没学的新词".to_string(),
+            ));
+        }
         let model = crate::services::agent_settings::AgentSettingsService::new(
             self.pool.clone(),
             self.logger.clone(),
         )
-        .model_for(
-            crate::services::agent_settings::AgentTaskKind::Plan,
-            request.model_id,
-        )
+        .model_for(crate::services::agent_settings::AgentTaskKind::Plan, None)
         .await?;
-        ctx.stage(format!(
-            "正在评估 {} 个单词的难度并安排学习顺序…",
-            words.len()
-        ));
+        ctx.stage(format!("正在评估 {} 个单词的难易", words.len()));
         let profile =
             crate::services::prompt_profile::PromptProfileService::load(&self.pool).await?;
         // 输出长度不可预知：进度只报收到的输出段数（total = 0）
@@ -152,29 +149,39 @@ impl StudyPlanGenerator {
             || ctx.is_cancelled(),
             |events| ctx.progress(u64::from(events), 0),
         )
-        .await?;
-
-        ctx.stage("按每天新词数生成每日日程…");
-        let ordered = normalize_order(&words, &assessed);
-        let filled = ordered.len().saturating_sub(assessed.len());
-        let schedule = build_schedule(
-            &PlanParams {
-                daily_new_words: request.daily_new_words,
-                start_date: request.start_date.clone(),
-            },
-            &ordered,
-        )?;
+        .await
+        .map_err(|e| {
+            self.logger.warn(
+                "STUDY_PLAN",
+                &format!("计划 {plan_id} 排学习顺序没有完成，保持词汇本顺序"),
+                Some(&e.to_string()),
+            );
+            AppError::ExternalServiceError(
+                "没能排好学习顺序，计划先按词汇本里的顺序安排".to_string(),
+            )
+        })?;
+        // 停止了：计划保持原顺序（任务状态由 jobs 记为已停止）
+        if ctx.is_cancelled() {
+            return Err(AppError::ValidationError("已停止".to_string()));
+        }
+        ctx.stage("正在重新安排日程");
+        let ordered: Vec<WordAssessment> = normalize_order(&words, &assessed)
+            .into_iter()
+            .map(|(_, a)| a)
+            .collect();
+        let result = pace
+            .reorder_open(plan_id, &ordered, crate::time::local_today())
+            .await?;
         self.logger.info(
             "STUDY_PLAN",
             &format!(
-                "日程已生成：{} 词（模型漏排 {} 个已按原顺序补齐），{} 个学习日，用时 {:.1}s",
+                "计划 {plan_id} 已按从易到难重排 {} 个新词（模型漏排 {} 个按原顺序补齐），用时 {:.1}s",
                 words.len(),
-                filled,
-                schedule.daily_plans.len(),
+                words.len().saturating_sub(assessed.len()),
                 started.elapsed().as_secs_f64()
             ),
         );
-        Ok(schedule)
+        Ok(result)
     }
 }
 
