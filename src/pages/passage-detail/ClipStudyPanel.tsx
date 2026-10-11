@@ -112,6 +112,8 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   const stopAt = useRef<number | null>(null);
   /** 这次播放是单句原声（跟读、听力用） */
   const sentencePlay = useRef(false);
+  /** 单句播放是不是慢速（听句拼句的「再听」「慢速」按钮据此显示哪个在播） */
+  const [sentenceSlow, setSentenceSlow] = useState(false);
   /** 每句后暂停：正在播的那句（播过它的结尾就停）；播放中改开关也立刻生效 */
   const pauseEachRef = useRef(false);
   pauseEachRef.current = mode === 'study' && prefs.pauseEach;
@@ -195,6 +197,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       setCurrent(index);
       v.currentTime = startOf(s) / 1000;
       v.playbackRate = slow ? SLOW_RATE : rate;
+      setSentenceSlow(slow);
       stopAt.current = endOf(s);
       sentencePlay.current = true;
       void v.play();
@@ -347,10 +350,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
                   target={target}
                   active={active}
                   word={wordInfo.get(target.toLowerCase())}
-                  onSpeak={(w, slow) => {
-                    videoRef.current?.pause();
-                    wordAudio.playText(w, undefined, { style: /\s/.test(w.trim()) ? 'sentence' : 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {});
-                  }}
+                  speak={(w, slow) => wordAudio.speak(w, { slow, before: () => videoRef.current?.pause() })}
                   onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined}
                 />
               )}
@@ -391,6 +391,8 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               seek(startOf(sentences[i]));
             }}
             onPlay={playSentence}
+            onStop={pause}
+            playing={playing ? (sentenceSlow ? 'slow' : 'normal') : null}
             onSolved={(i) => setSolved((s) => new Set(s).add(i))}
             onPractice={onPractice}
           />

@@ -16,7 +16,7 @@ import { PracticeWordCard, type PracticeStage, type PracticeWordData } from '../
 import { useToast } from '../components/Toast/ToastContainer';
 import { type PracticeSession } from '../types/study';
 import { practiceService } from '../services/practiceService';
-import { useAudioPlayer } from '../hooks/useAudioPlayer';
+import { useAudioPlayer, wordStyle } from '../hooks/useAudioPlayer';
 import type { NavigateFn, PassagePracticeReturn } from '../navigation';
 import { parsePhonicsSegments } from '../utils/phonics';
 import { abortError, runRepeatedPlayback } from '../utils/repeatPlayback';
@@ -606,16 +606,22 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   };
 
   // 手动点喇叭：结束本轮自动朗读，只读一遍单词
+  const pronunciationStatus = currentWord?.word ? audioPlayer.statusOf(currentWord.word, wordStyle(currentWord.word)) : 'idle';
   const handlePlayPronunciation = useCallback(() => {
     if (!currentWord?.word) return;
     clearAutoPlay();
+    // 正在读这个词：再点是停止
+    if (pronunciationStatus !== 'idle') {
+      audioPlayer.stop();
+      return;
+    }
     setSpeakingWord(true);
     playWord(currentWord.word)
       .catch(() => {
         // 失败已由 useAudioPlayer 提示
       })
       .finally(() => setSpeakingWord(false));
-  }, [currentWord?.word, playWord, clearAutoPlay]);
+  }, [currentWord?.word, playWord, clearAutoPlay, pronunciationStatus, audioPlayer]);
 
   // 点击右栏例句：结束本轮自动朗读，朗读该句
   const handlePlayExample = useCallback((index: number) => {
@@ -781,6 +787,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
                 onSubmitAnswer={handleSubmitAnswer}
                 onCover={handleCover}
                 onPlayPronunciation={handlePlayPronunciation}
+                pronunciationStatus={pronunciationStatus}
                 onContinue={handleContinue}
                 marks={marks}
                 activeChunk={activeChunk}

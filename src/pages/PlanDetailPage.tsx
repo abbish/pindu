@@ -606,7 +606,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
             planWords={planWords}
             loading={wordsLoading}
             today={today}
-            onPlayWord={(word) => audioPlayer.playWord(word)}
+            speakWord={(word) => audioPlayer.speak(word)}
             onRemoveWords={
               ['Draft', 'Pending', 'Active', 'Paused'].includes(status)
                 ? async (wordIds) => {

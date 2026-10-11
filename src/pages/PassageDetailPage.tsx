@@ -522,7 +522,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                   </div>
                 )}
               </Card>
-              {hasNewWords && !studying && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
+              {hasNewWords && !studying && <NewWordsCard passageId={passage.id} targetWords={passage.targetWords} sourceLabel={passage.sourceLabel} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
             </aside>
           </div>
         </TabsContent>
@@ -543,7 +543,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             focusWord={focusWord}
             onRemove={studying ? undefined : setRemoving}
             onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })}
-            footer={hasNewWords && !studying && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
+            footer={hasNewWords && !studying && <NewWordsCard passageId={passage.id} targetWords={passage.targetWords} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
           />
           )}
         </TabsContent>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -7,10 +7,12 @@ import { BookTargetPicker, defaultBookTitle, isBookTargetReady, resolveBookTarge
 import { useToast } from '@/components/Toast/ToastContainer';
 import { InlineError } from '@/components/InlineError';
 import { passageService } from '@/services/passageService';
-import type { PassageNewWord } from '@/types/passage';
+import type { PassageTargetWord } from '@/types/passage';
 
 export interface NewWordsCardProps {
   passageId: number;
+  /** 短文当前的词汇（还没进词汇本的就是未收录词；重新挑选、移除、加入后随之变化） */
+  targetWords: PassageTargetWord[];
   /** 材料来源（新建词汇本时的默认名与场景） */
   sourceLabel: string | null;
   /** 加词后刷新短文（目标词补上 wordId，点词能看完整卡片） */
@@ -23,31 +25,20 @@ export interface NewWordsCardProps {
  * 导入材料的「未收录词」：AI 标出的重点词里还不在任何词汇本的，勾选后加进现有词汇本或新建一本（passage-import B5）。
  * 后端一步完成拼读分析与例句；没有未收录词时不显示。
  */
-export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLabel, onAdded, onOpenBook }) => {
+export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, targetWords, sourceLabel, onAdded, onOpenBook }) => {
   const toast = useToast();
-  const [words, setWords] = useState<PassageNewWord[] | null>(null);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const words = targetWords.filter((w) => w.wordId === null);
+  /** 取消勾选的词（默认全选；词表换了，新出现的词也是勾选的） */
+  const [unpicked, setUnpicked] = useState<Set<string>>(new Set());
+  const picked = new Set(words.map((w) => w.word).filter((w) => !unpicked.has(w)));
   const [target, setTarget] = useState<BookTarget | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<{ title: string; message: string } | null>(null);
 
-  useEffect(() => {
-    let stale = false;
-    passageService.getNewWords(passageId).then((result) => {
-      if (stale) return;
-      const list = result.success ? result.data : [];
-      setWords(list);
-      setPicked(new Set(list.map((w) => w.word)));
-    });
-    return () => {
-      stale = true;
-    };
-  }, [passageId]);
-
-  if (!words || words.length === 0) return null;
+  if (words.length === 0) return null;
 
   const toggle = (word: string) =>
-    setPicked((prev) => {
+    setUnpicked((prev) => {
       const next = new Set(prev);
       if (next.has(word)) next.delete(word);
       else next.add(word);
@@ -77,8 +68,7 @@ export const NewWordsCard: React.FC<NewWordsCardProps> = ({ passageId, sourceLab
       message: result.data.length < picked.size ? `${picked.size - result.data.length} 个已在该词汇本中` : undefined,
       action: onOpenBook ? { label: '打开词汇本', onClick: () => onOpenBook(book.bookId) } : undefined,
     });
-    setWords((prev) => prev?.filter((w) => !picked.has(w.word)) ?? null);
-    setPicked(new Set());
+    // 加入后短文刷新，这些词有了 wordId，自然从列表里消失
     setTarget({ kind: 'existing', bookId: book.bookId });
     onAdded();
   };

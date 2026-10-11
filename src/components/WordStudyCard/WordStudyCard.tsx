@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote, Snail, Volume2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clapperboard, GraduationCap, Quote } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -7,7 +7,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AiTeacherPanel } from '@/components/AiTeacher';
 import { WordMaterialsList } from '@/components/WordMaterialsSheet/WordMaterialsSheet';
-import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { useAudioPlayer, type SpeakStatus } from '@/hooks/useAudioPlayer';
+import { SpeakButton, SpeakIcon } from '@/components/SpeakButton';
+import { cn } from '@/lib/utils';
 import { parsePhonicsSegments } from '@/utils/phonics';
 import { isPhrase, isPhrasePart, targetSpans, tokenize } from '@/utils/passage';
 import type { Word } from '@/types';
@@ -106,9 +108,17 @@ export const StudySection: React.FC<{ title: string; children: React.ReactNode }
 );
 
 /** 可以点着听的一句（英文里标出这个词 + 译文） */
-export const StudySentence: React.FC<{ en: string; zh: string; word: string; forms?: string[]; onPlay: () => void }> = ({ en, zh, word, forms, onPlay }) => (
-  <button type="button" onClick={onPlay} className="group flex items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted">
-    <Volume2 className="mt-1 size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+/** speak() 的结果转成 StudySentence 的属性 */
+export const sentenceProps = ({ status, onClick }: { status: SpeakStatus; onClick: () => void }) => ({ status, onPlay: onClick });
+
+export const StudySentence: React.FC<{ en: string; zh: string; word: string; forms?: string[]; status?: SpeakStatus; onPlay: () => void }> = ({ en, zh, word, forms, status = 'idle', onPlay }) => (
+  <button
+    type="button"
+    onClick={onPlay}
+    title={status === 'idle' ? '朗读这一句' : '停止朗读'}
+    className={cn('group flex items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted', status !== 'idle' && 'bg-primary/10 hover:bg-primary/15')}
+  >
+    <SpeakIcon status={status} className={cn('mt-1 size-4 shrink-0', status === 'idle' ? 'text-muted-foreground group-hover:text-foreground' : 'text-primary')} />
     <span className="min-w-0">
       <span className="block">
         <Highlighted text={en} word={word} forms={forms} />
@@ -154,7 +164,6 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
   const [teacherOpen, setTeacherOpen] = useState(false);
   const teacherAvailable = aiWordId !== null && Boolean(info);
   const showTeacher = teacherOpen && teacherAvailable;
-  const speak = (text: string, style: 'word' | 'sentence', slow = false) => audio.playText(text, undefined, { style, speed: slow ? 'slow' : 'normal' }).catch(() => {});
   const display = info?.word ?? word;
   const segments = info?.segments ?? (info?.syllables ? [info.syllables] : undefined);
   const hasPhonics = Boolean(segments?.length || info?.phonicsRule || info?.explanation);
@@ -186,12 +195,8 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
             </p>
           )}
         </div>
-        <Button variant="outline" size="icon" aria-label="发音" onClick={() => speak(display, /\s/.test(display) ? 'sentence' : 'word')}>
-          <Volume2 />
-        </Button>
-        <Button variant="outline" size="icon" aria-label="慢速发音" onClick={() => speak(display, /\s/.test(display) ? 'sentence' : 'word', true)}>
-          <Snail />
-        </Button>
+        <SpeakButton variant="outline" size="icon" label="发音" {...audio.speak(display)} />
+        <SpeakButton variant="outline" size="icon" label="慢速发音" slow {...audio.speak(display, { slow: true })} />
         {teacherAvailable && (
           <Button
             variant={showTeacher ? 'default' : 'outline'}
@@ -246,7 +251,7 @@ export const WordStudyCard: React.FC<WordStudyCardProps> = ({ word, info, loadin
             ) : (
               <div className="flex flex-col gap-1.5">
                 {info.examples.map((e, i) => (
-                  <StudySentence key={i} en={e.sentence} zh={e.translation} word={display} onPlay={() => speak(e.sentence, 'sentence')} />
+                  <StudySentence key={i} en={e.sentence} zh={e.translation} word={display} {...sentenceProps(audio.speak(e.sentence, { kind: 'sentence' }))} />
                 ))}
               </div>
             )}

@@ -533,10 +533,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
           ) : (
           <WordListTable
             words={words.map(toRow)}
-            onPlayPronunciation={(w) => audioPlayer.playWord(w.word)}
-            onPlayExample={(w) => {
-              if (w.exampleSentence) audioPlayer.playSentence(w.exampleSentence).catch(() => {});
-            }}
+            speak={audioPlayer.speak}
             onEditWord={handleEditWord}
             onDeleteWord={(w) => setWordsToDelete([w])}
             onBatchDelete={setWordsToDelete}

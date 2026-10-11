@@ -10,6 +10,26 @@ export interface AudioPlayerState {
   currentTime: number;
   /** 当前音频的逐词时间（播放时带 withTimings 且服务返回时才有） */
   words: WordTiming[] | null;
+  /** 正在加载 / 播放的是哪一条（`speechKey`），按钮据此显示自己的状态 */
+  activeKey: string | null;
+}
+
+/** 一个朗读按钮的状态：空闲 / 正在生成语音 / 正在播放 */
+export type SpeakStatus = 'idle' | 'loading' | 'playing';
+
+/** 单词按单词读；词组（带空格）按句子的语调读（D45） */
+export const wordStyle = (word: string): SpeechStyle => (/\s/.test(word.trim()) ? 'sentence' : 'word');
+
+/** 一条朗读的标识：同一文本、风格、语速是同一条 */
+export const speechKey = (text: string, style?: SpeechStyle, speed?: SpeechSpeed) => `${style ?? ''}|${speed ?? 'normal'}|${text}`;
+
+export interface SpeakOptions {
+  /** word：单词 / 词组（默认）；sentence：句子 */
+  kind?: 'word' | 'sentence';
+  /** 慢速 */
+  slow?: boolean;
+  /** 开始朗读前调用（如暂停视频） */
+  before?: () => void;
 }
 
 export interface UseAudioPlayerOptions {
@@ -130,6 +150,7 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
     duration: 0,
     currentTime: 0,
     words: null,
+    activeKey: null,
   });
 
   const updateState = useCallback((updates: Partial<AudioPlayerState>) => {
@@ -189,10 +210,11 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
   ): Promise<boolean> => {
     const { signal, style, speed, withTimings } = playOptions;
     if (signal?.aborted) return false;
+    const key = speechKey(text, style, speed);
 
     // 新的播放打断上一条
     cleanupAudio();
-    updateState({ isLoading: true, error: null });
+    updateState({ isLoading: true, error: null, activeKey: key });
 
     let audioUrl: string;
     try {
@@ -201,7 +223,7 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
       updateState({ words: loaded.words });
     } catch (error) {
       const errorMessage = error instanceof Error && error.message ? error.message : '语音生成失败，请再试一次';
-      updateState({ isLoading: false, error: errorMessage });
+      updateState({ isLoading: false, error: errorMessage, activeKey: null });
       // 练习页会连续自动朗读：同一条提示只保留一条，不刷屏
       toastRef.current.showToast({ type: 'error', id: 'audio-playback', title: '无法播放发音', message: errorMessage });
       throw error;
@@ -209,7 +231,7 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
 
     // 等待语音生成期间被中止（换词、暂停、手动播放等）
     if (signal?.aborted) {
-      updateState({ isLoading: false });
+      updateState({ isLoading: false, activeKey: null });
       return false;
     }
 
@@ -239,7 +261,8 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
         settled = true;
         detach();
         if (settleRef.current === finish) settleRef.current = null;
-        updateState({ isPlaying: false, isLoading: false });
+        // 已被同一实例的新播放取代时，activeKey 已经是新的那条，不清掉
+        setState((prev) => ({ ...prev, isPlaying: false, isLoading: false, activeKey: prev.activeKey === key ? null : prev.activeKey }));
         resolve(completed);
       };
       const fail = (message: string, error: Error) => {
@@ -247,7 +270,7 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
         settled = true;
         detach();
         if (settleRef.current === finish) settleRef.current = null;
-        updateState({ isPlaying: false, isLoading: false, error: message });
+        updateState({ isPlaying: false, isLoading: false, error: message, activeKey: null });
         toastRef.current.showToast({ type: 'error', id: 'audio-playback', title: '无法播放发音', message });
         reject(error);
       };
@@ -336,8 +359,38 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
   /** 停止播放（正在等待的播放 Promise 以 false 结束） */
   const stop = useCallback(() => {
     cleanupAudio();
-    updateState({ isPlaying: false, isLoading: false, currentTime: 0 });
+    updateState({ isPlaying: false, isLoading: false, currentTime: 0, activeKey: null });
   }, [cleanupAudio, updateState]);
+
+  /** 这一条朗读现在的状态 */
+  const statusOf = useCallback(
+    (text: string, style?: SpeechStyle, speed?: SpeechSpeed): SpeakStatus => {
+      if (state.activeKey !== speechKey(text, style, speed)) return 'idle';
+      return state.isPlaying ? 'playing' : state.isLoading ? 'loading' : 'idle';
+    },
+    [state.activeKey, state.isPlaying, state.isLoading]
+  );
+
+  /**
+   * 朗读按钮用：这条的状态 + 点击（空闲时开始读；正在生成或播放时停止）。
+   * 失败已经由播放统一提示，这里不再抛出。
+   */
+  const speak = useCallback(
+    (text: string, options: SpeakOptions = {}): { status: SpeakStatus; onClick: () => void } => {
+      const style = options.kind === 'sentence' ? 'sentence' : wordStyle(text);
+      const speed: SpeechSpeed = options.slow ? 'slow' : 'normal';
+      const status = statusOf(text, style, speed);
+      return {
+        status,
+        onClick: () => {
+          if (status !== 'idle') return stop();
+          options.before?.();
+          playText(text, undefined, { style, speed }).catch(() => {});
+        },
+      };
+    },
+    [statusOf, stop, playText]
+  );
 
   const seek = useCallback((time: number) => {
     if (myTokenRef.current === currentPlayToken && sharedAudio) {
@@ -385,5 +438,7 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
     setVolume,
     clearError,
     currentTimeNow,
-  }), [state, playText, playWord, playSentence, prefetch, pause, resume, stop, seek, setVolume, clearError, currentTimeNow]);
+    statusOf,
+    speak,
+  }), [state, playText, playWord, playSentence, prefetch, pause, resume, stop, seek, setVolume, clearError, currentTimeNow, statusOf, speak]);
 };

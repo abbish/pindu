@@ -17,8 +17,9 @@ import {
   Snail,
   Sparkles,
   X,
-  Volume2,
 } from 'lucide-react';
+import { SpeakButton } from '@/components/SpeakButton';
+import type { SpeakStatus } from '@/hooks/useAudioPlayer';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -75,6 +76,12 @@ const NO_TEXTS: string[] = [];
  * 逐句听（播放条）：上一句 / 播放·暂停 / 下一句 → 句子进度（每段一句，可点哪句听哪句）→ 重听本句、慢速。
  * 答题时不显示原文。视频切片用原声，其余用合成语音。
  */
+/** 单句朗读按钮：这一句在播放中就显示状态，再点停止 */
+const sentenceSpeak = (player: ListeningPlayerHandle, index: number): { status: SpeakStatus; onClick: () => void } => {
+  const status: SpeakStatus = player.current !== index || !(player.playing || player.loading) ? 'idle' : player.loading ? 'loading' : 'playing';
+  return { status, onClick: () => (status === 'idle' ? player.play(index, true) : player.stop()) };
+};
+
 /** 逐句播放器（合成语音与视频原声两种实现的共同部分） */
 interface ListeningPlayerHandle {
   current: number | null;
@@ -737,9 +744,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
                 .sort((x, y) => x - y)
                 .map((idx) => (
                   <div key={idx} className="flex items-start gap-2">
-                    <Button variant="ghost" size="icon" className="shrink-0" aria-label={`听第 ${idx + 1} 句`} onClick={() => listenPlayer.play(idx, true)}>
-                      <Volume2 />
-                    </Button>
+                    <SpeakButton variant="ghost" size="icon" className="shrink-0" label={`听第 ${idx + 1} 句`} {...sentenceSpeak(listenPlayer, idx)} />
                     <p className="pt-1.5 text-lg leading-loose">{renderSentence(idx)}</p>
                   </div>
                 ))}

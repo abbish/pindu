@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronRight, Eye, Headphones, RotateCcw, Snail, Trophy, Undo2, X } from 'lucide-react';
+import { Check, ChevronRight, Eye, Headphones, RotateCcw, Trophy, Undo2, X } from 'lucide-react';
+import { SpeakButton } from '@/components/SpeakButton';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
@@ -13,6 +14,10 @@ export interface ListenBuildPanelProps {
   onIndexChange: (index: number) => void;
   /** 播放这一句原声；slow 用 0.75 倍速 */
   onPlay: (index: number, slow: boolean) => void;
+  /** 停止播放 */
+  onStop: () => void;
+  /** 正在播放：常速 / 慢速；没在播放为 null */
+  playing: 'normal' | 'slow' | null;
   /** 这一句做完了（对或看了答案）：父组件据此在画面上显示这句字幕 */
   onSolved: (index: number) => void;
   /** 有阅读理解题时：去做听力题 */
@@ -25,7 +30,7 @@ type Result = 'first' | 'retry' | 'shown';
  * 听句拼句：每句先只听（画面不显示字幕），再用打乱的单词卡（混入几个干扰词）按顺序拼出听到的句子。
  * 拼完核对，错的词标红可撤回重拼；可重听、慢速、看答案。全部做完给出结果，没一次拼对的句子可以再练一遍。
  */
-export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, index, onIndexChange, onPlay, onSolved, onPractice }) => {
+export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, index, onIndexChange, onPlay, onStop, playing, onSolved, onPractice }) => {
   const [results, setResults] = useState<(Result | null)[]>(() => sentences.map(() => null));
   const [picked, setPicked] = useState<WordTile[]>([]);
   const [checked, setChecked] = useState<boolean[] | null>(null);
@@ -155,14 +160,8 @@ export const ListenBuildPanel: React.FC<ListenBuildPanelProps> = ({ sentences, i
       <Progress value={(solvedCount / Math.max(1, order.length)) * 100} className="h-1" />
 
       <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={() => onPlay(index, false)}>
-          <RotateCcw />
-          再听
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => onPlay(index, true)}>
-          <Snail />
-          慢速
-        </Button>
+        <SpeakButton variant="outline" size="sm" label="再听" text="再听" icon={RotateCcw} status={playing === 'normal' ? 'playing' : 'idle'} onClick={() => (playing === 'normal' ? onStop() : onPlay(index, false))} />
+        <SpeakButton variant="outline" size="sm" label="慢速" text="慢速" slow status={playing === 'slow' ? 'playing' : 'idle'} onClick={() => (playing === 'slow' ? onStop() : onPlay(index, true))} />
         {!done && (
           <Button variant="ghost" size="sm" className="ml-auto" onClick={reveal}>
             <Eye />

@@ -270,7 +270,7 @@ export const ReadAloudPanel: React.FC<{
       {/* 朗读工具栏 */}
       <div className="flex items-center gap-2 border-b pb-4 select-none">
         <Button onClick={() => (player.playing ? stopAll() : player.play(player.current ?? 0))}>
-          {player.playing ? <Pause /> : <Play />}
+          {player.playing && player.loading ? <Loader2 className="animate-spin" /> : player.playing ? <Pause /> : <Play />}
           {player.playing ? '暂停' : player.current ? '从这句继续' : blind ? '开始盲听' : '朗读全文'}
         </Button>
         <Button variant="outline" size="icon" aria-label="上一句" onClick={() => go(-1)} disabled={(player.current ?? 0) === 0}>
@@ -393,7 +393,7 @@ export const ReadAloudPanel: React.FC<{
         onAnalyzeSentence={blind || prefs.recall ? undefined : setAnalyzing}
         analyzing={analyzing}
         renderTarget={(text, target, active) => (
-          <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} onSpeak={(w, slow) => wordAudio.playText(w, undefined, { style: /\s/.test(w.trim()) ? 'sentence' : 'word', speed: slow ? 'slow' : 'normal' }).catch(() => {})} onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined} />
+          <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} speak={(w, slow) => wordAudio.speak(w, { slow })} onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined} />
         )}
       />
       </SelectionAction>

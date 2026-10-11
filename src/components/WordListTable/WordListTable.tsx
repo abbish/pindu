@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { ListPagination } from '@/components/ListPagination';
+import { SpeakButton } from '@/components/SpeakButton';
+import type { SpeakOptions, SpeakStatus } from '@/hooks/useAudioPlayer';
 import { cn } from '@/lib/utils';
 import { partOfSpeechLabel } from '@/utils/partOfSpeech';
 import type { WordMaterialCount } from '@/types/material';
@@ -74,10 +76,8 @@ export interface WordListTableProps {
   emptyTitle?: string;
   /** 单词列表 */
   words: WordDetail[];
-  /** 播放发音回调 */
-  onPlayPronunciation?: (word: WordDetail) => void;
-  /** 朗读例句回调 */
-  onPlayExample?: (word: WordDetail) => void;
+  /** 朗读（useAudioPlayer 的 speak）：发音与例句按钮据此显示播放状态，播放中再点是停止 */
+  speak?: (text: string, options?: SpeakOptions) => { status: SpeakStatus; onClick: () => void };
   /** 编辑单词回调 */
   onEditWord?: (word: WordDetail) => void;
   /** 删除单词回调 */
@@ -125,8 +125,7 @@ const POS_CLASS: Record<string, string> = {
 export const WordListTable: React.FC<WordListTableProps> = ({
   words,
   emptyTitle,
-  onPlayPronunciation,
-  onPlayExample,
+  speak,
   onEditWord,
   onDeleteWord,
   onBatchDelete,
@@ -167,12 +166,14 @@ export const WordListTable: React.FC<WordListTableProps> = ({
     const Sep = kind === 'dropdown' ? DropdownMenuSeparator : ContextMenuSeparator;
     return (
       <>
-        <Item onSelect={() => onPlayPronunciation?.(word)}>
-          <Volume2 />
-          播放发音
-        </Item>
-        {onPlayExample && word.exampleSentence && (
-          <Item onSelect={() => onPlayExample(word)}>
+        {speak && (
+          <Item onSelect={() => speak(word.word).onClick()}>
+            <Volume2 />
+            播放发音
+          </Item>
+        )}
+        {speak && word.exampleSentence && (
+          <Item onSelect={() => speak(word.exampleSentence!, { kind: 'sentence' }).onClick()}>
             <MessageSquareText />
             朗读例句
           </Item>
@@ -320,18 +321,14 @@ export const WordListTable: React.FC<WordListTableProps> = ({
                           <TableCell className="text-right">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="size-8" aria-label="播放发音" onClick={() => onPlayPronunciation?.(word)}>
-                                  <Volume2 />
-                                </Button>
+                                <SpeakButton variant="ghost" size="icon" className="size-8" label="播放发音" {...(speak?.(word.word) ?? { status: 'idle', onClick: () => {} })} />
                               </TooltipTrigger>
                               <TooltipContent>播放发音</TooltipContent>
                             </Tooltip>
-                            {onPlayExample && word.exampleSentence && (
+                            {speak && word.exampleSentence && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="size-8" aria-label="朗读例句" onClick={() => onPlayExample(word)}>
-                                    <MessageSquareText />
-                                  </Button>
+                                  <SpeakButton variant="ghost" size="icon" className="size-8" label="朗读例句" icon={MessageSquareText} {...speak(word.exampleSentence, { kind: 'sentence' })} />
                                 </TooltipTrigger>
                                 <TooltipContent>朗读例句</TooltipContent>
                               </Tooltip>

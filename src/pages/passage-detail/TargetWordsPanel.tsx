@@ -5,7 +5,7 @@ import { InlineError } from '@/components/InlineError';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { JobPanel, jobErrorText } from '@/components/Jobs';
-import { StudySection, StudySentence, WordStudyCard, studyInfoFromCard, studyInfoFromWord } from '@/components/WordStudyCard';
+import { StudySection, StudySentence, WordStudyCard, sentenceProps, studyInfoFromCard, studyInfoFromWord } from '@/components/WordStudyCard';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { useJob, useOnJobFinished } from '@/hooks/useJobs';
 import { cn } from '@/lib/utils';
@@ -194,7 +194,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
             <StudySection title="本文中">
               <div className="flex flex-col gap-1.5">
                 {sentences.map((s, i) => (
-                  <StudySentence key={i} en={s.en} zh={s.zh} word={current.word} forms={current.forms} onPlay={() => audio.playText(s.en, undefined, { style: 'sentence' }).catch(() => {})} />
+                  <StudySentence key={i} en={s.en} zh={s.zh} word={current.word} forms={current.forms} {...sentenceProps(audio.speak(s.en, { kind: 'sentence' }))} />
                 ))}
               </div>
             </StudySection>

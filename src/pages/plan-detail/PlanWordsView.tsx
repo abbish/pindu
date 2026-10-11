@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Loader2, Search, Trash2, Volume2 } from 'lucide-react';
+import { BookOpen, Loader2, Search, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -23,6 +23,8 @@ import { formatDate } from '@/utils/datetime';
 import { MEMORY_STAGE_LABEL, dueLabel, memoryBoxLabel, memoryStage, type MemoryStage } from '@/utils/memoryLevel';
 import type { StudyPlanWord } from '@/types';
 import { InlineError } from '@/components/InlineError';
+import { SpeakButton } from '@/components/SpeakButton';
+import type { SpeakStatus } from '@/hooks/useAudioPlayer';
 
 export interface PlanWordsViewProps {
   /** 计划的单词（每个单词一次，带记忆状态） */
@@ -31,8 +33,8 @@ export interface PlanWordsViewProps {
   loading: boolean;
   /** 今天 YYYY-MM-DD */
   today: string;
-  /** 播放单词发音 */
-  onPlayWord: (word: string) => void;
+  /** 朗读单词（useAudioPlayer 的 speak）：按钮显示播放状态，播放中再点是停止 */
+  speakWord: (word: string) => { status: SpeakStatus; onClick: () => void };
   /** 从计划移除选中的单词（不传则不能勾选，如已结束的计划）；失败时返回错误文案 */
   onRemoveWords?: (wordIds: number[]) => Promise<string | null>;
 }
@@ -46,7 +48,7 @@ const STAGE_BADGE: Record<MemoryStage, string> = {
 };
 
 /** 单词列表：每个词的学习状态（记忆等级、下次复习、答错次数），可按状态筛选与搜索 */
-export const PlanWordsView: React.FC<PlanWordsViewProps> = ({ planWords, loading, today, onPlayWord, onRemoveWords }) => {
+export const PlanWordsView: React.FC<PlanWordsViewProps> = ({ planWords, loading, today, speakWord, onRemoveWords }) => {
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -217,9 +219,7 @@ export const PlanWordsView: React.FC<PlanWordsViewProps> = ({ planWords, loading
                     )}
                     <TableCell>
                       <div className="flex items-center gap-1.5">
-                        <Button variant="ghost" size="icon" className="size-7" aria-label={`播放 ${w.word}`} onClick={() => onPlayWord(w.word)}>
-                          <Volume2 />
-                        </Button>
+                        <SpeakButton variant="ghost" size="icon" className="size-7" label={`播放 ${w.word}`} {...speakWord(w.word)} />
                         <span className="font-medium select-text">{w.word}</span>
                         {w.ipa && <span className="text-xs text-muted-foreground select-text">{w.ipa}</span>}
                       </div>

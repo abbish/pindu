@@ -4,7 +4,9 @@ import { FULL_REVEAL, maskLetters, writeReveal, type HintLevel, type RevealLevel
 import type { LetterMark } from '../../utils/spellingCheck';
 import { hasNonLatin } from '../../utils/imeEnter';
 import { useImeGuard } from '../../hooks/useImeGuard';
-import { ArrowRight, Check, EyeOff, HelpCircle, Keyboard, Languages, Lock, MessageSquareText, Pencil, Volume2 } from 'lucide-react';
+import { ArrowRight, Check, EyeOff, HelpCircle, Keyboard, Languages, Lock, MessageSquareText, Pencil } from 'lucide-react';
+import { SpeakButton } from '@/components/SpeakButton';
+import type { SpeakStatus } from '@/hooks/useAudioPlayer';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -57,8 +59,10 @@ export interface PracticeWordCardProps {
   onSubmitAnswer: (userInput: string) => void;
   /** 看·说结束：盖住单词开始写 */
   onCover?: () => void;
-  /** 播放发音回调 */
+  /** 播放发音回调（播放中再点是停止） */
   onPlayPronunciation?: () => void;
+  /** 单词发音的状态（自动朗读时也会变化） */
+  pronunciationStatus?: SpeakStatus;
   /** 答对后按 Enter：跳过等待，直接进入下一题 */
   onContinue?: () => void;
   /** 纠正时：正确单词逐字母的对错 */
@@ -133,6 +137,7 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
   onSubmitAnswer,
   onCover,
   onPlayPronunciation,
+  pronunciationStatus = 'idle',
   onContinue,
   marks,
   activeChunk = null,
@@ -276,10 +281,7 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="lg" onClick={onPlayPronunciation} title="播放发音（空格）" aria-keyshortcuts="Space">
-            <Volume2 />
-            播放发音
-          </Button>
+          <SpeakButton variant="outline" size="lg" status={pronunciationStatus} onClick={() => onPlayPronunciation?.()} label="播放发音" title="播放发音（空格）" text="播放发音" aria-keyshortcuts="Space" />
           {stage === 'look' && segments.length > 0 && (
             <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
               <MessageSquareText className="size-4" /> 跟着读：{segments.join(' - ')}

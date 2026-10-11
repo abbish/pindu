@@ -1,9 +1,10 @@
 import React from 'react';
-import { Snail, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import type { Word } from '@/types';
+import type { SpeakStatus } from '@/hooks/useAudioPlayer';
+import { SpeakButton } from '@/components/SpeakButton';
 
 export interface TargetWordProps {
   /** 原文中的写法（可能是变形，如 tickets） */
@@ -14,8 +15,8 @@ export interface TargetWordProps {
   active: boolean;
   /** 单词资料（手动输入的词没有） */
   word?: Word;
-  /** 读单词：slow 为慢速 */
-  onSpeak: (word: string, slow: boolean) => void;
+  /** 读单词：slow 为慢速；返回这条朗读的状态与点击（useAudioPlayer 的 speak） */
+  speak: (word: string, slow: boolean) => { status: SpeakStatus; onClick: () => void };
   /** 打开完整单词卡（短文详情「目标词」页签） */
   onOpenCard?: () => void;
 }
@@ -23,7 +24,7 @@ export interface TargetWordProps {
 /**
  * 正文里的目标词：点击弹出单词卡片（音标、释义、音节与拼读、讲解、例句），可以常速 / 慢速听单词。
  */
-export const TargetWord: React.FC<TargetWordProps> = ({ text, target, active, word, onSpeak, onOpenCard }) => {
+export const TargetWord: React.FC<TargetWordProps> = ({ text, target, active, word, speak, onOpenCard }) => {
   const example = word?.examples?.[0];
   return (
     <Popover>
@@ -45,12 +46,8 @@ export const TargetWord: React.FC<TargetWordProps> = ({ text, target, active, wo
             <div className="text-xl font-semibold">{word?.word ?? target}</div>
             {word?.ipa && <div className="text-sm text-muted-foreground">{word.ipa}</div>}
           </div>
-          <Button variant="outline" size="icon" className="size-8" aria-label="朗读单词" onClick={() => onSpeak(word?.word ?? target, false)}>
-            <Volume2 />
-          </Button>
-          <Button variant="outline" size="icon" className="size-8" aria-label="慢速朗读单词" onClick={() => onSpeak(word?.word ?? target, true)}>
-            <Snail />
-          </Button>
+          <SpeakButton variant="outline" size="icon" className="size-8" label="朗读单词" {...speak(word?.word ?? target, false)} />
+          <SpeakButton variant="outline" size="icon" className="size-8" label="慢速朗读单词" slow {...speak(word?.word ?? target, true)} />
         </div>
         {word ? (
           <div className="mt-3 flex flex-col gap-2 text-sm">
