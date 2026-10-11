@@ -891,6 +891,28 @@ mod tests {
             .collect();
         println!("消息角色：{:?}", roles);
         assert_eq!(roles.iter().filter(|r| **r == "user").count(), 4);
+        // 按需加载：一开始只声明直接可用的拼读工具，删词（deferred）由 tool_search 加载
+        let first_tools: Vec<String> = opened.messages[0]["toolsAdded"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(str::to_string))
+            .filter(|n| n.starts_with("mcp__") || n == "tool_search")
+            .collect();
+        println!("一开始声明的拼读工具：{:?}", first_tools);
+        assert!(first_tools.iter().any(|n| n == "mcp__pindu__lookup_words"));
+        assert!(
+            !first_tools.iter().any(|n| n == "mcp__pindu__delete_words"),
+            "删词应按需加载"
+        );
+        let searched = opened.messages.as_array().unwrap().iter().any(|m| {
+            m["role"] == "assistant"
+                && m["content"]
+                    .as_array()
+                    .is_some_and(|c| c.iter().any(|b| b["name"] == "tool_search"))
+        });
+        println!("用过 tool_search：{}", searched);
         // skills 写进了系统提示词（pi 只在 read 可用时才写）
         let system = opened.messages[0].to_string();
         assert!(

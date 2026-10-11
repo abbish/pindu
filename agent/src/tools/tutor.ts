@@ -40,6 +40,26 @@ function nameConversationTool(pi: ExtensionAPI) {
   });
 }
 
+/** 拼读 MCP 服务里直接声明给模型的常用工具（其余按需加载） */
+export const DIRECT_TOOLS = [
+  "lookup_words",
+  "list_word_books",
+  "get_word_book",
+  "add_words",
+  "create_word_book",
+  "save_examples",
+  "list_passages",
+  "get_passage",
+  "save_passage",
+  "today",
+  "list_plans",
+  "get_plan",
+  "study_stats",
+  "background_jobs",
+  "open_page",
+  "read_aloud",
+];
+
 /** 拼读 MCP 服务在 pi 里的名字：工具为 `mcp__pindu__<tool>` */
 export const PINDU_SERVER = "pindu";
 
@@ -87,8 +107,10 @@ export function registerPindu(pi: ExtensionAPI) {
     url,
     // 对话 id：拼读据此把工具提交的后台任务与这个对话关联，任务结束时通知回来（/pindu-job）
     headers: { Authorization: `Bearer ${token}`, "X-Pindu-Conversation": conversation },
-    exposure: "direct",
-    description: "拼读：学习者的词汇本、短文与学习记录；把内容收进素材库",
+    // 按需加载（pi 的 deferred）：常用的直接声明给模型，其余不占每次请求的上下文，模型用 tool_search 找到再加载
+    exposure: "deferred",
+    toolExposure: Object.fromEntries(DIRECT_TOOLS.map(name => [name, "direct"])),
+    description: "拼读的业务功能：词汇本与单词、短文与题组、学习计划与练习、视频与场景片段、标签、后台任务；不在工具列表里的用 tool_search 按名称或用途搜索加载",
     timeout: 120,
   });
   pi.on("tool_result", event => {

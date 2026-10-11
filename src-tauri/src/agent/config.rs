@@ -224,6 +224,9 @@ pub fn launch_args(
     if uses_mcp {
         args.push("-e".into());
         args.push("builtin:mcp".into());
+        // 按需加载 MCP 工具（deferred）要用 pi 内置的 tool_search
+        args.push("-e".into());
+        args.push("builtin:tool-search".into());
     }
     // 显式指定的 skills 仍会加载（-ns 只关掉自动发现）
     for skill in skills {
@@ -423,7 +426,7 @@ mod tests {
         let joined = args.join(" ");
         assert!(joined.starts_with("--session-dir /data/tutor/sessions --session-id abc-1 -ne -ns"));
         assert!(!joined.contains("--no-mcp"));
-        assert!(joined.contains("-e builtin:mcp"));
+        assert!(joined.contains("-e builtin:mcp -e builtin:tool-search"));
         assert!(joined.contains("--tools ask_user,mcp__pindu__*"));
         let resumed = launch_args(
             &chat,
