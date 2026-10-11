@@ -264,7 +264,7 @@ impl ChatHub {
         let hub = self.clone();
         let pump = session.clone();
         tokio::spawn(async move {
-            while let Some((_, raw)) = events.recv().await {
+            while let Some((_, mut raw)) = events.recv().await {
                 match raw.get("type").and_then(Value::as_str) {
                     Some("agent_start") => pump.running.store(true, Ordering::SeqCst),
                     Some("session_info_changed") => hub.invalidate_list(),
@@ -287,6 +287,7 @@ impl ChatHub {
                     _ => {}
                 }
                 pump.touch();
+                slim_update(&mut raw);
                 emit(&pump.id, raw);
             }
             pump.running.store(false, Ordering::SeqCst);
@@ -326,6 +327,23 @@ impl ChatHub {
             session.shutdown().await;
         }
         idle.len()
+    }
+}
+
+/// 流式增量事件只留增量：pi 的 `message_update` 每个增量都附带到目前为止的整条消息两份（`message` 与
+/// `assistantMessageEvent.partial`），界面按增量拼接、用不到它们；原样转发时一段回答要发几百次、越往后越大
+pub(crate) fn slim_update(raw: &mut Value) {
+    if raw.get("type").and_then(Value::as_str) != Some("message_update") {
+        return;
+    }
+    if let Some(event) = raw.as_object_mut() {
+        event.remove("message");
+        if let Some(update) = event
+            .get_mut("assistantMessageEvent")
+            .and_then(Value::as_object_mut)
+        {
+            update.remove("partial");
+        }
     }
 }
 
@@ -381,4 +399,28 @@ pub async fn list_sessions(
     }
     serde_json::from_slice(&output.stdout)
         .map_err(|e| AppError::ExternalServiceError(format!("无法解析对话列表：{}", e)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn message_update_keeps_only_the_delta() {
+        let mut raw = json!({
+            "type": "message_update",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "Hello wor"}]},
+            "assistantMessageEvent": {"type": "text_delta", "contentIndex": 0, "delta": "wor", "partial": {"content": []}}
+        });
+        slim_update(&mut raw);
+        assert_eq!(
+            raw,
+            json!({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "contentIndex": 0, "delta": "wor"}})
+        );
+        // 其他事件原样
+        let mut end = json!({"type": "message_end", "message": {"role": "assistant"}});
+        slim_update(&mut end);
+        assert!(end.get("message").is_some());
+    }
 }

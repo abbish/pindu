@@ -113,7 +113,7 @@ export interface PiOtherMessage {
 }
 export type PiMessage = PiUserMessage | PiAssistantMessage | PiToolResultMessage | PiCustomMessage | PiOtherMessage;
 
-/** `tutor-event` 事件：pi 的原始事件（docs/json.md）+ 对话 id */
+/** `tutor-event` 事件：pi 的原始事件（docs/json.md；message_update 去掉了整条消息的快照，只留增量）+ 对话 id */
 export interface TutorEventPayload {
   conversationId: string;
   event: PiEvent;
