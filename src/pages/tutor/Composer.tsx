@@ -19,6 +19,10 @@ export const Composer: React.FC<{
   draft: string;
   attachments: Attachment[];
   running: boolean;
+  /** 变化时获得焦点、光标移到末尾（开场示例填进来后） */
+  focusKey?: number;
+  /** 拿到「打开选文件」的函数（开场示例在点击时直接调用：选文件窗口要在用户点击里打开） */
+  pickerRef?: React.MutableRefObject<(() => void) | null>;
   /** 排队等 AI 老师看的消息 */
   queue: string[];
   onEditQueued: (index: number) => void;
@@ -27,14 +31,25 @@ export const Composer: React.FC<{
   onAttachments: (attachments: Attachment[]) => void;
   onSend: () => void;
   onStop: () => void;
-}> = ({ draft, attachments, running, queue, onEditQueued, onRemoveQueued, onDraft, onAttachments, onSend, onStop }) => {
+}> = ({ draft, attachments, running, focusKey, pickerRef, queue, onEditQueued, onRemoveQueued, onDraft, onAttachments, onSend, onStop }) => {
   const picker = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const canSend = draft.trim().length > 0 || attachments.length > 0;
 
   useEffect(() => {
-    textarea.current?.focus();
-  }, []);
+    const el = textarea.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [focusKey]);
+
+  useEffect(() => {
+    if (!pickerRef) return;
+    pickerRef.current = () => picker.current?.click();
+    return () => {
+      pickerRef.current = null;
+    };
+  }, [pickerRef]);
 
   const add = (files: File[]) => {
     const imageRoom = MAX_IMAGES - attachments.filter((a) => isImage(a.file)).length;

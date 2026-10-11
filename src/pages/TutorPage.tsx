@@ -12,18 +12,35 @@ import { ConversationList } from './tutor/ConversationList';
 import { AgentTurnView, OutputsPopover, UserBubble } from './tutor/TurnViews';
 import { useTutorChat, type Attachment } from './tutor/useTutorChat';
 
-/** 新对话的开场建议 */
-const STARTERS = [
-  { title: '查一个词', prompt: 'itinerary 是什么意思？怎么记？' },
-  { title: '翻译一段话', prompt: '帮我翻译这段话，顺便讲讲里面的长句：' },
-  { title: '讲讲语法', prompt: '现在完成时和一般过去时有什么区别？' },
-  { title: '看一张截图', prompt: '帮我看看这张截图里的英语' },
+/**
+ * 新对话的开场示例。模板（fill）只填开头、光标停在后面让学习者补上自己的内容；
+ * 完整的指令直接发；attach 同时打开选文件。
+ */
+interface Starter {
+  title: string;
+  text: string;
+  /** 模板：填进输入框等学习者补全 */
+  fill?: boolean;
+  /** 同时打开选文件 */
+  attach?: boolean;
+}
+
+const STARTERS: Starter[] = [
+  { title: '查一个词', text: '这个词是什么意思？怎么记：', fill: true },
+  { title: '翻译一段话', text: '帮我翻译这段话，顺便讲讲里面的长句：\n', fill: true },
+  { title: '讲讲语法', text: '给我讲讲这个语法点，多举几个例子：', fill: true },
+  { title: '按场景备词汇', text: '帮我准备一个词汇本，场景是：', fill: true },
+  { title: '整理一份材料', text: '帮我看看这份材料，把值得学的词和文章整理出来', fill: true, attach: true },
+  { title: '考考我', text: '根据我最近容易错的词考考我' },
 ];
 
 export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateFn }> = ({ initialPrompt, onNavigate }) => {
   const chat = useTutorChat(initialPrompt);
   const [draft, setDraft] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  /** 变化时输入框获得焦点、光标到末尾（开场示例用）；openPicker 打开选文件 */
+  const [focusKey, setFocusKey] = useState(0);
+  const openPicker = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const turns = useMemo(() => toTurns(chat.transcript), [chat.transcript]);
@@ -118,7 +135,17 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
               )}
             </div>
           ) : (
-            <EmptyState onPick={setDraft} />
+            <EmptyState
+              onPick={(starter) => {
+                if (!starter.fill) {
+                  void send(starter.text, []);
+                  return;
+                }
+                setDraft(starter.text);
+                setFocusKey((k) => k + 1);
+                if (starter.attach) openPicker.current?.();
+              }}
+            />
           )}
         </div>
 
@@ -126,6 +153,8 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
           draft={draft}
           attachments={attachments}
           running={running}
+          focusKey={focusKey}
+          pickerRef={openPicker}
           queue={chat.transcript.queue}
           onEditQueued={(i) =>
             void chat.dropQueued(i).then((text) => {
@@ -148,20 +177,26 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
   );
 };
 
-const EmptyState: React.FC<{ onPick: (prompt: string) => void }> = ({ onPick }) => (
+const EmptyState: React.FC<{ onPick: (starter: Starter) => void }> = ({ onPick }) => (
   <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-6 px-6">
     <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
       <GraduationCap className="size-6" />
     </span>
     <div className="text-center">
       <div className="text-lg font-semibold">想学点什么？</div>
-      <div className="mt-1 text-sm text-muted-foreground">查词、翻译、讲语法，也可以直接粘贴截图问我</div>
+      <div className="mt-1 text-sm text-muted-foreground">查词、翻译、讲语法，整理材料、准备词汇，也可以直接粘贴截图问我</div>
     </div>
     <div className="grid w-full grid-cols-2 gap-2">
       {STARTERS.map((s) => (
-        <button key={s.title} type="button" onClick={() => onPick(s.prompt)} className="rounded-lg border p-3 text-left hover:bg-accent">
-          <div className="text-sm font-medium">{s.title}</div>
-          <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{s.prompt}</div>
+        <button key={s.title} type="button" onClick={() => onPick(s)} className="rounded-lg border p-3 text-left hover:bg-accent">
+          <div className="flex items-center gap-2">
+            <span className="flex-1 text-sm font-medium">{s.title}</span>
+            <span className="text-xs text-muted-foreground">{s.attach ? '选文件' : s.fill ? '填进输入框' : '直接发送'}</span>
+          </div>
+          <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+            {s.text.trim()}
+            {s.fill && !s.attach && <span className="opacity-60"> ……</span>}
+          </div>
         </button>
       ))}
     </div>
