@@ -15,10 +15,12 @@ use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::prompts::{PromptProfile, MATERIAL_SKILLS};
 use crate::services::passage_import_files::{docx_text, pdf_text};
+use crate::services::{passage_import, passage_rules};
 use crate::types::ai_model::AIModelConfig;
 use crate::types::material::{
     MaterialContent, MaterialPassage, MaterialPhrase, MaterialSentence, MaterialVocab,
 };
+use crate::types::passage::{ImportPreview, ImportPreviewItem, ImportSentence, ImportWord};
 use serde_json::Value;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -32,6 +34,7 @@ pub enum MaterialPurpose {
     /// 导入为短文（也收词组与词汇表）
     Passage,
     /// 提取单词（重点是词汇表）
+    #[allow(dead_code)] // 多模态素材 B4（提取单词）接入后去掉
     Words,
 }
 
@@ -256,7 +259,12 @@ pub fn content_from_submission(
         {
             continue;
         }
-        phrases.push(MaterialPhrase { text, meaning });
+        let base = str_of(p, "base").filter(|b| !b.eq_ignore_ascii_case(&text));
+        phrases.push(MaterialPhrase {
+            text,
+            base,
+            meaning,
+        });
     }
 
     let mut vocabulary: Vec<MaterialVocab> = Vec::new();
@@ -294,11 +302,153 @@ pub fn content_from_submission(
     }
 }
 
+/// 素材内容 → 导入预览（与粘贴文本的预览同一结构，复用拆篇、改标题、导入流程）：
+/// 每篇正文一项（超长的按句数切开），句子带材料里的译文与待核对标记；
+/// 画线词组与词汇表里在这一篇正文中出现的词成为它的词汇
+pub fn to_import_preview(content: &MaterialContent, source_label: &str) -> ImportPreview {
+    let mut items = Vec::new();
+    for (pi, passage) in content.passages.iter().enumerate() {
+        let title = passage
+            .title
+            .clone()
+            .or_else(|| (pi == 0).then(|| content.title.clone()).flatten())
+            .unwrap_or_default();
+        let chunks: Vec<&[MaterialSentence]> = passage
+            .sentences
+            .chunks(passage_import::MAX_SENTENCES_PER_ITEM)
+            .collect();
+        for (ci, chunk) in chunks.iter().enumerate() {
+            let mut prev_paragraph = None;
+            let sentences: Vec<ImportSentence> = chunk
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    let paragraph =
+                        i == 0 || (s.paragraph.is_some() && s.paragraph != prev_paragraph);
+                    prev_paragraph = s.paragraph;
+                    ImportSentence {
+                        en: s.en.clone(),
+                        paragraph,
+                        zh: s.zh.clone(),
+                        unverified: s.unverified,
+                    }
+                })
+                .collect();
+            let full: String = sentences
+                .iter()
+                .map(|s| s.en.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let mut words: Vec<ImportWord> = Vec::new();
+            let mut push = |w: ImportWord| {
+                if !words.iter().any(|x| x.word.eq_ignore_ascii_case(&w.word)) {
+                    words.push(w);
+                }
+            };
+            for p in &content.phrases {
+                let word = p.base.clone().unwrap_or_else(|| p.text.clone());
+                let forms: Vec<String> = p
+                    .base
+                    .as_ref()
+                    .map(|_| vec![p.text.clone()])
+                    .unwrap_or_default();
+                if passage_rules::text_uses_forms(&full, &word, &forms) {
+                    push(ImportWord {
+                        word,
+                        meaning: Some(p.meaning.clone()),
+                        forms,
+                    });
+                }
+            }
+            for v in &content.vocabulary {
+                if passage_rules::text_uses(&full, &v.word) {
+                    push(ImportWord {
+                        word: v.word.clone(),
+                        meaning: v.meaning.clone(),
+                        forms: Vec::new(),
+                    });
+                }
+            }
+            items.push(ImportPreviewItem {
+                title: if chunks.len() > 1 && !title.is_empty() {
+                    format!("{}（{}）", title, ci + 1)
+                } else {
+                    title.clone()
+                },
+                word_count: full.split_whitespace().count() as i64,
+                sentences,
+                words,
+            });
+        }
+    }
+
+    let mut warnings = Vec::new();
+    if let Some(note) = &content.note {
+        warnings.push(note.clone());
+    }
+    let unverified = content
+        .passages
+        .iter()
+        .flat_map(|p| &p.sentences)
+        .filter(|s| s.unverified)
+        .count();
+    if unverified > 0 {
+        warnings.push(format!(
+            "有 {} 句没能和文件内容对上，已标出，请对照原材料核对",
+            unverified
+        ));
+    }
+    if items.is_empty() {
+        warnings.push("这份素材里没有成段的英文文章".to_string());
+    }
+    ImportPreview {
+        source_label: source_label.to_string(),
+        total_words: items.iter().map(|i| i.word_count).sum(),
+        items,
+        warnings,
+    }
+}
+
 fn purpose_line(purpose: MaterialPurpose) -> &'static str {
     match purpose {
         MaterialPurpose::Passage => "用途：导入为短文。请完整整理正文句子与材料里的逐句翻译，同时收下材料标出的词组和词汇表。",
         MaterialPurpose::Words => "用途：提取单词。重点是材料里的单词与词组（词汇表、海报、生词表、画线词组）；正文句子可以不整理。",
     }
+}
+
+/// 保存上传的素材文件（base64）到 `dir`，返回路径；大小上限与导入材料相同
+pub fn save_upload(dir: &Path, file_name: &str, data: &str) -> AppResult<PathBuf> {
+    use base64::Engine;
+    let name = Path::new(file_name.trim());
+    if !is_pi_material(name) {
+        return Err(AppError::ValidationError(format!(
+            "不支持这种文件，可以选择 {}",
+            PI_MATERIAL_TYPES.join("、")
+        )));
+    }
+    let too_big = || {
+        AppError::ValidationError(format!(
+            "文件太大了，请选择 {}MB 以内的文件",
+            passage_import::MAX_FILE_BYTES / 1024 / 1024
+        ))
+    };
+    if data.len() / 4 * 3 > passage_import::MAX_FILE_BYTES + 3 {
+        return Err(too_big());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.trim())
+        .map_err(|_| AppError::ValidationError("文件内容读取失败，请重新选择".to_string()))?;
+    if bytes.len() > passage_import::MAX_FILE_BYTES {
+        return Err(too_big());
+    }
+    std::fs::create_dir_all(dir).map_err(io)?;
+    let path = dir.join(format!(
+        "upload-{}.{}",
+        uuid::Uuid::new_v4(),
+        extension(name)
+    ));
+    std::fs::write(&path, bytes).map_err(io)?;
+    Ok(path)
 }
 
 /// 读一份素材：准备工作目录 → pi 自主读取 → 核对。`work_root` 下为本次运行建临时目录，结束后删除
@@ -402,6 +552,69 @@ mod tests {
             &tokens("Airlines say the problem is fixed."),
             &scattered
         ));
+    }
+
+    #[test]
+    fn material_becomes_import_preview_with_words() {
+        let content = MaterialContent {
+            title: Some("Air traffic".into()),
+            passages: vec![MaterialPassage {
+                title: None,
+                sentences: vec![
+                    MaterialSentence {
+                        en: "I got through the security check.".into(),
+                        zh: Some("我通过了安检。".into()),
+                        paragraph: Some(1),
+                        unverified: false,
+                    },
+                    MaterialSentence {
+                        en: "Flights were grounded.".into(),
+                        zh: None,
+                        paragraph: Some(2),
+                        unverified: true,
+                    },
+                ],
+            }],
+            phrases: vec![MaterialPhrase {
+                text: "got through".into(),
+                base: Some("get through".into()),
+                meaning: "通过".into(),
+            }],
+            vocabulary: vec![
+                MaterialVocab {
+                    word: "ground".into(),
+                    ipa: None,
+                    pos: None,
+                    meaning: Some("使停飞".into()),
+                },
+                MaterialVocab {
+                    word: "passenger".into(),
+                    ipa: None,
+                    pos: None,
+                    meaning: Some("乘客".into()),
+                },
+            ],
+            note: Some("最后一句没有中文。".into()),
+            used_images: true,
+        };
+        let preview = to_import_preview(&content, "news.pdf");
+        assert_eq!(preview.items.len(), 1);
+        let item = &preview.items[0];
+        assert_eq!(item.title, "Air traffic");
+        assert!(
+            item.sentences[0].paragraph && item.sentences[1].paragraph,
+            "段落编号变化即新段落"
+        );
+        assert_eq!(item.sentences[0].zh.as_deref(), Some("我通过了安检。"));
+        assert!(item.sentences[1].unverified);
+        let words: Vec<&str> = item.words.iter().map(|w| w.word.as_str()).collect();
+        assert_eq!(
+            words,
+            vec!["get through", "ground"],
+            "词组按原形、带原文写法；没出现在正文里的词不收"
+        );
+        assert_eq!(item.words[0].forms, vec!["got through".to_string()]);
+        assert_eq!(preview.warnings.len(), 2, "pi 的说明 + 待核对提示");
     }
 
     #[test]

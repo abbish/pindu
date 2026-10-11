@@ -439,7 +439,6 @@ impl PromptTask {
 }
 
 /// 素材阅读任务随应用分发的 pi skills（Agent Skills 格式：目录 + SKILL.md），运行前写到数据目录再用 `--skill` 加载
-#[allow(dead_code)] // 多模态素材 B3 接入后去掉
 pub const MATERIAL_SKILLS: [(&str, &str); 3] = [
     (
         "bilingual-handout",

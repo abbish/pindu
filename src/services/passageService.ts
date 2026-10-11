@@ -7,7 +7,7 @@ import type {
   AddPassageWordsRequest,
   GeneratePassageRequest,
   GeneratePassagesRequest,
-  ImportPassagesRequest,
+  ImportPassagesRequest, MaterialImportRequest,
   ImportPreview,
   PassageNewWord,
   PassageOrigin,
@@ -185,6 +185,11 @@ class PassageService extends BaseService {
   /** 导入几篇材料（后台任务）：返回任务 id；逐篇状态在 job.detail.items，导入好的 id 在 job.result.passageIds */
   async startImport(request: ImportPassagesRequest): Promise<ApiResult<string>> {
     return this.executeWithLoading(() => this.client.invoke<string>('start_passage_import', { request }));
+  }
+
+  /** 把 PDF / 图片 / Word 交给 AI 读取（后台任务）；完成后 job.result 是导入预览（ImportPreview） */
+  async startMaterialImport(request: MaterialImportRequest): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_material_import', { request }));
   }
 
   /** 短文里还不在词汇本的目标词 */

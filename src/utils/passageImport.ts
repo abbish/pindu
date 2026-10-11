@@ -15,6 +15,8 @@ export interface ImportItemLike<S extends ImportSentenceLike = ImportSentenceLik
   title: string;
   sentences: S[];
   wordCount: number;
+  /** 材料自带的词汇（AI 读取的素材才有）；合并时合起来，拆开时两篇都带上（导入时按正文过滤） */
+  words?: { word: string }[];
 }
 
 const WORD = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
@@ -35,7 +37,8 @@ export function mergeWithPrevious<T extends ImportItemLike>(items: T[], index: n
   const cur = items[index];
   // 合并处另起一段，保留原来的分篇边界
   const joined = cur.sentences.map((s, i) => (i === 0 ? { ...s, paragraph: true } : s));
-  const merged = { ...prev, sentences: [...prev.sentences, ...joined], wordCount: prev.wordCount + cur.wordCount };
+  const words = [...(prev.words ?? []), ...(cur.words ?? []).filter((w) => !(prev.words ?? []).some((p) => p.word.toLowerCase() === w.word.toLowerCase()))];
+  const merged = { ...prev, sentences: [...prev.sentences, ...joined], wordCount: prev.wordCount + cur.wordCount, ...(prev.words || cur.words ? { words } : {}) };
   return [...items.slice(0, index - 1), merged, ...items.slice(index + 1)];
 }
 
@@ -71,6 +74,8 @@ export function lengthHint(wordCount: number): 'short' | 'long' | null {
 
 /** 可导入的文件类型（后端按后缀解析；上限 10MB） */
 export const IMPORT_FILE_EXTENSIONS = ['.txt', '.md', '.markdown', '.srt', '.vtt', '.docx', '.pdf'];
+/** 交给 AI 读取的素材（排版过的讲义、海报、照片、扫描件）：PDF、Word 与图片 */
+export const AI_MATERIAL_EXTENSIONS = ['.pdf', '.docx', '.png', '.jpg', '.jpeg', '.webp', '.gif'];
 export const IMPORT_MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 /** 文件后缀（小写，含点）；没有后缀返回空串 */

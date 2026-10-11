@@ -166,6 +166,68 @@ pub async fn start_passage_import(
     finish(&logger, "start_passage_import", result)
 }
 
+/// 把 PDF / 图片 / Word 交给 AI 读取（后台任务，kind material_read）：pi 自主读取并整理出正文、材料里的译文与词汇，
+/// 结果（导入预览，与粘贴文本的预览同一结构）放在 job.result；只给发起页面用，离开页面时由页面取消
+#[tauri::command]
+pub async fn start_material_import(
+    app: AppHandle,
+    request: crate::types::material::MaterialImportRequest,
+) -> AppResult<String> {
+    use crate::jobs::{JobSpec, Jobs, Lane};
+    use crate::services::agent_settings::{AgentSettingsService, AgentTaskKind};
+    use crate::services::material_read::{self, MaterialPurpose};
+    use crate::services::prompt_profile::PromptProfileService;
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "start_material_import",
+        Some(&format!(
+            "file: {}, base64 chars: {}",
+            request.file_name,
+            request.file_base64.len()
+        )),
+    );
+    let result = async {
+        let paths = agent_paths(&app)?;
+        let upload = material_read::save_upload(
+            &paths.root.join("materials"),
+            &request.file_name,
+            &request.file_base64,
+        )?;
+        let pool = Arc::new(app.state::<SqlitePool>().inner().clone());
+        let logger_arc = Arc::new(logger.inner().clone());
+        let model = AgentSettingsService::new(pool.clone(), logger_arc.clone())
+            .model_for(AgentTaskKind::Passage, None)
+            .await?;
+        let profile = PromptProfileService::load(&pool).await?;
+        let name = request.file_name.trim().to_string();
+        let spec = JobSpec {
+            kind: "material_read",
+            title: format!("AI 阅读素材 · {name}"),
+            lane: Lane::Agent,
+            detached: false,
+            link: None,
+        };
+        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
+            ctx.stage("AI 正在阅读素材");
+            let content = material_read::read_material(
+                &paths,
+                &model,
+                &profile,
+                &upload,
+                MaterialPurpose::Passage,
+                &logger_arc,
+                || ctx.is_cancelled(),
+            )
+            .await;
+            let _ = std::fs::remove_file(&upload);
+            let preview = material_read::to_import_preview(&content?, &name);
+            serde_json::to_value(preview).map_err(|e| AppError::InternalError(e.to_string()))
+        }))
+    }
+    .await;
+    finish(&logger, "start_material_import", result)
+}
+
 /// 短文里还不在词汇本的词（AI 挑的重点词）
 #[tauri::command]
 pub async fn get_passage_new_words(

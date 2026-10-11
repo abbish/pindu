@@ -184,6 +184,7 @@ const MaterialSchema = Type.Object({
   phrases: Type.Array(
     Type.Object({
       text: Type.String({ description: "the word or phrase exactly as written in a passage sentence (e.g. got through, air traffic control)" }),
+      base: Type.Optional(Type.String({ description: "its dictionary form when different from text (got through → get through, heading to → head to); omit when the same" })),
       meaning: Type.String({ description: "the Chinese note printed for it in the material" }),
     }),
     { description: "words / phrases the material marks inside the text (underlined, highlighted, glossed); empty if none" },

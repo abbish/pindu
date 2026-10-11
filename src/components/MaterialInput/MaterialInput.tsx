@@ -7,10 +7,12 @@ import { InlineError } from '@/components/InlineError';
 import { cn } from '@/lib/utils';
 import { materialService } from '@/services/materialService';
 import { formatBytes } from '@/utils/fileSize';
-import { IMPORT_FILE_EXTENSIONS, IMPORT_MAX_FILE_BYTES, bytesToBase64, englishWordCount, fileExtension } from '@/utils/passageImport';
+import { AI_MATERIAL_EXTENSIONS, IMPORT_FILE_EXTENSIONS, IMPORT_MAX_FILE_BYTES, bytesToBase64, englishWordCount, fileExtension } from '@/utils/passageImport';
 
-/** 显示给用户的文件类型（.markdown 与 .md 同类，不重复列出） */
-const SHOWN_EXTENSIONS = IMPORT_FILE_EXTENSIONS.filter((e) => e !== '.markdown').join(' ');
+/** 能选的文件类型；页面支持交给 AI 读取时加上图片 */
+const acceptedExtensions = (ai: boolean) => [...new Set([...IMPORT_FILE_EXTENSIONS, ...(ai ? AI_MATERIAL_EXTENSIONS : [])])];
+/** 显示给用户的文件类型（.markdown 与 .md 同类，.jpeg 与 .jpg 同类，不重复列出） */
+const shownExtensions = (ai: boolean) => acceptedExtensions(ai).filter((e) => e !== '.markdown' && e !== '.jpeg').join(' ');
 
 export interface MaterialInputProps {
   /** 文本（粘贴的，或从文件读出后用户改过的） */
@@ -28,6 +30,10 @@ export interface MaterialInputProps {
   privacyNote?: boolean;
   autoFocus?: boolean;
   disabled?: boolean;
+  /**
+   * 页面支持把 PDF、Word、图片交给 AI 读取时传入：选了这类文件就交给页面（不再读成文本填进文本框）
+   */
+  onAiFile?: (file: { fileName: string; fileBase64: string }) => void;
 }
 
 /**
@@ -45,6 +51,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
   privacyNote,
   autoFocus,
   disabled,
+  onAiFile,
 }) => {
   const id = useId();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -60,7 +67,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
   const readFile = async (file: File | undefined | null) => {
     if (!file || disabled) return;
     const ext = fileExtension(file.name);
-    if (!IMPORT_FILE_EXTENSIONS.includes(ext)) return setError(`不支持${ext ? ` ${ext} ` : '这种'}文件，可以导入 ${SHOWN_EXTENSIONS}`);
+    if (!acceptedExtensions(!!onAiFile).includes(ext)) return setError(`不支持${ext ? ` ${ext} ` : '这种'}文件，可以导入 ${shownExtensions(!!onAiFile)}`);
     if (file.size > IMPORT_MAX_FILE_BYTES) return setError(`文件不能超过 ${formatBytes(IMPORT_MAX_FILE_BYTES)}`);
     setError(null);
     setWarnings([]);
@@ -71,6 +78,10 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
     } catch {
       setReading(null);
       return setError('无法读取这个文件，请重新选择');
+    }
+    if (onAiFile && AI_MATERIAL_EXTENSIONS.includes(ext)) {
+      setReading(null);
+      return onAiFile({ fileName: file.name, fileBase64 });
     }
     const result = await materialService.readFile({ fileName: file.name, fileBase64 });
     setReading(null);
@@ -110,7 +121,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
         <input
           ref={fileInput}
           type="file"
-          accept={IMPORT_FILE_EXTENSIONS.join(',')}
+          accept={acceptedExtensions(!!onAiFile).join(',')}
           className="sr-only"
           tabIndex={-1}
           onChange={(e) => {
@@ -159,7 +170,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        支持 {SHOWN_EXTENSIONS}，不超过 {formatBytes(IMPORT_MAX_FILE_BYTES)}
+        支持 {shownExtensions(!!onAiFile)}，不超过 {formatBytes(IMPORT_MAX_FILE_BYTES)}
       </p>
       {over && <p className="text-xs text-destructive">超过 {maxChars} 字符，删掉一些或分几次添加</p>}
       {warnings.length > 0 && (

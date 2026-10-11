@@ -163,6 +163,26 @@ impl PassageImportService {
             });
         }
 
+        // 材料自带的词汇（AI 读取素材时带回）：在原文里确实出现的才收，已在词汇本里的带上 wordId
+        let material_texts: Vec<String> = request.words.iter().map(|w| w.word.clone()).collect();
+        let material_known = self.repository.word_ids_by_text(&material_texts).await?;
+        for w in &request.words {
+            let word = w.word.trim();
+            if word.is_empty()
+                || targets.iter().any(|t| t.word.eq_ignore_ascii_case(word))
+                || !passage_rules::text_uses_forms(&full_text, word, &w.forms)
+            {
+                continue;
+            }
+            targets.push(PassageTargetWord {
+                word_id: material_known.get(&word.to_lowercase()).copied(),
+                word: word.to_string(),
+                required: false,
+                meaning: w.meaning.clone().filter(|m| !m.trim().is_empty()),
+                forms: w.forms.clone(),
+            });
+        }
+
         if cancelled() {
             return Err(cancelled_error());
         }
@@ -220,7 +240,14 @@ impl PassageImportService {
             .enumerate()
             .map(|(i, ((s, en), zh))| PassageSentence {
                 en: en.clone(),
-                zh,
+                // 材料里印的译文优先（AI 读取素材时带回），没有的用 AI 翻译
+                zh: s
+                    .zh
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|z| !z.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or(zh),
                 paragraph: s.paragraph || i == 0,
                 start_ms: None,
                 end_ms: None,
@@ -513,11 +540,14 @@ mod tests {
                 .map(|s| ImportSentence {
                     en: s.to_string(),
                     paragraph: false,
+                    zh: None,
+                    unverified: false,
                 })
                 .collect(),
             source_label: "lesson.txt".into(),
             book_ids: vec![],
             ai_key_words: true,
+            words: vec![],
         }
     }
 

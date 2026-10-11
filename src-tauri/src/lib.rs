@@ -360,6 +360,7 @@ pub fn run() {
                 read_material_file,
                 prepare_passage_import,
                 start_passage_import,
+                start_material_import,
                 get_passage_new_words,
                 add_passage_words_to_book,
                 get_tts_config,

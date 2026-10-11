@@ -23,6 +23,12 @@ test('合并到上一篇：句子接上、词数相加、合并处另起一段',
   assert.deepEqual(merged[0].sentences.map((x) => x.paragraph), [true, true, false]);
 });
 
+test('合并时材料自带的词汇合起来、不重复', () => {
+  const a = { ...item('A', s('Get through it.', true)), words: [{ word: 'get through' }] };
+  const b = { ...item('B', s('Get through again, ground.', true)), words: [{ word: 'Get through' }, { word: 'ground' }] };
+  assert.deepEqual(mergeWithPrevious([a, b], 1)[0].words?.map((w) => w.word), ['get through', 'ground']);
+});
+
 test('合并第一篇或越界不变', () => {
   const items = [item('A', s('One.'))];
   assert.equal(mergeWithPrevious(items, 0), items);

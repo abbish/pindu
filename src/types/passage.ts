@@ -470,6 +470,19 @@ export interface ImportSentence {
   en: string;
   /** 本句开始新段落 */
   paragraph: boolean;
+  /** 材料里印的中文翻译（AI 读取素材时带回）；导入时优先用它 */
+  zh?: string | null;
+  /** AI 读出的这句没能和文件内容对上，请用户核对 */
+  unverified?: boolean;
+}
+
+/** 材料自带的词汇（画线词组、词汇表），导入时直接成为这篇的词汇 */
+export interface ImportWord {
+  /** 原形（词组如 get through） */
+  word: string;
+  meaning?: string | null;
+  /** 在原文里的写法（如 got through） */
+  forms: string[];
 }
 
 /** 预处理请求：text 与文件二选一（都给时用文件） */
@@ -487,6 +500,8 @@ export interface ImportPreviewItem {
   title: string;
   sentences: ImportSentence[];
   wordCount: number;
+  /** 材料自带的词汇（只有 AI 读取的素材才有） */
+  words: ImportWord[];
 }
 
 /** 预处理结果：清理、分句、按篇幅拆好的预览（不保存） */
@@ -511,6 +526,15 @@ export interface ImportPassageRequest {
   bookIds: number[];
   /** AI 挑重点词（带中文释义） */
   aiKeyWords: boolean;
+  /** 材料自带的词汇（预览里带回来的） */
+  words?: ImportWord[];
+}
+
+/** 交给 AI 读取的素材文件（PDF / 图片 / Word） */
+export interface MaterialImportRequest {
+  fileName: string;
+  /** base64，上限 10MB */
+  fileBase64: string;
 }
 
 /** 短文里还不在词汇本的目标词 */

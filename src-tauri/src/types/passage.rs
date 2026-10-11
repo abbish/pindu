@@ -626,6 +626,25 @@ pub struct ImportSentence {
     /// 本句开始一个新段落
     #[serde(default)]
     pub paragraph: bool,
+    /// 材料里印的中文翻译（AI 读取素材时带回）；导入时优先用它，没有的才由 AI 翻译
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zh: Option<String>,
+    /// AI 读出的这句没能在文件文字里找到，预览里请用户核对
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unverified: bool,
+}
+
+/// 材料自带的词汇（画线词组、词汇表）：导入时直接成为这篇的词汇
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportWord {
+    /// 原形（词组如 get through）
+    pub word: String,
+    #[serde(default)]
+    pub meaning: Option<String>,
+    /// 在原文里的写法（如 got through）；与原形相同时为空
+    #[serde(default)]
+    pub forms: Vec<String>,
 }
 
 /// 预处理材料：粘贴的文本，或文件（文件名 + base64 内容）
@@ -651,6 +670,9 @@ pub struct ImportPreviewItem {
     pub title: String,
     pub sentences: Vec<ImportSentence>,
     pub word_count: i64,
+    /// 材料自带的词汇（只有 AI 读取的素材才有）
+    #[serde(default)]
+    pub words: Vec<ImportWord>,
 }
 
 /// 材料预处理结果（不写库，不用 AI）
@@ -680,6 +702,9 @@ pub struct ImportPassageRequest {
     /// 让 AI 挑重点词
     #[serde(default)]
     pub ai_key_words: bool,
+    /// 材料自带的词汇（预览里带回来的），直接成为这篇的词汇
+    #[serde(default)]
+    pub words: Vec<ImportWord>,
 }
 
 /// 短文里还不在词汇本的词（AI 挑的重点词）

@@ -123,7 +123,6 @@ pub struct WordCard {
 /// 素材里的一句：英文原文 + 材料里印的中文（没有为 None）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)] // 多模态素材 B3 接入后去掉
 pub struct MaterialSentence {
     pub en: String,
     #[serde(default)]
@@ -137,7 +136,6 @@ pub struct MaterialSentence {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)] // 多模态素材 B3 接入后去掉
 pub struct MaterialPassage {
     #[serde(default)]
     pub title: Option<String>,
@@ -147,17 +145,18 @@ pub struct MaterialPassage {
 /// 材料在正文里标出的词或词组（画线、加粗、旁注）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)] // 多模态素材 B3 接入后去掉
 pub struct MaterialPhrase {
     /// 在原文句子里的写法
     pub text: String,
+    /// 原形（与写法不同时才有，如 got through → get through）
+    #[serde(default)]
+    pub base: Option<String>,
     pub meaning: String,
 }
 
 /// 材料里的词汇表条目
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)] // 多模态素材 B3 接入后去掉
 pub struct MaterialVocab {
     pub word: String,
     #[serde(default)]
@@ -171,7 +170,6 @@ pub struct MaterialVocab {
 /// pi 读完一份素材整理出的内容（Rust 已核对）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)] // 多模态素材 B3 接入后去掉
 pub struct MaterialContent {
     #[serde(default)]
     pub title: Option<String>,
@@ -184,4 +182,12 @@ pub struct MaterialContent {
     /// 这次用的模型能看图
     #[serde(default)]
     pub used_images: bool,
+}
+
+/// 交给 AI 读取的素材文件（PDF / 图片 / Word），用于导入短文
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MaterialImportRequest {
+    pub file_name: String,
+    pub file_base64: String,
 }

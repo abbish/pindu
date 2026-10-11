@@ -32,7 +32,7 @@ import { passageService } from '@/services/passageService';
 import { wordBookService } from '@/services/wordbookService';
 import { jobService } from '@/services/jobService';
 import { toUserMessage } from '@/api/errors';
-import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { useJob, useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { JobPanel } from '@/components/Jobs';
 import { isJobActive } from '@/types/job';
 import {
@@ -79,6 +79,10 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
   const [targetWords, setTargetWords] = useState(300);
   const [preparing, setPreparing] = useState(false);
   const [prepareError, setPrepareError] = useState<string | null>(null);
+  /** PDF / Word / 图片交给 AI 读取的后台任务；读完直接进入预览 */
+  const [materialJobId, setMaterialJobId] = useState<string | null>(null);
+  const materialJob = useJob(materialJobId);
+  const readingMaterial = !!materialJob && isJobActive(materialJob);
 
   // ② 预览
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -153,6 +157,40 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
     setStep(1);
   };
 
+  /** PDF / Word / 图片：交给 AI 读取（整理出正文、材料里的译文与词汇），读完进入预览 */
+  const readWithAi = async (file: { fileName: string; fileBase64: string }) => {
+    setPrepareError(null);
+    setSourceLabel(file.fileName);
+    const started = await passageService.startMaterialImport(file);
+    if (!started.success) return setPrepareError(started.error);
+    setMaterialJobId(started.data);
+  };
+
+  useEffect(() => {
+    if (!materialJob || isJobActive(materialJob)) return;
+    setMaterialJobId(null);
+    if (materialJob.status === 'cancelled') return;
+    if (materialJob.status !== 'succeeded') {
+      return setPrepareError(toUserMessage(materialJob.error?.message ?? '请再试一次'));
+    }
+    const result = materialJob.result as ImportPreview;
+    if (result.items.length === 0) return setPrepareError(result.warnings.join('；') || '这份素材里没有成段的英文文章');
+    setPreview(result);
+    setItems(result.items.map(withKey));
+    setExpanded(new Set());
+    // 材料自带词汇时不再让 AI 另挑
+    if (result.items.some((it) => it.words.length > 0)) setAiKeyWords(false);
+    setStep(1);
+  }, [materialJob]);
+
+  // 只给这个页面用：离开页面时停掉还在读的素材
+  useEffect(
+    () => () => {
+      if (materialJobId) void jobService.cancel(materialJobId);
+    },
+    [materialJobId],
+  );
+
   /** 提交后台任务导入这几篇（预览里的序号）；离开页面也会继续 */
   const runImport = async (indexes: number[]) => {
     if (!preview) return;
@@ -163,6 +201,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
         sourceLabel: preview.sourceLabel,
         bookIds,
         aiKeyWords,
+        words: items[i].words,
       })),
     });
     if (!started.success) {
@@ -217,8 +256,13 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
             onSourceLabelChange={setSourceLabel}
             privacyNote
             autoFocus
-            disabled={preparing}
+            disabled={preparing || readingMaterial}
+            onAiFile={readWithAi}
           />
+
+          {materialJob && readingMaterial && (
+            <JobPanel job={materialJob} title="AI 正在阅读素材" actions={{ stop: true }} />
+          )}
 
           <div className="flex items-center justify-between gap-4">
             <div className="text-sm font-medium">每篇篇幅</div>
@@ -238,7 +282,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
             <Button variant="ghost" onClick={() => onNavigate?.('passages')} disabled={preparing}>
               取消
             </Button>
-            <Button onClick={prepare} disabled={!hasMaterial || preparing}>
+            <Button onClick={prepare} disabled={!hasMaterial || preparing || readingMaterial}>
               {preparing && <Loader2 className="animate-spin" />}
               {preparing ? '正在整理…' : '下一步'}
             </Button>
@@ -339,10 +383,28 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                         </Button>
                       )}
                     </div>
+                    {item.words.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pl-8 text-xs">
+                        <span className="text-muted-foreground">词汇 {item.words.length}</span>
+                        {item.words.map((w) => (
+                          <Badge key={w.word} variant="secondary" className="h-5 font-normal" title={w.meaning ?? undefined}>
+                            {w.word}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                     <div className="space-y-0.5 pl-8 text-sm leading-relaxed">
                       {shown.map((s, j) => (
                         <div key={j} className={cn('group relative flex items-start gap-2 rounded-md px-2 py-0.5 hover:bg-muted/50', s.paragraph && j > 0 && 'mt-2')}>
-                          <span className="min-w-0 flex-1 select-text">{s.en}</span>
+                          <span className="min-w-0 flex-1 select-text">
+                            {s.en}
+                            {s.unverified && (
+                              <Badge variant="outline" className="ml-2 h-5 border-transparent bg-warning-soft align-middle font-normal text-warning">
+                                请核对
+                              </Badge>
+                            )}
+                            {s.zh && <span className="block text-xs text-muted-foreground">{s.zh}</span>}
+                          </span>
                           {open && j > 0 && (
                             <Button
                               variant="ghost"

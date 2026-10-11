@@ -762,6 +762,8 @@ fn items_of_section(paragraphs: &[Vec<String>], target: usize) -> Vec<Vec<Import
             current.push(ImportSentence {
                 en: sentence.clone(),
                 paragraph: i == 0 || current.is_empty(),
+                zh: None,
+                unverified: false,
             });
             words += sw;
         }
@@ -881,6 +883,7 @@ pub fn prepare(
                 title,
                 sentences,
                 word_count,
+                words: Vec::new(),
             });
         }
     }
