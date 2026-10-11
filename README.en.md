@@ -54,9 +54,10 @@ Pindu is a desktop app for learning English vocabulary with phonics, available f
   - Generate them from a topic description.
 - When you import English material, the original text is kept unchanged. Only translations, a title, a level and key words are added.
 - While reading:
-  - Target words are highlighted, and clicking one opens its word card.
+  - Vocabulary words are highlighted, and clicking one opens its word card.
   - Passages can be played sentence by sentence or listened to with the text hidden.
-  - Any word or phrase you select in the text can be added as a target word.
+  - Any word or phrase you select in the text can be added to the vocabulary. Words can be removed, or re-picked by AI with conditions you set.
+- The title, level and each sentence's translation can be edited.
 - Sentence analysis: sentence pattern, constituents, grammar points, communicative function, useful phrases and pronunciation notes.
 - Comprehension exercises:
   - Cloze, multiple-choice and true/false questions are graded automatically.
