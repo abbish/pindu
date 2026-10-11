@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { JOBS_SINCE, markJobsSeen, useJobs, useJobsSeen } from '@/hooks/useJobs';
+import { useJobs } from '@/hooks/useJobs';
+import { markNavSeen, NAV_SEEN_SINCE, useNavSeen } from '@/hooks/useNavSeen';
 import { isJobUnseen, JOBS_PAGE } from '@/utils/jobSeen';
 import type { NavigateFn } from '@/navigation';
 import { isJobActive, type Job, type JobModule } from '@/types/job';
@@ -63,12 +64,12 @@ const JobsPopoverBody: React.FC<{ title: string; jobs: Job[]; onNavigate: Naviga
  */
 export const ModuleJobBadge: React.FC<{ module: JobModule; label: string; current: boolean; onNavigate: NavigateFn }> = ({ module, label, current, onNavigate }) => {
   const jobs = useJobs().filter((j) => j.module === module);
-  const seen = useJobsSeen();
+  const seen = useNavSeen();
   const [open, setOpen] = useState(false);
 
   const active = jobs.filter(isJobActive);
   // 正在看这个模块时，刚结束的任务已经在页面上看到了
-  const unseen = current ? [] : jobs.filter((j) => isJobUnseen(j, seen, JOBS_SINCE));
+  const unseen = current ? [] : jobs.filter((j) => isJobUnseen(j, seen, NAV_SEEN_SINCE));
   if (active.length === 0 && unseen.length === 0 && !open) return null;
 
   const failed = unseen.some((j) => j.status === 'failed');
@@ -77,7 +78,7 @@ export const ModuleJobBadge: React.FC<{ module: JobModule; label: string; curren
 
   const handleOpenChange = (value: boolean) => {
     setOpen(value);
-    if (!value) markJobsSeen(module);
+    if (!value) markNavSeen(module);
   };
 
   return (
@@ -115,9 +116,9 @@ export const ModuleJobBadge: React.FC<{ module: JobModule; label: string; curren
  */
 export const JobsNavItem: React.FC<{ current: boolean; onNavigate: NavigateFn }> = ({ current, onNavigate }) => {
   const jobs = useJobs();
-  const seen = useJobsSeen();
+  const seen = useNavSeen();
   const active = jobs.filter(isJobActive).length;
-  const unseenFailure = !current && jobs.some((j) => j.status === 'failed' && isJobUnseen(j, seen, JOBS_SINCE));
+  const unseenFailure = !current && jobs.some((j) => j.status === 'failed' && isJobUnseen(j, seen, NAV_SEEN_SINCE));
 
   return (
     <SidebarMenuItem>

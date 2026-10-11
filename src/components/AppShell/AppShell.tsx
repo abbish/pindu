@@ -31,9 +31,11 @@ import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/useTheme';
 import { PAGE_TITLE, TOP_LEVEL_OF, type NavigateFn, type PageKey, type TopLevelPage } from '@/navigation';
 import { JobsNavItem, ModuleJobBadge } from '@/components/Jobs';
+import { TutorActivityBadge } from '@/components/TutorActivity';
 import { QuickAsk } from '@/components/QuickAsk';
 import { UpdateBanner } from '../UpdateBanner';
-import { markJobsSeen, useOnJobFinished } from '@/hooks/useJobs';
+import { useOnJobFinished } from '@/hooks/useJobs';
+import { markNavSeen } from '@/hooks/useNavSeen';
 import { refreshTagUsage, tagTotal, useTagUsage } from '@/hooks/useTagUsage';
 import type { JobModule } from '@/types/job';
 
@@ -155,10 +157,10 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
   const currentTitle = (dynamicTitle?.page === page ? dynamicTitle.title : null) ?? PAGE_TITLE[page];
   const isSubPage = active !== page;
 
-  // 进入、离开一个模块时，它已结束的任务算看过（侧边栏上的完成标记消失）
+  // 进入、离开一个页面时，它已结束的任务、AI 老师答完的对话算看过（侧边栏上的完成标记消失）
   useEffect(() => {
-    markJobsSeen(active);
-    return () => markJobsSeen(active);
+    markNavSeen(active);
+    return () => markNavSeen(active);
   }, [active]);
 
   const handleOpenChange = (value: boolean) => {
@@ -207,6 +209,7 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
                           <span>{label}</span>
                         </SidebarMenuButton>
                         {jobs && <ModuleJobBadge module={jobs} label={label} current={active === key} onNavigate={onNavigate} />}
+                        {key === 'tutor' && <TutorActivityBadge current={active === key} onNavigate={onNavigate} />}
                       </SidebarMenuItem>
                     ))}
                   </SidebarMenu>

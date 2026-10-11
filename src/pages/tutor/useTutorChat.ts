@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useToast } from '@/components';
 import { tutorService } from '@/services/tutorService';
+import { forgetTutorActivity } from '@/hooks/useTutorActivity';
 import type { PiEvent, TutorConversation, TutorEventPayload, TutorFileUpload, TutorImage } from '@/types/tutor';
 import { applyEvent, dropAsk, emptyTranscript, openedTranscript, toAsk, type SeqEvent, type TranscriptState, type TutorAsk } from '@/utils/tutorTranscript';
 
@@ -45,7 +46,8 @@ const readBase64 = (file: File) =>
     reader.readAsDataURL(file);
   });
 
-export function useTutorChat(initialPrompt?: string) {
+/** initialConversationId：进入时打开这个对话（默认打开上次的；有 initialPrompt 时开新对话） */
+export function useTutorChat(initialPrompt?: string, initialConversationId?: string) {
   const toast = useToast();
   const [conversations, setConversationsState] = useState<TutorConversation[]>(lastConversations ?? []);
   /** 第一次加载列表（还没有上次的列表可显示） */
@@ -57,7 +59,7 @@ export function useTutorChat(initialPrompt?: string) {
       return next;
     });
   }, []);
-  const [activeId, setActiveIdState] = useState<string | null>(initialPrompt ? null : lastConversationId);
+  const [activeId, setActiveIdState] = useState<string | null>(initialConversationId ?? (initialPrompt ? null : lastConversationId));
   const [transcript, setTranscript] = useState<TranscriptState>(emptyTranscript());
   const [loading, setLoading] = useState(false);
 
@@ -301,6 +303,7 @@ export function useTutorChat(initialPrompt?: string) {
       }
       if (activeRef.current === id) newConversation();
       setConversations((list) => list.filter((c) => c.id !== id));
+      forgetTutorActivity(id);
     },
     [newConversation, toast]
   );

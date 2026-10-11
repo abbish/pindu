@@ -34,8 +34,8 @@ const STARTERS: Starter[] = [
   { title: '考考我', text: '根据我最近容易错的词考考我' },
 ];
 
-export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateFn }> = ({ initialPrompt, onNavigate }) => {
-  const chat = useTutorChat(initialPrompt);
+export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: string; openAt?: number; onNavigate: NavigateFn }> = ({ initialPrompt, conversationId, openAt, onNavigate }) => {
+  const chat = useTutorChat(initialPrompt, conversationId);
   const [draft, setDraft] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   /** 变化时输入框获得焦点、光标到末尾（开场示例用）；openPicker 打开选文件 */
@@ -81,6 +81,13 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
     // 发出后 pi 的消息里带着图片本身，预览地址用完就释放（稍等，先显示的消息还在用）
     window.setTimeout(() => files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview)), 60_000);
   };
+
+  // 已经在 AI 老师页面时从侧边栏的标记打开另一个对话（进入页面时由 useTutorChat 打开）
+  const { activeId, open } = chat;
+  useEffect(() => {
+    if (conversationId && conversationId !== activeId) void open(conversationId);
+    // 只跟着打开请求变
+  }, [conversationId, openAt]);
 
   // 从顶栏快速对话进来：开新对话并发出这句（只在进入时发一次）
   const started = useRef(false);

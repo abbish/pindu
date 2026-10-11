@@ -41,8 +41,11 @@ export interface RouteParams {
   /** 标签：这个标签下的全部素材（侧边栏「标签」分组） */
   tag: { tagId: number };
   calendar: undefined;
-  /** AI 老师：独立的对话工作台。prompt：从顶栏快速对话进入，开新对话并发出这句；at 区分两次相同的输入 */
-  tutor: { prompt?: string; at?: number } | undefined;
+  /**
+   * AI 老师：独立的对话工作台。prompt：从顶栏快速对话进入，开新对话并发出这句；at 区分两次相同的输入；
+   * conversationId：打开这个对话（侧边栏「AI 老师」标记的浮层），openAt 区分两次打开同一个
+   */
+  tutor: { prompt?: string; at?: number; conversationId?: string; openAt?: number } | undefined;
   /** 后台任务：进行中与已结束的全部任务 */
   jobs: undefined;
   settings: undefined;

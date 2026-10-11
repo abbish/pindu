@@ -133,7 +133,7 @@ function App() {
       case 'calendar':
         return <CalendarPage onNavigate={navigate} />;
       case 'tutor':
-        return <TutorPage key={route.params?.at} initialPrompt={route.params?.prompt} onNavigate={navigate} />;
+        return <TutorPage key={route.params?.at} initialPrompt={route.params?.prompt} conversationId={route.params?.conversationId} openAt={route.params?.openAt} onNavigate={navigate} />;
       case 'jobs':
         return <JobsPage onNavigate={navigate} />;
       case 'settings':

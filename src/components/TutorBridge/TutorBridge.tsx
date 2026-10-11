@@ -2,17 +2,22 @@ import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { startPlanPractice } from '@/hooks/usePlanPractice';
+import { startTutorActivitySync } from '@/hooks/useTutorActivity';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { studyService } from '@/services/studyService';
 import type { NavigateFn, PageKey, RouteParams } from '@/navigation';
 
 /**
  * AI 老师在界面上的动作（MCP 工具 open_page / read_aloud 发来的事件）：打开页面、开始练习、朗读。
- * 放在 ToastProvider 里（开始练习失败要提示），App 级常驻。
+ * 放在 ToastProvider 里（开始练习失败要提示），App 级常驻；同时开始同步各对话在回答 / 等回答（侧边栏「AI 老师」的标记）。
  */
 export const TutorBridge: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) => {
   const toast = useToast();
   const audio = useAudioPlayer();
+
+  useEffect(() => {
+    void startTutorActivitySync();
+  }, []);
 
   useEffect(() => {
     const offs: Promise<() => void>[] = [
