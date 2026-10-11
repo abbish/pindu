@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { WandSparkles, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InlineError } from '@/components/InlineError';
 import { Badge } from '@/components/ui/badge';
@@ -27,8 +27,6 @@ export interface TargetWordsPanelProps {
   onOpenPassage?: (passageId: number, isClip: boolean) => void;
   /** 移除一个目标词 */
   onRemove?: (word: string) => void;
-  /** 重新挑选目标词 */
-  onRepick?: () => void;
 }
 
 /**
@@ -38,7 +36,7 @@ export interface TargetWordsPanelProps {
 /** 本次打开应用期间已请求过补生成单词卡的「短文 + 那组词」（页签切走再回来不重复提交） */
 const requestedCards = new Set<string>();
 
-export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord, onOpenPassage, onRemove, onRepick }) => {
+export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord, onOpenPassage, onRemove }) => {
   const [details, setDetails] = useState<Map<string, Word> | null>(null);
   /** 不在词汇本的目标词的单词卡（小写单词 → 卡片） */
   const [cards, setCards] = useState<Map<string, WordCard> | null>(null);
@@ -155,12 +153,6 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
             );
           })}
         </Card>
-        {onRepick && (
-          <Button variant="outline" size="sm" className="self-start" onClick={onRepick}>
-            <WandSparkles />
-            重新挑选词汇
-          </Button>
-        )}
         {footer}
       </div>
 

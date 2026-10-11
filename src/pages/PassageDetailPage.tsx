@@ -461,13 +461,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
             <aside className="flex flex-col gap-4">
               <Card className="gap-3 px-5 py-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold">词汇</h2>
-                  <Button variant="ghost" size="sm" className="-mr-2 h-7 text-xs text-muted-foreground" onClick={() => setRepicking(true)}>
-                    <WandSparkles />
-                    重新挑选
-                  </Button>
-                </div>
+                <h2 className="text-sm font-semibold">词汇</h2>
                 {passage.targetWords.length === 0 && <p className="text-xs text-muted-foreground">还没有词汇</p>}
                 {required.length > 0 && (
                   <div className="space-y-1.5">
@@ -500,7 +494,6 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             passage={passage}
             focusWord={focusWord}
             onRemove={setRemoving}
-            onRepick={() => setRepicking(true)}
             onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })}
             footer={hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
           />
