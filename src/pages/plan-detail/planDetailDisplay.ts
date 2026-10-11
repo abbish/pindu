@@ -25,7 +25,7 @@ export function getActionConfig(action: string, _currentStatus?: UnifiedStudyPla
     case 'complete':
       return { label: '标记为完成', tone: 'menu' };
     case 'terminate':
-      return { label: '终止学习', tone: 'danger' };
+      return { label: '结束学习', tone: 'menu' };
     case 'delete':
       return { label: '删除计划', tone: 'danger' };
     default:
@@ -45,7 +45,7 @@ const PRIORITY: Partial<Record<StudyPlanAction, number>> = {
 };
 
 /**
- * 页头操作排序并分组：主操作是页头按钮；暂停、标记完成放进“更多”菜单；终止、删除是菜单里的破坏性操作。
+ * 页头操作排序并分组：主操作是页头按钮；暂停、结束学习放进“更多”菜单；删除是菜单里的破坏性操作。
  * 计划删除是物理删除，不存在“已删除”计划，恢复 / 永久删除不再出现。
  */
 export function groupPlanActions(

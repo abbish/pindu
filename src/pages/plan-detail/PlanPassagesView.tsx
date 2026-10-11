@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpenCheck, FileText, Loader2, Play } from 'lucide-react';
+import { BookOpenCheck, FileText, Loader2, Play, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -26,19 +26,21 @@ export interface PlanPassagesViewProps {
   onPractice: (item: PlanPassage) => void;
   /** 只朗读的任务：读完了 */
   onMarkRead: (item: PlanPassage) => Promise<void>;
+  /** 没有短文时去添加（计划设置里） */
+  onAddPassages?: () => void;
 }
 
 /**
  * 计划详情「短文」页签：每篇短文的日期、题组与方式、状态与成绩。
  * 到期（今天 / 逾期）的任务可以练习；只朗读的任务打开短文读完后点「标记为已读」。
  */
-export const PlanPassagesView: React.FC<PlanPassagesViewProps> = ({ items, loading, intervalDays, canPractice, onOpen, onPractice, onMarkRead }) => {
+export const PlanPassagesView: React.FC<PlanPassagesViewProps> = ({ items, loading, intervalDays, canPractice, onOpen, onPractice, onMarkRead, onAddPassages }) => {
   const [marking, setMarking] = useState<number | null>(null);
 
   if (loading) return <Skeleton className="h-64 rounded-xl" />;
   if (items.length === 0) {
     return (
-      <EmptyState icon={<FileText />} title="计划里还没有短文" description="在「设置」页签里添加短文" />
+      <EmptyState icon={<FileText />} title="计划里还没有短文" action={onAddPassages ? '添加短文' : undefined} actionIcon={<Plus />} onAction={onAddPassages} />
     );
   }
 

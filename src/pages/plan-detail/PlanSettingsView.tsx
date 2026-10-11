@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Info, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Info, Loader2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -30,8 +30,6 @@ export interface PlanSettingsViewProps {
   plan: StudyPlanWithProgress;
   /** 计划改动后刷新整页数据 */
   onChanged: () => Promise<void> | void;
-  /** 删除计划（走页面统一的确认） */
-  onDelete: () => void;
 }
 
 const EDITABLE: UnifiedStudyPlanStatus[] = ['Draft', 'Pending', 'Active', 'Paused'];
@@ -60,9 +58,9 @@ const paceSummary = (r: PlanPaceResult) =>
 /**
  * 计划「设置」页签（就地生效，不再转草稿；authoring-flows-redesign B5）：
  * 名称与描述；每天新词数（只重排还没练过的新词日，已学的单词、复习与练习记录不变）；词汇本（列出 + 追加）；
- * 短文（练习内容、间隔、顺序与题组，整体保存，已完成的锁定；C4）；删除。
+ * 短文（练习内容、间隔、顺序与题组，整体保存，已完成的锁定；C4）。删除只在页头 ⋯ 菜单里（plan-ux B3）。
  */
-export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChanged, onDelete }) => {
+export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChanged }) => {
   const toast = useToast();
   const editable = EDITABLE.includes(plan.unified_status as UnifiedStudyPlanStatus);
   const started = plan.unified_status === 'Active' || plan.unified_status === 'Paused';
@@ -369,15 +367,6 @@ export const PlanSettingsView: React.FC<PlanSettingsViewProps> = ({ plan, onChan
             </Button>
           </div>
         )}
-      </SettingsSection>
-
-      <SettingsSection title="删除" tone="danger">
-        <SettingsRow label="删除这个计划">
-          <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={onDelete}>
-            <Trash2 />
-            删除…
-          </Button>
-        </SettingsRow>
       </SettingsSection>
 
       <Dialog

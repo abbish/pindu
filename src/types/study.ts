@@ -520,9 +520,10 @@ export const getAvailableActions = (status: UnifiedStudyPlanStatus): StudyPlanAc
       // 不再单独“开始学习”：第一次练习时自动开始（日程从当天排起）
       return ['delete'];
     case 'Active':
-      return ['pause', 'complete', 'terminate', 'delete'];
+      // 手动结束只有一个入口「结束学习」（terminate）；全部掌握时自动完成（plan-ux B4）
+      return ['pause', 'terminate', 'delete'];
     case 'Paused':
-      return ['resume', 'complete', 'terminate', 'delete'];
+      return ['resume', 'terminate', 'delete'];
     case 'Completed':
     case 'Terminated':
       return ['restart', 'delete'];

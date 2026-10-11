@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, CircleCheckBig, FileText, Flame, Info, Pause, Loader2, MoreHorizontal, Play, Target, Trash2 } from 'lucide-react';
+import { CalendarDays, CircleCheckBig, Flame, Info, List, Loader2, MoreHorizontal, Pause, Play, RotateCw, Trash2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { PlanSettingsView } from './plan-detail/PlanSettingsView';
-import { MetricCard } from '@/components/MetricCard/MetricCard';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { PlanProgressBar } from '@/components/PlanProgressBar/PlanProgressBar';
 import { usePageTitle } from '@/components/AppShell/pageTitle';
 import { studyService } from '@/services/studyService';
@@ -30,7 +30,6 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/datetime';
 import { pickPracticeSchedule } from '@/utils/schedulePick';
 import { getAvailableActions, PLAN_STATUS } from '@/types/study';
-import { MEMORY_INTERVAL_DAYS } from '@/utils/memoryLevel';
 import type {
   PlanMemoryOverview,
   PlanScheduleSummary,
@@ -54,7 +53,7 @@ import { intervalLabel } from '@/components/PlanPassagePicker';
 import { PageError } from '@/components/PageError';
 import { InlineError } from '@/components/InlineError';
 
-type ViewMode = 'overview' | 'schedule' | 'words' | 'passages' | 'statistics' | 'logs' | 'settings';
+type ViewMode = 'schedule' | 'words' | 'passages' | 'statistics' | 'settings';
 
 export interface PlanDetailPageProps {
   /** Plan ID */
@@ -73,18 +72,13 @@ const CONFIRMS: Partial<Record<StudyPlanAction, { title: string; description: st
     destructive: true,
   },
   terminate: {
-    title: '终止学习这个计划？',
-    description: '终止后不能再练习，练习记录会保留',
-    destructive: true,
+    title: '结束学习这个计划？',
+    description: '结束后不能再练习，练习记录会保留；以后可以重新学习',
   },
   delete: {
     title: '删除这个计划？',
     description: '计划和全部练习记录会被删除，不能恢复，词汇本不受影响',
     destructive: true,
-  },
-  complete: {
-    title: '标记这个计划为已完成？',
-    description: '标记后不能再练习，练习记录会保留',
   },
   pause: {
     title: '暂停这个计划？',
@@ -101,18 +95,11 @@ const SUCCESS_TOASTS: Partial<Record<StudyPlanAction, [string, string?]>> = {
   start: ['已开始学习'],
   pause: ['已暂停计划'],
   resume: ['已继续学习'],
-  complete: ['已标记为完成'],
-  terminate: ['已终止学习'],
+  terminate: ['已结束学习'],
   restart: ['已重新开始'],
   publish: ['已发布计划'],
   delete: ['已删除计划'],
 };
-
-/** 记忆等级：复习间隔与配色（等级 ≥ 4 为掌握） */
-const BOX_CLASS = ['bg-chart-1/30', 'bg-chart-1/55', 'bg-chart-1/80', 'bg-chart-2/80', 'bg-chart-2'];
-const BOX_META: Record<number, { label: string; className: string }> = Object.fromEntries(
-  MEMORY_INTERVAL_DAYS.map((days, i) => [i + 1, { label: `${days} 天`, className: BOX_CLASS[i] }])
-);
 
 /** 计划单词按 word_id 去重后的词性分布 */
 function partOfSpeechStats(words: StudyPlanWord[]): Record<string, number> {
@@ -146,6 +133,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
   const [passageItems, setPassageItems] = useState<PlanPassage[]>([]);
   const [passagesLoading, setPassagesLoading] = useState(true);
   const [view, setView] = useState<ViewMode | null>(initialTab ?? null);
+  /** 日程页签：列表 / 日历 */
+  const [scheduleAs, setScheduleAs] = useState<'list' | 'calendar'>('list');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<StudyPlanAction | null>(null);
@@ -213,15 +202,15 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
     loadAll();
   }, [loadAll]);
 
-  // 默认页签：只练短文的计划看短文，其余看日程
+  // 默认页签：只练短文的计划看短文，其余看日程（列表）
   const contentKind = plan?.practice_content;
   useEffect(() => {
     if (contentKind && view === null) setView(contentKind === 'passages' ? 'passages' : 'schedule');
   }, [contentKind, view]);
 
-  // 日程用时与学习日志都需要练习会话：切到这两个视图时加载一次
+  // 日程用时与练习记录（统计页签）都需要练习会话：切到这两个页签时加载一次
   useEffect(() => {
-    if ((view === 'logs' || view === 'schedule') && sessions === null && !sessionsLoading) loadSessions();
+    if ((view === 'statistics' || view === 'schedule') && sessions === null && !sessionsLoading) loadSessions();
   }, [view, sessions, sessionsLoading, loadSessions]);
 
   const posStats = useMemo(() => partOfSpeechStats(planWords), [planWords]);
@@ -358,30 +347,72 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
   }
 
   const status = plan.unified_status as UnifiedStudyPlanStatus;
-  // 待开始 / 进行中都能直接练习（待开始的计划第一次练习时自动开始），不再单独显示「开始学习」
+  // 待开始 / 进行中都能直接练习（待开始的计划第一次练习时自动开始）
   const canPractice = status === 'Pending' || status === 'Active';
   const { primary, menu, danger } = groupPlanActions(getAvailableActions(status), status);
   const timeProgress = calculateTimeProgress(plan.start_date, plan.end_date);
-  // 与计划卡同一口径：已学（练过一次）/ 全部单词；掌握要间隔 7 天后仍写对，计划前期都是 0，看「记忆等级」
-  const learnProgress = plan.practice_content === 'passages'
-    ? (plan.total_passages > 0 ? (plan.completed_passages / plan.total_passages) * 100 : 0)
-    : (plan.total_words > 0 ? ((statistics?.learned_words ?? 0) / plan.total_words) * 100 : 0);
   const withWords = plan.practice_content !== 'passages';
   const withPassages = plan.practice_content !== 'words';
+  // 与计划卡同一口径：已学（练过一次）/ 全部单词；只练短文按篇数
+  const learnProgress = !withWords
+    ? (plan.total_passages > 0 ? (plan.completed_passages / plan.total_passages) * 100 : 0)
+    : (plan.total_words > 0 ? ((statistics?.learned_words ?? 0) / plan.total_words) * 100 : 0);
   const meta = [
     withWords && plan.daily_new_words ? `每天 ${plan.daily_new_words} 个新词` : null,
-    withWords ? `周期 ${plan.study_period_days || 0} 天` : null,
+    withPassages ? intervalLabel(plan.passage_interval_days) : null,
     plan.start_date || plan.end_date ? `${formatDate(plan.start_date) || '—'} – ${formatDate(plan.end_date) || '—'}` : null,
     withWords ? `${plan.total_words} 个单词` : null,
     withPassages ? `${plan.total_passages} 篇短文` : null,
   ].filter(Boolean).join(' · ');
-  const nextPassage = passageItems.find((p) => p.status !== 'completed');
-  const passageProgress = plan.total_passages > 0 ? (plan.completed_passages / plan.total_passages) * 100 : 0;
+  const nextPassage = passageItems.find((p) => p.status === 'upcoming');
+  const missedDays = schedules.filter((s) => s.schedule_date < today && !s.completed).length;
+  const nextScheduleDate = schedules.find((s) => s.schedule_date > today && !s.completed)?.schedule_date;
+  const wordsToday = !!todaySchedule && !todaySchedule.completed && todaySchedule.word_count > 0;
   const memoryTotal = memory?.total || 0;
+  const memorySegments = memory
+    ? [
+        { label: '未学', count: memory.not_started, className: 'bg-muted-foreground/20' },
+        { label: '学习中', count: memory.learned - memory.mastered, className: 'bg-chart-1/70' },
+        { label: '已掌握', count: memory.mastered, className: 'bg-chart-2' },
+      ]
+    : [];
+
+  /** 「今天」卡：今天要做的事（单词 + 到期短文）与开始按钮在一处 */
+  const todayLines: React.ReactNode[] = [];
+  if (withWords && todaySchedule) {
+    todayLines.push(
+      todaySchedule.completed
+        ? '今天的单词已练完'
+        : [todaySchedule.new_words_count > 0 && `新学 ${todaySchedule.new_words_count} 个`, todaySchedule.review_words_count > 0 && `复习 ${todaySchedule.review_words_count} 个`].filter(Boolean).join('、') + '单词'
+    );
+  }
+  if (withWords && missedDays > 0) todayLines.push(<span className="text-warning">之前还有 {missedDays} 天没练</span>);
+  if (withPassages && duePassages.length > 0) {
+    todayLines.push(
+      <>
+        短文「{duePassages[0].title}」{duePassages.length > 1 ? ` 等 ${duePassages.length} 篇` : ''}
+        {duePassages.some((p) => p.status === 'overdue') && <span className="text-warning">（有逾期）</span>}
+      </>
+    );
+  }
+  const hasTodayWork = wordsToday || missedDays > 0 || duePassages.length > 0;
+  const nextText = (() => {
+    const dates = [withWords ? nextScheduleDate : undefined, withPassages ? nextPassage?.scheduledDate : undefined].filter((d): d is string => !!d).sort();
+    return dates[0] ? `下次学习 ${formatDate(dates[0])}` : null;
+  })();
+  const notPracticeText = status === 'Paused' ? '计划已暂停，继续学习后才能练习' : status === 'Draft' ? '发布后才能练习' : '计划已结束，重新学习后才能练习';
+
+  const tabs: { value: ViewMode; label: string; count?: number }[] = [
+    { value: 'schedule', label: '日程' },
+    ...(withWords ? [{ value: 'words' as const, label: '单词', count: planWords.length }] : []),
+    ...(withPassages ? [{ value: 'passages' as const, label: '短文', count: plan.total_passages }] : []),
+    ...(withWords ? [{ value: 'statistics' as const, label: '统计' }] : []),
+    { value: 'settings', label: '设置' },
+  ];
 
   return (
     <div className={container}>
-      {/* 页头 */}
+      {/* 页头：名称、状态与状态操作（练习入口在「今天」卡里） */}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2">
@@ -392,14 +423,8 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
           <p className="text-xs text-muted-foreground">{meta}</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          {canPractice && (
-            <Button onClick={startPractice}>
-              <Play />
-              {status === 'Pending' ? '开始练习' : '进入练习'}
-            </Button>
-          )}
-          {primary.map((action, i) => (
-            <Button key={action} variant={!canPractice && i === 0 ? 'default' : 'outline'} onClick={() => handleAction(action)}>
+          {primary.map((action) => (
+            <Button key={action} onClick={() => handleAction(action)}>
               {getActionConfig(action, status).label}
             </Button>
           ))}
@@ -430,170 +455,113 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
         </div>
       </div>
 
-      {/* 进度与记忆等级 */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="gap-4 p-5">
+      <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-3">
+        {/* 今天 */}
+        <Card className="gap-3 p-5">
+          <h2 className="text-sm font-medium">今天</h2>
+          <div className="flex items-center gap-4">
+            <div className="min-w-0 flex-1 space-y-1 text-sm">
+              {!canPractice ? (
+                <p className="text-muted-foreground">{notPracticeText}</p>
+              ) : todayLines.length > 0 ? (
+                todayLines.map((line, i) => <p key={i}>{line}</p>)
+              ) : (
+                <p className="text-muted-foreground">今天没有要学的{nextText ? `，${nextText}` : ''}</p>
+              )}
+              {canPractice && todayLines.length > 0 && !hasTodayWork && nextText && <p className="text-xs text-muted-foreground">{nextText}</p>}
+            </div>
+            {canPractice && (hasTodayWork || withWords) && (
+              <Button onClick={startPractice} variant={hasTodayWork ? 'default' : 'outline'}>
+                {hasTodayWork ? <Play /> : <RotateCw />}
+                {!hasTodayWork ? '再练一次' : status === 'Pending' ? '开始学习' : '继续学习'}
+              </Button>
+            )}
+          </div>
+        </Card>
+
+        {/* 进度 */}
+        <Card className="gap-3 p-5">
           <div className="flex items-baseline justify-between">
             <h2 className="inline-flex items-center gap-1 text-sm font-medium">
-              学习进度
+              进度
               <Tooltip>
-                <TooltipTrigger aria-label="学习进度的口径">
+                <TooltipTrigger aria-label="进度的口径">
                   <Info className="size-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-64">
-                  {!withWords ? '完成的短文 / 全部短文' : '练过的单词 / 全部单词；掌握情况见记忆等级'}
+                  {!withWords ? '完成的短文 / 全部短文' : '练过的单词 / 全部单词。复习时隔 7 天还能写对，算已掌握'}
                 </TooltipContent>
               </Tooltip>
             </h2>
-            <span className="text-2xl font-semibold text-primary tabular-nums">{Math.round(learnProgress)}%</span>
+            <span className="text-xl font-semibold text-primary tabular-nums">{Math.round(learnProgress)}%</span>
           </div>
           <PlanProgressBar learnProgress={learnProgress} timeProgress={timeProgress} status={status} className="h-2" />
-          {withWords && withPassages && (
-            <p className="text-xs text-muted-foreground tabular-nums">
-              短文 {plan.completed_passages} / {plan.total_passages} 篇
-            </p>
-          )}
-        </Card>
-        {!withWords ? (
-          <Card className="gap-3 p-5">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-sm font-medium">短文</h2>
-              <span className="text-xs text-muted-foreground">{intervalLabel(plan.passage_interval_days)}</span>
-            </div>
-            {nextPassage ? (
-              <div className="flex items-center gap-3">
-                <FileText className="size-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{nextPassage.title}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {nextPassage.status === 'overdue' ? (
-                      <span className="text-warning">已逾期（{formatDate(nextPassage.scheduledDate)}）</span>
-                    ) : nextPassage.status === 'due' ? (
-                      '今天要读'
-                    ) : (
-                      `下一篇 ${formatDate(nextPassage.scheduledDate)}`
-                    )}
-                  </div>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => setView('passages')}>
-                  查看
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{passageItems.length > 0 ? '短文都已完成' : '计划里还没有短文'}</p>
-            )}
-          </Card>
-        ) : (
-          <Card className="gap-3 p-5">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-sm font-medium">记忆等级</h2>
-              {memory && (
-                <span className="text-xs text-muted-foreground">
-                  {memory.due_today > 0 ? (
-                    <span className="font-medium text-warning">今天待复习 {memory.due_today} 个</span>
-                  ) : memory.next_due_date ? (
-                    `下次复习 ${formatDate(memory.next_due_date)}`
-                  ) : (
-                    '暂无待复习'
-                  )}
-                </span>
+          {withWords && memory && memoryTotal > 0 && (
+            <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-label="单词掌握情况">
+              {memorySegments.map((seg) =>
+                seg.count > 0 ? (
+                  <Tooltip key={seg.label}>
+                    <TooltipTrigger asChild>
+                      <div className={seg.className} style={{ width: `${(seg.count / memoryTotal) * 100}%` }} />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {seg.label} {seg.count} 个
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null
               )}
             </div>
-            {memory && memoryTotal > 0 ? (
-              <>
-                <div className="flex h-3 overflow-hidden rounded-full bg-muted" aria-label="记忆等级分布">
-                  {memory.box_counts.map((b) =>
-                    b.count > 0 ? (
-                      <Tooltip key={b.box_level}>
-                        <TooltipTrigger asChild>
-                          <div className={BOX_META[b.box_level]?.className} style={{ width: `${(b.count / memoryTotal) * 100}%` }} />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          等级 {b.box_level}（{BOX_META[b.box_level]?.label}后复习）：{b.count} 个
-                        </TooltipContent>
-                      </Tooltip>
-                    ) : null
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>未学 <span className="text-foreground tabular-nums">{memory.not_started}</span></span>
-                  <span>学习中 <span className="text-foreground tabular-nums">{memory.learned - memory.mastered}</span></span>
-                  <span>已掌握 <span className="font-medium text-foreground tabular-nums">{memory.mastered}</span></span>
-                  <span className="ml-auto">
-                    {memory.box_counts.map((b) => (
-                      <span key={b.box_level} className="ml-2 inline-flex items-center gap-1">
-                        <span className={cn('size-2 rounded-full', BOX_META[b.box_level]?.className)} />
-                        {b.box_level}
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">{memory ? '还没有开始学习' : '加载中…'}</p>
+          )}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {withWords && memory && memorySegments.map((seg) => (
+              <span key={seg.label} className="inline-flex items-center gap-1">
+                <span className={cn('size-2 rounded-full', seg.className)} />
+                {seg.label} <span className="text-foreground tabular-nums">{seg.count}</span>
+              </span>
+            ))}
+            {withPassages && (
+              <span>
+                短文 <span className="text-foreground tabular-nums">{plan.completed_passages} / {plan.total_passages}</span> 篇
+              </span>
             )}
-          </Card>
-        )}
+            {withWords && (statistics?.learned_words ?? 0) > 0 && (
+              <span>
+                一次答对率 <span className="text-foreground tabular-nums">{Math.round(statistics?.average_accuracy_rate || 0)}%</span>
+              </span>
+            )}
+            {(statistics?.streak_days ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Flame className="size-3" />
+                连续学习 <span className="text-foreground tabular-nums">{statistics?.streak_days}</span> 天
+              </span>
+            )}
+          </div>
+        </Card>
       </div>
 
-      {/* 关键指标（总单词数、已掌握在页头与记忆等级卡里，不重复） */}
-      <section aria-label="关键指标" className="grid grid-cols-3 gap-3">
-        {withWords ? (
-          <MetricCard
-            label="今日任务"
-            value={todaySchedule?.word_count ?? 0}
-            unit="个单词"
-            icon={CalendarCheck}
-            hint={
-              [
-                !todaySchedule
-                  ? canPractice
-                    ? '今天没有任务'
-                    : '计划不在进行中'
-                  : todaySchedule.completed
-                    ? '今天已练完'
-                    : `新学 ${todaySchedule.new_words_count} · 复习 ${todaySchedule.review_words_count}`,
-                withPassages && duePassages.length > 0 ? `短文 ${duePassages.length} 篇` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')
-            }
-          />
-        ) : (
-          <MetricCard
-            label="今日任务"
-            value={duePassages.length}
-            unit="篇短文"
-            icon={CalendarCheck}
-            hint={duePassages.some((p) => p.status === 'overdue') ? '含逾期' : !canPractice ? '计划不在进行中' : undefined}
-          />
-        )}
-        {withWords ? (
-          <MetricCard label="首次作答正确率" value={Math.round(statistics?.average_accuracy_rate || 0)} unit="%" icon={Target} tip="每题第一次作答，不含改正后的重考" />
-        ) : (
-          <MetricCard label="短文进度" value={Math.round(passageProgress)} unit="%" icon={Target} hint={`已完成 ${plan.completed_passages} / ${plan.total_passages} 篇`} />
-        )}
-        <MetricCard label="连续学习" value={statistics?.streak_days || 0} unit="天" icon={Flame} />
-      </section>
-
       <Tabs value={view ?? 'schedule'} onValueChange={(v) => setView(v as ViewMode)} className="gap-4">
-        <TabsList>
-          {withWords && <TabsTrigger value="schedule" className="px-3">日程安排</TabsTrigger>}
-          {withWords && (
-            <TabsTrigger value="words" className="gap-1.5 px-3">
-              单词<span className="text-xs text-muted-foreground tabular-nums">{planWords.length}</span>
-            </TabsTrigger>
+        <div className="flex items-center justify-between gap-3">
+          <TabsList>
+            {tabs.map((t) => (
+              <TabsTrigger key={t.value} value={t.value} className="gap-1.5 px-3">
+                {t.label}
+                {t.count !== undefined && <span className="text-xs text-muted-foreground tabular-nums">{t.count}</span>}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {view === 'schedule' && withWords && (
+            <ToggleGroup type="single" value={scheduleAs} onValueChange={(v) => v && setScheduleAs(v as 'list' | 'calendar')} className="rounded-lg bg-muted p-0.5" aria-label="日程显示方式">
+              <ToggleGroupItem value="list" className="h-7 rounded-md px-3 data-[state=on]:bg-background data-[state=on]:shadow-sm">
+                <List />
+                列表
+              </ToggleGroupItem>
+              <ToggleGroupItem value="calendar" className="h-7 rounded-md px-3 data-[state=on]:bg-background data-[state=on]:shadow-sm">
+                <CalendarDays />
+                日历
+              </ToggleGroupItem>
+            </ToggleGroup>
           )}
-          {withPassages && (
-            <TabsTrigger value="passages" className="gap-1.5 px-3">
-              短文<span className="text-xs text-muted-foreground tabular-nums">{plan.total_passages}</span>
-            </TabsTrigger>
-          )}
-          <TabsTrigger value="overview" className="px-3">日历</TabsTrigger>
-          {withWords && <TabsTrigger value="statistics" className="px-3">统计分析</TabsTrigger>}
-          {withWords && <TabsTrigger value="logs" className="px-3">学习日志</TabsTrigger>}
-          <TabsTrigger value="settings" className="px-3">设置</TabsTrigger>
-        </TabsList>
+        </div>
         <TabsContent value="passages">
           <PlanPassagesView
             items={passageItems}
@@ -603,23 +571,25 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
             onOpen={(item) => onNavigate?.('passage-detail', { passageId: item.passageId, fromPlan: { planId: plan.id, planName: plan.name } })}
             onPractice={practicePassage}
             onMarkRead={markPassageRead}
+            onAddPassages={() => setView('settings')}
           />
         </TabsContent>
         <TabsContent value="settings">
-          <PlanSettingsView plan={plan} onChanged={loadAll} onDelete={() => handleAction('delete')} />
-        </TabsContent>
-        <TabsContent value="overview">
-          <PlanOverviewView planId={plan.id} />
+          <PlanSettingsView plan={plan} onChanged={loadAll} />
         </TabsContent>
         <TabsContent value="schedule">
-          <PlanScheduleView
-            schedules={schedules}
-            loading={schedulesLoading}
-            sessions={sessions ?? []}
-            today={today}
-            canPractice={canPractice}
-            onStartPractice={(scheduleId) => onNavigate?.('word-practice', { planId: plan.id, scheduleId })}
-          />
+          {withWords && scheduleAs === 'list' ? (
+            <PlanScheduleView
+              schedules={schedules}
+              loading={schedulesLoading}
+              sessions={sessions ?? []}
+              today={today}
+              canPractice={canPractice}
+              onStartPractice={(scheduleId) => onNavigate?.('word-practice', { planId: plan.id, scheduleId })}
+            />
+          ) : (
+            <PlanOverviewView planId={plan.id} />
+          )}
         </TabsContent>
         <TabsContent value="words">
           <PlanWordsView
@@ -640,11 +610,12 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
             }
           />
         </TabsContent>
-        <TabsContent value="statistics">
+        <TabsContent value="statistics" className="flex flex-col gap-6">
           <PlanStatisticsView statistics={statistics} planWords={planWords} partOfSpeechStats={posStats} />
-        </TabsContent>
-        <TabsContent value="logs">
-          <PlanLogsView practiceSessions={sessions ?? []} loading={sessionsLoading || sessions === null} onNavigate={onNavigate} canPractice={canPractice} />
+          <section className="space-y-3">
+            <h3 className="text-base font-semibold">练习记录</h3>
+            <PlanLogsView practiceSessions={sessions ?? []} loading={sessionsLoading || sessions === null} onNavigate={onNavigate} canPractice={canPractice} />
+          </section>
         </TabsContent>
       </Tabs>
 

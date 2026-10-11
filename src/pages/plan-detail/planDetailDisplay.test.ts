@@ -19,17 +19,18 @@ test('时间进度：开始日为 0，按自然日线性增长（含首尾共 10
 test('操作文案与分组；危险操作标记为 danger', () => {
   assert.equal(getActionConfig('publish').label, '发布计划');
   assert.equal(getActionConfig('pause').tone, 'menu');
-  assert.equal(getActionConfig('terminate').tone, 'danger');
+  assert.equal(getActionConfig('terminate').label, '结束学习');
+  assert.equal(getActionConfig('delete').tone, 'danger');
   assert.equal(getActionConfig('unknown').label, 'unknown');
 });
 
-test('页头操作：主操作在前；暂停 / 标记完成进菜单；终止 / 删除是破坏性操作；不出现恢复 / 永久删除', () => {
+test('页头操作：主操作在前；暂停 / 结束学习进菜单；删除是破坏性操作；不出现恢复 / 永久删除', () => {
   assert.deepEqual(groupPlanActions(['delete'], 'Pending'), { primary: [], menu: [], danger: ['delete'] });
-  assert.deepEqual(groupPlanActions(['pause', 'complete', 'terminate', 'delete'], 'Active'), {
+  assert.deepEqual(groupPlanActions(['pause', 'terminate', 'delete'], 'Active'), {
     primary: [],
-    menu: ['pause', 'complete'],
-    danger: ['terminate', 'delete'],
+    menu: ['pause', 'terminate'],
+    danger: ['delete'],
   });
-  assert.deepEqual(groupPlanActions(['resume', 'complete', 'terminate', 'delete'], 'Paused').primary, ['resume']);
+  assert.deepEqual(groupPlanActions(['resume', 'terminate', 'delete'], 'Paused').primary, ['resume']);
   assert.deepEqual(groupPlanActions(['restore', 'permanentDelete'], 'Deleted'), { primary: [], menu: [], danger: [] });
 });

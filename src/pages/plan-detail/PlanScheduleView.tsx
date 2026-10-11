@@ -87,9 +87,9 @@ export const PlanScheduleView: React.FC<PlanScheduleViewProps> = ({ schedules, l
               <TableHead className="w-48">
                 <Tooltip>
                   <TooltipTrigger className="inline-flex items-center gap-1">
-                    首次全对 <Info className="size-3.5 text-muted-foreground" />
+                    一次答对 <Info className="size-3.5 text-muted-foreground" />
                   </TooltipTrigger>
-                  <TooltipContent>练完后第一次作答就全对的单词数（新词三步、复习词一次听写）</TooltipContent>
+                  <TooltipContent>第一次作答就答对的单词数（新词三步都对、复习词听写对）</TooltipContent>
                 </Tooltip>
               </TableHead>
               <TableHead>练习</TableHead>
@@ -123,7 +123,7 @@ export const PlanScheduleView: React.FC<PlanScheduleViewProps> = ({ schedules, l
                     <TableCell>
                       {formatDate(s.schedule_date)} <span className="text-muted-foreground">{formatWeekday(s.schedule_date)}</span>
                       {isToday && <Badge className="ml-2">今天</Badge>}
-                      {overdue && <Badge variant="outline" className="ml-2 border-transparent bg-warning-soft text-warning">待补</Badge>}
+                      {overdue && <Badge variant="outline" className="ml-2 border-transparent bg-warning-soft text-warning">没练</Badge>}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{s.new_words_count || '—'}</TableCell>
                     <TableCell className="text-right tabular-nums">{s.review_words_count || '—'}</TableCell>
