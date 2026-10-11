@@ -2505,6 +2505,84 @@ mod tests {
         assert!(!t.key_words.is_empty());
     }
 
+    /// 真实调用：规划时从候选池挑目标词（新闻词汇本 + 无关场景，默认学习者档案）。
+    /// 看挑出的词是否值得学、各篇是否都分到足够的词：
+    /// `REDLARK_E2E_MOONSHOT_KEY=<key> cargo test agent::tasks::tests::real_passage_plan_picks -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn real_passage_plan_picks_worthwhile_words_with_kimi_k3() {
+        let key = std::env::var("REDLARK_E2E_MOONSHOT_KEY").expect("需要 REDLARK_E2E_MOONSHOT_KEY");
+        let model: AIModelConfig = serde_json::from_value(json!({
+            "id": 1, "name": "kimi-k3", "displayName": "Kimi K3", "modelId": "kimi-k3",
+            "description": null, "maxTokens": 32000, "temperature": 1.0,
+            "isActive": true, "isDefault": true, "createdAt": "", "updatedAt": "",
+            "provider": { "id": 2, "name": "moonshot", "displayName": "月之暗面", "baseUrl": "https://api.moonshot.cn/v1",
+                "apiKey": key, "description": null, "piProvider": "moonshotai-cn", "api": "openai-completions",
+                "isActive": true, "createdAt": "", "updatedAt": "" }
+        }))
+        .unwrap();
+        let program = std::env::var_os("REDLARK_AGENT_BIN")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("target/debug/redlark-agent")
+            });
+        let root = std::env::temp_dir().join(format!("redlark-agent-e2e-{}", uuid::Uuid::new_v4()));
+        let paths = AgentPaths {
+            program,
+            root: root.clone(),
+        };
+        let words = "accept, according, against, ahead, assertive, Beijing, binding, brands, briefed, called, cap, car, challenging, China, Chinese, citing, come, commerce, Commission, companies, curbs, days, diplomats, discussions, enter, eu, Europe, European, exports, Financial, get, goes, hopes, hybrid, imports, increasingly, industries, instead, its, lawmakers, majority, meanwhile, measure, ministry, more, negotiations, non, outlet, plan, policy, products, rejected, reported, request, resolute, resolution, response, restrictions, safeguard, said, sides, Times, top, towards, trade, unilateral, Union, voluntary, vowed, Wednesday";
+        let pool: Vec<PassageTargetWord> = words
+            .split(", ")
+            .enumerate()
+            .map(|(i, w)| PassageTargetWord {
+                word_id: Some(i as i64 + 1),
+                word: w.to_string(),
+                required: false,
+                meaning: None,
+                forms: Vec::new(),
+            })
+            .collect();
+        let scene = prompts::topic_scene("科学小组发布校园节水新办法的新闻稿");
+        let prefs =
+            crate::services::passage_rules::pick_preferences(Some("medium"), Some("common"));
+        let started = Instant::now();
+        let plan = plan_passages(
+            &paths,
+            &model,
+            &PromptProfile::default(),
+            &PlanSpec {
+                scene: &scene,
+                required: &[],
+                pool: &pool,
+                ai_pick: 10,
+                pick_prefs: &prefs,
+                length: "standard",
+                ranges: [(60, 90), (90, 130), (130, 180)],
+                feedback: "",
+                free_words: 0,
+            },
+            &crate::test_support::test_logger(),
+            || false,
+        )
+        .await
+        .unwrap();
+        println!("{:.1}s {}", started.elapsed().as_secs_f64(), plan.note);
+        for item in &plan.items {
+            println!(
+                "· {}：{}",
+                item.title,
+                item.words
+                    .iter()
+                    .map(|w| w.word.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[tokio::test]
     #[ignore]
     async fn real_passage_generate_questions_and_grade_with_kimi_k3() {

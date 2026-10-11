@@ -248,13 +248,13 @@ pub fn in_pick_statuses(filter: &[String], statuses: &[String]) -> bool {
 pub fn pick_preferences(difficulty: Option<&str>, frequency: Option<&str>) -> String {
     let mut parts = Vec::new();
     match difficulty {
-        Some("easy") => parts.push("挑对这位学习者来说偏简单的词"),
-        Some("medium") => parts.push("挑难度适中、贴合这位学习者水平的词"),
+        Some("easy") => parts.push("挑对这位学习者来说容易掌握的词"),
+        Some("medium") => parts.push("挑难度适中、略高于这位学习者现有水平的词"),
         Some("hard") => parts.push("挑偏难、略高于这位学习者水平的词"),
         _ => {}
     }
     match frequency {
-        Some("common") => parts.push("优先日常生活中常用的高频词"),
+        Some("common") => parts.push("优先日常生活和常见文章里用得多的实用词"),
         Some("advanced") => parts.push("也要挑一些书面、较少见的词"),
         _ => {}
     }
@@ -1042,7 +1042,7 @@ mod tests {
         assert_eq!(pick_preferences(None, None), "");
         assert_eq!(
             pick_preferences(Some("easy"), Some("common")),
-            "挑词偏好：挑对这位学习者来说偏简单的词；优先日常生活中常用的高频词。"
+            "挑词偏好：挑对这位学习者来说容易掌握的词；优先日常生活和常见文章里用得多的实用词。"
         );
     }
 

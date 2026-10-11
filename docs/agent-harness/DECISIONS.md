@@ -450,3 +450,13 @@
   4. 音色预设为 15 个官方英文 2.0 音色（标口音、性别、适用场景）；仍可填其他音色 ID。
   5. 设置页试听与实际朗读同一方式：逐句合成、连续播放（实际朗读是一句一请求，整段合成的试听会比实际更连贯，误导选择）。
 - **原因**：朗读是学习材料，语言必须确定；风格因人而异，给预设而不是让用户写指令；缓存键必须覆盖所有影响声音的参数。
+
+## D50 · 2026-10-11 · 短文挑目标词：挑值得学的词，挑够，拆篇均衡
+
+- **背景**：新闻词汇本（72 词）+ 默认学习者档案（小学生 A1）+ 挑词偏好「难度适中、常用」时，内容规划挑出 said、get、more、days、called 这类最基础的词，拆成两篇时一篇只分到 plan、more 两个词。真实调用复现：模型把「高频」「贴合 A1 水平」理解成挑最简单的词；提示词只在「按描述生成、不给单词」时说过不选基础功能词；「挑不满就少挑」让模型倾向少挑。
+- **决定**：
+  1. `passage_plan.md` / `passage_generate.md`：目标词是要学的词——只挑学习者还没掌握、学了用得上的实词或词组；人人都会的基础词和专有名词不选（故事里照样可以用）。合适的词足够时挑满 N 个，真不够才少挑。
+  2. 挑词偏好改写（`passage_rules::pick_preferences`）：适中 =「略高于这位学习者现有水平」，常用 =「日常生活和常见文章里用得多的实用词」，不再说「高频」。
+  3. 拆成几篇时各篇目标词大致均衡、每篇至少 3 个：`submit_passage_plan` 在还能从候选词里挑时校验（只有必用词或已挑满时不限）。
+- **证据**：`agent::tasks::tests::real_passage_plan_picks_worthwhile_words_with_kimi_k3`（同一词表与场景）。改前两次：called, plan, hopes, said, more, instead, get, days, measure, ahead / according, called, days, get, hopes, instead, measure, more, plan, said；改后两次：according, ahead, cap, challenging, hopes, instead, measure, plan, policy, voluntary / 两篇各 5 个（plan, policy, hopes, measure, according · challenging, instead, accept, ahead, response）。
+- **未改**：学习者档案默认仍是小学生；词汇本与学习者水平差距大时，挑出的词仍会偏向较易的一端，由用户在「设置 → AI 助手 → 学习者与风格」调整。

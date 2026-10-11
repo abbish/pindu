@@ -127,6 +127,9 @@ const PlanParams = Type.Object({
 });
 export type PlanSubmission = Static<typeof PlanParams>;
 
+/** 拆成几篇时每篇至少这么多目标词（只有一两个词的一篇不值得单独写） */
+const MIN_WORDS_PER_SPLIT = 3;
+
 export function planProblems(p: PlanSubmission): string[] {
   const problems: string[] = [];
   if (p.passages.length < 1 || p.passages.length > 4) problems.push(`passages 需要 1–4 篇（当前 ${p.passages.length} 篇）`);
@@ -151,6 +154,14 @@ export function planProblems(p: PlanSubmission): string[] {
   const required = new Set(p.required_words.map(w => w.trim().toLowerCase()));
   const extra = [...seen.keys()].filter(w => !required.has(w));
   if (extra.length > p.ai_pick) problems.push(`从候选词里最多挑 ${p.ai_pick} 个（当前 ${extra.length} 个：${extra.join(", ")}）`);
+  // 还能从候选词里挑时，拆出来的每篇都要有足够的目标词（只有必用词、挑满了的不限）
+  if (p.passages.length > 1 && extra.length < p.ai_pick) {
+    p.passages.forEach((ps, i) => {
+      if (ps.words.length > 0 && ps.words.length < MIN_WORDS_PER_SPLIT) {
+        problems.push(`第 ${i + 1} 篇只有 ${ps.words.length} 个目标词：拆成几篇时每篇至少 ${MIN_WORDS_PER_SPLIT} 个，从候选词里补几个，或合并到别的篇`);
+      }
+    });
+  }
   return problems;
 }
 

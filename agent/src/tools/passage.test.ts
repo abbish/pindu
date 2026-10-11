@@ -109,6 +109,13 @@ test('内容规划：必用词都要分到、每词一篇、挑词不超过上�
   assert.match(problems, /同时出现在第 1 篇和第 2 篇/);
   assert.match(problems, /没有分到任何一篇：hotel/);
   assert.match(problems, /最多挑 1 个/);
+  // 还能挑词时，拆出来的一篇只有一两个目标词被退回；挑满了或没有候选词时不限
+  const thin = { required_words: [], ai_pick: 10, note: '两篇', passages: [
+    { title: 'A', outline, words: ['plan', 'more'], length: 'short' },
+    { title: 'B', outline, words: ['measure', 'request', 'response', 'policy'], length: 'short' },
+  ] };
+  assert.match(planProblems(thin).join('\n'), /第 1 篇只有 2 个目标词/);
+  assert.deepEqual(planProblems({ ...thin, ai_pick: 6 }), []);
 });
 
 test('导入材料翻译：每句都要译、编号不重复、水平与重点词合法', () => {
