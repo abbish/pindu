@@ -227,12 +227,18 @@ pub fn launch_args(
         args.push("--skill".into());
         args.push(skill.to_string_lossy().into_owned());
     }
-    if task.tools.is_empty() {
+    // 带 skills 时开放 pi 的 read：pi 只在 read / bash 可用时把 skills 写进系统提示词；
+    // sidecar 用 tool_call 处理器把 read 限定在 skill 目录（REDLARK_SKILL_DIRS，见 prepare_launch）
+    let mut tools: Vec<&str> = task.tools.to_vec();
+    if !skills.is_empty() && !tools.contains(&"read") {
+        tools.push("read");
+    }
+    if tools.is_empty() {
         // 纯对话任务：不开放任何工具（含扩展工具）
         args.push("-nt".into());
     } else {
         args.push("--tools".into());
-        args.push(task.tools.join(","));
+        args.push(tools.join(","));
     }
     args.push("--system-prompt".into());
     args.push(system_prompt_file.to_string_lossy().into_owned());
@@ -300,6 +306,14 @@ pub fn prepare_launch(
     ];
     if let Some(w) = workspace {
         env.extend(w.env.iter().cloned());
+        if !w.skills.is_empty() {
+            let dirs = std::env::join_paths(&w.skills)
+                .map_err(|e| AppError::InternalError(format!("准备运行环境失败：{}", e)))?;
+            env.push((
+                "REDLARK_SKILL_DIRS".to_string(),
+                dirs.to_string_lossy().into_owned(),
+            ));
+        }
     }
 
     Ok(AgentLaunch {
@@ -372,7 +386,8 @@ mod tests {
         assert!(
             joined.starts_with("--no-session -ne --no-mcp -ns -np -nc --no-themes --no-approve")
         );
-        assert!(joined.contains("--tools tokenize_text,submit_words"));
+        // 带 skills 时加上 pi 的 read（只能读 skill 目录，sidecar 限定），否则 pi 不把 skills 写进提示词
+        assert!(joined.contains("--tools tokenize_text,submit_words,read"));
         // 显式 skill 跟在 -ns 之后（-ns 只关自动发现）
         assert!(joined.contains("--skill /skills/bilingual-handout"));
         assert!(joined.contains("--provider moonshotai-cn --model kimi-k3 --thinking low"));

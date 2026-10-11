@@ -2,6 +2,8 @@
 import { uuidv7 } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { MATERIAL_TOOLS } from "./material.ts";
+import { withReason } from "./reason.ts";
 
 /** 拼读 MCP 服务在 pi 里的名字：工具为 `mcp__pindu__<tool>` */
 export const PINDU_SERVER = "pindu";
@@ -34,6 +36,10 @@ export function registerPindu(pi: ExtensionAPI) {
   const url = process.env.REDLARK_MCP_URL;
   const token = process.env.REDLARK_MCP_TOKEN;
   if (!url || !token) return;
+  // AI 老师用的自带工具也带上调用意图（重新注册同名工具即替换）；素材阅读任务不受影响
+  for (const tool of [askUserTool, ...MATERIAL_TOOLS.filter(t => t.name !== "submit_material")]) {
+    pi.registerTool(withReason(tool));
+  }
   pi.registerMcpServer(PINDU_SERVER, {
     url,
     headers: { Authorization: `Bearer ${token}` },

@@ -18,7 +18,13 @@ test('流式回答：增量拼成正文，message_end 以完整消息为准', ()
   ]);
   let turns = toTurns(streaming);
   assert.equal(turns.length, 2);
-  assert.deepEqual(turns[1], { role: 'agent', key: 'partial', steps: [], text: '行程表', running: true });
+  assert.deepEqual(turns[1], {
+    role: 'agent',
+    key: 'partial',
+    items: [{ kind: 'text', key: 'partial-0', text: '行程表' }],
+    steps: [],
+    running: true,
+  });
 
   const done = run(
     [
@@ -31,7 +37,7 @@ test('流式回答：增量拼成正文，message_end 以完整消息为准', ()
     streaming
   );
   turns = toTurns(done);
-  assert.equal(turns[1].role === 'agent' && turns[1].text, '行程表。');
+  assert.deepEqual(turns[1].role === 'agent' && turns[1].items.map((i) => i.kind === 'text' && i.text), ['行程表。']);
   assert.equal(turns[1].role === 'agent' && turns[1].running, false);
 });
 
@@ -45,6 +51,7 @@ test('工具调用成为步骤：说明取自 details.redlark，进行中 → �
   ]);
   let agent = toTurns(state)[1];
   assert.equal(agent.role === 'agent' && agent.steps[0].status, 'running');
+  assert.equal(agent.role === 'agent' && agent.steps[0].label, '正在处理');
 
   const finished = run(
     [
@@ -89,7 +96,7 @@ test('工具的提问：select 显示选项，结束后清掉', () => {
 });
 
 test('停止：没有结果的步骤显示为没完成，回答标记已停止', () => {
-  const call = { type: 'toolCall' as const, id: 'c1', name: 'view_image', arguments: {} };
+  const call = { type: 'toolCall' as const, id: 'c1', name: 'view_image', arguments: { reason: '看一下截图' } };
   const state = run([
     { type: 'message_end', message: user },
     { type: 'message_end', message: { role: 'assistant', content: [call], stopReason: 'aborted', timestamp: 2 } },
@@ -97,7 +104,7 @@ test('停止：没有结果的步骤显示为没完成，回答标记已停止',
   const agent = toTurns(state)[1];
   assert.equal(agent.role === 'agent' && agent.stopped, true);
   assert.equal(agent.role === 'agent' && agent.steps[0].status, 'error');
-  assert.equal(agent.role === 'agent' && agent.steps[0].label, '看了图片');
+  assert.equal(agent.role === 'agent' && agent.steps[0].label, '看一下截图');
 });
 
 test('附件标记：拆成正文与文件名', () => {
@@ -107,4 +114,56 @@ test('附件标记：拆成正文与文件名', () => {
   });
   assert.deepEqual(splitAttachments('〔附件：a.pdf〕'), { text: '', files: ['a.pdf'] });
   assert.deepEqual(splitAttachments('没有附件'), { text: '没有附件', files: [] });
+});
+
+test('说的话与工具调用按发生顺序排列，连着的工具调用成一组', () => {
+  const read = (id: string) => ({
+    type: 'toolCall' as const,
+    id,
+    name: 'mcp__pindu__list_word_books',
+    arguments: { reason: '看看你有哪些词汇本' },
+  });
+  const state = run([
+    { type: 'agent_start' },
+    { type: 'message_end', message: user },
+    {
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: '我先看看你的素材。' }, read('c1'), read('c2')],
+        stopReason: 'toolUse',
+        timestamp: 2,
+      },
+    },
+    { type: 'tool_execution_start', toolCallId: 'c1', toolName: 'mcp__pindu__list_word_books' },
+  ]);
+  const agent = toTurns(state)[1];
+  assert.ok(agent.role === 'agent');
+  assert.deepEqual(
+    agent.items.map((i) => i.kind),
+    ['text', 'steps']
+  );
+  const group = agent.items[1];
+  assert.ok(group.kind === 'steps');
+  // 进行中显示模型写的调用意图
+  assert.deepEqual(group.steps.map((s) => s.label), ['看看你有哪些词汇本', '看看你有哪些词汇本']);
+});
+
+test('读 skill 显示成看了哪类做法', () => {
+  const call = {
+    type: 'toolCall' as const,
+    id: 'r1',
+    name: 'read',
+    arguments: { path: '/data/agent/skills/tutor-passages/SKILL.md' },
+  };
+  const state = run([
+    { type: 'message_end', message: user },
+    { type: 'message_end', message: { role: 'assistant', content: [call], stopReason: 'toolUse', timestamp: 2 } },
+    {
+      type: 'message_end',
+      message: { role: 'toolResult', toolCallId: 'r1', toolName: 'read', content: [], isError: false, timestamp: 3 },
+    },
+  ]);
+  const agent = toTurns(state)[1];
+  assert.equal(agent.role === 'agent' && agent.steps[0].label, '看了「短文与题组」的做法');
 });

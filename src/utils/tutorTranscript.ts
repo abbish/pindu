@@ -184,26 +184,37 @@ export interface ViewStep {
   output?: StepOutput;
 }
 
+/** AI 一轮里按发生顺序的内容：说的话、连续的几步工具调用 */
+export type ViewItem = { kind: 'text'; key: string; text: string } | { kind: 'steps'; key: string; steps: ViewStep[] };
+
 export type ViewTurn =
   | { role: 'user'; key: string; text: string; images: string[]; files: string[]; pending?: boolean }
   | {
       role: 'agent';
       key: string;
+      items: ViewItem[];
+      /** 全部工具调用（收进来的素材从这里取） */
       steps: ViewStep[];
-      text: string;
       error?: string;
       stopped?: boolean;
       running: boolean;
     };
 
-/** 工具没写说明时的默认说法 */
-const TOOL_LABELS: Record<string, string> = {
-  list_material: '看了看你给的文件',
-  read_pdf_text: '读了 PDF 里的文字',
-  view_pdf_page: '看了 PDF 的页面',
-  view_image: '看了图片',
-  read_text: '读了文件里的文字',
+/** AI 读的 skill（做法说明）的名字 */
+const SKILL_NAMES: Record<string, string> = {
+  'tutor-vocabulary': '词汇本',
+  'tutor-passages': '短文与题组',
+  'tutor-learning': '学习情况',
+  'tutor-materials': '读材料',
 };
+
+function skillLabel(call: PiToolCallBlock, done: boolean): string | undefined {
+  if (call.name !== 'read') return undefined;
+  const path = String(call.arguments?.path ?? '');
+  const skill = Object.keys(SKILL_NAMES).find((name) => path.includes(name));
+  if (!skill) return undefined;
+  return `${done ? '看了' : '正在看'}「${SKILL_NAMES[skill]}」的做法`;
+}
 
 function redlarkDetails(details: unknown): { step?: string; detail?: string; output?: StepOutput } {
   if (!details || typeof details !== 'object') return {};
@@ -239,7 +250,7 @@ function userText(message: PiUserMessage): { text: string; images: string[]; fil
   };
 }
 
-/** 状态 → 界面轮次：用户一条一轮；之后的 assistant 消息与工具结果合成 AI 的一轮 */
+/** 状态 → 界面轮次：用户一条一轮；之后的 assistant 消息与工具结果按发生顺序合成 AI 的一轮 */
 export function toTurns(state: TranscriptState): ViewTurn[] {
   const turns: ViewTurn[] = [];
   const results = new Map<string, PiToolResultMessage>();
@@ -248,19 +259,25 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
   let agent: Extract<ViewTurn, { role: 'agent' }> | null = null;
   const agentTurn = (key: string) => {
     if (!agent) {
-      agent = { role: 'agent', key, steps: [], text: '', running: false };
+      agent = { role: 'agent', key, items: [], steps: [], running: false };
       turns.push(agent);
     }
     return agent;
   };
   const addAssistant = (message: PiAssistantMessage, key: string) => {
     const turn = agentTurn(key);
-    const texts: string[] = [];
-    for (const block of message.content) {
-      if (block.type === 'text' && block.text.trim()) texts.push(block.text);
-      if (block.type === 'toolCall') turn.steps.push(step(block, results.get(block.id), state.tools[block.id], state.running));
-    }
-    if (texts.length > 0) turn.text = turn.text ? `${turn.text}\n\n${texts.join('\n\n')}` : texts.join('\n\n');
+    message.content.forEach((block, i) => {
+      const last = turn.items[turn.items.length - 1];
+      if (block.type === 'text' && block.text.trim()) {
+        turn.items.push({ kind: 'text', key: `${key}-${i}`, text: block.text });
+      } else if (block.type === 'toolCall') {
+        const s = step(block, results.get(block.id), state.tools[block.id], state.running);
+        turn.steps.push(s);
+        // 连着的工具调用放在一组
+        if (last?.kind === 'steps') last.steps.push(s);
+        else turn.items.push({ kind: 'steps', key: `${key}-${i}`, steps: [s] });
+      }
+    });
     if (message.stopReason === 'error') turn.error = message.errorMessage || 'AI 老师这次没能回答';
     if (message.stopReason === 'aborted') turn.stopped = true;
   };
@@ -296,10 +313,17 @@ function step(
   const info = redlarkDetails(details);
   // 没有结果也不在运行：被停止了
   const status = result ? (result.isError ? 'error' : 'done') : (live?.status ?? (running ? 'running' : 'error'));
+  // 进行中：模型写的调用意图（reason 参数）；做完：工具给的结果说明，没有就沿用意图。
+  // pi 自带的 read（读 skill）没有 reason，按读的是哪个 skill 说
+  const reason = typeof call.arguments?.reason === 'string' ? call.arguments.reason.trim() : '';
+  const label =
+    status === 'running'
+      ? reason || (skillLabel(call, false) ?? '正在处理')
+      : info.step || reason || (skillLabel(call, true) ?? '处理了一步');
   return {
     id: call.id,
     tool: call.name,
-    label: info.step || TOOL_LABELS[call.name] || '处理了一步',
+    label,
     detail: info.detail,
     status,
     output: info.output,

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { BookOpen, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus, Sparkles } from 'lucide-react';
+import { BookOpen, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus } from 'lucide-react';
 import { JobProgress } from '@/components/Jobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,15 +71,27 @@ export const AgentTurnView: React.FC<{
   const outputs = turn.steps.flatMap((s) => (s.output ? [s.output] : []));
   return (
     <div className="flex gap-3">
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
         <GraduationCap className="size-4" />
       </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        {(turn.steps.length > 0 || (turn.running && !turn.text)) && <StepsView steps={turn.steps} running={turn.running} />}
-
-        {turn.text && (
-          <div className={cn('markdown-body select-text', turn.running && 'markdown-streaming')}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{turn.text}</ReactMarkdown>
+      {/* pt-1：第一行文字（约 20px 高）与 28px 的头像居中对齐 */}
+      <div className="flex min-w-0 flex-1 flex-col gap-3 pt-1">
+        {turn.items.map((item, i) =>
+          item.kind === 'text' ? (
+            <div
+              key={item.key}
+              className={cn('markdown-body select-text', turn.running && i === turn.items.length - 1 && 'markdown-streaming')}
+            >
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
+            </div>
+          ) : (
+            <StepList key={item.key} steps={item.steps} />
+          )
+        )}
+        {thinking(turn) && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            {notice ?? '正在思考…'}
           </div>
         )}
 
@@ -93,7 +105,6 @@ export const AgentTurnView: React.FC<{
           </div>
         )}
 
-        {turn.running && notice && <div className="text-xs text-muted-foreground">{notice}</div>}
         {turn.error && (
           <div className="flex items-start gap-1.5 text-sm text-destructive">
             <CircleAlert className="mt-0.5 size-4 shrink-0" />
@@ -106,49 +117,48 @@ export const AgentTurnView: React.FC<{
   );
 };
 
-/** AI 做了哪些事：运行中展开，做完收起成一行 */
-const StepsView: React.FC<{ steps: ViewStep[]; running: boolean }> = ({ steps, running }) => {
-  const [open, setOpen] = useState(false);
-  const expanded = running || open;
-  return (
-    <div className="rounded-lg border bg-muted/30">
-      <button
-        type="button"
-        onClick={() => !running && setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground"
-      >
-        {running ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-        <span className="flex-1">{running ? '正在处理…' : `做了 ${steps.length} 件事`}</span>
-        {!running && steps.length > 0 && <ChevronRight className={cn('size-3.5 transition-transform', expanded && 'rotate-90')} />}
-      </button>
-      {expanded && steps.length > 0 && (
-        <ol className="flex flex-col gap-1 border-t px-3 py-2">
-          {steps.map((step) => (
-            <StepRow key={step.id} step={step} />
-          ))}
-        </ol>
-      )}
-    </div>
-  );
-};
+/** 正在等模型想下一步：还没有内容，或者最后一组工具都做完了（说话时正文在流式显示，不用另外提示） */
+function thinking(turn: Extract<ViewTurn, { role: 'agent' }>): boolean {
+  if (!turn.running) return false;
+  const last = turn.items[turn.items.length - 1];
+  return !last || (last.kind === 'steps' && last.steps.every((s) => s.status !== 'running'));
+}
+
+/** 连着的几步工具调用：按顺序一行一条，进行中转圈，做完打勾 */
+const StepList: React.FC<{ steps: ViewStep[] }> = ({ steps }) => (
+  <ol className="flex flex-col gap-1 border-l-2 border-border pl-3">
+    {steps.map((step) => (
+      <StepRow key={step.id} step={step} />
+    ))}
+  </ol>
+);
 
 const StepRow: React.FC<{ step: ViewStep }> = ({ step }) => {
   const [open, setOpen] = useState(false);
   const running = step.status === 'running';
-  const Icon = running ? Loader2 : step.status === 'error' ? CircleAlert : Sparkles;
+  const Icon = running ? Loader2 : step.status === 'error' ? CircleAlert : Check;
   return (
     <li className="text-sm">
       <button
         type="button"
         disabled={!step.detail}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-start gap-2 py-0.5 text-left disabled:cursor-default"
+        className="flex w-full items-start gap-2 py-0.5 text-left text-muted-foreground disabled:cursor-default"
       >
-        <Icon className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground', running && 'animate-spin')} />
-        <span className={cn('flex-1', running && 'text-muted-foreground')}>{step.label}</span>
-        {step.detail && <ChevronRight className={cn('mt-0.5 size-3.5 text-muted-foreground transition-transform', open && 'rotate-90')} />}
+        <Icon
+          className={cn(
+            'mt-0.5 size-3.5 shrink-0',
+            running && 'animate-spin',
+            step.status === 'error' && 'text-destructive'
+          )}
+        />
+        <span className={cn('flex-1', step.status === 'error' && 'text-destructive')}>
+          {step.label}
+          {running && '…'}
+        </span>
+        {step.detail && <ChevronRight className={cn('mt-0.5 size-3.5 transition-transform', open && 'rotate-90')} />}
       </button>
-      {open && step.detail && <div className="ml-6 py-1 text-xs whitespace-pre-wrap text-muted-foreground select-text">{step.detail}</div>}
+      {open && step.detail && <div className="ml-5.5 py-1 text-xs whitespace-pre-wrap text-muted-foreground select-text">{step.detail}</div>}
     </li>
   );
 };

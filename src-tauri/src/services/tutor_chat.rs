@@ -425,8 +425,36 @@ mod tests {
         }
     }
 
+    /// 和拼读的服务一样：工具清单加 reason，调用前拿掉
     #[tool_handler(router = self.tool_router)]
-    impl rmcp::ServerHandler for FakePindu {}
+    impl rmcp::ServerHandler for FakePindu {
+        async fn list_tools(
+            &self,
+            _request: Option<rmcp::model::PaginatedRequestParams>,
+            _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+        ) -> Result<rmcp::model::ListToolsResult, ErrorData> {
+            Ok(rmcp::model::ListToolsResult::with_all_items(
+                self.tool_router
+                    .list_all()
+                    .into_iter()
+                    .map(crate::mcp::reason::with_reason)
+                    .collect(),
+            ))
+        }
+
+        async fn call_tool(
+            &self,
+            mut request: rmcp::model::CallToolRequestParams,
+            context: rmcp::service::RequestContext<rmcp::RoleServer>,
+        ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
+            assert!(
+                crate::mcp::reason::take_reason(&mut request).is_some(),
+                "模型应写 reason"
+            );
+            let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+            self.tool_router.call(call).await
+        }
+    }
 
     /// 真实调用：新对话 → 调用拼读的 MCP 工具（步骤说明进 details）→ 接着聊（ask_user 经扩展 UI 回答）
     /// → 列表 → 关掉进程后打开 → 改名 → 删除。
@@ -523,6 +551,45 @@ mod tests {
             "应调用拼读的 MCP 工具"
         );
         assert!(count("message_update") > 0, "应有流式增量");
+        let calls: Vec<String> = events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e["type"] == "tool_execution_end")
+            .map(|e| {
+                format!(
+                    "{}{}",
+                    e["toolName"].as_str().unwrap_or(""),
+                    if e["isError"] == true {
+                        "（失败）"
+                    } else {
+                        ""
+                    }
+                )
+            })
+            .collect();
+        println!("工具调用：{:?}", calls);
+        let reasons: Vec<String> = events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e["type"] == "message_end" && e["message"]["role"] == "assistant")
+            .flat_map(|e| {
+                e["message"]["content"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .filter(|b| b["type"] == "toolCall")
+            .map(|b| {
+                format!(
+                    "{}：{}",
+                    b["name"].as_str().unwrap_or(""),
+                    b["arguments"]["reason"].as_str().unwrap_or("（没写）")
+                )
+            })
+            .collect();
+        println!("工具意图：{:?}", reasons);
 
         // ask_user：等提问出现后回答
         service
@@ -582,6 +649,12 @@ mod tests {
             .collect();
         println!("消息角色：{:?}", roles);
         assert_eq!(roles.iter().filter(|r| **r == "user").count(), 2);
+        // skills 写进了系统提示词（pi 只在 read 可用时才写）
+        let system = opened.messages[0].to_string();
+        assert!(
+            system.contains("tutor-vocabulary") && system.contains("available_skills"),
+            "系统提示词应列出 skills"
+        );
         let saved_step = opened.messages.as_array().unwrap().iter().find_map(|m| {
             (m["role"] == "toolResult" && m["toolName"] == "mcp__pindu__lookup_words")
                 .then(|| m["details"]["redlark"]["step"].clone())

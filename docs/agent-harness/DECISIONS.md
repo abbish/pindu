@@ -515,3 +515,5 @@
   3. pi 把 MCP 结果整个放在 `structuredContent`、details 只有 server / tool：sidecar 用 pi 的 `tool_result` 处理器把 `structuredContent.structuredContent.redlark` 放进 details。
   4. 新对话由拼读生成会话 id（pi `--session-id`），对话资料夹按 id 建（附件、Word 转出的文字与图片）；id 按 pi 的写法校验后才拼路径。
   5. AI 老师不加载素材阅读的 skills（那套按 `submit_material` 写），另写 `tutor-*` skills；标题用 pi 示例的做法：`ctx.modelRegistry.complete` + `pi.setSessionName`。
+  6. 过程显示按发生顺序：说的话与一组组工具调用交替排列，不再汇总成「做了 N 件事」。每一步的说明由模型写：拼读 MCP 服务在工具清单里给每个工具加必填参数 `reason`（`src/mcp/reason.rs`），sidecar 自带的工具（ask_user、读文件）在 AI 老师里用 `withReason` 包一层（`agent/src/tools/reason.ts`），执行前都去掉；界面进行中显示 reason，做完显示工具给的结果说明（`redlark.step`），不再按工具名写死说法。
+  7. **skills 之前没生效**：pi 只在 `read` / `bash` 可用时才把 skills 写进系统提示词（`core/system-prompt.js`）。素材阅读（D52）与 AI 老师的工具白名单都没有 read，skills 一直没被模型看到。改为：带 skills 的任务自动开放 pi 的 `read`，sidecar 用 pi 的 `tool_call` 处理器把它限定在 skill 目录（`REDLARK_SKILL_DIRS`，解析符号链接与 `..`）；真实测试断言系统提示词列出了 skills。

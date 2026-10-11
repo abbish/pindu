@@ -671,6 +671,30 @@ impl PinduTools {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for PinduTools {
+    async fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::ListToolsResult, ErrorData> {
+        Ok(rmcp::model::ListToolsResult::with_all_items(
+            self.tool_router
+                .list_all()
+                .into_iter()
+                .map(super::reason::with_reason)
+                .collect(),
+        ))
+    }
+
+    async fn call_tool(
+        &self,
+        mut request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
+        super::reason::take_reason(&mut request);
+        let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        self.tool_router.call(call).await
+    }
+
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "拼读（Pindu.app）：学习者的词汇本、短文与学习记录；可以把对话里的内容收进素材库（只新增，不修改、不删除已有素材）。",
