@@ -116,6 +116,9 @@ impl Live {
     }
 }
 
+/// 提问过期后多等一会儿再补推状态（保证 `pending_ui` 已经把它算作过期）
+const EXPIRY_MARGIN: Duration = Duration::from_millis(50);
+
 /// pi 扩展 UI 里要等回答的请求（其余 notify / setStatus 等不用回）
 pub const DIALOG_METHODS: [&str; 4] = ["select", "confirm", "input", "editor"];
 
@@ -481,6 +484,16 @@ impl ChatHub {
                         if let Ok(mut pending) = pump.pending_ui.lock() {
                             pending.push((Instant::now(), raw.clone()));
                         }
+                        // 带 timeout 的提问过期后 pi 按默认值收回、不发事件：到点补一次「等回答」的变化
+                        if let Some(ms) = raw.get("timeout").and_then(Value::as_u64) {
+                            let session = Arc::downgrade(&pump);
+                            tokio::spawn(async move {
+                                tokio::time::sleep(Duration::from_millis(ms) + EXPIRY_MARGIN).await;
+                                if let Some(session) = session.upgrade() {
+                                    session.publish_activity();
+                                }
+                            });
+                        }
                     }
                     _ => {}
                 }
@@ -749,6 +762,31 @@ mod tests {
         session.running.store(false, Ordering::SeqCst);
         session.publish(json!({"type": "agent_settled"}));
         assert_eq!(activities().last(), Some(&(false, false)));
+    }
+
+    #[tokio::test]
+    async fn expired_ask_clears_asking_when_republished() {
+        let (session, seen) = recording();
+        session.running.store(true, Ordering::SeqCst);
+        let ask =
+            json!({"type": "extension_ui_request", "id": "q1", "method": "confirm", "timeout": 10});
+        session
+            .pending_ui
+            .lock()
+            .unwrap()
+            .push((Instant::now(), ask.clone()));
+        session.publish(ask);
+        tokio::time::sleep(Duration::from_millis(10) + EXPIRY_MARGIN).await;
+        // 到点补推：过期的提问不再算「等回答」
+        session.publish_activity();
+        let last = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|(_, e)| e["type"] == "redlark_activity")
+            .map(|(_, e)| (e["running"] == true, e["asking"] == true));
+        assert_eq!(last, Some((true, false)));
     }
 
     #[test]
