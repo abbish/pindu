@@ -293,6 +293,17 @@ function userText(message: PiUserMessage): { text: string; images: string[]; fil
   };
 }
 
+/** 模型服务的报错 → 学习者能看懂的话（原文另外保留给悬停提示） */
+export function friendlyError(raw: string): string {
+  const text = raw.toLowerCase();
+  if (/\b429\b|rate.?limit|overload|too many requests|busy/.test(text)) return 'AI 服务现在太忙，请稍后再试';
+  if (/\b401\b|\b403\b|api.?key|unauthori|authentication|forbidden/.test(text)) return 'AI 服务的密钥不对，请在「设置 → AI 模型」检查';
+  if (/quota|insufficient|balance|billing|credit|余额|额度/.test(text)) return 'AI 服务的额度用完了，请检查账户余额';
+  if (/timeout|timed out|network|econn|socket|fetch failed|网络/.test(text)) return '网络不太稳定，请再试一次';
+  if (/context|too long|maximum.*token/.test(text)) return '对话太长了，可以新开一个对话接着聊';
+  return 'AI 老师这次没能回答完，请再试一次';
+}
+
 /** 正文与推荐下一步之间的分隔行（提示词 tutor_chat.md 要求模型原样输出；兼容讲解用的「追问」） */
 const NEXT_MARKERS = ['<<<下一步>>>', '<<<追问>>>'];
 /** 最多几条推荐、每条最长几个字（与讲解的追问一致：agent/follow_up.rs） */
@@ -373,7 +384,9 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
     if (askedAt && message.timestamp > askedAt && message.stopReason && message.stopReason !== 'pending') {
       turn.seconds = Math.max(1, Math.round((message.timestamp - askedAt) / 1000));
     }
-    if (message.stopReason === 'error') turn.error = message.errorMessage || 'AI 老师这次没能回答';
+    // pi 会自动重试：后面有成功的回复，前面那次失败就不算（只看这一轮最后一条）
+    if (message.stopReason === 'error') turn.error = message.errorMessage || '';
+    else delete turn.error;
     if (message.stopReason === 'aborted') turn.stopped = true;
   };
 
@@ -400,6 +413,8 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
     const last = turns[turns.length - 1];
     const turn = last?.role === 'agent' ? last : agentTurn('running');
     turn.running = true;
+    // 还在跑（自动重试中）：不显示错误
+    delete turn.error;
   }
   // 每段说的话都拆掉推荐下一步；推荐取这一轮最后一段的
   const said = turns.flatMap((t) => (t.role === 'user' ? [t.text] : []));

@@ -12,7 +12,7 @@ import { useJob } from '@/hooks/useJobs';
 import { isJobActive, type Job } from '@/types/job';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '@/navigation';
-import type { StepOutput, TutorAsk, ViewItem, ViewStep, ViewTurn } from '@/utils/tutorTranscript';
+import { friendlyError, type StepOutput, type TutorAsk, type ViewItem, type ViewStep, type ViewTurn } from '@/utils/tutorTranscript';
 
 const OUTPUT_ICON: Record<StepOutput['kind'], React.ComponentType<{ className?: string }>> = {
   wordbook: BookOpen,
@@ -117,10 +117,10 @@ export const AgentTurnView: React.FC<{
           </div>
         )}
 
-        {turn.error && (
+        {turn.error !== undefined && (
           <div className="flex items-start gap-1.5 text-sm text-destructive">
             <CircleAlert className="mt-0.5 size-4 shrink-0" />
-            <span>没能回答完：{turn.error}</span>
+            <span title={turn.error || undefined}>{friendlyError(turn.error)}</span>
           </div>
         )}
         {turn.stopped && <div className="text-xs text-muted-foreground">已停止</div>}
