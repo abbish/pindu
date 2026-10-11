@@ -626,6 +626,8 @@ pub struct StudyPlanStatistics {
     /// 已学的单词数（完成过一次含该词的练习，记忆等级 ≥ 1）
     pub learned_words: i64,
     pub total_study_minutes: i64,
+    /// 累计练习时长（毫秒，不含暂停）；界面显示用它，不满一分钟的也算上
+    pub total_active_ms: i64,
 }
 
 // ==================== 状态管理相关类型 ====================

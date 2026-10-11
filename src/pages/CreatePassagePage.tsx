@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronUp, CircleCheck, FileText, ListChecks, PenLine, Plus, RotateCw, Search, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronUp, Circle, CircleCheck, FileText, ListChecks, PenLine, Plus, RotateCw, Search, Sparkles, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -29,7 +29,7 @@ import { jobService } from '@/services/jobService';
 import { SuggestionChips, mergeSuggestions, suggestionsIn, toggleInText } from '@/components/SuggestionChips';
 import { AiWorking } from '@/components/AiWorking';
 import { JobPanel, jobErrorText } from '@/components/Jobs';
-import { isJobActive } from '@/types/job';
+import { isJobActive, type Job } from '@/types/job';
 import { getStatusDisplay } from '@/types/study';
 import { PICK_DIFFICULTY_OPTIONS, PICK_FREQUENCY_OPTIONS, PICK_STATUS_OPTIONS, PLAN_SCOPE_LABEL, PLAN_SCOPES } from '@/utils/passage';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -123,16 +123,29 @@ interface Draft {
  * （从任务中心点「规划短文内容」回来也是）。全部写完、或点「取消」后不再保留。
  */
 let savedDraft: Draft | null = null;
-/** 这份进度值得接着做：规划任务还在（进行中或结果待用）、规划好还没生成、或还有正在写的短文 */
+/** 一次写短文任务的逐篇结果：任务还在就读它的 detail，否则读结束时记下的 */
+function runItems(run: Run, jobs: Job[]): PassageItemStatus[] | null | undefined {
+  const job = jobs.find((j) => j.id === run.jobId);
+  return job ? (job.detail as { items?: PassageItemStatus[] } | null)?.items : run.final?.items;
+}
+/** 规划里还没写成的篇目数（没勾选的、没写成的都算） */
+function unwrittenCount(d: Draft, jobs: Job[]): number {
+  const written = new Set<number>();
+  for (const run of d.runs) {
+    const items = runItems(run, jobs);
+    run.indexes.forEach((idx, k) => {
+      if (items?.[k]?.state === 'done') written.add(idx);
+    });
+  }
+  return d.planItems.filter((_, i) => !written.has(i)).length;
+}
+/** 这份进度值得接着做：规划任务还在（进行中或结果待用）、还有正在写的短文、或规划里还有没写的篇目 */
 function isResumable(d: Draft): boolean {
   const jobs = jobsNow();
   if (d.planJobId && jobs.some((j) => j.id === d.planJobId)) return true;
   if (d.planItems.length === 0) return false;
-  if (d.runs.length === 0) return true;
-  return d.runs.some((r) => {
-    const job = jobs.find((j) => j.id === r.jobId);
-    return job !== undefined && isJobActive(job);
-  });
+  if (d.runs.some((r) => jobs.some((j) => j.id === r.jobId && isJobActive(j)))) return true;
+  return unwrittenCount(d, jobs) > 0;
 }
 function resumableDraft(): Draft | null {
   return savedDraft && isResumable(savedDraft) ? savedDraft : null;
@@ -140,7 +153,9 @@ function resumableDraft(): Draft | null {
 /** 这份进度现在在做什么（「接着做」提示用） */
 function draftState(d: Draft): string {
   if (d.planJobId) return '正在规划内容';
-  return d.runs.length > 0 ? '正在生成短文' : '规划好了，还没生成';
+  const jobs = jobsNow();
+  if (d.runs.some((r) => jobs.some((j) => j.id === r.jobId && isJobActive(j)))) return '正在生成短文';
+  return d.runs.length > 0 ? `还有 ${unwrittenCount(d, jobs)} 篇没生成` : '规划好了，还没生成';
 }
 
 /** 可多选的来源列表（词汇本 / 学习计划）：搜索 + 勾选行 */
@@ -604,7 +619,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     const out: PlanItemStatus[] = planItems.map(() => ({ state: 'skipped' }));
     for (const run of runs) {
       const job = jobs.find((j) => j.id === run.jobId);
-      const items = job ? (job.detail as { items?: PassageItemStatus[] } | null)?.items : run.final?.items;
+      const items = runItems(run, jobs);
       // 任务找不到也没有记下结果（如离开期间被清掉）：当作已结束
       const ended = job ? !isJobActive(job) : true;
       const endedStatus = job?.status ?? run.final?.status;
@@ -659,6 +674,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
   const finished = statuses !== null && !writing;
   const doneCount = statuses?.filter((st) => st.state === 'done').length ?? 0;
   const failedCount = statuses?.filter((st) => st.state === 'failed').length ?? 0;
+  const skippedCount = statuses?.filter((st) => st.state === 'skipped').length ?? 0;
   // 写完时滚到结果（可能还停在页面下方看规划）
   const resultRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1175,17 +1191,23 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                 <div className="min-w-0 flex-1">
                   <h2 className="text-lg font-semibold">{doneCount > 0 ? `已生成 ${doneCount} 篇短文` : '没有生成短文'}</h2>
                   <p className="text-sm text-muted-foreground">
-                    {failedCount > 0 ? `${failedCount} 篇没有完成，可以重试` : '已经放进短文库，可以打开阅读、出题练习'}
+                    {failedCount > 0 ? `${failedCount} 篇没有完成，可以重试` : skippedCount > 0 ? `规划里还有 ${skippedCount} 篇没生成` : '已经放进短文库，可以打开阅读、出题练习'}
                   </p>
                 </div>
               </div>
               <ul className="divide-y rounded-lg border">
                 {planItems.map((item, i) => {
                   const st = statuses[i];
-                  if (!st || st.state === 'skipped') return null;
+                  if (!st) return null;
                   return (
                     <li key={i} className="flex items-center gap-3 px-4 py-2.5">
-                      {st.state === 'done' ? <CircleCheck className="size-4 shrink-0 text-success" /> : <AlertTriangle className="size-4 shrink-0 text-warning" />}
+                      {st.state === 'done' ? (
+                        <CircleCheck className="size-4 shrink-0 text-success" />
+                      ) : st.state === 'skipped' ? (
+                        <Circle className="size-4 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <AlertTriangle className="size-4 shrink-0 text-warning" />
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{item.title}</div>
                         {st.state === 'failed' && <div className="truncate text-xs text-muted-foreground">{st.error}</div>}
@@ -1194,6 +1216,11 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                         <Button variant="outline" size="sm" onClick={() => leave(() => onNavigate?.('passage-detail', { passageId: st.passageId }))}>
                           <FileText />
                           打开
+                        </Button>
+                      ) : st.state === 'skipped' ? (
+                        <Button variant="outline" size="sm" onClick={() => write([i])}>
+                          <Sparkles />
+                          生成
                         </Button>
                       ) : (
                         <Button variant="outline" size="sm" onClick={() => write([i])}>

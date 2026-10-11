@@ -699,6 +699,7 @@ impl StatisticsRepository {
             completed_words,
             learned_words,
             total_study_minutes: total_minutes,
+            total_active_ms: total_active_time,
         })
     }
 }

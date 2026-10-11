@@ -833,10 +833,12 @@ mod tests {
             completed_words: 0,
             learned_words: 0,
             total_study_minutes: 90,
+            total_active_ms: 5_400_000,
         };
         let v = serde_json::to_value(&stats).unwrap();
         assert_eq!(v["streak_days"], 3);
         assert_eq!(v["total_study_minutes"], 90);
+        assert_eq!(v["total_active_ms"], 5_400_000);
         assert!(v.get("streakDays").is_none());
     }
 

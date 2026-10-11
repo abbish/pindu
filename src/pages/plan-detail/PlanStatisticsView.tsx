@@ -60,7 +60,7 @@ export const PlanStatisticsView: React.FC<PlanStatisticsViewProps> = ({ statisti
       <section className="space-y-3">
         <h3 className="text-base font-semibold">学习投入</h3>
         <div className="grid grid-cols-3 gap-3">
-          <MetricCard label="累计练习时长" value={formatDuration((s?.total_study_minutes || 0) * 60_000)} icon={Timer} tip="不含暂停的时间" />
+          <MetricCard label="累计练习时长" value={formatDuration(s?.total_active_ms || 0)} icon={Timer} tip="不含暂停的时间" />
           <MetricCard label="平均每个学习日" value={s?.average_daily_study_minutes || 0} unit="分钟" icon={Clock} />
           <MetricCard
             label="练完的学习日"

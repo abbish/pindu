@@ -194,12 +194,16 @@ pub async fn start_passage_generation(
                 publish(&items);
                 let mut one = request.base.clone();
                 one.plan_item = Some(item.clone());
-                match svc.generate(&one, &paths).await {
+                match svc.generate(&one, &paths, || ctx.is_cancelled()).await {
                     Ok(passage) => {
                         items[i].state = "done".into();
                         items[i].passage_id = Some(passage.id);
                         items[i].title = Some(passage.title.clone());
                         ids.push(passage.id);
+                    }
+                    // 停止：正在写的这篇不保存，也不算失败
+                    Err(_) if ctx.is_cancelled() => {
+                        items[i].state = "waiting".into();
                     }
                     Err(e) => {
                         items[i].state = "failed".into();
@@ -359,8 +363,10 @@ pub async fn start_question_set_generation(
             "spec": request.spec,
         });
         let jobs = app.state::<Jobs>();
-        let id = jobs.spawn(spec, move |_ctx| async move {
-            let set = svc.generate_question_set(&request, &paths).await?;
+        let id = jobs.spawn(spec, move |ctx| async move {
+            let set = svc
+                .generate_question_set(&request, &paths, || ctx.is_cancelled())
+                .await?;
             Ok(serde_json::json!({ "setId": set.id, "name": set.name, "count": set.questions.len() }))
         });
         jobs.set_detail(&id, detail);

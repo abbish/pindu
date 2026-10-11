@@ -562,7 +562,10 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                 <MaterialInput
                   label="英文材料"
                   text={text}
-                  onTextChange={setText}
+                  onTextChange={(value) => {
+                    setText(value);
+                    setError(null);
+                  }}
                   sourceLabel={fileName}
                   onSourceLabelChange={setFileName}
                   placeholder="粘贴课文、文章或单词表…"
@@ -570,6 +573,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                   privacyNote
                   autoFocus
                   onAiFile={readMaterial}
+                  onMaterialChange={() => setError(null)}
                 />
                 <div className="flex items-center justify-between gap-4">
                   <Label>提取范围</Label>

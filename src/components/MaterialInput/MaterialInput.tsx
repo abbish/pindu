@@ -34,6 +34,8 @@ export interface MaterialInputProps {
    * 页面支持把 PDF、Word、图片交给 AI 读取时传入：选了这类文件就交给页面（不再读成文本填进文本框）
    */
   onAiFile?: (file: { fileName: string; fileBase64: string }) => void;
+  /** 换了一份材料（选了文件或清除）：页面清掉上一份材料的错误 */
+  onMaterialChange?: () => void;
 }
 
 /**
@@ -52,6 +54,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
   autoFocus,
   disabled,
   onAiFile,
+  onMaterialChange,
 }) => {
   const id = useId();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -66,6 +69,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
 
   const readFile = async (file: File | undefined | null) => {
     if (!file || disabled) return;
+    onMaterialChange?.();
     const ext = fileExtension(file.name);
     if (!acceptedExtensions(!!onAiFile).includes(ext)) return setError(`不支持${ext ? ` ${ext} ` : '这种'}文件，可以导入 ${shownExtensions(!!onAiFile)}`);
     if (file.size > IMPORT_MAX_FILE_BYTES) return setError(`文件不能超过 ${formatBytes(IMPORT_MAX_FILE_BYTES)}`);
@@ -92,6 +96,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
   };
 
   const clearFile = () => {
+    onMaterialChange?.();
     onTextChange('');
     onSourceLabelChange(null);
     setWarnings([]);

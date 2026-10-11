@@ -6,6 +6,7 @@
 
 pub mod job_notice;
 pub mod reason;
+pub mod schema;
 mod tools;
 
 #[cfg(test)]

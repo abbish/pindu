@@ -145,6 +145,8 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
     setValues((prev) => ({ ...prev, [key]: value }));
     if (key === 'word' || key === 'meaning') setErrors((prev) => ({ ...prev, [key]: undefined }));
     if (key === 'word') {
+      // 上一个词的提交错误（如已经在词汇本里）不再适用；仍然重复时再次提交会再提示
+      setSubmitError(null);
       setFillError(null);
       setCorrection(null);
     }

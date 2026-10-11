@@ -99,6 +99,17 @@ fn passage_text(sentences: &[PassageSentence]) -> String {
         .join(" ")
 }
 
+/// AI 已经交稿、还没保存时用户点了停止：不保存，按取消结束（后台任务据此记为已取消）
+fn stop_if_cancelled(cancelled: impl Fn() -> bool) -> AppResult<()> {
+    if cancelled() {
+        return Err(AppError::ExternalServiceError(format!(
+            "{}：用户取消了本次任务",
+            crate::agent::session::CANCELLED
+        )));
+    }
+    Ok(())
+}
+
 pub struct PassageService {
     pool: Arc<SqlitePool>,
     logger: Arc<Logger>,
@@ -861,10 +872,12 @@ impl PassageService {
     }
 
     /// 生成一篇短文（独立素材，记录来源）。带 `plan_item` 时按规划里这一篇的构思、用词与篇幅来写
+    /// `cancelled` 为真时中止 AI 并且不保存（任务的「停止」）
     pub async fn generate(
         &self,
         request: &GeneratePassageRequest,
         paths: &AgentPaths,
+        cancelled: impl Fn() -> bool,
     ) -> AppResult<Passage> {
         Self::validate_request(request)?;
         let sources = self.source_snapshots(&request.word_sources()).await?;
@@ -941,8 +954,10 @@ impl PassageService {
                 tags: &known_tags,
             },
             &self.logger,
+            &cancelled,
         )
         .await?;
+        stop_if_cancelled(&cancelled)?;
         // 内容规划里的标题是用户确认（可能改过）的，以它为准
         if !title.is_empty() {
             generated.title = title.clone();
@@ -1057,10 +1072,12 @@ impl PassageService {
     }
 
     /// 为短文生成一套阅读理解题
+    /// `cancelled` 为真时中止 AI 并且不保存（任务的「停止」）
     pub async fn generate_question_set(
         &self,
         request: &GenerateQuestionSetRequest,
         paths: &AgentPaths,
+        cancelled: impl Fn() -> bool,
     ) -> AppResult<QuestionSet> {
         passage_rules::validate_spec(&request.spec).map_err(AppError::ValidationError)?;
         let name = request.name.as_deref().unwrap_or("").trim().to_string();
@@ -1088,8 +1105,10 @@ impl PassageService {
                 spec: &request.spec,
             },
             &self.logger,
+            &cancelled,
         )
         .await?;
+        stop_if_cancelled(&cancelled)?;
         let fingerprint = crate::prompts::fingerprint(&crate::prompts::system_prompt(
             crate::prompts::PromptTask::PassageQuestions,
             &profile,

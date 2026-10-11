@@ -176,9 +176,10 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
     setEditing(null);
   };
 
-  /** 文本改了（粘贴、清除、读了另一个文本文件）：AI 读好的素材作废 */
+  /** 文本改了（粘贴、清除、读了另一个文本文件）：AI 读好的素材作废，上一份材料的错误不再显示 */
   const changeText = (value: string) => {
     setText(value);
+    setPrepareError(null);
     if (aiPreview) {
       setAiPreview(null);
       setSourceLabel(null);
@@ -301,6 +302,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
             onTextChange={changeText}
             sourceLabel={sourceLabel}
             onSourceLabelChange={setSourceLabel}
+            onMaterialChange={() => setPrepareError(null)}
             placeholder={aiPreview ? '这份素材已经读好，点「下一步」查看' : undefined}
             privacyNote
             autoFocus

@@ -434,6 +434,8 @@ export interface StudyPlanStatistics {
   /** 已学的单词数（完成过一次含该词的练习） */
   learned_words: number;
   total_study_minutes: number;
+  /** 累计练习时长（毫秒，不含暂停）；不满一分钟的也算上 */
+  total_active_ms: number;
 }
 
 /// 创建带AI规划的学习计划请求

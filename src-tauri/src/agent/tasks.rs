@@ -1365,13 +1365,15 @@ pub async fn generate_passage(
     profile: &PromptProfile,
     spec: &PassageSpec<'_>,
     logger: &Logger,
+    cancelled: impl Fn() -> bool,
 ) -> AppResult<GeneratedPassage> {
-    let run = run_task(
+    let run = run_task_cancellable(
         paths,
         &passage_task(profile),
         model,
         &passage_message(spec),
         logger,
+        cancelled,
         |_| {},
     )
     .await?;
@@ -1456,13 +1458,15 @@ pub async fn generate_questions(
     profile: &PromptProfile,
     q: &QuestionsSpec<'_>,
     logger: &Logger,
+    cancelled: impl Fn() -> bool,
 ) -> AppResult<GeneratedQuestionSet> {
-    let run = run_task(
+    let run = run_task_cancellable(
         paths,
         &passage_questions_task(profile),
         model,
         &passage_questions_message(q),
         logger,
+        cancelled,
         |_| {},
     )
     .await?;
@@ -2931,6 +2935,7 @@ mod tests {
                 tags: &[],
             },
             &logger,
+            || false,
         )
         .await
         .unwrap();
@@ -2970,6 +2975,7 @@ mod tests {
                 spec: &spec,
             },
             &logger,
+            || false,
         )
         .await
         .unwrap();

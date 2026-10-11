@@ -394,13 +394,27 @@ impl PinduTools {
     pub fn new(app: AppHandle) -> Self {
         Self {
             app,
-            tool_router: Self::words_router()
-                + Self::passages_router()
-                + Self::study_router()
-                + Self::plans_router()
-                + Self::videos_router()
-                + Self::organize_router(),
+            tool_router: Self::router(),
         }
+    }
+
+    fn router() -> ToolRouter<Self> {
+        Self::words_router()
+            + Self::passages_router()
+            + Self::study_router()
+            + Self::plans_router()
+            + Self::videos_router()
+            + Self::organize_router()
+    }
+
+    /// 给模型的工具清单：展开嵌套 schema 的引用，加上 `reason`
+    fn listed(router: &ToolRouter<Self>) -> Vec<rmcp::model::Tool> {
+        router
+            .list_all()
+            .into_iter()
+            .map(crate::mcp::schema::inline_refs)
+            .map(crate::mcp::reason::with_reason)
+            .collect()
     }
 
     fn pool(&self) -> Arc<SqlitePool> {
@@ -487,13 +501,9 @@ impl ServerHandler for PinduTools {
         _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<rmcp::model::ListToolsResult, ErrorData> {
-        Ok(rmcp::model::ListToolsResult::with_all_items(
-            self.tool_router
-                .list_all()
-                .into_iter()
-                .map(crate::mcp::reason::with_reason)
-                .collect(),
-        ))
+        Ok(rmcp::model::ListToolsResult::with_all_items(Self::listed(
+            &self.tool_router,
+        )))
     }
 
     async fn call_tool(
@@ -526,6 +536,28 @@ impl ServerHandler for PinduTools {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 所有工具的参数里都没有 `$ref`：嵌套的 id（计划里的短文等）能被 pi 从字符串转回数字
+    #[test]
+    fn listed_tools_have_inlined_schemas() {
+        let tools = PinduTools::listed(&PinduTools::router());
+        for tool in &tools {
+            let text = serde_json::to_string(&*tool.input_schema).unwrap();
+            assert!(
+                !text.contains("$ref") && !text.contains("$defs"),
+                "{}: {text}",
+                tool.name
+            );
+        }
+        let plan = tools.iter().find(|t| t.name == "create_plan").unwrap();
+        let item = &plan.input_schema["properties"]["passages"]["items"];
+        assert_eq!(item["properties"]["passage_id"]["type"], "integer");
+        assert!(item["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r == "passage_id"));
+    }
 
     #[test]
     fn vocabulary_must_appear_in_the_text_in_any_form() {
