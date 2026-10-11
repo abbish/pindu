@@ -12,7 +12,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
@@ -23,7 +23,7 @@ pub const EVENT: &str = "job-updated";
 const KEEP_FINISHED: usize = 50;
 /// 同一任务两次进度推送的最小间隔（状态变化不受限）
 const EMIT_INTERVAL: Duration = Duration::from_millis(200);
-/// 同时运行的 AI 任务数（每个任务内部的并发另算，如批量分析按设置分批）
+/// 同时运行的 AI 任务数的初始值（「设置 → AI 任务」可改，见 [`Jobs::set_agent_slots`]；每个任务内部的并发另算，如批量分析按设置分批）
 const AGENT_SLOTS: usize = 2;
 /// 同时运行的媒体任务数（ffmpeg 吃满 CPU）
 const MEDIA_SLOTS: usize = 1;
@@ -119,6 +119,8 @@ pub struct Jobs {
     entries: Arc<Mutex<Vec<Entry>>>,
     emit: Arc<EmitFn>,
     agent: Arc<Semaphore>,
+    /// AI 队列当前的总空位数（含正在用的）
+    agent_slots: Arc<AtomicUsize>,
     media: Arc<Semaphore>,
     seq: Arc<AtomicU64>,
 }
@@ -130,8 +132,26 @@ impl Jobs {
             entries: Arc::new(Mutex::new(Vec::new())),
             emit: Arc::new(emit),
             agent: Arc::new(Semaphore::new(AGENT_SLOTS)),
+            agent_slots: Arc::new(AtomicUsize::new(AGENT_SLOTS)),
             media: Arc::new(Semaphore::new(MEDIA_SLOTS)),
             seq: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// 改 AI 队列同时运行的任务数：调大立即生效；调小时等正在运行的任务结束后再收回空位（不打断任务）
+    pub fn set_agent_slots(&self, slots: usize) {
+        let slots = slots.max(1);
+        let previous = self.agent_slots.swap(slots, Ordering::SeqCst);
+        if slots > previous {
+            self.agent.add_permits(slots - previous);
+        } else if slots < previous {
+            let semaphore = self.agent.clone();
+            let surplus = (previous - slots) as u32;
+            tauri::async_runtime::spawn(async move {
+                if let Ok(permits) = semaphore.acquire_many_owned(surplus).await {
+                    permits.forget();
+                }
+            });
         }
     }
 
@@ -409,6 +429,24 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         panic!("任务没有结束");
+    }
+
+    #[tokio::test]
+    async fn agent_slots_can_grow_and_shrink() {
+        let (jobs, _) = collecting();
+        jobs.set_agent_slots(4);
+        assert_eq!(jobs.agent.available_permits(), 4);
+        jobs.set_agent_slots(1);
+        for _ in 0..100 {
+            if jobs.agent.available_permits() == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_eq!(jobs.agent.available_permits(), 1);
+        // 收回空位后任务照常排队执行
+        let id = jobs.spawn(spec(Lane::Agent), |_| async { Ok(json!(null)) });
+        assert_eq!(wait_done(&jobs, &id).await.status, JobStatus::Succeeded);
     }
 
     #[tokio::test]

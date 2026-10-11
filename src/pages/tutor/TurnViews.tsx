@@ -203,7 +203,7 @@ const TurnError: React.FC<{ raw: string }> = ({ raw }) => {
       <div className="flex items-start gap-1.5 text-destructive">
         <CircleAlert className="mt-0.5 size-4 shrink-0" />
         <span className="flex-1">
-          AI 老师这次没能回答完，可以再试一次。经常出现时，可以在「设置 → AI 助手」给「AI 老师」换一个模型。
+          AI 老师这次没能回答完，可以再试一次。经常出现时，可以在「设置 → AI 任务」给「AI 老师对话」换一个模型。
         </span>
       </div>
       {raw && (

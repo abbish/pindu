@@ -35,6 +35,8 @@ impl PromptProfileService {
         profile.validate().map_err(AppError::ValidationError)?;
         let mut normalized = profile.clone();
         normalized.tutor_name = normalized.tutor_name.trim().to_string();
+        normalized.learner_name = normalized.learner_name.trim().to_string();
+        normalized.tutor_character = normalized.tutor_character.trim().to_string();
         normalized.interests = normalized
             .interests
             .iter()
@@ -52,7 +54,7 @@ impl PromptProfileService {
         Ok(normalized)
     }
 
-    /// 套用预设：替换学习者、语言与风格，保留兴趣场景、老师称呼与补充要求
+    /// 套用预设：替换学习者、语言与讲解方式，保留兴趣场景、AI 老师的人设（称呼、风格、小问题）与补充要求
     pub async fn apply_preset(pool: &SqlitePool, preset: &str) -> AppResult<PromptProfile> {
         let base = PromptProfile::preset(preset)
             .ok_or_else(|| AppError::ValidationError(format!("未知的预设：{}", preset)))?;
@@ -60,6 +62,10 @@ impl PromptProfileService {
         let profile = PromptProfile {
             interests: current.interests,
             tutor_name: current.tutor_name,
+            tutor_style: current.tutor_style,
+            tutor_quiz: current.tutor_quiz,
+            learner_name: current.learner_name,
+            tutor_character: current.tutor_character,
             custom: current.custom,
             ..base
         };
@@ -75,7 +81,21 @@ impl PromptProfileService {
             .map(|task| PromptPreview {
                 task: task.key().to_string(),
                 label: task.label().to_string(),
-                content: prompts::system_prompt(task, profile, &[("mode_rules", &rules)]),
+                content: prompts::system_prompt(
+                    task,
+                    profile,
+                    &[
+                        ("mode_rules", &rules),
+                        // AI 老师对话按默认的权限与推荐预览
+                        (
+                            "permission_rule",
+                            prompts::tutor_permission_rule(
+                                crate::services::agent_settings::DEFAULT_TUTOR_PERMISSION,
+                            ),
+                        ),
+                        ("suggestions", "1"),
+                    ],
+                ),
             })
             .collect())
     }
@@ -120,11 +140,15 @@ mod tests {
         let mut p = PromptProfile::preset("primary").unwrap();
         p.interests = vec![" 足球 ".into(), "".into()];
         p.tutor_name = " Lark ".into();
+        p.tutor_style = "lively".into();
+        p.learner_name = " 小明 ".into();
+        p.tutor_character = "像耐心的学姐".into();
         p.custom.insert("explain".into(), "  ".into());
         p.custom.insert("tutor".into(), "多用英文".into());
         let saved = PromptProfileService::save(&pool, &p).await.unwrap();
         assert_eq!(saved.interests, vec!["足球"]);
         assert_eq!(saved.tutor_name, "Lark");
+        assert_eq!(saved.learner_name, "小明");
         assert!(!saved.custom.contains_key("explain"));
         assert_eq!(PromptProfileService::load(&pool).await.unwrap(), saved);
 
@@ -132,7 +156,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(adult.learner, "adult");
-        assert_eq!(adult.tutor_style, "concise");
+        assert_eq!(adult.explain_length, "brief");
+        // AI 老师的人设不随学习者预设改变
+        assert_eq!(adult.tutor_style, "lively");
+        assert!(adult.tutor_quiz);
+        assert_eq!(adult.tutor_character, "像耐心的学姐");
         assert_eq!(adult.interests, vec!["足球"]);
         assert_eq!(
             adult.custom.get("tutor").map(String::as_str),
@@ -145,6 +173,26 @@ mod tests {
         let mut bad = PromptProfile::preset("primary").unwrap();
         bad.language = "fr".into();
         assert!(PromptProfileService::save(&pool, &bad).await.is_err());
+        let mut long = PromptProfile::preset("primary").unwrap();
+        long.tutor_character = "长".repeat(crate::prompts::CHARACTER_MAX_CHARS + 1);
+        assert!(PromptProfileService::save(&pool, &long).await.is_err());
+
+        // 旧版本存的档案没有人设字段：照常读出，新字段为空
+        let mut old = serde_json::to_value(PromptProfile::default()).unwrap();
+        let map = old.as_object_mut().unwrap();
+        map.remove("learnerName");
+        map.remove("tutorCharacter");
+        map.insert("tutorName".into(), "Lark".into());
+        let mut conn = pool.acquire().await.unwrap();
+        SettingsRepository::set(&mut conn, PROFILE_KEY, Some(&old.to_string()))
+            .await
+            .unwrap();
+        drop(conn);
+        let loaded = PromptProfileService::load(&pool).await.unwrap();
+        assert_eq!(
+            (loaded.tutor_name.as_str(), loaded.learner_name.as_str()),
+            ("Lark", "")
+        );
     }
 
     #[test]

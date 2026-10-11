@@ -8,9 +8,6 @@ use crate::types::ai_model::{AIModelConfig, AIProvider};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// 模型服务出错时 pi 自动重试的次数（pi 默认 3）
-pub const PI_MAX_RETRIES: u32 = 5;
-
 /// pi 支持的思考档
 pub const THINKING_LEVELS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -285,11 +282,12 @@ pub fn prepare_launch(
     std::fs::create_dir_all(&agent_dir).map_err(io)?;
     std::fs::create_dir_all(&cwd).map_err(io)?;
 
-    // pi 的设置（agentDir/settings.json）：模型服务过载（429）时常要等更久才恢复，
-    // 自动重试从默认的 3 次放宽到 5 次（指数退避 2s → 32s）
+    // pi 的设置（agentDir/settings.json）：模型服务出错（429 限流、过载）时自动重试的次数，
+    // 「设置 → AI 任务」可改，默认 5 次（pi 默认 3 次；指数退避 2s → 32s）
     std::fs::write(
         agent_dir.join("settings.json"),
-        json!({ "retry": { "maxRetries": PI_MAX_RETRIES } }).to_string(),
+        json!({ "retry": { "maxRetries": crate::services::agent_settings::max_retries() } })
+            .to_string(),
     )
     .map_err(io)?;
     let config_file = run_dir.join("config.json");
@@ -508,7 +506,7 @@ mod tests {
         // pi 的重试设置写进了本次的 agentDir
         let settings =
             std::fs::read_to_string(run_dir.join("agent").join("settings.json")).unwrap();
-        assert!(settings.contains(&format!("\"maxRetries\":{}", PI_MAX_RETRIES)));
+        assert!(settings.contains("\"maxRetries\":"));
         let _ = std::fs::remove_dir_all(root);
 
         let mut no_key = model(Some("moonshotai-cn"));

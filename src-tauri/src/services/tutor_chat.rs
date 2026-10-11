@@ -168,12 +168,14 @@ impl TutorChatService {
                 return Ok(session);
             }
         }
-        let model = crate::services::agent_settings::AgentSettingsService::new(
+        let agent_settings = crate::services::agent_settings::AgentSettingsService::new(
             self.pool.clone(),
             self.logger.clone(),
-        )
-        .model_for(crate::services::agent_settings::AgentTaskKind::Tutor, None)
-        .await?;
+        );
+        let model = agent_settings
+            .model_for(crate::services::agent_settings::AgentTaskKind::Chat, None)
+            .await?;
+        let settings = agent_settings.get().await?;
         let profile =
             crate::services::prompt_profile::PromptProfileService::load(&self.pool).await?;
         let (session_dir, cwd) = dirs(env.paths);
@@ -189,7 +191,11 @@ impl TutorChatService {
         let skills = crate::services::tutor_skills::write(&env.paths.root)?;
         let launch = prepare_launch(
             env.paths,
-            &tasks::tutor_chat_task(&profile),
+            &tasks::tutor_chat_task(
+                &profile,
+                &settings.tutor_permission,
+                settings.tutor_suggestions,
+            ),
             &model,
             SessionMode::Persistent {
                 dir: session_dir,
@@ -211,6 +217,10 @@ impl TutorChatService {
                     ("REDLARK_MCP_URL".to_string(), env.mcp.url.clone()),
                     ("REDLARK_MCP_TOKEN".to_string(), env.mcp.token.clone()),
                     ("REDLARK_CONVERSATION_ID".to_string(), conversation.clone()),
+                    (
+                        "REDLARK_TUTOR_PERMISSION".to_string(),
+                        settings.tutor_permission.clone(),
+                    ),
                 ],
             }),
         )?;
@@ -277,13 +287,13 @@ impl TutorChatService {
                 self.pool.clone(),
                 self.logger.clone(),
             )
-            .model_for(crate::services::agent_settings::AgentTaskKind::Tutor, None)
+            .model_for(crate::services::agent_settings::AgentTaskKind::Chat, None)
             .await?;
             crate::services::material_read::check_can_read(
                 env.paths,
                 &model,
                 "截图.png",
-                "AI 老师",
+                "AI 老师对话",
             )
             .await?;
         }

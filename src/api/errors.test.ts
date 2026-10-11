@@ -50,7 +50,7 @@ test('AI 服务常见失败给出处理办法', () => {
   assert.match(toUserMessage('外部服务错误: request timed out', 'EXTERNAL_SERVICE_ERROR'), /超时/);
   assert.equal(
     toUserMessage('外部服务错误: agent 超时（15 分钟）未完成；stderr: ', 'EXTERNAL_SERVICE_ERROR'),
-    '超过 15 分钟还没完成，可以到「设置 → AI 助手」调长每次最长等待',
+    '超过 15 分钟还没完成，可以到「设置 → AI 任务」调长每次最长等待',
   );
   assert.equal(toUserMessage('外部服务错误: 没有写出例句，请再试一次', 'EXTERNAL_SERVICE_ERROR'), '没有写出例句，请再试一次');
   assert.equal(toUserMessage('外部服务错误: 无法启动 agent：spawn ENOENT', 'EXTERNAL_SERVICE_ERROR'), '处理没能开始，请重启应用后再试');

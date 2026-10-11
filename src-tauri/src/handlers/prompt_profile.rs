@@ -1,4 +1,4 @@
-//! 「设置 → AI 助手 → 学习者与风格」：学习者档案、讲解 / 答疑风格、各任务补充要求，以及系统提示词预览
+//! 「设置 → 学习者」「设置 → AI 老师」「设置 → AI 任务 → 补充要求」：学习者档案、AI 老师的人设、各任务补充要求，以及系统提示词预览
 
 use super::finish;
 use crate::error::AppResult;
@@ -24,16 +24,27 @@ pub async fn update_prompt_profile(
     let logger = app.state::<Logger>();
     logger.api_request("update_prompt_profile", Some(&format!("{:?}", request)));
     let result = PromptProfileService::save(app.state::<SqlitePool>().inner(), &request).await;
+    restart_idle_chats(&app, &result).await;
     finish(&logger, "update_prompt_profile", result)
 }
 
-/// 套用预设（primary / secondary / adult）；保留兴趣场景、老师称呼与补充要求
+/// 档案改了：空闲的 AI 老师对话进程先关掉，下次发消息时按新的提示词接着原来的对话
+async fn restart_idle_chats<T>(app: &AppHandle, result: &AppResult<T>) {
+    if result.is_ok() {
+        app.state::<crate::agent::chat::ChatHub>()
+            .close_idle(std::time::Duration::ZERO)
+            .await;
+    }
+}
+
+/// 套用预设（primary / secondary / adult）；保留兴趣场景、AI 老师的人设与补充要求
 #[tauri::command]
 pub async fn apply_prompt_preset(app: AppHandle, preset: String) -> AppResult<PromptProfile> {
     let logger = app.state::<Logger>();
     logger.api_request("apply_prompt_preset", Some(&preset));
     let result =
         PromptProfileService::apply_preset(app.state::<SqlitePool>().inner(), &preset).await;
+    restart_idle_chats(&app, &result).await;
     finish(&logger, "apply_prompt_preset", result)
 }
 

@@ -929,12 +929,37 @@ pub const TUTOR_CHAT_TOOLS: [&str; 10] = [
     "mcp__pindu__*",
 ];
 
-/// AI 老师独立对话（常驻会话，pi 保存对话）
-pub fn tutor_chat_task(profile: &PromptProfile) -> AgentTask {
+/// 关掉「推荐下一步」时的工具（不含 suggest_replies）
+pub const TUTOR_CHAT_TOOLS_NO_SUGGESTIONS: [&str; 9] = [
+    "ask_user",
+    "tool_search",
+    "name_conversation",
+    "list_material",
+    "read_pdf_text",
+    "view_pdf_page",
+    "view_image",
+    "read_text",
+    "mcp__pindu__*",
+];
+
+/// AI 老师独立对话（常驻会话，pi 保存对话）。`permission` 是「设置 → AI 老师」的改动权限，
+/// 由 sidecar 的确认门执行，这里只把规则写进提示词；`suggestions` 关掉时不给推荐下一步的工具
+pub fn tutor_chat_task(profile: &PromptProfile, permission: &str, suggestions: bool) -> AgentTask {
+    let mut extra = vec![(
+        "permission_rule",
+        prompts::tutor_permission_rule(permission),
+    )];
+    if suggestions {
+        extra.push(("suggestions", "1"));
+    }
     AgentTask {
         name: "tutor-chat",
-        system_prompt: prompts::system_prompt(PromptTask::Chat, profile, &[]),
-        tools: &TUTOR_CHAT_TOOLS,
+        system_prompt: prompts::system_prompt(PromptTask::Chat, profile, &extra),
+        tools: if suggestions {
+            &TUTOR_CHAT_TOOLS
+        } else {
+            &TUTOR_CHAT_TOOLS_NO_SUGGESTIONS
+        },
         default_thinking: "low",
     }
 }

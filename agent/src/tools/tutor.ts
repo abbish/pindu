@@ -125,16 +125,32 @@ export function registerPindu(pi: ExtensionAPI) {
 }
 
 /**
- * 会删除、结束的操作先问学习者（pi 文档的权限控制写法：按工具的 destructiveHint 注解，在 tool_call 里 confirm，不同意就 block）。
+ * 改动拼读内容前按「设置 → AI 老师」的权限把关（pi 文档的权限控制写法：按工具注解在 tool_call 里 confirm，不同意就 block）：
+ * - ask_delete（默认）：会删除、结束的（destructiveHint）先问
+ * - ask_changes：所有改动（不是 readOnlyHint 的）都先问
+ * - view_only：所有改动直接拦下
  * 确认卡片的标题用模型写的这一步意图（reason）。
  */
+export function gateDecision(permission: string | undefined, hints: { readOnlyHint?: boolean; destructiveHint?: boolean } | undefined): "allow" | "confirm" | "block" {
+  const changes = hints?.readOnlyHint !== true;
+  if (permission === "view_only") return changes ? "block" : "allow";
+  if (permission === "ask_changes") return changes ? "confirm" : "allow";
+  return hints?.destructiveHint === true ? "confirm" : "allow";
+}
+
 function registerConfirmGate(pi: ExtensionAPI) {
+  const permission = process.env.REDLARK_TUTOR_PERMISSION;
   pi.on("tool_call", async (event, ctx) => {
     if (!event.toolName.startsWith(`mcp__${PINDU_SERVER}__`)) return;
     const hints = pi.getAllTools().find(tool => tool.name === event.toolName)?.annotations;
-    if (hints?.destructiveHint !== true) return;
+    const decision = gateDecision(permission, hints);
+    if (decision === "allow") return;
+    if (decision === "block") {
+      return { block: true, reason: "The learner set the AI teacher to view only, so nothing in Pindu can be created, changed or deleted. Tell them they can allow changes in Settings → AI 老师, or put the content in your answer instead." };
+    }
     const reason = String((event.input as { reason?: unknown }).reason ?? "").trim();
-    const ok = await ctx.ui.confirm(reason || "确定要这样做吗？", "这一步会删除或结束，确认后才会执行。", { signal: ctx.signal });
+    const detail = hints?.destructiveHint === true ? "这一步会删除或结束，确认后才会执行。" : "这一步会改动你的内容，确认后才会执行。";
+    const ok = await ctx.ui.confirm(reason || "确定要这样做吗？", detail, { signal: ctx.signal });
     if (!ok) {
       return { block: true, reason: "The learner did not confirm, so nothing was changed. Do not retry unless they ask again." };
     }

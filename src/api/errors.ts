@@ -102,7 +102,7 @@ const describeExternal = (message: string): string => {
     return `找不到所选模型，请到${settings}检查模型名称`;
   }
   const agentTimeout = /agent 超时（(\d+) 分钟）/.exec(message);
-  if (agentTimeout) return `超过 ${agentTimeout[1]} 分钟还没完成，可以到「设置 → AI 助手」调长每次最长等待`;
+  if (agentTimeout) return `超过 ${agentTimeout[1]} 分钟还没完成，可以到「设置 → AI 任务」调长每次最长等待`;
   // 其余内部进程的问题（进程退出、连接中断、输出无法解析）不对用户说细节
   if (/\bagent\b/i.test(message)) return '处理意外中断了，请再试一次';
   if (/timed? ?out|timeout|超时/.test(lower)) return `${service}响应超时，请稍后再试`;

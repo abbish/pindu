@@ -182,17 +182,20 @@ pub fn run() {
                         // 日志级别：设置页保存的（未设置为默认）
                         services::log_settings::LogSettingsService::apply_saved(&pool, &logger)
                             .await;
-                        // AI 任务的等待上限（设置 → AI 助手）
+                        // AI 任务的等待上限、重试次数、后台同时进行的任务数（设置 → AI 任务）
                         let agent_settings = services::agent_settings::AgentSettingsService::new(
                             std::sync::Arc::new(pool.clone()),
                             std::sync::Arc::new(logger.clone()),
                         );
-                        if let Err(e) = agent_settings.apply_timeout().await {
-                            logger.warn(
+                        match agent_settings.apply_runtime().await {
+                            Ok(settings) => handle
+                                .state::<jobs::Jobs>()
+                                .set_agent_slots(settings.job_slots as usize),
+                            Err(e) => logger.warn(
                                 "AGENT",
-                                "读取 AI 等待上限失败，用默认值",
+                                "读取 AI 任务设置失败，用默认值",
                                 Some(&e.to_string()),
-                            );
+                            ),
                         }
                         handle.manage(pool);
                         state.ready();

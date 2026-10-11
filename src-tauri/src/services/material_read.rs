@@ -124,7 +124,7 @@ pub async fn check_can_read(
 ) -> AppResult<()> {
     if is_image(file_name) && !model_sees_images(paths, model).await {
         return Err(AppError::ValidationError(format!(
-            "现在用的模型「{}」不能看图片。请在「设置 → AI 助手」给「{}」换一个能看图片的模型（模型列表里带图片图标的）",
+            "现在用的模型「{}」不能看图片。请在「设置 → AI 任务」给「{}」换一个能看图片的模型（模型列表里带图片图标的）",
             model.display_name, task_label
         )));
     }

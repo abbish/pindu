@@ -108,7 +108,7 @@ pub struct MaterialArgs {
 impl PinduTools {
     #[tool(
         description = "Open a page of the app for the learner: a word book, passage, study plan or video (clip editor) by id; `practice` starts today's practice of a plan (id = plan id, same as the plan's Start button); `passage_practice` opens a question set to answer (id = set id, mode reading / listening); `continue_practice` continues an unfinished practice (session_id from unfinished_practice); or a list page (word_books / passages / videos / plans / calendar / home). Use when the learner asks to open / go to / start something.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(read_only_hint = true)
     )]
     async fn open_page(
         &self,

@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Bot, Database, Library, Search, Settings2, Sparkles, Volume2, type LucideIcon } from 'lucide-react';
+import { Bot, Database, GraduationCap, Library, Search, Settings2, Sparkles, UserRound, Volume2, type LucideIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '../navigation';
 import { AIModelSettings } from './settings/AIModelSettings';
 import { TTSSettings } from './settings/TTSSettings';
 import { AgentSettings } from './settings/AgentSettings';
+import { LearnerSettings } from './settings/LearnerSettings';
+import { TutorSettings } from './settings/TutorSettings';
 import { GeneralSettings } from './settings/GeneralSettings';
 import { MaterialSettings } from './settings/MaterialSettings';
 import { DataManagementSettings } from './settings/DataManagementSettings';
@@ -15,7 +17,7 @@ export interface SettingsPageProps {
   onNavigate?: NavigateFn;
 }
 
-type SettingsKey = 'general' | 'materials' | 'ai-models' | 'agent' | 'tts' | 'data-management';
+type SettingsKey = 'general' | 'materials' | 'learner' | 'ai-models' | 'agent' | 'tutor' | 'tts' | 'data-management';
 
 interface NavItem {
   key: SettingsKey;
@@ -32,6 +34,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: '偏好设置',
     items: [
       { key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '系统日志', '诊断'] },
+      { key: 'learner', label: '学习者', icon: UserRound, keywords: ['小学生', '中学生', '成人', '水平', '讲解语言', '详略', '记忆方法', '音标', '兴趣'] },
       {
         key: 'materials',
         label: '素材',
@@ -43,8 +46,9 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: 'AI 与语音',
     items: [
-      { key: 'ai-models', label: 'AI 模型', icon: Sparkles, keywords: ['默认模型', '提供商', 'API 密钥', 'key', '模型测试', 'pi'] },
-      { key: 'agent', label: 'AI 助手', icon: Bot, keywords: ['pi', 'agent', '任务模型', '讲解', '答疑', '拼读', '批量', '并发', '429', '限流', '学习者', '提示词', '风格', '成人', '小学生', '老师', '补充要求'] },
+      { key: 'ai-models', label: 'AI 模型', icon: Sparkles, keywords: ['默认模型', '提供商', 'API 密钥', 'key', '模型测试', '思考', 'pi'] },
+      { key: 'agent', label: 'AI 任务', icon: Bot, keywords: ['pi', 'agent', 'AI 助手', '任务模型', '拼读', '批量', '并发', '后台', '重试', '429', '限流', '等待', '超时', '提示词', '补充要求'] },
+      { key: 'tutor', label: 'AI 老师', icon: GraduationCap, keywords: ['人设', '名字', '称呼', '风格', '性格', '幽默', '小问题', '对话', '权限', '删除', '只查看', '推荐'] },
       { key: 'tts', label: '语音合成', icon: Volume2, keywords: ['豆包', '火山', '音色', '发音', '语速', '试听', '缓存', 'tts'] },
     ],
   },
@@ -135,7 +139,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = () => {
           {active === 'general' && <GeneralSettings />}
           {active === 'materials' && <MaterialSettings />}
           {active === 'ai-models' && <AIModelSettings />}
+          {active === 'learner' && <LearnerSettings />}
           {active === 'agent' && <AgentSettings />}
+          {active === 'tutor' && <TutorSettings />}
           {active === 'tts' && <TTSSettings />}
           {active === 'data-management' && <DataManagementSettings />}
         </div>

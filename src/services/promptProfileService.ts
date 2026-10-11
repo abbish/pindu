@@ -17,10 +17,14 @@ export interface PromptProfile {
   memoryMethod: string;
   /** AI 老师的称呼（空 = 默认） */
   tutorName: string;
-  /** 答疑风格：gentle / concise / socratic */
+  /** AI 老师的说话风格：gentle / concise / socratic / lively */
   tutorStyle: string;
   /** 回答末尾可以出一个小问题 */
   tutorQuiz: boolean;
+  /** AI 老师怎么称呼学习者（空 = 不特别称呼） */
+  learnerName: string;
+  /** AI 老师的人设（学习者自己写；空 = 不加） */
+  tutorCharacter: string;
   /** 音标：british / american */
   ipa: string;
   /** 各任务的补充要求（任务 key → 文本） */
@@ -37,6 +41,8 @@ export interface PromptPreview {
 
 /** 补充要求的最大字数（与 Rust `CUSTOM_MAX_CHARS` 一致） */
 export const CUSTOM_MAX_CHARS = 300;
+/** AI 老师人设的最大字数（与 Rust `CHARACTER_MAX_CHARS` 一致） */
+export const CHARACTER_MAX_CHARS = 200;
 
 class PromptProfileService extends BaseService {
   async getProfile(): Promise<ApiResult<PromptProfile>> {
@@ -47,7 +53,7 @@ class PromptProfileService extends BaseService {
     return this.executeWithLoading(async () => this.client.invoke<PromptProfile>('update_prompt_profile', { request }));
   }
 
-  /** 套用预设：primary / secondary / adult（保留兴趣场景、老师称呼与补充要求） */
+  /** 套用预设：primary / secondary / adult（保留兴趣场景、AI 老师的人设与补充要求） */
   async applyPreset(preset: string): Promise<ApiResult<PromptProfile>> {
     return this.executeWithLoading(async () => this.client.invoke<PromptProfile>('apply_prompt_preset', { preset }));
   }

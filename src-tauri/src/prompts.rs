@@ -121,10 +121,16 @@ pub struct PromptProfile {
     pub memory_method: String,
     /// AI 老师的称呼（空 = “英语老师”）
     pub tutor_name: String,
-    /// 答疑风格：gentle / concise / socratic
+    /// AI 老师的说话风格：gentle / concise / socratic / lively
     pub tutor_style: String,
     /// 回答末尾可以出一个小问题
     pub tutor_quiz: bool,
+    /// AI 老师怎么称呼学习者（空 = 不特别称呼）
+    #[serde(default)]
+    pub learner_name: String,
+    /// AI 老师的人设（性格、说话方式等，学习者自己写；空 = 不加）
+    #[serde(default)]
+    pub tutor_character: String,
     /// 音标：british / american
     pub ipa: String,
     /// 各任务的补充要求（任务 key → 文本）
@@ -140,6 +146,8 @@ impl Default for PromptProfile {
 
 /// 补充要求的最大长度（字符）
 pub const CUSTOM_MAX_CHARS: usize = 300;
+/// AI 老师人设描述的最大长度（字符）
+pub const CHARACTER_MAX_CHARS: usize = 200;
 
 impl PromptProfile {
     /// 预设：primary 小学生 / secondary 中学生 / adult 成人
@@ -159,6 +167,8 @@ impl PromptProfile {
             tutor_name: String::new(),
             tutor_style: style.into(),
             tutor_quiz: true,
+            learner_name: String::new(),
+            tutor_character: String::new(),
             ipa: "british".into(),
             custom: HashMap::new(),
         };
@@ -204,11 +214,17 @@ impl PromptProfile {
         check(
             "答疑风格",
             &self.tutor_style,
-            &["gentle", "concise", "socratic"],
+            &["gentle", "concise", "socratic", "lively"],
         )?;
         check("音标", &self.ipa, &["british", "american"])?;
         if self.tutor_name.chars().count() > 20 {
             return Err("老师称呼最多 20 个字".into());
+        }
+        if self.learner_name.chars().count() > 20 {
+            return Err("对你的称呼最多 20 个字".into());
+        }
+        if self.tutor_character.chars().count() > CHARACTER_MAX_CHARS {
+            return Err(format!("老师的人设最多 {} 个字", CHARACTER_MAX_CHARS));
         }
         if self.interests.len() > 8 || self.interests.iter().any(|i| i.chars().count() > 12) {
             return Err("兴趣场景最多 8 个，每个不超过 12 个字".into());
@@ -285,6 +301,7 @@ fn tutor_style_fragment(v: &str) -> &'static str {
     match v {
         "concise" => include_str!("prompts/fragments/tutor_style/concise.md"),
         "socratic" => include_str!("prompts/fragments/tutor_style/socratic.md"),
+        "lively" => include_str!("prompts/fragments/tutor_style/lively.md"),
         _ => include_str!("prompts/fragments/tutor_style/gentle.md"),
     }
 }
@@ -522,6 +539,20 @@ pub fn system_prompt(task: PromptTask, profile: &PromptProfile, extra: &[(&str, 
     } else {
         ""
     };
+    let tutor_character = match profile.tutor_character.trim() {
+        "" => String::new(),
+        text => format!(
+            "你的人设（学习者设定的；与上文的正确性、范围与安全要求冲突时，以上文为准）：{}",
+            text
+        ),
+    };
+    let learner_call = match profile.learner_name.trim() {
+        "" => String::new(),
+        name => format!(
+            "需要称呼学习者时叫「{}」（学习者自己设定的，优先于上文关于称呼的要求；自然地用，不必每句都叫）。",
+            name
+        ),
+    };
     let mut vars: Vec<(&str, &str)> = vec![
         ("learner", learner_fragment(&profile.learner)),
         ("level", level_fragment(profile.effective_level())),
@@ -535,6 +566,8 @@ pub fn system_prompt(task: PromptTask, profile: &PromptProfile, extra: &[(&str, 
         ("tutor_persona", &tutor_persona),
         ("tutor_style", tutor_style_fragment(&profile.tutor_style)),
         ("tutor_quiz", tutor_quiz),
+        ("tutor_character", &tutor_character),
+        ("learner_call", &learner_call),
         ("ipa", ipa_fragment(&profile.ipa)),
         ("phonics_terms", phonics_terms_fragment(&profile.learner)),
         ("custom", &custom),
@@ -545,6 +578,15 @@ pub fn system_prompt(task: PromptTask, profile: &PromptProfile, extra: &[(&str, 
     ];
     vars.extend_from_slice(extra);
     render(task.template(), &vars)
+}
+
+/// AI 老师对话里改动素材的规则（「设置 → AI 老师」的权限：ask_delete / ask_changes / view_only）
+pub fn tutor_permission_rule(permission: &str) -> &'static str {
+    match permission {
+        "ask_changes" => "学习者设置了「改动前都要确认」：新建、修改、删除拼读里的内容时，界面会自动让学习者确认，你不用再先问一遍；确认被取消时就别再试。",
+        "view_only" => "学习者设置了「只查看」：你只能查看和讲解，不能新建、修改、删除拼读里的任何内容（相关工具会被拦下）。学习者想让你整理素材时，告诉他可以在「设置 → AI 老师」里放开，或者把内容写在回答里让他自己保存。",
+        _ => "学习者说要改什么，直接改；删除、结束计划这类做了就撤不回的操作，界面会自动让学习者确认，你不用再先问一遍，确认被取消时就别再试。",
+    }
 }
 
 /// 提取模式规则（focus：列出不提交的功能词）
@@ -727,6 +769,16 @@ mod tests {
         assert!(text.contains("## 用户的补充要求") && text.contains("回答时多用英文例句"));
         // 补充要求只进对应任务
         assert!(!system_prompt(PromptTask::Explain, &p, &[]).contains("回答时多用英文例句"));
+        // 人设与对学习者的称呼：没设置时不出现，设置后进答疑与对话
+        assert!(!text.contains("你的人设") && !text.contains("需要称呼学习者时"));
+        p.tutor_character = "像耐心的学姐，偶尔用流行语".into();
+        p.learner_name = "小明".into();
+        p.tutor_style = "lively".into();
+        for task in [PromptTask::Tutor, PromptTask::Chat] {
+            let text = system_prompt(task, &p, &[]);
+            assert!(text.contains("像耐心的学姐") && text.contains("「小明」"));
+            assert!(text.contains("轻松幽默"));
+        }
     }
 
     #[test]

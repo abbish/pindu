@@ -9,19 +9,21 @@ import { agentSettingsService, type AgentSettings as AgentSettingsData, type Upd
 import { Image as ImageIcon } from 'lucide-react';
 import { capabilitiesOf } from '@/components/ModelCapabilities';
 import type { AIModelConfig } from '@/types';
-import { PromptProfileSettings } from './PromptProfileSettings';
+import { PromptCustomSection } from './PromptCustomSection';
 
 /** “跟随默认模型”在 Select 里的值（Select 不接受空字符串） */
 const FOLLOW_DEFAULT = 'default';
 const BATCH_SIZES = [3, 5, 8, 10, 15, 20];
 const CONCURRENCIES = [1, 2, 3, 4, 5];
 const TIMEOUTS = [3, 5, 10, 15, 20, 30, 45, 60];
+const RETRIES = [0, 1, 2, 3, 5, 8, 10];
+const JOB_SLOTS = [1, 2, 3, 4];
 
 const modelLabel = (m: AIModelConfig) => `${m.displayName}（${m.provider.displayName}）`;
 
 /**
- * 设置 → AI 助手（pi agent）：每个 AI 任务用哪个模型、批量分析的节奏。
- * 页面上临时选的模型（如导入单词时）优先于这里的设置；这里没指定时跟随默认模型。
+ * 设置 → AI 任务（pi agent）：每个 AI 任务用哪个模型、批量分析的节奏、等待与重试、后台同时进行的任务数、各任务的补充要求。
+ * 页面上临时选的模型（如导入单词时）优先于这里的设置；这里没指定时跟随沿用的任务或默认模型。
  */
 export const AgentSettings: React.FC = () => {
   const toast = useToast();
@@ -55,9 +57,9 @@ export const AgentSettings: React.FC = () => {
 
   if (!settings) {
     return (
-      <SettingsPanel title="AI 助手">
+      <SettingsPanel title="AI 任务">
         {loadError ? (
-          <PageError title="无法加载 AI 助手设置" message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />
+          <PageError title="无法加载 AI 任务设置" message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />
         ) : (
           <Skeleton className="h-72 rounded-xl" />
         )}
@@ -69,9 +71,15 @@ export const AgentSettings: React.FC = () => {
   const usable = models.filter((m) => m.isActive && m.provider.hasApiKey);
   const defaultModel = models.find((m) => m.isDefault);
   const defaultText = defaultModel ? `跟随默认模型：${defaultModel.displayName}` : '跟随默认模型：未设置';
+  /** 没有单独设置时：沿用的任务设置了模型就跟随它，否则跟随默认模型 */
+  const followText = (fallbackTask: string | null) => {
+    const fallback = settings.taskModels.find((t) => t.task === fallbackTask);
+    const model = fallback?.modelId != null ? usable.find((m) => m.id === fallback.modelId) : undefined;
+    return fallback && model ? `跟随「${fallback.label}」：${model.displayName}` : defaultText;
+  };
 
   return (
-    <SettingsPanel title="AI 助手">
+    <SettingsPanel title="AI 任务">
       <SettingsSection title="各任务使用的模型">
         {settings.taskModels.map((t) => {
           const value = t.modelId == null ? FOLLOW_DEFAULT : String(t.modelId);
@@ -87,7 +95,7 @@ export const AgentSettings: React.FC = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={FOLLOW_DEFAULT}>{defaultText}</SelectItem>
+                  <SelectItem value={FOLLOW_DEFAULT}>{followText(t.fallbackTask)}</SelectItem>
                   {usable.length > 0 && <SelectSeparator />}
                   {usable.map((m) => (
                     <SelectItem key={m.id} value={String(m.id)}>
@@ -139,6 +147,34 @@ export const AgentSettings: React.FC = () => {
       </SettingsSection>
 
       <SettingsSection title="AI 请求">
+        <SettingsRow label="后台同时进行" description="写短文、出题、批量分析等后台任务">
+          <Select value={String(settings.jobSlots)} disabled={saving} onValueChange={(v) => save({ jobSlots: Number(v) })}>
+            <SelectTrigger className="w-32" aria-label="后台同时进行的任务数">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {JOB_SLOTS.map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n} 个
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+        <SettingsRow label="出错时自动重试" description="服务商限流或繁忙时">
+          <Select value={String(settings.maxRetries)} disabled={saving} onValueChange={(v) => save({ maxRetries: Number(v) })}>
+            <SelectTrigger className="w-32" aria-label="出错时自动重试">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RETRIES.map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n === 0 ? '不重试' : `${n} 次`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
         <SettingsRow label="每次最长等待">
           <Select value={String(settings.timeoutMinutes)} disabled={saving} onValueChange={(v) => save({ timeoutMinutes: Number(v) })}>
             <SelectTrigger className="w-32" aria-label="每次最长等待">
@@ -155,7 +191,7 @@ export const AgentSettings: React.FC = () => {
         </SettingsRow>
       </SettingsSection>
 
-      <PromptProfileSettings />
+      <PromptCustomSection />
     </SettingsPanel>
   );
 };
