@@ -439,6 +439,19 @@ mod tests {
     #[tool_router]
     impl FakePindu {
         #[tool(
+            description = "Check background jobs (writing / saving passages, generating questions, spelling analysis of new words): status, progress and current stage. Running jobs and those finished in the last hour; `fromThisConversation` marks the ones you started here. Use it whenever the learner asks about progress, and before saying something you started is ready.",
+            annotations(read_only_hint = true)
+        )]
+        async fn background_jobs(&self) -> Result<CallToolResult, ErrorData> {
+            crate::mcp::tool_result(
+                json!([{ "title": "分析 12 个单词 · 旅行", "status": "进行中", "progress": "2/12",
+                         "stage": "正在分析拼读、音标和例句", "fromThisConversation": true }]),
+                "看了后台任务：1 个进行中，0 个刚结束".to_string(),
+                None,
+            )
+        }
+
+        #[tool(
             description = "Look up words in the learner's own word books.",
             annotations(read_only_hint = true)
         )]
@@ -744,6 +757,25 @@ mod tests {
             .collect::<String>();
         println!("推荐下一步：{}", next);
 
+        // 问进度：应查看后台任务（不凭素材猜）
+        let settled_before = count("agent_settled");
+        service
+            .send(
+                &env,
+                &request(
+                    Some(id.clone()),
+                    "我刚才让你建的词汇本，后台分析到哪一步了？",
+                ),
+            )
+            .await
+            .unwrap();
+        wait(settled_before + 1).await;
+        let checked_jobs = events.lock().unwrap().iter().any(|e| {
+            e["type"] == "tool_execution_end" && e["toolName"] == "mcp__pindu__background_jobs"
+        });
+        println!("问进度时查看了后台任务：{}", checked_jobs);
+        assert!(checked_jobs, "问进度时应查看后台任务");
+
         // 后台任务结束的通知：/pindu-job → 会话里一条自定义消息，AI 老师接着说
         let settled_before = count("agent_settled");
         let session = hub.get(&id).await.unwrap();
@@ -794,7 +826,7 @@ mod tests {
             .filter_map(|m| m["role"].as_str())
             .collect();
         println!("消息角色：{:?}", roles);
-        assert_eq!(roles.iter().filter(|r| **r == "user").count(), 2);
+        assert_eq!(roles.iter().filter(|r| **r == "user").count(), 3);
         // skills 写进了系统提示词（pi 只在 read 可用时才写）
         let system = opened.messages[0].to_string();
         assert!(
