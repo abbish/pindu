@@ -140,13 +140,13 @@ export const Composer: React.FC<{
           </ol>
         )}
         {attachments.length > 0 && (
-          <div className="flex flex-wrap items-end gap-2 px-1 pt-1 pb-2">
+          <div className="flex flex-wrap items-center gap-2 px-1 pt-1 pb-2">
             {attachments.map((a, i) => (
               <span key={a.preview ?? `${a.file.name}-${i}`} className="group relative inline-block">
                 {a.preview ? (
                   <img src={a.preview} alt={a.file.name} title={a.file.name} className="size-14 rounded-md border object-cover" />
                 ) : (
-                  <span className="inline-flex h-14 max-w-48 items-center gap-1.5 rounded-md border bg-muted/40 px-2 text-xs" title={a.file.name}>
+                  <span className="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-md border bg-muted/40 px-2 text-xs" title={a.file.name}>
                     <FileText className="size-4 shrink-0 text-muted-foreground" />
                     <span className="truncate">{a.file.name}</span>
                   </span>
