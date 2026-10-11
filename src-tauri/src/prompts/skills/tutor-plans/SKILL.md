@@ -9,7 +9,7 @@ description: 学习计划与学习情况：今天要学什么、计划进度、�
 
 - 今天要学什么：`mcp__pindu__today`（各计划今天的新词 / 复习、有没有落下的天数、到期的短文）。
 - 计划：`mcp__pindu__list_plans` → `mcp__pindu__get_plan`（接下来几天的安排、单词、短文）。
-- 学得怎么样：`mcp__pindu__learning_overview`（在学的计划、最近容易错的词）、`mcp__pindu__study_stats`（学习天数、正确率、每天学了多少）、`mcp__pindu__passage_results`（短文练习成绩）。
+- 学得怎么样：`mcp__pindu__study_stats`（学习天数、正确率、每天学了多少、最近容易错的词）、`mcp__pindu__passage_results`（短文练习成绩）。
 - 给建议要具体：点名几个容易错的词，说清错在哪，给一个记法或例句。
 
 ## 新建计划：`mcp__pindu__create_plan`

@@ -537,23 +537,32 @@ impl PinduTools {
     }
 
     #[tool(
-        description = "Learning statistics: words learned, accuracy, streak days, and words practised / mastered per day over the last N days (default 14).",
+        description = "Learning statistics: words learned, accuracy, streak days, words practised / mastered per day over the last N days (default 14), and the words got wrong most in that period.",
         annotations(read_only_hint = true)
     )]
     async fn study_stats(
         &self,
         Parameters(args): Parameters<StatsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let stats = crate::handlers::get_study_statistics(self.app.clone()).await;
-        let days = crate::handlers::get_daily_learning_activity(
-            self.app.clone(),
-            args.days.unwrap_or(14).clamp(1, 90),
+        let days_back = args.days.unwrap_or(14).clamp(1, 90);
+        let trouble = crate::repositories::tutor_repository::trouble_words(
+            &self.pool(),
+            &crate::time::days_ago_utc(days_back),
+            20,
         )
-        .await;
+        .await
+        .unwrap_or_default();
+        let trouble: Vec<Value> = trouble
+            .iter()
+            .map(|t| json!({ "word": t.word, "meaning": t.meaning, "book": t.book_title, "wrong": t.wrong, "answers": t.attempts }))
+            .collect();
+        let stats = crate::handlers::get_study_statistics(self.app.clone()).await;
+        let days = crate::handlers::get_daily_learning_activity(self.app.clone(), days_back).await;
         match (stats, days) {
             (Ok(stats), Ok(days)) => done(
                 json!({ "totalWordsLearned": stats.total_words_learned, "averageAccuracy": stats.average_accuracy,
-                        "streakDays": stats.streak_days, "daily": serde_json::to_value(&days).unwrap_or(Value::Null) }),
+                        "streakDays": stats.streak_days, "daily": serde_json::to_value(&days).unwrap_or(Value::Null),
+                        "troubleWords": trouble }),
                 "看了学习统计".to_string(),
                 None,
             ),
