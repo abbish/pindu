@@ -233,10 +233,13 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
         }
         // 后端列表已经带上刚开的对话（标题先用第一句话，起好标题后更新）：马上刷新
         void refreshList(true);
+      } else {
+        // 在归档的对话里接着聊：后端已取消归档，列表跟着回来
+        setConversations((list) => list.map((c) => (c.id === conversationId && c.archived ? { ...c, archived: false } : c)));
       }
       return true;
     },
-    [setActiveId, refreshList, toast]
+    [setActiveId, refreshList, setConversations, toast]
   );
 
   /** 停止；返回被清掉的排队消息（放回输入框） */

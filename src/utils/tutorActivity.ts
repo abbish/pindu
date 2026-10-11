@@ -55,3 +55,15 @@ export function summarizeActivity(state: TutorActivityState, seenAt: number, cur
           .map(([id]) => id),
   };
 }
+
+/** 对话列表每行的状态标记：等你回答 / 正在回答 / 有新回答没看 */
+export type ConversationMark = 'asking' | 'running' | 'unread';
+
+/** seenAt：上次看这个对话的时刻（没看过时为打开应用的时刻）；active：正在看这个对话（答完就算看过） */
+export function conversationMark(state: TutorActivityState, id: string, seenAt: number, active: boolean): ConversationMark | null {
+  const live = state.live[id];
+  if (live?.asking) return 'asking';
+  if (live?.running) return 'running';
+  const finished = state.finished[id];
+  return !active && finished !== undefined && finished > seenAt ? 'unread' : null;
+}

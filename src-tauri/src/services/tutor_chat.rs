@@ -337,6 +337,26 @@ impl TutorChatService {
             .map(|i| json!({ "type": "image", "data": i.data, "mimeType": i.mime_type }))
             .collect();
         session.send(&text, images).await?;
+        // 在归档的对话里接着聊：回到对话列表
+        if let Some(id) = request.conversation_id.as_deref() {
+            let flags = self.flags().await;
+            if let Some(flag) = flags.get(id).filter(|f| f.archived) {
+                let pinned = flag.pinned;
+                if let Err(e) = self
+                    .set_flags(
+                        id,
+                        TutorFlags {
+                            pinned,
+                            archived: false,
+                        },
+                    )
+                    .await
+                {
+                    self.logger
+                        .warn("TUTOR", "取消归档失败", Some(&e.to_string()));
+                }
+            }
+        }
         // 发出去了才记：第一句没发出去时不在列表里留一个打不开的对话
         if request.conversation_id.is_none() {
             let first = if !message.is_empty() {

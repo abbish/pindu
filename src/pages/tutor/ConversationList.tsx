@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Archive, ArchiveRestore, ChevronRight, Loader2, Pin, PinOff } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, Loader2, MessageCircleQuestionMark, MoreHorizontal, Pin, PinOff } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,10 +11,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { markNavSeen, NAV_SEEN_SINCE, useNavSeen } from '@/hooks/useNavSeen';
+import { useTutorActivity } from '@/hooks/useTutorActivity';
 import type { TutorConversation } from '@/types/tutor';
 import { formatRelativeDay } from '@/utils/datetime';
+import { conversationMark, type ConversationMark } from '@/utils/tutorActivity';
 
 /** 按最后对话时间分组 */
 function groupOf(modified: string): string {
@@ -23,8 +27,32 @@ function groupOf(modified: string): string {
   return day.endsWith('天前') ? '最近 7 天' : '更早';
 }
 
+const ARCHIVED = '已归档';
+/** 收起的分组（本机记住；已归档默认收起） */
+const COLLAPSED_KEY = 'tutor.collapsedGroups';
+function loadCollapsed(): Set<string> {
+  try {
+    const saved = localStorage.getItem(COLLAPSED_KEY);
+    if (saved) return new Set(JSON.parse(saved) as string[]);
+  } catch {
+    // 读不到就用默认
+  }
+  return new Set([ARCHIVED]);
+}
+function saveCollapsed(groups: Set<string>) {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...groups]));
+  } catch {
+    // 记不住也不影响使用
+  }
+}
+
+/** 记「看过」的键：每个对话一个 */
+const seenKey = (id: string) => `tutor:${id}`;
+
 /**
- * 对话列表：置顶 → 按时间分组 → 已归档（收起）。悬停显示置顶 / 归档；右键重命名、删除。
+ * 对话列表：置顶 → 按时间分组 → 已归档，分组可以收起。
+ * 每行右侧常驻状态（等你回答 / 正在回答 / 有新回答没看）；悬停时换成「⋯」（重命名、归档、删除）与置顶，右键是同样的菜单。
  */
 export const ConversationList: React.FC<{
   conversations: TutorConversation[];
@@ -36,9 +64,27 @@ export const ConversationList: React.FC<{
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
 }> = ({ conversations, loading, activeId, onOpen, onFlags, onRename, onDelete }) => {
-  const [showArchived, setShowArchived] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<TutorConversation | null>(null);
+  const activity = useTutorActivity();
+  const seen = useNavSeen();
+
+  // 正在看的对话：打开时与离开时都记为看过（期间答完的不再标「新回答」）
+  useEffect(() => {
+    if (!activeId) return;
+    markNavSeen(seenKey(activeId));
+    return () => markNavSeen(seenKey(activeId));
+  }, [activeId]);
+
+  const toggle = (label: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      saveCollapsed(next);
+      return next;
+    });
 
   const live = conversations.filter((c) => !c.archived);
   const groups: { label: string; items: TutorConversation[] }[] = [{ label: '置顶', items: live.filter((c) => c.pinned) }];
@@ -48,13 +94,16 @@ export const ConversationList: React.FC<{
     if (group) group.items.push(c);
     else groups.push({ label, items: [c] });
   }
-  const archived = conversations.filter((c) => c.archived);
+  groups.push({ label: ARCHIVED, items: conversations.filter((c) => c.archived) });
 
+  const markOf = (c: TutorConversation) =>
+    conversationMark(activity, c.id, Math.max(NAV_SEEN_SINCE, seen.get(seenKey(c.id)) ?? 0), c.id === activeId);
   const row = (c: TutorConversation) => (
     <ConversationRow
       key={c.id}
       conversation={c}
       active={c.id === activeId}
+      mark={markOf(c)}
       renaming={renaming === c.id}
       onOpen={() => onOpen(c.id)}
       onPin={() => onFlags(c.id, !c.pinned, false)}
@@ -78,28 +127,39 @@ export const ConversationList: React.FC<{
         </div>
       )}
       {!loading && conversations.length === 0 && <div className="px-2 py-4 text-xs text-muted-foreground">还没有对话</div>}
-      {groups.map(
-        (g) =>
-          g.items.length > 0 && (
-            <div key={g.label} className="mb-3">
-              <div className="px-2 pb-1 text-xs text-muted-foreground">{g.label}</div>
-              {g.items.map(row)}
-            </div>
-          )
-      )}
-      {archived.length > 0 && (
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowArchived((v) => !v)}
-            className="flex w-full items-center gap-1 px-2 pb-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <ChevronRight className={cn('size-3 transition-transform', showArchived && 'rotate-90')} />
-            已归档 {archived.length}
-          </button>
-          {showArchived && archived.map(row)}
-        </div>
-      )}
+      {groups.map((g) => {
+        if (g.items.length === 0) return null;
+        const closed = collapsed.has(g.label);
+        // 收起的分组：标出里面最要紧的状态，等你回答的对话不会被藏起来
+        const marks = closed ? g.items.map(markOf) : [];
+        const groupMark = MARK_ORDER.find((m) => marks.includes(m));
+        return (
+          <div key={g.label} className="mb-3">
+            <button
+              type="button"
+              onClick={() => toggle(g.label)}
+              aria-expanded={!closed}
+              className="group/head flex w-full items-center gap-1 px-2 pb-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {g.label}
+              {g.label === ARCHIVED && <span className="tabular-nums">{g.items.length}</span>}
+              {closed ? (
+                <>
+                  <ChevronRight className="size-3" />
+                  {groupMark && (
+                    <span role="img" aria-label={MARK[groupMark].label} title={MARK[groupMark].label} className="ml-auto flex size-4 items-center justify-center">
+                      {MARK[groupMark].icon}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <ChevronDown className="size-3 opacity-0 transition-opacity group-hover/head:opacity-100 group-focus-visible/head:opacity-100" />
+              )}
+            </button>
+            {!closed && g.items.map(row)}
+          </div>
+        );
+      })}
 
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
@@ -127,9 +187,19 @@ export const ConversationList: React.FC<{
   );
 };
 
+/** 收起的分组只显示一个：等你回答 > 正在回答 > 有新回答 */
+const MARK_ORDER: ConversationMark[] = ['asking', 'running', 'unread'];
+
+const MARK: Record<ConversationMark, { label: string; icon: React.ReactNode }> = {
+  asking: { label: '等你回答', icon: <MessageCircleQuestionMark className="size-3.5 text-warning" /> },
+  running: { label: '正在回答', icon: <Loader2 className="size-3.5 animate-spin text-muted-foreground" /> },
+  unread: { label: '有新回答', icon: <span className="size-2 rounded-full bg-primary" /> },
+};
+
 const ConversationRow: React.FC<{
   conversation: TutorConversation;
   active: boolean;
+  mark: ConversationMark | null;
   renaming: boolean;
   onOpen: () => void;
   onPin: () => void;
@@ -137,7 +207,8 @@ const ConversationRow: React.FC<{
   onStartRename: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
-}> = ({ conversation: c, active, renaming, onOpen, onPin, onArchive, onStartRename, onRename, onDelete }) => {
+}> = ({ conversation: c, active, mark, renaming, onOpen, onPin, onArchive, onStartRename, onRename, onDelete }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
   const action =
     'flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground';
   if (renaming) {
@@ -155,38 +226,63 @@ const ConversationRow: React.FC<{
       />
     );
   }
+  const archiveLabel = c.archived ? '取消归档' : '归档';
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className={cn('group flex items-center rounded-md hover:bg-accent', active && 'bg-accent')}>
+        <div className={cn('group flex items-center rounded-md hover:bg-accent', (active || menuOpen) && 'bg-accent')}>
           <button
             type="button"
             onClick={onOpen}
             onDoubleClick={onStartRename}
             title={c.title}
             className={cn(
-              'flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm',
+              'min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm',
               active && 'font-medium',
               c.archived && 'text-muted-foreground'
             )}
           >
-            <span className="truncate">{c.title}</span>
-            {c.running && <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" aria-label="正在回答" />}
+            {c.title}
           </button>
-          <div className="hidden shrink-0 items-center gap-0.5 pr-1 group-focus-within:flex group-hover:flex">
+          {/* 状态常驻；悬停（或菜单打开）时换成操作 */}
+          {mark && (
+            <span
+              role="img"
+              aria-label={MARK[mark].label}
+              title={MARK[mark].label}
+              className={cn('flex size-6 shrink-0 items-center justify-center pr-1 group-hover:hidden group-has-focus-visible:hidden', menuOpen && 'hidden')}
+            >
+              {MARK[mark].icon}
+            </span>
+          )}
+          <div className={cn('hidden shrink-0 items-center gap-0.5 pr-1 group-hover:flex group-has-focus-visible:flex', menuOpen && 'flex')}>
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className={action} title="更多" aria-label="更多">
+                  <MoreHorizontal className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              {/* 重命名时输入框要拿到焦点：关菜单后不把焦点还给按钮 */}
+              <DropdownMenuContent align="start" onCloseAutoFocus={(e) => e.preventDefault()}>
+                <DropdownMenuItem onSelect={onStartRename}>重命名</DropdownMenuItem>
+                <DropdownMenuItem onSelect={onArchive}>{archiveLabel}</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+                  删除…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {!c.archived && (
               <button type="button" onClick={onPin} className={action} title={c.pinned ? '取消置顶' : '置顶'} aria-label={c.pinned ? '取消置顶' : '置顶'}>
                 {c.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
               </button>
             )}
-            <button type="button" onClick={onArchive} className={action} title={c.archived ? '取消归档' : '归档'} aria-label={c.archived ? '取消归档' : '归档'}>
-              {c.archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
-            </button>
           </div>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent>
+      <ContextMenuContent onCloseAutoFocus={(e) => e.preventDefault()}>
         <ContextMenuItem onSelect={onStartRename}>重命名</ContextMenuItem>
+        <ContextMenuItem onSelect={onArchive}>{archiveLabel}</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onSelect={onDelete}>
           删除…
