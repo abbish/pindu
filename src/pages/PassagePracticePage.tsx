@@ -516,13 +516,6 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
     else setSubmitError({ title: '无法重新评分', message: result.error });
   };
 
-  const restart = (nextMode: PassageMode) => {
-    if (!set) return;
-    if (nextMode === mode) load();
-    // 计划只安排了一种方式：换方式是自由练习，不计入计划
-    else onNavigate?.('passage-practice', { setId: set.id, mode: nextMode });
-  };
-
   const total = clozeQuestions.length + otherQuestions.length;
   const isMissing = (id: number) => showMissing && !finished && !(answers[id] ?? '').trim();
   const answered = [...clozeQuestions, ...otherQuestions].filter((q) => (answers[q.id] ?? '').trim()).length;
@@ -702,13 +695,9 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => restart('reading')}>
-              <BookOpen />
-              {mode === 'reading' ? '再做一次' : '阅读练习'}
-            </Button>
-            <Button variant="outline" onClick={() => restart('listening')}>
-              <Headphones />
-              {mode === 'listening' ? '再听一次' : '听力练习'}
+            <Button variant="outline" onClick={load}>
+              {mode === 'listening' ? <Headphones /> : <BookOpen />}
+              {mode === 'listening' ? '再听一次' : '再做一次'}
             </Button>
             <Button onClick={back}>{returnTo === 'plan-detail' && planId ? '返回计划' : '完成'}</Button>
           </div>

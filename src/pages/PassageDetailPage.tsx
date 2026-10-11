@@ -70,9 +70,9 @@ const TargetChip: React.FC<{ word: string; meaning?: string | null; className?: 
   </span>
 );
 
-/** 题组行（「阅读理解」「听力练习」页签各一份）：名称、题型与难度、这种练习方式的最近成绩；开始练习；⋯ 删除 */
-const QuestionSetRow: React.FC<{ set: QuestionSetSummary; mode: PassageMode; onStart: () => void; onDelete: () => void }> = ({ set, mode, onStart, onDelete }) => {
-  const done = set[mode];
+/** 题组行：名称、题型与难度、最近成绩；开始练习；⋯ 删除（阅读、听力题组各是各的） */
+const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: () => void; onDelete: () => void }> = ({ set, onStart, onDelete }) => {
+  const mode = set.mode;
   return (
   <Card className="flex-row items-center gap-4 px-5 py-4">
     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
@@ -85,12 +85,12 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; mode: PassageMode; onS
       </div>
       <div className="mt-0.5 truncate text-sm text-muted-foreground">{specSummary(set.spec)}</div>
       <div className="mt-0.5 text-xs text-muted-foreground">
-        {done.lastAttempt ? `最近一次：${scoreSummary(done.lastAttempt)}${done.completedAttempts > 1 ? ` · 共练 ${done.completedAttempts} 次` : ''}` : '未练习'}
+        {set.lastAttempt ? `最近一次：${scoreSummary(set.lastAttempt)}${set.completedAttempts > 1 ? ` · 共练 ${set.completedAttempts} 次` : ''}` : '未练习'}
       </div>
     </div>
     <Button variant="outline" onClick={onStart}>
       {mode === 'listening' ? <Headphones /> : <BookOpen />}
-      {done.completedAttempts > 0 ? '再练一次' : '开始练习'}
+      {set.completedAttempts > 0 ? '再练一次' : '开始练习'}
     </Button>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -140,6 +140,10 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   /** 视频片段：返回、删除都按片段说，删完回视频库 */
   const isClip = Boolean(openedAsClip) || passage?.origin === 'video';
   const [showGenerate, setShowGenerate] = useState(false);
+  /** 生成题组弹窗打开时选中的方式 */
+  const [generateMode, setGenerateMode] = useState<PassageMode>('reading');
+  /** 正在生成的题组是哪一类（进度显示在那个页签） */
+  const [qsJobMode, setQsJobMode] = useState<PassageMode>('reading');
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** 改标题：输入框里的文字（null = 没在改） */
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -288,6 +292,12 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     setFocusWord(word);
     setTab('words');
   };
+  /** 这种方式（阅读 / 听力）的题组 */
+  const setsOf = (mode: PassageMode) => passage.questionSets.filter((s) => s.mode === mode);
+  const openGenerate = (mode: PassageMode) => {
+    setGenerateMode(mode);
+    setShowGenerate(true);
+  };
   const removeTarget = async (word: string) => {
     setRemoving(null);
     const result = await passageService.removeTargetWord(passage.id, word);
@@ -354,7 +364,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           <MaterialTags key={passage.id} kind="passage" refId={passage.id} tags={passage.tags} />
         </div>
         <div className="flex shrink-0 gap-2">
-          <Button onClick={() => setShowGenerate(true)}>
+          <Button onClick={() => openGenerate(tab === 'listening' ? 'listening' : 'reading')}>
             <Sparkles />
             生成题组
           </Button>
@@ -433,10 +443,10 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             词汇<span className="text-xs text-muted-foreground tabular-nums">{passage.targetWords.length}</span>
           </TabsTrigger>
           <TabsTrigger value="sets" className="gap-1.5 px-3">
-            阅读理解<span className="text-xs text-muted-foreground tabular-nums">{passage.questionSets.length}</span>
+            阅读理解<span className="text-xs text-muted-foreground tabular-nums">{setsOf('reading').length}</span>
           </TabsTrigger>
           <TabsTrigger value="listening" className="gap-1.5 px-3">
-            听力练习<span className="text-xs text-muted-foreground tabular-nums">{passage.questionSets.length}</span>
+            听力练习<span className="text-xs text-muted-foreground tabular-nums">{setsOf('listening').length}</span>
           </TabsTrigger>
         </TabsList>
 
@@ -501,22 +511,22 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         {(['reading', 'listening'] as const).map((mode) => (
           <TabsContent key={mode} value={mode === 'reading' ? 'sets' : 'listening'}>
-            {qsJob && isJobActive(qsJob) && (
+            {qsJob && isJobActive(qsJob) && qsJobMode === mode && (
               <div className="mb-3">
                 <JobPanel job={qsJob} title="正在生成题组" actions={{ stop: true }} />
               </div>
             )}
-            {passage.questionSets.length === 0 ? (
-              <EmptyState icon={mode === 'listening' ? <Headphones /> : <FileQuestion />} title="还没有题组">
-                <Button onClick={() => setShowGenerate(true)}>
+            {setsOf(mode).length === 0 ? (
+              <EmptyState icon={mode === 'listening' ? <Headphones /> : <FileQuestion />} title={mode === 'listening' ? '还没有听力题组' : '还没有阅读理解题组'}>
+                <Button onClick={() => openGenerate(mode)}>
                   <Sparkles />
                   生成题组
                 </Button>
               </EmptyState>
             ) : (
               <div className="flex flex-col gap-3">
-                {passage.questionSets.map((s) => (
-                  <QuestionSetRow key={s.id} set={s} mode={mode} onStart={() => startPractice(s.id, mode)} onDelete={() => setSetToDelete(s)} />
+                {setsOf(mode).map((s) => (
+                  <QuestionSetRow key={s.id} set={s} onStart={() => startPractice(s.id, mode)} onDelete={() => setSetToDelete(s)} />
                 ))}
               </div>
             )}
@@ -529,11 +539,13 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         onClose={() => setShowGenerate(false)}
         passageId={passage.id}
         level={passage.level}
-        existingSets={passage.questionSets.length}
-        onStarted={(jobId) => {
+        mode={generateMode}
+        existingSets={{ reading: setsOf('reading').length, listening: setsOf('listening').length }}
+        onStarted={(jobId, mode) => {
           setQsJobId(jobId);
-          // 在「听力练习」里生成的留在听力，其他回到「阅读理解」
-          setTab((t) => (t === 'listening' ? t : 'sets'));
+          setQsJobMode(mode);
+          // 到生成的那一类题组的页签看进度
+          setTab(mode === 'listening' ? 'listening' : 'sets');
         }}
       />
 

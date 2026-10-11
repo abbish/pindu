@@ -141,10 +141,23 @@ pub async fn check_inputs_exist_conn(
             )));
         }
         if let Some(set_id) = input.set_id {
-            if Repo::set_passage_conn(conn, set_id).await? != Some(input.passage_id) {
-                return Err(AppError::ValidationError(
-                    "选的阅读理解题不属于这篇短文，请重新选择".to_string(),
-                ));
+            match Repo::set_passage_conn(conn, set_id).await? {
+                Some((passage_id, _)) if passage_id != input.passage_id => {
+                    return Err(AppError::ValidationError(
+                        "选的题组不属于这篇短文，请重新选择".to_string(),
+                    ))
+                }
+                None => {
+                    return Err(AppError::ValidationError(
+                        "选的题组已被删除，请重新选择".to_string(),
+                    ))
+                }
+                Some((_, mode)) if mode != input.mode => {
+                    return Err(AppError::ValidationError(
+                        "题组和练习方式对不上，请重新选择".to_string(),
+                    ))
+                }
+                _ => {}
             }
         }
     }
@@ -600,6 +613,38 @@ mod tests {
             .fetch_one(pool.as_ref())
             .await
             .unwrap()
+    }
+
+    /// 计划任务的练习方式必须和题组一致：阅读题组不能排成听力任务
+    #[tokio::test]
+    async fn plan_task_mode_must_match_set_mode() {
+        let pool = memory_pool().await;
+        let (p1, set1) = seed_passage(&pool).await;
+        let plans = StudyPlanService::new(pool.clone(), test_logger());
+        let request = |mode: &str| {
+            serde_json::from_value(json!({
+                "name": "短文计划",
+                "description": "",
+                "start_date": "2026-01-01",
+                "end_date": "2026-01-01",
+                "ai_plan_data": "",
+                "wordbook_ids": [],
+                "status": "active",
+                "practice_content": "passages",
+                "passages": [{ "passageId": p1, "setId": set1, "mode": mode }],
+                "passage_interval_days": 2
+            }))
+            .unwrap()
+        };
+        let err = plans
+            .create_study_plan_with_schedule(request("listening"))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("对不上"), "{err}");
+        assert!(plans
+            .create_study_plan_with_schedule(request("reading"))
+            .await
+            .is_ok());
     }
 
     /// 只练短文的计划：新建排期 → 第一次作答自动开始并平移 → 做完题、读完只朗读的短文 → 自动完成 → 重新学习

@@ -10,7 +10,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { passageService } from '@/services/passageService';
 import { DIFFICULTY_LABEL } from '@/utils/passage';
-import type { QuestionDifficulty, QuestionSetSpec } from '@/types/passage';
+import type { PassageMode, QuestionDifficulty, QuestionSetSpec } from '@/types/passage';
 
 export interface QuestionSetDialogProps {
   isOpen: boolean;
@@ -18,10 +18,12 @@ export interface QuestionSetDialogProps {
   passageId: number;
   /** 短文的英语水平（决定默认题量与难度） */
   level: string;
-  /** 已有题组数（默认名称“第 N 套”） */
-  existingSets: number;
-  /** 生成成功（关闭弹窗后仍在生成的，完成时也会回调） */
-  onStarted: (jobId: string) => void;
+  /** 打开时选中的方式（阅读理解 / 听力练习），可在弹窗里改 */
+  mode: PassageMode;
+  /** 各方式已有的题组数（默认名称“第 N 套”） */
+  existingSets: Record<PassageMode, number>;
+  /** 开始生成（关闭弹窗后仍在生成，完成时页面刷新） */
+  onStarted: (jobId: string, mode: PassageMode) => void;
 }
 
 type CountKey = 'cloze' | 'choice' | 'trueFalse' | 'open';
@@ -45,7 +47,8 @@ export function defaultSpec(level: string): QuestionSetSpec {
  * 生成题组（Dialog 表单）：每种题型的数量、难度、题组名称 → AI 出一套题。
  * 生成中可以关闭弹窗，完成后题组出现在「阅读理解」页签。
  */
-export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, onClose, passageId, level, existingSets, onStarted }) => {
+export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, onClose, passageId, level, mode: initialMode, existingSets, onStarted }) => {
+  const [mode, setMode] = useState<PassageMode>(initialMode);
   const [spec, setSpec] = useState<QuestionSetSpec>(() => defaultSpec(level));
   const [name, setName] = useState('');
   const [starting, setStarting] = useState(false);
@@ -60,7 +63,8 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
     setSpec(difficulty && difficulty !== 'auto' ? { ...spec, difficulty } : spec);
     setName('');
     setError(null);
-  }, [isOpen, level, materialSettings]);
+    setMode(initialMode);
+  }, [isOpen, level, materialSettings, initialMode]);
 
   const total = spec.cloze + spec.choice + spec.trueFalse + spec.open;
 
@@ -68,10 +72,10 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
   const generate = async () => {
     setStarting(true);
     setError(null);
-    const result = await passageService.startQuestionSetGeneration({ passageId, name: name.trim() || null, spec });
+    const result = await passageService.startQuestionSetGeneration({ passageId, mode, name: name.trim() || null, spec });
     setStarting(false);
     if (result.success) {
-      onStarted(result.data);
+      onStarted(result.data, mode);
       onClose();
     } else {
       setError(result.error);
@@ -86,6 +90,25 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
+          <ToggleGroup
+            type="single"
+            value={mode}
+            onValueChange={(v) => v && setMode(v as PassageMode)}
+            className="self-start rounded-lg bg-muted p-0.5"
+            aria-label="用于"
+            disabled={starting}
+          >
+            {(
+              [
+                ['reading', '阅读理解'],
+                ['listening', '听力练习'],
+              ] as const
+            ).map(([value, label]) => (
+              <ToggleGroupItem key={value} value={value} className="h-7 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm">
+                {label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
           <div className="flex flex-col divide-y rounded-lg border">
             {TYPES.map((t) => (
               <div key={t.key} className="flex items-center gap-4 px-3 py-2.5">
@@ -126,7 +149,7 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
 
           <div className="space-y-2">
             <Label htmlFor="qs-name">题组名称</Label>
-            <Input id="qs-name" value={name} maxLength={30} disabled={starting} onChange={(e) => setName(e.target.value)} placeholder={`第 ${existingSets + 1} 套`} />
+            <Input id="qs-name" value={name} maxLength={30} disabled={starting} onChange={(e) => setName(e.target.value)} placeholder={`第 ${existingSets[mode] + 1} 套`} />
           </div>
 
           {error && <InlineError title="无法生成题组">{error}</InlineError>}

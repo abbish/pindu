@@ -137,19 +137,11 @@ export interface QuestionSetSummary {
   id: number;
   passageId: number;
   name: string;
+  /** 这套题用于阅读还是听力（各自生成、删除、统计） */
+  mode: PassageMode;
   spec: QuestionSetSpec;
   createdAt: string;
   /** 完成的作答次数 */
-  completedAttempts: number;
-  lastAttempt: PassageAttemptBrief | null;
-  /** 阅读练习的完成次数与最近一次 */
-  reading: ModeAttempts;
-  /** 听力练习的完成次数与最近一次 */
-  listening: ModeAttempts;
-}
-
-/** 一个题组按一种练习方式（阅读 / 听力）的完成情况 */
-export interface ModeAttempts {
   completedAttempts: number;
   lastAttempt: PassageAttemptBrief | null;
 }
@@ -159,6 +151,8 @@ export interface QuestionSet {
   id: number;
   passageId: number;
   name: string;
+  /** 阅读 / 听力 */
+  mode: PassageMode;
   spec: QuestionSetSpec;
   modelName: string | null;
   createdAt: string;
@@ -339,7 +333,9 @@ export interface PassagePlan {
 /** 为短文生成一套阅读理解题 */
 export interface GenerateQuestionSetRequest {
   passageId: number;
-  /** 题组名称（空 = 第 N 套） */
+  /** 阅读 / 听力 */
+  mode: PassageMode;
+  /** 题组名称（空 = 这种方式的第 N 套） */
   name?: string | null;
   spec: QuestionSetSpec;
 }

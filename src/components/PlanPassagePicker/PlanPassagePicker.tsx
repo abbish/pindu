@@ -47,7 +47,7 @@ export const draftFromCandidate = (c: PlanPassageCandidate): PlanPassageDraft =>
   wordCount: c.passage.wordCount,
   sets: c.sets,
   setId: c.defaultSetId,
-  mode: 'reading',
+  mode: c.sets.find((s) => s.id === c.defaultSetId)?.mode ?? 'reading',
   isVideo: c.passage.origin === 'video',
 });
 
@@ -130,7 +130,10 @@ export const PlanPassagePicker: React.FC<PlanPassagePickerProps> = ({ items, onC
               </div>
               <Select
                 value={it.setId === null ? NO_SET : String(it.setId)}
-                onValueChange={(v) => update(i, { setId: v === NO_SET ? null : Number(v) })}
+                onValueChange={(v) => {
+                  const set = v === NO_SET ? undefined : it.sets.find((s) => s.id === Number(v));
+                  update(i, { setId: set?.id ?? null, mode: set?.mode ?? 'reading' });
+                }}
                 disabled={disabled || it.locked}
               >
                 <SelectTrigger size="sm" className="w-40" aria-label={`「${it.title}」用哪套题`}>
@@ -139,26 +142,12 @@ export const PlanPassagePicker: React.FC<PlanPassagePickerProps> = ({ items, onC
                 <SelectContent>
                   {it.sets.map((s) => (
                     <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
+                      {s.name} · {MODE_LABEL[s.mode]}
                     </SelectItem>
                   ))}
                   <SelectItem value={NO_SET}>{readOnlyLabel(it.isVideo)}</SelectItem>
                 </SelectContent>
               </Select>
-              <ToggleGroup
-                type="single"
-                value={it.setId === null ? '' : it.mode}
-                onValueChange={(v) => v && update(i, { mode: v as PassageMode })}
-                className="rounded-md bg-muted p-0.5"
-                disabled={disabled || it.locked || it.setId === null}
-                aria-label="练习方式"
-              >
-                {(['reading', 'listening'] as const).map((m) => (
-                  <ToggleGroupItem key={m} value={m} className="h-7 rounded-sm px-2.5 text-xs data-[state=on]:bg-background data-[state=on]:shadow-sm">
-                    {MODE_LABEL[m]}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
               <div className="flex shrink-0">
                 <Button variant="ghost" size="icon" className="size-7" aria-label={`上移「${it.title}」`} onClick={() => move(i, -1)} disabled={disabled || i === 0}>
                   <ArrowUp />

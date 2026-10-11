@@ -1356,6 +1356,8 @@ pub async fn generate_passage(
 /// 一套阅读理解题的要求
 pub struct QuestionsSpec<'a> {
     pub title: &'a str,
+    /// reading / listening
+    pub mode: &'a str,
     pub sentences: &'a [PassageSentence],
     pub targets: &'a [PassageTargetWord],
     pub spec: &'a QuestionSetSpec,
@@ -1380,6 +1382,14 @@ pub fn passage_questions_message(q: &QuestionsSpec) -> String {
             ("title", q.title),
             ("sentences", &sentences.join("\n")),
             ("targets", &targets.join(", ")),
+            (
+                "mode",
+                if q.mode == "listening" {
+                    "听力（只听不看原文）"
+                } else {
+                    "阅读（看着原文答题）"
+                },
+            ),
             ("cloze", &q.spec.cloze.to_string()),
             ("choice", &q.spec.choice.to_string()),
             ("true_false", &q.spec.true_false.to_string()),
@@ -2901,6 +2911,7 @@ mod tests {
             &model,
             &PromptProfile::default(),
             &QuestionsSpec {
+                mode: "reading",
                 title: &passage.title,
                 sentences: &passage.sentences,
                 targets: &passage.target_words,

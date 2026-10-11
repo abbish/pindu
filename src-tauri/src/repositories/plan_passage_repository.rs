@@ -315,13 +315,13 @@ impl PlanPassageRepository {
         )
     }
 
-    /// 题组所属的短文
+    /// 题组所属的短文与练习方式（reading / listening）
     pub async fn set_passage_conn(
         conn: &mut SqliteConnection,
         set_id: Id,
-    ) -> AppResult<Option<Id>> {
+    ) -> AppResult<Option<(Id, String)>> {
         Ok(
-            sqlx::query_scalar("SELECT passage_id FROM passage_question_sets WHERE id = ?")
+            sqlx::query_as("SELECT passage_id, mode FROM passage_question_sets WHERE id = ?")
                 .bind(set_id)
                 .fetch_optional(&mut *conn)
                 .await?,

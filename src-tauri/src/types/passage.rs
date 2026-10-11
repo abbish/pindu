@@ -175,21 +175,11 @@ pub struct QuestionSetSummary {
     pub id: Id,
     pub passage_id: Id,
     pub name: String,
+    /// reading / listening：这套题用于阅读还是听力（各自生成、删除、统计）
+    pub mode: String,
     pub spec: QuestionSetSpec,
     pub created_at: String,
     /// 完成的作答次数
-    pub completed_attempts: i64,
-    pub last_attempt: Option<PassageAttemptBrief>,
-    /// 阅读练习的完成次数与最近一次
-    pub reading: ModeAttempts,
-    /// 听力练习的完成次数与最近一次
-    pub listening: ModeAttempts,
-}
-
-/// 一个题组按一种练习方式（阅读 / 听力）的完成情况
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModeAttempts {
     pub completed_attempts: i64,
     pub last_attempt: Option<PassageAttemptBrief>,
 }
@@ -201,6 +191,8 @@ pub struct QuestionSet {
     pub id: Id,
     pub passage_id: Id,
     pub name: String,
+    /// reading / listening
+    pub mode: String,
     pub spec: QuestionSetSpec,
     pub model_name: Option<String>,
     pub created_at: String,
@@ -467,7 +459,10 @@ impl GeneratePassageRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GenerateQuestionSetRequest {
     pub passage_id: Id,
-    /// 题组名称（空 = 第 N 套）
+    /// reading / listening（空 = reading）
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// 题组名称（空 = 这种方式的第 N 套）
     pub name: Option<String>,
     pub spec: QuestionSetSpec,
 }

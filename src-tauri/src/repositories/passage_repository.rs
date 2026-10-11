@@ -7,7 +7,7 @@ use crate::services::passage_rules::{self, GeneratedPassage, GeneratedQuestionSe
 use crate::types::common::Id;
 use crate::types::material::MaterialKind;
 use crate::types::passage::{
-    ClozeResult, ModeAttempts, Passage, PassageAttempt, PassageAttemptBrief, PassageModeStatistics,
+    ClozeResult, Passage, PassageAttempt, PassageAttemptBrief, PassageModeStatistics,
     PassageQuestion, PassageSentence, PassageSource, PassageStatistics, PassageSummary,
     PassageTargetWord, QuestionResult, QuestionSet, QuestionSetSpec, QuestionSetSummary,
 };
@@ -46,6 +46,8 @@ pub struct NewPassage<'a> {
 pub struct NewQuestionSet<'a> {
     pub passage_id: Id,
     pub name: &'a str,
+    /// reading / listening
+    pub mode: &'a str,
     pub spec: &'a QuestionSetSpec,
     pub model_name: Option<&'a str>,
     pub prompt_fingerprint: Option<&'a str>,
@@ -100,54 +102,19 @@ fn parse_spec(raw: String) -> QuestionSetSpec {
 }
 
 /// 最近一次完成作答的列（别名前缀 la_）
-/// 题组摘要：总的与按阅读 / 听力分开的最近一次完成（列前缀 la / lr / ll）与完成次数
-const SET_SUMMARY_SELECT: &str = "SELECT qs.id, qs.passage_id, qs.name, qs.spec, qs.created_at,
+/// 题组摘要：最近一次完成（列前缀 la）与完成次数
+const SET_SUMMARY_SELECT: &str =
+    "SELECT qs.id, qs.passage_id, qs.name, qs.mode, qs.spec, qs.created_at,
         (SELECT COUNT(*) FROM passage_attempts a
          WHERE a.set_id = qs.id AND a.status = 'completed') AS completed_attempts,
         la.id AS la_id, la.mode AS la_mode, la.objective_correct AS la_correct,
         la.objective_total AS la_total, la.open_score AS la_open, la.open_total AS la_open_total,
-        la.completed_at AS la_completed_at,
-        (SELECT COUNT(*) FROM passage_attempts a
-         WHERE a.set_id = qs.id AND a.status = 'completed' AND a.mode = 'reading') AS lr_count,
-        lr.id AS lr_id, lr.mode AS lr_mode, lr.objective_correct AS lr_correct,
-        lr.objective_total AS lr_total, lr.open_score AS lr_open, lr.open_total AS lr_open_total,
-        lr.completed_at AS lr_completed_at,
-        (SELECT COUNT(*) FROM passage_attempts a
-         WHERE a.set_id = qs.id AND a.status = 'completed' AND a.mode = 'listening') AS ll_count,
-        ll.id AS ll_id, ll.mode AS ll_mode, ll.objective_correct AS ll_correct,
-        ll.objective_total AS ll_total, ll.open_score AS ll_open, ll.open_total AS ll_open_total,
-        ll.completed_at AS ll_completed_at
+        la.completed_at AS la_completed_at
      FROM passage_question_sets qs
      LEFT JOIN passage_attempts la ON la.id = (
          SELECT a.id FROM passage_attempts a
          WHERE a.set_id = qs.id AND a.status = 'completed'
-         ORDER BY a.completed_at DESC, a.id DESC LIMIT 1)
-     LEFT JOIN passage_attempts lr ON lr.id = (
-         SELECT a.id FROM passage_attempts a
-         WHERE a.set_id = qs.id AND a.status = 'completed' AND a.mode = 'reading'
-         ORDER BY a.completed_at DESC, a.id DESC LIMIT 1)
-     LEFT JOIN passage_attempts ll ON ll.id = (
-         SELECT a.id FROM passage_attempts a
-         WHERE a.set_id = qs.id AND a.status = 'completed' AND a.mode = 'listening'
          ORDER BY a.completed_at DESC, a.id DESC LIMIT 1)";
-
-/// 一种练习方式（阅读 / 听力）的完成次数与最近一次：列前缀 `prefix`（lr / ll）
-fn mode_summary(r: &SqliteRow, prefix: &str) -> ModeAttempts {
-    let col = |name: &str| format!("{prefix}_{name}");
-    let id: Option<Id> = r.get(col("id").as_str());
-    ModeAttempts {
-        completed_attempts: r.get(col("count").as_str()),
-        last_attempt: id.map(|id| PassageAttemptBrief {
-            id,
-            mode: r.get(col("mode").as_str()),
-            objective_correct: r.get(col("correct").as_str()),
-            objective_total: r.get(col("total").as_str()),
-            open_score: r.get(col("open").as_str()),
-            open_total: r.get(col("open_total").as_str()),
-            completed_at: r.get(col("completed_at").as_str()),
-        }),
-    }
-}
 
 fn brief_from_row(r: &SqliteRow) -> Option<PassageAttemptBrief> {
     let id: Option<Id> = r.get("la_id");
@@ -430,12 +397,13 @@ impl PassageRepository {
         set: &GeneratedQuestionSet,
     ) -> AppResult<Id> {
         let id = sqlx::query(
-            "INSERT INTO passage_question_sets (passage_id, name, spec, cloze_distractors, model_name,
+            "INSERT INTO passage_question_sets (passage_id, name, mode, spec, cloze_distractors, model_name,
                  prompt_fingerprint, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(meta.passage_id)
         .bind(meta.name)
+        .bind(meta.mode)
         .bind(json(meta.spec)?)
         .bind(json(&set.cloze_distractors)?)
         .bind(meta.model_name)
@@ -475,13 +443,15 @@ impl PassageRepository {
     }
 
     /// 某篇短文的题组数（给新题组起默认名）
-    pub async fn set_count(&self, passage_id: Id) -> AppResult<i64> {
-        Ok(
-            sqlx::query_scalar("SELECT COUNT(*) FROM passage_question_sets WHERE passage_id = ?")
-                .bind(passage_id)
-                .fetch_one(self.pool.as_ref())
-                .await?,
+    /// 这篇短文某种方式（reading / listening）的题组数
+    pub async fn set_count(&self, passage_id: Id, mode: &str) -> AppResult<i64> {
+        Ok(sqlx::query_scalar(
+            "SELECT COUNT(*) FROM passage_question_sets WHERE passage_id = ? AND mode = ?",
         )
+        .bind(passage_id)
+        .bind(mode)
+        .fetch_one(self.pool.as_ref())
+        .await?)
     }
 
     async fn set_summaries(&self, passage_id: Id) -> AppResult<Vec<QuestionSetSummary>> {
@@ -497,12 +467,11 @@ impl PassageRepository {
                 id: r.get("id"),
                 passage_id: r.get("passage_id"),
                 name: r.get("name"),
+                mode: r.get("mode"),
                 spec: parse_spec(r.get("spec")),
                 created_at: r.get("created_at"),
                 completed_attempts: r.get("completed_attempts"),
                 last_attempt: brief_from_row(r),
-                reading: mode_summary(r, "lr"),
-                listening: mode_summary(r, "ll"),
             })
             .collect())
     }
@@ -520,12 +489,11 @@ impl PassageRepository {
                 id: r.get("id"),
                 passage_id: r.get("passage_id"),
                 name: r.get("name"),
+                mode: r.get("mode"),
                 spec: parse_spec(r.get("spec")),
                 created_at: r.get("created_at"),
                 completed_attempts: r.get("completed_attempts"),
                 last_attempt: brief_from_row(r),
-                reading: mode_summary(r, "lr"),
-                listening: mode_summary(r, "ll"),
             };
             out.entry(summary.passage_id).or_default().push(summary);
         }
@@ -534,7 +502,7 @@ impl PassageRepository {
 
     pub async fn find_set(&self, id: Id) -> AppResult<Option<QuestionSet>> {
         let Some(r) = sqlx::query(
-            "SELECT id, passage_id, name, spec, cloze_distractors, model_name, created_at
+            "SELECT id, passage_id, name, mode, spec, cloze_distractors, model_name, created_at
              FROM passage_question_sets WHERE id = ?",
         )
         .bind(id)
@@ -574,6 +542,7 @@ impl PassageRepository {
             id,
             passage_id: r.get("passage_id"),
             name: r.get("name"),
+            mode: r.get("mode"),
             spec: parse_spec(r.get("spec")),
             model_name: r.get("model_name"),
             created_at: r.get("created_at"),

@@ -1009,9 +1009,14 @@ impl PassageService {
                 SET_NAME_MAX
             )));
         }
+        let mode = request.mode.as_deref().unwrap_or("reading");
+        validate_mode(mode)?;
         let passage = self.get(request.passage_id).await?;
         let name = if name.is_empty() {
-            format!("第 {} 套", self.repository.set_count(passage.id).await? + 1)
+            format!(
+                "第 {} 套",
+                self.repository.set_count(passage.id, mode).await? + 1
+            )
         } else {
             name
         };
@@ -1023,6 +1028,7 @@ impl PassageService {
             &profile,
             &tasks::QuestionsSpec {
                 title: &passage.title,
+                mode,
                 sentences: &passage.sentences,
                 targets: &passage.target_words,
                 spec: &request.spec,
@@ -1041,6 +1047,7 @@ impl PassageService {
             &NewQuestionSet {
                 passage_id: passage.id,
                 name: &name,
+                mode,
                 spec: &request.spec,
                 model_name: Some(model.display_name.as_str()),
                 prompt_fingerprint: Some(&fingerprint),
@@ -1065,6 +1072,13 @@ impl PassageService {
     ) -> AppResult<PassageAttempt> {
         validate_mode(mode)?;
         let set = self.get_set(set_id).await?;
+        if set.mode != mode {
+            return Err(AppError::ValidationError(if set.mode == "listening" {
+                "这是一套听力题，请在「听力练习」里练".to_string()
+            } else {
+                "这是一套阅读理解题，请在「阅读理解」里练".to_string()
+            }));
+        }
         if let Some(plan_id) = plan_id {
             let plans = StudyPlanRepository::new(self.pool.clone(), self.logger.clone());
             let mut tx = crate::services::srs::begin_write(&self.pool).await?;
@@ -1495,6 +1509,7 @@ pub(crate) mod tests {
             &NewQuestionSet {
                 passage_id,
                 name: "第 1 套",
+                mode: "reading",
                 spec: &spec,
                 model_name: Some("K3"),
                 prompt_fingerprint: None,
@@ -1947,6 +1962,30 @@ pub(crate) mod tests {
         assert!(none.is_empty());
     }
 
+    /// 把一套阅读题组复制成听力题组（与迁移 068 对旧数据的做法一致），返回新题组 id
+    async fn seed_listening_copy(pool: &Arc<SqlitePool>, set_id: Id) -> Id {
+        let new_id: Id = sqlx::query_scalar(
+            "INSERT INTO passage_question_sets (passage_id, name, mode, spec, cloze_distractors, model_name, prompt_fingerprint, created_at)
+             SELECT passage_id, name, 'listening', spec, cloze_distractors, model_name, prompt_fingerprint, created_at
+             FROM passage_question_sets WHERE id = ? RETURNING id",
+        )
+        .bind(set_id)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO passage_questions (set_id, sort_order, kind, stem, options, answer, explanation, reference_answer, rubric, sentence_index)
+             SELECT ?, sort_order, kind, stem, options, answer, explanation, reference_answer, rubric, sentence_index
+             FROM passage_questions WHERE set_id = ?",
+        )
+        .bind(new_id)
+        .bind(set_id)
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        new_id
+    }
+
     #[tokio::test]
     async fn submit_requires_every_answer_then_grades() {
         let pool = memory_pool().await;
@@ -2024,9 +2063,25 @@ pub(crate) mod tests {
         assert_eq!(done.question_results.len(), 3);
         assert!(service.submit_attempt(&request, &paths).await.is_err());
 
+        // 阅读题组不能拿来做听力：听力有自己的题组
+        assert!(service
+            .start_attempt(set_id, "listening", None)
+            .await
+            .is_err());
+        let listen_set_id = seed_listening_copy(&pool, set_id).await;
+        let listen_set = service.get_set(listen_set_id).await.unwrap();
+        assert_eq!(listen_set.mode, "listening");
+        let lid = |kind: &str| {
+            listen_set
+                .questions
+                .iter()
+                .filter(|q| q.kind == kind)
+                .map(|q| q.id)
+                .collect::<Vec<_>>()
+        };
         // 听力模式：选词填空是听句填空，同样作答、判分
         let listening = service
-            .start_attempt(set_id, "listening", None)
+            .start_attempt(listen_set_id, "listening", None)
             .await
             .unwrap();
         let heard = service
@@ -2035,11 +2090,11 @@ pub(crate) mod tests {
                     attempt_id: listening.id,
                     active_time: 1_000,
                     answers: vec![
-                        answer(cloze[0], "Passport"),
-                        answer(cloze[1], "visa"),
-                        answer(id_of("choice")[0], "1"),
-                        answer(id_of("true_false")[0], "false"),
-                        answer(id_of("open")[0], "She went home."),
+                        answer(lid("cloze")[0], "Passport"),
+                        answer(lid("cloze")[1], "visa"),
+                        answer(lid("choice")[0], "1"),
+                        answer(lid("true_false")[0], "false"),
+                        answer(lid("open")[0], "She went home."),
                     ],
                 },
                 &paths,
@@ -2052,25 +2107,26 @@ pub(crate) mod tests {
         let stats = service.statistics(None).await.unwrap();
         assert_eq!(
             (stats.total_passages, stats.total_sets, stats.passages),
-            (1, 1, 1)
+            (1, 2, 1)
         );
         assert_eq!((stats.reading.attempts, stats.listening.attempts), (1, 1));
         assert!((stats.reading.objective_accuracy.unwrap() - 50.0).abs() < 1e-9);
+        // 阅读、听力各是各的题组，作答与成绩分开
         let p = service.get(passage_id).await.unwrap();
-        assert_eq!(p.question_sets[0].completed_attempts, 2);
-        // 阅读、听力分开统计：各 1 次，最近一次的成绩各是各的
-        let set = &p.question_sets[0];
-        assert_eq!(
-            (
-                set.reading.completed_attempts,
-                set.listening.completed_attempts
-            ),
-            (1, 1)
-        );
-        let r = set.reading.last_attempt.as_ref().unwrap();
-        let l = set.listening.last_attempt.as_ref().unwrap();
-        assert_eq!((r.mode.as_str(), r.objective_correct), ("reading", 2));
-        assert_eq!((l.mode.as_str(), l.objective_correct), ("listening", 3));
+        let summary = |mode: &str| {
+            p.question_sets
+                .iter()
+                .find(|s| s.mode == mode)
+                .map(|s| {
+                    (
+                        s.completed_attempts,
+                        s.last_attempt.as_ref().unwrap().objective_correct,
+                    )
+                })
+                .unwrap()
+        };
+        assert_eq!(summary("reading"), (1, 2));
+        assert_eq!(summary("listening"), (1, 3));
         crate::time::assert_instants_canonical(&pool).await;
     }
 }
