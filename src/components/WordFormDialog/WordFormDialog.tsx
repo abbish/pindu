@@ -295,7 +295,7 @@ export const WordFormDialog: React.FC<WordFormDialogProps> = ({ isOpen, onClose,
                   {correction && (
                     <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                       <span>
-                        AI 认为应为「<span className="font-medium text-foreground">{correction.word}</span>」
+                        可能应为「<span className="font-medium text-foreground">{correction.word}</span>」
                       </span>
                       <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => applyAnalysis(correction, correction.word)}>
                         改用并补全

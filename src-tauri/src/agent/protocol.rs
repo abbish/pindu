@@ -198,7 +198,7 @@ impl RunOutcome {
                     Some("error") | Some("aborted") => Some(
                         error_message
                             .clone()
-                            .unwrap_or_else(|| "模型返回错误（无详细信息）".to_string()),
+                            .unwrap_or_else(|| "AI 服务返回错误（没有详细信息）".to_string()),
                     ),
                     _ => None,
                 };

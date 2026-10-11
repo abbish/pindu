@@ -416,7 +416,7 @@ pub async fn analyze_word(
             .next()
             .or(corrected)
             .ok_or_else(|| {
-                AppError::ExternalServiceError("AI 没有返回这个单词的分析，请再试一次".to_string())
+                AppError::ExternalServiceError("这个单词没有分析出来，请再试一次".to_string())
             })
     }
     .await;

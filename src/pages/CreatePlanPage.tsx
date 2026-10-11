@@ -178,7 +178,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
     setPhase('idle');
     if (!id) return;
     const cancelled = await jobService.cancel(id);
-    if (!cancelled.success) toast.showWarning('AI 排序可能还在后台运行', cancelled.error);
+    if (!cancelled.success) toast.showWarning('排序可能还在进行', cancelled.error);
   };
 
   /** 排日程（AI 或默认顺序）→ 保存为“待开始”→ 进入计划详情 */
@@ -493,7 +493,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
             {phase === 'planning' && <PlanningProgress job={planJob} onCancel={stopPlanning} />}
             {error && (
               <InlineError
-                title={phase === 'failed' ? 'AI 排序没有完成' : '无法创建计划'}
+                title={phase === 'failed' ? '排序没有完成' : '无法创建计划'}
                 actions={
                   phase === 'failed' && (
                     <>

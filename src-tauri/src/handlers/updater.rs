@@ -97,7 +97,7 @@ pub async fn install_update(app: AppHandle, on_progress: Channel<UpdateProgress>
         }
         if let Err(n) = begin_update_install() {
             return Err(AppError::ValidationError(format!(
-                "有 {n} 个 AI 任务正在进行，等它们完成后再更新"
+                "有 {n} 项任务正在进行，等它们完成后再更新"
             )));
         }
         let mut downloaded: u64 = 0;

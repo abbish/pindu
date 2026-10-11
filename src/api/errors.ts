@@ -91,8 +91,7 @@ const describeExternal = (message: string): string => {
   const settings = tts ? '「设置 → 语音合成」' : '「设置 → AI 模型」';
   const lower = message.toLowerCase();
 
-  if (message.startsWith('无法启动 agent')) return 'AI 助手没能启动，请重启应用后再试';
-  if (/agent (进程|stdin|stdout|连接|未响应)|向 agent 发送命令失败/.test(message)) return 'AI 助手意外中断了，请再试一次';
+  if (message.startsWith('无法启动 agent')) return '处理没能开始，请重启应用后再试';
   if (/\b(401|403)\b|unauthori[sz]ed|invalid.{0,20}(api.?key|token)|authentication|incorrect api key|鉴权|密钥无效/.test(lower)) {
     return `${service}拒绝了请求：密钥无效或没有权限，请到${settings}检查`;
   }
@@ -103,7 +102,9 @@ const describeExternal = (message: string): string => {
     return `找不到所选模型，请到${settings}检查模型名称`;
   }
   const agentTimeout = /agent 超时（(\d+) 分钟）/.exec(message);
-  if (agentTimeout) return `AI 超过 ${agentTimeout[1]} 分钟还没完成，可以到「设置 → AI 助手」调长每次最长等待`;
+  if (agentTimeout) return `超过 ${agentTimeout[1]} 分钟还没完成，可以到「设置 → AI 助手」调长每次最长等待`;
+  // 其余内部进程的问题（进程退出、连接中断、输出无法解析）不对用户说细节
+  if (/\bagent\b/i.test(message)) return '处理意外中断了，请再试一次';
   if (/timed? ?out|timeout|超时/.test(lower)) return `${service}响应超时，请稍后再试`;
   if (/error sending request|connect|dns|network|网络|unreachable|connection/.test(lower)) {
     return `连不上${service}，请检查网络后再试`;

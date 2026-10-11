@@ -14,7 +14,7 @@ export const STOPPING_STAGE = '正在停止…';
 export interface JobPanelProps {
   /** 任务（刚提交时可能还没收到推送） */
   job: Job | undefined;
-  /** 进行中的标题，写「AI 正在…」 */
+  /** 进行中的标题，写「正在…」（说在做什么，不说 AI 在做） */
   title: string;
   /** 进度数（如「3 / 20」）；默认 total > 0 时显示 current / total */
   count?: React.ReactNode;
@@ -28,7 +28,7 @@ export interface JobPanelProps {
 }
 
 /**
- * 后台任务的进度面板（统一样式）：图标 + 标题（AI 正在… / 正在停止… / 已完成 / 没有完成）
+ * 后台任务的进度面板（统一样式）：图标 + 标题（正在… / 正在停止… / 已完成 / 没有完成）
  * → 副标题（排队中 / 当前阶段 · 已用时间）→ 进度条 → 明细。素材卡片上的小号版本是 JobProgress。
  */
 export const JobPanel: React.FC<JobPanelProps> = ({ job, title, count, extra, actions, children }) => {
@@ -40,7 +40,7 @@ export const JobPanel: React.FC<JobPanelProps> = ({ job, title, count, extra, ac
   const stopping = active && (stopRequested || job?.stage === STOPPING_STAGE);
   const elapsed = useElapsed(job?.startedAt, active);
   const heading = stopping ? STOPPING_STAGE : !active ? (failed ? '没有完成' : job?.status === 'cancelled' ? '已停止' : '已完成') : title;
-  // 阶段与标题说的是同一件事时不重复（如标题「AI 正在生成题组」）；没有阶段时只显示已用时间
+  // 阶段与标题说的是同一件事时不重复（如标题「正在生成题组」）；没有阶段时只显示已用时间
   const sub = !job || job.status === 'queued' ? '排队中' : stopping ? null : job.stage;
   const shownCount = count ?? (job && job.total > 0 ? `${job.current} / ${job.total}` : null);
 

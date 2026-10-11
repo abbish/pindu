@@ -145,7 +145,7 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
 
       <div className="space-y-1.5">
         {job ? (
-          <JobProgress job={job} fallback="AI 正在分析单词" />
+          <JobProgress job={job} fallback="正在分析单词" />
         ) : typedTotal > 0 ? (
           <>
             <Tooltip>

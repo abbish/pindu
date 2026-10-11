@@ -426,7 +426,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
             <TooltipTrigger asChild>
               <Info className="size-3.5 shrink-0 text-muted-foreground" aria-label="场景描述的作用" />
             </TooltipTrigger>
-            <TooltipContent>AI 生成单词、释义、例句和讲解时参考此场景</TooltipContent>
+            <TooltipContent>生成单词、释义、例句和讲解时参考此场景</TooltipContent>
           </Tooltip>
           <span className={cn('ml-1 truncate text-xs', scene ? 'text-foreground' : 'text-muted-foreground')} title={scene || undefined}>
             {scene || '未设置'}
@@ -441,7 +441,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
 
   const body = () => {
     if (phase === 'fetching') {
-      return <AiWorking title={source === 'ai' ? 'AI 正在生成单词' : 'AI 正在提取单词'} />;
+      return <AiWorking title={source === 'ai' ? '正在生成单词' : '正在提取单词'} />;
     }
 
     switch (phase) {
@@ -491,7 +491,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
                         onToggle={(t) => setPickedTopics((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))}
                         onMore={() => void loadTopics(true)}
                         error={topicError}
-                        loadingText="AI 正在按场景想建议…"
+                        loadingText="正在按场景想建议…"
                       />
                     </div>
                   )}

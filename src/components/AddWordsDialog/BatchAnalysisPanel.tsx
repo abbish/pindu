@@ -50,7 +50,7 @@ export const BatchAnalysisPanel: React.FC<BatchAnalysisPanelProps> = ({ job, act
     <div className="flex flex-col gap-6 py-2">
       <JobPanel
         job={job}
-        title="AI 正在分析单词"
+        title="正在分析单词"
         count={total > 0 ? `${done} / ${total}` : undefined}
         extra={remaining !== null ? `预计还需 ${formatDuration(remaining * 1000)}` : undefined}
         actions={actions}

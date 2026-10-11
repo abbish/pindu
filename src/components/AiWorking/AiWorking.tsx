@@ -5,7 +5,7 @@ import { formatDuration } from '@/utils/datetime';
 
 /**
  * 需要等 AI 结果才能继续的操作（生成单词、内容规划等十几秒到一分钟）：在结果的位置显示
- * 「AI 正在…」+ 已用时间。停止按钮由调用方放在操作栏（弹窗底部 / 页面底部），文案统一为「停止」。
+ * 「正在…」（说在做什么，不说 AI 在做）+ 已用时间。停止按钮由调用方放在操作栏（弹窗底部 / 页面底部），文案统一为「停止」。
  */
 export const AiWorking: React.FC<{ title: string; detail?: React.ReactNode }> = ({ title, detail }) => {
   const [since] = useState(() => Date.now());

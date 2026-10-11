@@ -11,5 +11,5 @@ export interface PlanningProgressProps {
 
 /** AI 排学习顺序的进度：统一的任务进度面板；离开页面会停止（结果只给这个页面用），所以没有「在后台继续」 */
 export const PlanningProgress: React.FC<PlanningProgressProps> = ({ job, onCancel }) => (
-  <JobPanel job={job} title="AI 正在排学习顺序" actions={{ stop: onCancel }} />
+  <JobPanel job={job} title="正在安排学习顺序" actions={{ stop: onCancel }} />
 );

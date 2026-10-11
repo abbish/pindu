@@ -77,7 +77,7 @@ export function useTutorChat(wordId: number) {
           ...prev.messages,
           result.success
             ? { role: 'teacher', content: result.data.content, followUps: result.data.follow_ups }
-            : { role: 'teacher', content: `AI 老师这次没能回答：${result.error}`, error: true },
+            : { role: 'teacher', content: `老师这次没能回答：${result.error}`, error: true },
         ],
         pending: prev.pending?.requestId === requestId ? null : prev.pending,
       }));

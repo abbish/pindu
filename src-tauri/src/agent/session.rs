@@ -261,7 +261,7 @@ impl AgentProcess {
     pub async fn spawn(launch: AgentLaunch) -> AppResult<Self> {
         if UPDATE_INSTALLING.load(Ordering::SeqCst) {
             return Err(AppError::ValidationError(
-                "新版本正在安装或已经装好，请重启应用后再使用 AI 功能".to_string(),
+                "新版本正在安装或已经装好，请重启应用后再使用".to_string(),
             ));
         }
         let mut command = Command::new(&launch.program);

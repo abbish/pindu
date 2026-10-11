@@ -79,7 +79,7 @@ pub async fn prepare_before(
         video_id,
         range: None,
     };
-    if let Err(e) = job.prepare(ctx, "AI 正在读字幕").await {
+    if let Err(e) = job.prepare(ctx, "正在读字幕").await {
         if !ctx.is_cancelled() {
             logger.warn(
                 "VIDEO",
@@ -92,7 +92,7 @@ pub async fn prepare_before(
 
 impl VideoTranslateJob {
     pub async fn run(self, ctx: JobCtx) -> AppResult<Value> {
-        self.prepare(&ctx, "AI 正在整理字幕").await
+        self.prepare(&ctx, "正在整理字幕").await
     }
 
     /// 整理还没整理的字幕；全部失败时返回错误，部分失败记 WARN

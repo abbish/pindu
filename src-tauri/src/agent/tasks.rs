@@ -197,7 +197,7 @@ pub async fn run_task_cancellable(
     log.finished(&outcome, &stats);
     if let Some(error) = &outcome.error {
         return Err(AppError::ExternalServiceError(format!(
-            "模型返回错误：{}",
+            "AI 服务返回错误：{}",
             error
         )));
     }
@@ -242,7 +242,7 @@ pub async fn extract_words(
     .await?;
     let submission = outcome
         .last_successful_call("submit_words")
-        .ok_or_else(|| AppError::ExternalServiceError("模型没有提交单词列表".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有得到单词，请再试一次".to_string()))?;
 
     let words = words_from_submission(&submission.details, text, mode);
     let tags = crate::services::tag::tags_from_submission(&submission.details);
@@ -366,7 +366,7 @@ pub async fn generate_words(
     .await?;
     let submission = outcome
         .last_successful_call("submit_generated_words")
-        .ok_or_else(|| AppError::ExternalServiceError("模型没有提交单词列表".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有得到单词，请再试一次".to_string()))?;
     let words = generated_from_submission(&submission.details, existing, count);
     let tags = crate::services::tag::tags_from_submission(&submission.details);
     logger.info(
@@ -558,7 +558,7 @@ pub async fn analyze_phonics_batch(
                 .rev()
                 .find(|c| c.is_error)
                 .map(|c| c.content_text.chars().take(300).collect::<String>())
-                .unwrap_or_else(|| "模型没有提交结果".to_string());
+                .unwrap_or_else(|| "没有得到分析结果".to_string());
             AppError::ExternalServiceError(format!("拼读分析未通过校验：{}", last_problem))
         })?;
 
@@ -656,7 +656,9 @@ pub async fn plan_word_order(
     let submission = run
         .outcome
         .last_successful_call("submit_learning_order")
-        .ok_or_else(|| AppError::ExternalServiceError("模型没有提交学习顺序".to_string()))?;
+        .ok_or_else(|| {
+            AppError::ExternalServiceError("没有排出学习顺序，请再试一次".to_string())
+        })?;
     let assessed = assessments_from_submission(&submission.details);
     logger.info(
         "AGENT",
@@ -851,7 +853,7 @@ pub async fn generate_examples(
     let details = run
         .outcome
         .last_successful_call("submit_examples")
-        .ok_or_else(|| AppError::ExternalServiceError("模型没有提交例句".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有写出例句，请再试一次".to_string()))?;
     let existing: &[WordExample] = match mode {
         ExampleMode::Append => &word.examples,
         ExampleMode::Replace => &[],
@@ -859,7 +861,7 @@ pub async fn generate_examples(
     let examples = examples_from_submission(&details.details, existing);
     if examples.is_empty() {
         return Err(AppError::ExternalServiceError(
-            "模型没有给出新的例句，请再试一次".to_string(),
+            "没有写出新的例句，请再试一次".to_string(),
         ));
     }
     logger.info(
@@ -1006,7 +1008,7 @@ pub async fn ask_tutor(
     let reply = AiReply::from_output(&run.outcome.text, asked);
     if reply.content.is_empty() {
         return Err(AppError::ExternalServiceError(
-            "AI 老师没有给出回答，请再问一次".to_string(),
+            "老师没有答上来，请再问一次".to_string(),
         ));
     }
     Ok(reply)
@@ -1075,7 +1077,7 @@ pub async fn explain_word(
     let content = &reply.content;
     if content.chars().count() < 50 {
         return Err(AppError::ExternalServiceError(
-            "模型没有返回有效的讲解内容".to_string(),
+            "老师没有讲出来，请再试一次".to_string(),
         ));
     }
     logger.info(
@@ -1262,7 +1264,7 @@ pub async fn plan_passages(
     let submission = run
         .outcome
         .last_successful_call("submit_passage_plan")
-        .ok_or_else(|| AppError::ExternalServiceError("模型没有提交规划".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有规划出内容，请再试一次".to_string()))?;
     let plan = passage_rules::plan_from_submission(
         &submission.details,
         spec.required,
@@ -1308,7 +1310,7 @@ pub async fn generate_passage(
     let submission = run
         .outcome
         .last_successful_call("submit_passage")
-        .ok_or_else(|| AppError::ExternalServiceError("模型没有提交短文".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("短文没有写出来，请再试一次".to_string()))?;
     let passage = passage_rules::passage_from_submission(
         &submission.details,
         spec.required,
@@ -1389,7 +1391,7 @@ pub async fn generate_questions(
     let submission = run
         .outcome
         .last_successful_call("submit_questions")
-        .ok_or_else(|| AppError::ExternalServiceError("模型没有提交题目".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("题目没有出好，请再试一次".to_string()))?;
     let set = passage_rules::questions_from_submission(&submission.details, q.sentences, q.spec)
         .map_err(|e| {
             AppError::ExternalServiceError(format!("生成的题目不合格：{}，请再试一次", e))
@@ -1462,7 +1464,7 @@ pub async fn grade_open_answers(
     let submission = run
         .outcome
         .last_successful_call("submit_grade")
-        .ok_or_else(|| AppError::ExternalServiceError("模型没有提交评分".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有评出分数，请再试一次".to_string()))?;
     Ok(passage_rules::grades_from_submission(
         &submission.details,
         answers.len(),
@@ -1750,7 +1752,7 @@ pub async fn prepare_subtitles(
     let submission = run
         .outcome
         .last_successful_call("submit_subtitles")
-        .ok_or_else(|| AppError::ExternalServiceError("AI 没有交回整理后的字幕".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("字幕没有整理好，请再试一次".to_string()))?;
     subtitles_from_submission(&submission.details, cues.len())
         .map_err(AppError::ExternalServiceError)
 }
@@ -1846,7 +1848,7 @@ async fn run_suggestions(
     let submission = run
         .outcome
         .last_successful_call("submit_topic_suggestions")
-        .ok_or_else(|| AppError::ExternalServiceError("AI 没有给出建议，请再试一次".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有想出建议，请再试一次".to_string()))?;
     let mut out: Vec<String> = Vec::new();
     for s in submission.details["suggestions"]
         .as_array()
@@ -1928,7 +1930,7 @@ pub async fn suggest_video_requirements(
     let submission = run
         .outcome
         .last_successful_call("submit_plan_suggestions")
-        .ok_or_else(|| AppError::ExternalServiceError("AI 没有给出建议，请再试一次".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有想出建议，请再试一次".to_string()))?;
     let mut out: Vec<String> = Vec::new();
     for s in submission.details["suggestions"]
         .as_array()
@@ -1967,9 +1969,7 @@ pub async fn plan_video(
     let submission = run
         .outcome
         .last_successful_call("submit_video_plan")
-        .ok_or_else(|| {
-            AppError::ExternalServiceError("AI 没有交回切分规划，请再试一次".to_string())
-        })?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有规划出切分，请再试一次".to_string()))?;
     logger.info(
         "VIDEO",
         &format!(
@@ -2040,7 +2040,7 @@ pub async fn analyze_sentence(
     let submission = run
         .outcome
         .last_successful_call("submit_sentence_analysis")
-        .ok_or_else(|| AppError::ExternalServiceError("AI 没有给出分析，请再试一次".to_string()))?;
+        .ok_or_else(|| AppError::ExternalServiceError("没有分析出来，请再试一次".to_string()))?;
     Ok(submission.details.clone())
 }
 
@@ -2061,7 +2061,7 @@ pub async fn test_model(
     let reply = run.outcome.text.trim().to_string();
     if reply.is_empty() {
         return Err(AppError::ExternalServiceError(
-            "模型没有返回文本".to_string(),
+            "没有得到回答，请再试一次".to_string(),
         ));
     }
     Ok((reply, run.stats))

@@ -13,8 +13,8 @@ export interface EditorBusyDialogProps {
 }
 
 const TITLE: Record<string, string> = {
-  video_plan: 'AI 正在规划',
-  video_process: 'AI 正在切分',
+  video_plan: '正在规划',
+  video_process: '正在切分',
 };
 
 /**

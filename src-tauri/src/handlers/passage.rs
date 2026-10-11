@@ -86,7 +86,7 @@ pub async fn start_passage_planning(
             link: Some(JobLink::new("create-passage", serde_json::json!({}))),
         };
         Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
-            ctx.stage("AI 正在规划内容");
+            ctx.stage("正在规划内容");
             let cancel = ctx.clone();
             let plan = service
                 .plan(

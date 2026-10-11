@@ -137,7 +137,7 @@ impl StudyPlanGenerator {
         )
         .await?;
         ctx.stage(format!(
-            "AI 正在评估 {} 个单词的难度并安排学习顺序…",
+            "正在评估 {} 个单词的难度并安排学习顺序…",
             words.len()
         ));
         let profile =

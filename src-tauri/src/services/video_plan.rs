@@ -326,7 +326,7 @@ impl VideoPlanJob {
         let cues = row.cues();
         if cues.is_empty() {
             return Err(AppError::ValidationError(
-                "这个视频没有字幕，AI 没法规划".to_string(),
+                "这个视频没有字幕，没法规划".to_string(),
             ));
         }
         let current = VideoRepository::get_plan(&self.pool, self.plan_id)
@@ -347,9 +347,9 @@ impl VideoPlanJob {
         let total = chunks.len();
         let finished = AtomicU64::new(0);
         if total == 1 {
-            ctx.stage(format!("AI 正在通读 {} 条字幕并规划场景", cues.len()));
+            ctx.stage(format!("正在通读 {} 条字幕并规划场景", cues.len()));
         } else {
-            ctx.stage(format!("AI 正在分 {total} 部分规划"));
+            ctx.stage(format!("正在分 {total} 部分规划"));
             ctx.progress(0, total as u64);
         }
         let outcomes: Vec<(usize, AppResult<Vec<VideoSegment>>)> =
@@ -372,7 +372,7 @@ impl VideoPlanJob {
                         let n = finished.fetch_add(1, Ordering::SeqCst) + 1;
                         if total > 1 {
                             ctx.progress(n, total as u64);
-                            ctx.stage(format!("AI 正在规划：已完成 {n}/{total} 部分"));
+                            ctx.stage(format!("正在规划：已完成 {n}/{total} 部分"));
                         }
                         (k, result)
                     }
@@ -424,7 +424,7 @@ impl VideoPlanJob {
         let segments = finish_segments(segments);
         if segments.is_empty() {
             return Err(AppError::ExternalServiceError(
-                "AI 没有找到适合学习的片段，可以换个要求再试".to_string(),
+                "没有找到适合学习的片段，可以换个要求再试".to_string(),
             ));
         }
         let count = segments.len();

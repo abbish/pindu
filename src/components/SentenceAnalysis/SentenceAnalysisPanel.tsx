@@ -155,7 +155,7 @@ export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ pa
               {current.error}
             </InlineError>
           ) : (
-            <AiWorking key={key} title="AI 正在分析这句话" />
+            <AiWorking key={key} title="正在分析这句话" />
           )}
         </div>
       ) : (

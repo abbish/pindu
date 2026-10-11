@@ -156,7 +156,7 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
           }
           progress={
             generatingCard && cardJob ? (
-              <JobPanel job={cardJob} title="AI 正在生成单词卡" />
+              <JobPanel job={cardJob} title="正在生成单词卡" />
             ) : current.wordId === null && !card && cardError ? (
               <InlineError
                 title="无法生成单词卡"

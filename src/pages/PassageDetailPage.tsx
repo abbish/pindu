@@ -423,7 +423,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         <TabsContent value="sets">
           {qsJob && isJobActive(qsJob) && (
             <div className="mb-3">
-              <JobPanel job={qsJob} title="AI 正在生成题组" actions={{ stop: true }} />
+              <JobPanel job={qsJob} title="正在生成题组" actions={{ stop: true }} />
             </div>
           )}
           {passage.questionSets.length === 0 ? (

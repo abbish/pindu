@@ -82,7 +82,7 @@ pub fn analysis_from_submission(
     let pattern = text(details, "pattern");
     let function = text(details, "function");
     if pattern.is_empty() || function.is_empty() {
-        return Err("AI 的分析不完整，请再试一次".to_string());
+        return Err("分析不完整，请再试一次".to_string());
     }
 
     // 成分：按顺序出自原句；找不到的丢掉，剩下不到一半时整段不要

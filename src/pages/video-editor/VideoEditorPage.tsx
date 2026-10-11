@@ -225,7 +225,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     }
     if (job.kind !== 'video_plan') return;
     if (job.status === 'failed') {
-      toast.showError('AI 没有完成规划', jobErrorText(job));
+      toast.showError('规划没有完成', jobErrorText(job));
       return;
     }
     if (job.status !== 'succeeded' || !videoId) return;

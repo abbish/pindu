@@ -105,7 +105,7 @@ impl Statuses {
 impl WordAnalysisJob {
     pub async fn run(self, ctx: JobCtx) -> AppResult<WordAnalysisOutcome> {
         let statuses = Statuses::new(ctx.clone(), &self.words);
-        ctx.stage("AI 正在分析拼读、音标和例句");
+        ctx.stage("正在分析拼读、音标和例句");
         let analyzed = self.analyze(&ctx, &statuses).await;
         let failed = statuses.unfinished();
 
@@ -217,7 +217,7 @@ impl WordAnalysisJob {
                 statuses.set(&batch, ANALYZING, None);
                 match self.analyzer.analyze_batch(&batch, index, total).await {
                     Ok(outcome) => {
-                        statuses.set(&outcome.missing, FAILED, Some("模型没有返回该单词的分析"));
+                        statuses.set(&outcome.missing, FAILED, Some("这个词没有分析出来"));
                         let done: Vec<String> =
                             outcome.analyzed.iter().map(|w| w.word.clone()).collect();
                         statuses.set(&done, COMPLETED, None);

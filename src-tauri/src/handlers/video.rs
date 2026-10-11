@@ -497,7 +497,7 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
         Ok(app.state::<Jobs>().spawn(
             JobSpec {
                 kind: "video_plan",
-                title: format!("AI 规划切分 · {}", row.title),
+                title: format!("规划切分 · {}", row.title),
                 lane: Lane::Agent,
                 detached: true,
                 link: Some(JobLink::new(

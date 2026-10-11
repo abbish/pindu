@@ -55,7 +55,7 @@ const INSTRUCTION_MAX = 500;
 /** 生成方式：按描述直接生成，或基于词汇本 / 学习计划里的单词（三者并列，选一种） */
 type SourceMode = 'brief' | 'books' | 'plans';
 const SOURCE_MODES: { value: SourceMode; label: string; description: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { value: 'brief', label: '按描述生成', description: '写下主题和要求，由 AI 选词', icon: PenLine },
+  { value: 'brief', label: '按描述生成', description: '写下主题和要求，自动选词', icon: PenLine },
   { value: 'books', label: '基于词汇本', description: '从词汇本中选词', icon: BookOpen },
   { value: 'plans', label: '基于学习计划', description: '按学习进度选词', icon: ListChecks },
 ];
@@ -683,7 +683,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
       {suggesting ? (
         <Card className="px-6">
-          <AiWorking title="AI 正在选词" />
+          <AiWorking title="正在选词" />
         </Card>
       ) : (
         <>
@@ -1094,7 +1094,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
                       }}
                       onMore={() => void loadSceneIdeas(true)}
                       error={sceneIdeasError}
-                      loadingText="AI 正在按词汇本和单词想场景…"
+                      loadingText="正在按词汇本和单词想场景…"
                     />
                   </div>
                 </div>
@@ -1162,10 +1162,10 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
 
           {/* 规划中：就在「内容规划」这一步看进度（离开页面也会继续，回来接着看） */}
           {step === PLAN_STEP && planning && (
-            <JobPanel job={planJob} title="AI 正在规划内容" actions={{ stop: stopPlanning, onBackground: () => onNavigate?.('passages') }} />
+            <JobPanel job={planJob} title="正在规划内容" actions={{ stop: stopPlanning, onBackground: () => onNavigate?.('passages') }} />
           )}
           {step === PLAN_STEP && !planning && activeRunJob && (
-            <JobPanel job={activeRunJob} title="AI 正在生成短文" actions={{ stop: true, onBackground: () => onNavigate?.('passages') }} />
+            <JobPanel job={activeRunJob} title="正在生成短文" actions={{ stop: true, onBackground: () => onNavigate?.('passages') }} />
           )}
           {/* 全部写完：明确的结束状态（逐篇打开 / 重试），规划收起 */}
           {step === PLAN_STEP && !planning && finished && statuses && (

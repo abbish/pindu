@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export interface SuggestionChipsProps {
-  /** 建议；null = AI 正在想 */
+  /** 建议；null = 还在想 */
   items: string[] | null;
   /** 已选的建议（可多选） */
   selected: string[];

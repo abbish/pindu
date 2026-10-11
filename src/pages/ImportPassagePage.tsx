@@ -314,7 +314,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                       <Input
                         value={item.title}
                         onChange={(e) => setItems((prev) => renameItem(prev, i, e.target.value))}
-                        placeholder="留空由 AI 生成"
+                        placeholder="留空自动生成"
                         aria-label={`第 ${i + 1} 篇标题`}
                         className="h-8 flex-1 font-medium"
                         maxLength={120}
@@ -383,7 +383,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
 
       {step === 2 && (
         <div className="flex flex-col gap-4">
-          {activeRunJob && <JobPanel job={activeRunJob} title="AI 正在导入材料" actions={{ stop: cancelImport, onBackground: () => onNavigate?.('passages') }} />}
+          {activeRunJob && <JobPanel job={activeRunJob} title="正在导入材料" actions={{ stop: cancelImport, onBackground: () => onNavigate?.('passages') }} />}
           {startError && <InlineError title="无法开始导入">{startError}</InlineError>}
           {statuses && (
           <Card className="gap-0 divide-y p-0">

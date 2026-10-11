@@ -118,7 +118,7 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
             {p.targetWords.length > 12 && <span className="px-1 text-xs text-muted-foreground">+{p.targetWords.length - 12}</span>}
           </div>
           {job ? (
-            <JobProgress job={job} fallback="AI 正在生成题组" />
+            <JobProgress job={job} fallback="正在生成题组" />
           ) : (
             <div className="text-xs text-muted-foreground">
               {p.questionSets > 0 ? `${p.questionSets} 个题组` : '还没有题组'}

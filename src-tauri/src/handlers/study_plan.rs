@@ -260,7 +260,7 @@ pub async fn start_study_plan_ordering(
         );
         let spec = JobSpec {
             kind: "plan_ordering",
-            title: format!("AI 排学习顺序 · {}", request.name.trim()),
+            title: format!("安排学习顺序 · {}", request.name.trim()),
             lane: Lane::Agent,
             detached: false,
             link: None,

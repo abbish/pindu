@@ -489,7 +489,7 @@ impl PassageService {
         }
         if !(0..=passage_rules::MAX_AI_PICK).contains(&request.ai_pick) {
             return Err(AppError::ValidationError(format!(
-                "AI 挑选的词数应在 0–{} 之间",
+                "AI 选词数量应在 0–{} 之间",
                 passage_rules::MAX_AI_PICK
             )));
         }
@@ -540,7 +540,7 @@ impl PassageService {
         let (required, pool, word_books) = self.resolve_words(request).await?;
         if request.ai_pick > 0 && pool.is_empty() {
             return Err(AppError::ValidationError(
-                "所选来源里没有符合条件、可供 AI 挑选的词：换一换学习情况，或不让 AI 挑词".into(),
+                "所选来源里没有符合条件的词：换一换学习情况，或改成「手动选词」".into(),
             ));
         }
         let ai_pick = (request.ai_pick as usize).min(pool.len());
@@ -548,7 +548,7 @@ impl PassageService {
         // 按描述生成可以不指定单词
         if total < passage_rules::MIN_TARGET_WORDS && !request.has_instruction() {
             return Err(AppError::ValidationError(format!(
-                "至少要有 {} 个词：勾选必用词、输入单词，或让 AI 从来源里挑词（当前 {} 个）",
+                "至少要有 {} 个词：勾选必用词、输入单词，或用「AI 选词」从来源里挑（当前 {} 个）",
                 passage_rules::MIN_TARGET_WORDS,
                 total
             )));

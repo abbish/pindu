@@ -221,7 +221,7 @@ pub fn prepare_launch(
         )));
     }
 
-    let io = |e: std::io::Error| AppError::InternalError(format!("准备 agent 运行目录失败：{}", e));
+    let io = |e: std::io::Error| AppError::InternalError(format!("准备运行环境失败：{}", e));
     // 每个进程独立的 agentDir：models.json 由 sidecar 按本次配置生成，并发运行互不覆盖
     let run_dir = paths
         .root

@@ -126,7 +126,7 @@ export class StudyService extends BaseService {
       }
 
       if (withWords && (!request.aiPlanData || request.aiPlanData.trim() === '')) {
-        throw new Error('AI规划数据不能为空');
+        throw new Error('日程还没有生成，请重新生成');
       }
 
       // 验证AI规划数据是否为有效JSON
@@ -134,7 +134,7 @@ export class StudyService extends BaseService {
         try {
           JSON.parse(request.aiPlanData);
         } catch (e) {
-          throw new Error('AI规划数据格式无效', { cause: e });
+          throw new Error('日程数据有误，请重新生成', { cause: e });
         }
       }
 
