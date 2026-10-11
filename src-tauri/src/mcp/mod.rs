@@ -4,6 +4,7 @@
 //! - 用 MCP 官方 Rust SDK（rmcp）的 streamable HTTP 服务；pi 经 `pi.registerMcpServer` 连上（sidecar 扩展）。
 //! - 第一次打开 AI 老师对话时启动，之后随应用运行。工具在 `tools.rs`。
 
+pub mod job_notice;
 pub mod reason;
 mod tools;
 

@@ -45,9 +45,11 @@ export function registerPindu(pi: ExtensionAPI) {
   for (const tool of [askUserTool, ...MATERIAL_TOOLS.filter(t => t.name !== "submit_material")]) {
     pi.registerTool(withReason(tool));
   }
+  const conversation = process.env.REDLARK_CONVERSATION_ID ?? "";
   pi.registerMcpServer(PINDU_SERVER, {
     url,
-    headers: { Authorization: `Bearer ${token}` },
+    // 对话 id：拼读据此把工具提交的后台任务与这个对话关联，任务结束时通知回来（/pindu-job）
+    headers: { Authorization: `Bearer ${token}`, "X-Pindu-Conversation": conversation },
     exposure: "direct",
     description: "拼读：学习者的词汇本、短文与学习记录；把内容收进素材库",
     timeout: 120,
@@ -60,6 +62,33 @@ export function registerPindu(pi: ExtensionAPI) {
     return { details: { ...(details && typeof details === "object" ? details : {}), redlark } };
   });
   registerAutoTitle(pi);
+  registerJobNotice(pi);
+}
+
+/** 自定义消息类型：后台任务结束的通知（界面显示成系统提示） */
+export const JOB_NOTICE = "pindu-job";
+
+/**
+ * 拼读在后台任务（存短文、出题）结束时调用 `/pindu-job <JSON>`：把结果作为自定义消息放进会话并让 AI 老师接着说。
+ * 扩展命令在 AI 回答过程中也会立即执行（pi rpc 文档）；空闲时立刻触发一轮，忙时排到这一轮之后。
+ */
+function registerJobNotice(pi: ExtensionAPI) {
+  pi.registerCommand(JOB_NOTICE, {
+    description: "Background job finished (sent by Pindu)",
+    handler: async (args, ctx) => {
+      let notice: { text?: string; job?: unknown };
+      try {
+        notice = JSON.parse(args);
+      } catch {
+        return;
+      }
+      if (!notice.text) return;
+      pi.sendMessage(
+        { customType: JOB_NOTICE, content: notice.text, display: true, details: notice.job },
+        ctx.isIdle() ? { triggerTurn: true } : { triggerTurn: true, deliverAs: "followUp" },
+      );
+    },
+  });
 }
 
 /** 标题最长（字符） */

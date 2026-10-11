@@ -517,3 +517,6 @@
   5. AI 老师不加载素材阅读的 skills（那套按 `submit_material` 写），另写 `tutor-*` skills；标题用 pi 示例的做法：`ctx.modelRegistry.complete` + `pi.setSessionName`。
   6. 过程显示按发生顺序：说的话与一组组工具调用交替排列，不再汇总成「做了 N 件事」。每一步的说明由模型写：拼读 MCP 服务在工具清单里给每个工具加必填参数 `reason`（`src/mcp/reason.rs`），sidecar 自带的工具（ask_user、读文件）在 AI 老师里用 `withReason` 包一层（`agent/src/tools/reason.ts`），执行前都去掉；界面进行中显示 reason，做完显示工具给的结果说明（`redlark.step`），不再按工具名写死说法。
   7. **skills 之前没生效**：pi 只在 `read` / `bash` 可用时才把 skills 写进系统提示词（`core/system-prompt.js`）。素材阅读（D52）与 AI 老师的工具白名单都没有 read，skills 一直没被模型看到。改为：带 skills 的任务自动开放 pi 的 `read`，sidecar 用 pi 的 `tool_call` 处理器把它限定在 skill 目录（`REDLARK_SKILL_DIRS`，解析符号链接与 `..`）；真实测试断言系统提示词列出了 skills。
+  8. **素材内容由 AI 老师自己写**：原来的「写短文」工具另起一次 AI 调用，拿不到对话上下文（学习者水平、刚讲的语法点、想要的情节），去掉。AI 老师结合上下文写正文，用 `save_passage` 保存并带上词汇；程序按词形核对每个词都在正文里（没出现的退回让它改），翻译在后台做（导入材料同一条路径，合成一篇）。建词汇本、加词本来就是 AI 老师选词写释义，不受影响。
+  9. **后台任务结束通知对话**：sidecar 连 MCP 时带请求头 `X-Pindu-Conversation`，工具分发时放进 task-local，存短文、出题提交任务时登记（`mcp/job_notice.rs`）；任务结束（jobs 事件回调）时对仍在运行的对话发 RPC `prompt` `/pindu-job <JSON>`，sidecar 的扩展命令用 pi 的 `sendMessage`（customType `pindu-job`，`triggerTurn`，忙时 `deliverAs: followUp`）放进会话，AI 老师接着说；界面显示成系统提示。对话已闲置关闭时不唤醒，任务在后台任务列表里照常可见。拼读分析（加词）不通知。
+

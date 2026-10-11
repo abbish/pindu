@@ -103,6 +103,8 @@ pub fn run() {
             app.manage(jobs::Jobs::new(move |job| {
                 use tauri::Emitter;
                 log_job(&emitter, job);
+                // AI 老师发起的任务结束时通知那个对话
+                mcp::job_notice::on_job(&emitter, job);
                 let _ = emitter.emit(jobs::EVENT, job);
             }));
 

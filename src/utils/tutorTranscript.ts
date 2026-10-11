@@ -224,6 +224,8 @@ export type ViewItem = { kind: 'text'; key: string; text: string } | { kind: 'st
 
 export type ViewTurn =
   | { role: 'user'; key: string; text: string; images: string[]; files: string[]; pending?: boolean }
+  /** 系统提示（后台任务结束等），AI 老师随后会接着说 */
+  | { role: 'notice'; key: string; text: string }
   | {
       role: 'agent';
       key: string;
@@ -380,6 +382,11 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
       turns.push({ role: 'user', key: `u${m.timestamp}-${i}`, ...userText(m) });
     } else if (m.role === 'assistant') {
       addAssistant(m, `a${m.timestamp}-${i}`);
+    } else if (m.role === 'custom' && m.display) {
+      agent = null;
+      askedAt = m.timestamp;
+      const text = typeof m.content === 'string' ? m.content : m.content.map((b) => b.text).join('');
+      turns.push({ role: 'notice', key: `n${m.timestamp}-${i}`, text });
     }
   });
   if (state.pendingUser) {

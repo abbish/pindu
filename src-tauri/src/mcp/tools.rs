@@ -19,6 +19,25 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
+/// 没有出现在正文里的词汇（单词按词形，went 算 go；词组连着出现、可变形）
+fn missing_vocabulary(text: &str, words: &[NewWord]) -> Vec<String> {
+    let tokens: Vec<&str> = crate::services::passage_rules::words_of(text).collect();
+    words
+        .iter()
+        .map(|w| crate::types::wordbook::normalize_vocab(w.word.trim()))
+        .filter(|w| !w.is_empty())
+        .filter(|w| {
+            let key = w.to_lowercase();
+            let found = if crate::services::passage_rules::is_phrase(&key) {
+                !crate::lemma::phrase_spans(&tokens, &key, &[]).is_empty()
+            } else {
+                tokens.iter().any(|t| crate::lemma::is_form_of(t, &key))
+            };
+            !found
+        })
+        .collect()
+}
+
 /// 一次最多查 / 收多少个词
 const MAX_WORDS: usize = 200;
 
@@ -123,29 +142,17 @@ pub struct AddWordsArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SavePassageArgs {
-    /// English text to save as a passage, exactly as it should be kept (one paragraph per line)
+    /// English text to save as a passage, exactly as it should be kept (one paragraph per line). Write it yourself using what you and the learner discussed.
     pub text: String,
-    /// Title (optional; generated when empty)
+    /// English title (optional; generated when empty)
     #[serde(default)]
     pub title: Option<String>,
-    /// Mark words of these word books in the passage as its vocabulary (optional)
+    /// The words / phrases this passage is for (base forms, with Chinese meaning). Each must appear in the text (any inflected form).
+    #[serde(default)]
+    pub vocabulary: Vec<NewWord>,
+    /// Also mark words of these word books that appear in the text (optional)
     #[serde(default)]
     pub book_ids: Vec<i64>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct WritePassageArgs {
-    /// What to write, in Chinese: scene, story idea, characters, style
-    pub instruction: String,
-    /// Words that must be used (optional)
-    #[serde(default)]
-    pub words: Vec<NewWord>,
-    /// Word books to pick more suitable words from (optional)
-    #[serde(default)]
-    pub book_ids: Vec<i64>,
-    /// short / standard / long (default standard)
-    #[serde(default)]
-    pub length: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -513,16 +520,27 @@ impl PinduTools {
     }
 
     #[tool(
-        description = "Save English text as a passage in the learner's library, keeping the text as given (e.g. a text the learner shared, or one you wrote together). Translation, title and key vocabulary are added in the background.",
+        description = "Save an English passage to the learner's library, kept exactly as given: a passage you wrote for the learner (based on everything discussed), or a text the learner shared. Give the words it is for in `vocabulary`; each must appear in the text. Translation (and a title if empty) is added in the background.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn save_passage(
         &self,
         Parameters(args): Parameters<SavePassageArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        // 词汇须出现在正文里（按词形，词组可变形）：没出现的退回给 AI 老师改
+        let missing = missing_vocabulary(&args.text, &args.vocabulary);
+        if !missing.is_empty() {
+            return failed(
+                "存短文前核对词汇",
+                AppError::ValidationError(format!(
+                    "这些词没有出现在正文里：{}。请改写正文让它们自然出现，或者从词汇里去掉",
+                    missing.join("、")
+                )),
+            );
+        }
         let preview_result = crate::handlers::prepare_passage_import(
             self.app.clone(),
-            serde_json::from_value(json!({ "text": args.text }))
+            serde_json::from_value(json!({ "text": args.text, "targetWords": 450 }))
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?,
         )
         .await;
@@ -536,21 +554,37 @@ impl PinduTools {
             .map(str::trim)
             .filter(|t| !t.is_empty())
             .map(str::to_string);
-        let items: Vec<crate::types::passage::ImportPassageRequest> = preview
+        // AI 老师写的是一篇：预处理按篇幅拆开的合回一篇
+        let sentences: Vec<crate::types::passage::ImportSentence> = preview
             .items
             .iter()
-            .map(|item| crate::types::passage::ImportPassageRequest {
-                title: title
-                    .clone()
-                    .or_else(|| (preview.items.len() > 1).then(|| item.title.clone())),
-                sentences: item.sentences.clone(),
-                source_label: "AI 老师".to_string(),
-                book_ids: args.book_ids.clone(),
-                ai_key_words: true,
-                words: item.words.clone(),
+            .flat_map(|item| item.sentences.clone())
+            .collect();
+        if sentences.is_empty() {
+            return failed(
+                "没能存成短文",
+                AppError::ValidationError("正文里没有英文句子".to_string()),
+            );
+        }
+        let vocabulary: Vec<crate::types::passage::ImportWord> = args
+            .vocabulary
+            .iter()
+            .filter(|w| !w.word.trim().is_empty())
+            .map(|w| crate::types::passage::ImportWord {
+                word: crate::types::wordbook::normalize_vocab(w.word.trim()),
+                meaning: w.meaning.clone().filter(|m| !m.trim().is_empty()),
+                forms: Vec::new(),
             })
             .collect();
-        let count = items.len();
+        let items = vec![crate::types::passage::ImportPassageRequest {
+            title: title.clone(),
+            sentences,
+            source_label: "AI 老师".to_string(),
+            book_ids: args.book_ids.clone(),
+            // 给了词汇就用这些；没给时让 AI 挑重点词
+            ai_key_words: vocabulary.is_empty(),
+            words: vocabulary,
+        }];
         match crate::handlers::start_passage_import(
             self.app.clone(),
             crate::types::passage::ImportPassagesRequest { items },
@@ -558,66 +592,18 @@ impl PinduTools {
         .await
         {
             Ok(job) => {
+                // 结束时通知这个对话（AI 老师接着说）
+                super::job_notice::watch(&job);
                 let name = title.clone().unwrap_or_else(|| "新短文".to_string());
-                let step = if count > 1 {
-                    format!("存成了 {} 篇短文，正在翻译", count)
-                } else {
-                    format!("存成短文《{}》，正在翻译", name)
-                };
+                let step = format!("存成短文《{}》，后台在翻译", name);
                 let output = json!({ "kind": "passage", "title": name, "meta": format!("约 {} 词", preview.total_words), "jobId": job });
                 done(
-                    json!({ "passages": count, "words": preview.total_words, "note": "Saved; translation runs in the background." }),
+                    json!({ "words": preview.total_words, "note": "Saved. Translation runs in the background; the passage appears in the library when it is done." }),
                     step,
                     Some(output),
                 )
             }
             Err(e) => failed("没能存成短文", e),
-        }
-    }
-
-    #[tool(
-        description = "Write a new reading passage with the app's passage writer (it checks that every required word is used and saves it to the library). Use when the learner wants a story or article to practise words. Runs in the background.",
-        annotations(read_only_hint = false, destructive_hint = false)
-    )]
-    async fn write_passage(
-        &self,
-        Parameters(args): Parameters<WritePassageArgs>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let words: Vec<Value> = args
-            .words
-            .iter()
-            .filter(|w| !w.word.trim().is_empty())
-            .take(30)
-            .map(|w| json!({ "wordId": null, "word": w.word.trim(), "required": true, "meaning": w.meaning }))
-            .collect();
-        let length = args
-            .length
-            .clone()
-            .unwrap_or_else(|| "standard".to_string());
-        let request = json!({
-            "base": {
-                "bookIds": args.book_ids,
-                "extraWords": args.words.iter().map(|w| w.word.trim().to_string()).collect::<Vec<_>>(),
-                "aiPick": 0,
-                "instruction": args.instruction,
-                "length": length,
-            },
-            "items": [{ "title": "", "idea": args.instruction, "words": words, "length": length }],
-        });
-        let request = match serde_json::from_value(request) {
-            Ok(r) => r,
-            Err(e) => return Err(ErrorData::internal_error(e.to_string(), None)),
-        };
-        match crate::handlers::start_passage_generation(self.app.clone(), request).await {
-            Ok(job) => {
-                let output = json!({ "kind": "passage", "title": "新短文", "jobId": job });
-                done(
-                    json!({ "note": "The passage is being written in the background and will appear in the library." }),
-                    "开始写一篇短文（后台进行）".to_string(),
-                    Some(output),
-                )
-            }
-            Err(e) => failed("没能开始写短文", e),
         }
     }
 
@@ -655,6 +641,8 @@ impl PinduTools {
         };
         match crate::handlers::start_question_set_generation(self.app.clone(), request).await {
             Ok(job) => {
+                // 结束时通知这个对话（AI 老师接着说）
+                super::job_notice::watch(&job);
                 let output = json!({ "kind": "questions", "id": passage.id, "title": format!("{}题", label),
                                      "meta": format!("《{}》", passage.title), "jobId": job });
                 done(
@@ -690,13 +678,49 @@ impl ServerHandler for PinduTools {
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
         super::reason::take_reason(&mut request);
+        // 调用来自哪个对话（sidecar 连接时带的请求头）：工具提交的后台任务结束时通知回去
+        let conversation = context
+            .extensions
+            .get::<axum::http::request::Parts>()
+            .and_then(|p| p.headers.get("x-pindu-conversation"))
+            .and_then(|v| v.to_str().ok())
+            .filter(|v| !v.is_empty())
+            .map(str::to_string);
         let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        self.tool_router.call(call).await
+        super::job_notice::CONVERSATION
+            .scope(conversation, self.tool_router.call(call))
+            .await
     }
 
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "拼读（Pindu.app）：学习者的词汇本、短文与学习记录；可以把对话里的内容收进素材库（只新增，不修改、不删除已有素材）。",
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vocabulary_must_appear_in_the_text_in_any_form() {
+        let text = "Tom checked in early. His itinerary was long, and he went to the gate.";
+        let words = |list: &[&str]| -> Vec<NewWord> {
+            list.iter()
+                .map(|w| NewWord {
+                    word: w.to_string(),
+                    meaning: None,
+                })
+                .collect()
+        };
+        // 词形（went → go）与可变形的词组（checked in → check in）都算出现
+        assert!(
+            missing_vocabulary(text, &words(&["itinerary", "go", "check in", "Gate"])).is_empty()
+        );
+        assert_eq!(
+            missing_vocabulary(text, &words(&["boarding pass", "luggage", ""])),
+            ["boarding pass", "luggage"]
+        );
     }
 }

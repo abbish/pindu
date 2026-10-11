@@ -203,6 +203,7 @@ impl TutorChatService {
                     ),
                     ("REDLARK_MCP_URL".to_string(), env.mcp.url.clone()),
                     ("REDLARK_MCP_TOKEN".to_string(), env.mcp.token.clone()),
+                    ("REDLARK_CONVERSATION_ID".to_string(), conversation.clone()),
                 ],
             }),
         )?;
@@ -734,6 +735,41 @@ mod tests {
             .take(200)
             .collect::<String>();
         println!("推荐下一步：{}", next);
+
+        // 后台任务结束的通知：/pindu-job → 会话里一条自定义消息，AI 老师接着说
+        let settled_before = count("agent_settled");
+        let session = hub.get(&id).await.unwrap();
+        session
+            .request(
+                "prompt",
+                json!({
+                    "message": format!("/pindu-job {}", json!({ "text": "后台任务完成：导入短文 · My Trip（短文 id：12）" })),
+                    "streamingBehavior": "followUp"
+                }),
+            )
+            .await
+            .unwrap();
+        wait(settled_before + 1).await;
+        let notice = events.lock().unwrap().iter().any(|e| {
+            e["type"] == "message_end"
+                && e["message"]["role"] == "custom"
+                && e["message"]["customType"] == "pindu-job"
+        });
+        assert!(notice, "会话里应有后台任务的通知");
+        let reply = events
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|e| e["type"] == "message_end" && e["message"]["role"] == "assistant")
+            .map(|e| {
+                e["message"]["content"]
+                    .to_string()
+                    .chars()
+                    .take(160)
+                    .collect::<String>()
+            });
+        println!("通知后 AI 老师说：{:?}", reply);
 
         let list = service.list(&paths, &hub).await.unwrap();
         let item = list.iter().find(|c| c.id == id).expect("列表里有这个对话");

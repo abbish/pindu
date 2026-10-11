@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { BookOpen, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus } from 'lucide-react';
+import { Bell, BookOpen, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus } from 'lucide-react';
 import { JobProgress } from '@/components/Jobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,6 +59,20 @@ export const UserBubble: React.FC<{ turn: Extract<ViewTurn, { role: 'user' }> }>
         {turn.text}
       </div>
     )}
+  </div>
+);
+
+/** 系统提示（后台任务结束等）：居中的一行小字 */
+export const NoticeRow: React.FC<{ text: string }> = ({ text }) => (
+  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+    <div className="h-px flex-1 bg-border" />
+    <span className="flex max-w-[80%] items-center gap-1.5">
+      <Bell className="size-3.5 shrink-0" />
+      <span className="truncate" title={text}>
+        {text}
+      </span>
+    </span>
+    <div className="h-px flex-1 bg-border" />
   </div>
 );
 

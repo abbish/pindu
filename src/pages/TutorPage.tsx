@@ -9,7 +9,7 @@ import type { NavigateFn } from '@/navigation';
 import { toTurns } from '@/utils/tutorTranscript';
 import { Composer } from './tutor/Composer';
 import { ConversationList } from './tutor/ConversationList';
-import { AgentTurnView, OutputsPopover, UserBubble } from './tutor/TurnViews';
+import { AgentTurnView, NoticeRow, OutputsPopover, UserBubble } from './tutor/TurnViews';
 import { useTutorChat, type Attachment } from './tutor/useTutorChat';
 
 /**
@@ -130,6 +130,8 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
               {turns.map((turn, i) =>
                 turn.role === 'user' ? (
                   <UserBubble key={turn.key} turn={turn} />
+                ) : turn.role === 'notice' ? (
+                  <NoticeRow key={turn.key} text={turn.text} />
                 ) : (
                   <AgentTurnView
                     key={turn.key}

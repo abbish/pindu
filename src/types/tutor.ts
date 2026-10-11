@@ -98,12 +98,20 @@ export interface PiToolResultMessage {
   isError: boolean;
   timestamp: number;
 }
-/** 其它角色（system、custom 等）界面不显示 */
-export interface PiOtherMessage {
-  role: 'system' | 'custom' | 'bashExecution' | 'branchSummary' | 'compactionSummary';
+/** 扩展放进会话的消息（如后台任务结束的通知 pindu-job） */
+export interface PiCustomMessage {
+  role: 'custom';
+  customType: string;
+  content: string | PiTextBlock[];
+  display: boolean;
   timestamp: number;
 }
-export type PiMessage = PiUserMessage | PiAssistantMessage | PiToolResultMessage | PiOtherMessage;
+/** 其它角色（system 等）界面不显示 */
+export interface PiOtherMessage {
+  role: 'system' | 'bashExecution' | 'branchSummary' | 'compactionSummary';
+  timestamp: number;
+}
+export type PiMessage = PiUserMessage | PiAssistantMessage | PiToolResultMessage | PiCustomMessage | PiOtherMessage;
 
 /** `tutor-event` 事件：pi 的原始事件（docs/json.md）+ 对话 id */
 export interface TutorEventPayload {

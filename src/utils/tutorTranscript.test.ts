@@ -220,3 +220,18 @@ test('一轮的用时：学习者发出到最后一条回答', () => {
   const agent = toTurns(state)[1];
   assert.equal(agent.role === 'agent' && agent.seconds, 12);
 });
+
+test('后台任务结束的通知显示成系统提示，AI 老师接着说的话另起一轮', () => {
+  const state = run([
+    { type: 'message_end', message: user },
+    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '存好了，正在翻译。' }], stopReason: 'stop', timestamp: 2 } },
+    {
+      type: 'message_end',
+      message: { role: 'custom', customType: 'pindu-job', content: '后台任务完成：导入短文 · A Day', display: true, timestamp: 3 },
+    },
+    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '翻译好了，要出题吗？' }], stopReason: 'stop', timestamp: 4 } },
+  ]);
+  const turns = toTurns(state);
+  assert.deepEqual(turns.map((t) => t.role), ['user', 'agent', 'notice', 'agent']);
+  assert.equal(turns[2].role === 'notice' && turns[2].text, '后台任务完成：导入短文 · A Day');
+});
