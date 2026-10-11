@@ -436,8 +436,30 @@ mod tests {
         words: Vec<String>,
     }
 
+    #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+    #[allow(dead_code)] // 只用来声明参数
+    struct DeleteWords {
+        book_id: i64,
+        word_ids: Vec<i64>,
+    }
+
+    /// 测试用的删除工具被真正调用的次数（确认被取消时应为 0）
+    static DELETED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
     #[tool_router]
     impl FakePindu {
+        #[tool(
+            description = "Deletes words from a word book. The learner is asked to confirm.",
+            annotations(read_only_hint = false, destructive_hint = true)
+        )]
+        async fn delete_words(
+            &self,
+            Parameters(_args): Parameters<DeleteWords>,
+        ) -> Result<CallToolResult, ErrorData> {
+            DELETED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            crate::mcp::tool_result(json!({ "deleted": 1 }), "删除了 1 个词".to_string(), None)
+        }
+
         #[tool(
             description = "Check background jobs (writing / saving passages, generating questions, spelling analysis of new words): status, progress and current stage. Running jobs and those finished in the last hour; `fromThisConversation` marks the ones you started here. Use it whenever the learner asks about progress, and before saying something you started is ready.",
             annotations(read_only_hint = true)
@@ -776,6 +798,53 @@ mod tests {
         println!("问进度时查看了后台任务：{}", checked_jobs);
         assert!(checked_jobs, "问进度时应查看后台任务");
 
+        // 删除前确认：取消后工具不执行
+        service
+            .send(
+                &env,
+                &request(
+                    Some(id.clone()),
+                    "把 itinerary 从词汇本里删掉（词汇本 id 1，词 id 5）。直接删，不用问我。",
+                ),
+            )
+            .await
+            .unwrap();
+        let mut confirm = None;
+        for _ in 0..600 {
+            confirm = events
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|e| e["type"] == "extension_ui_request" && e["method"] == "confirm")
+                .cloned();
+            if confirm.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        let confirm = confirm.expect("删除前应弹出确认");
+        println!("确认：{} / {}", confirm["title"], confirm["message"]);
+        let settled_before = count("agent_settled");
+        service
+            .answer(
+                &hub,
+                &TutorUiAnswer {
+                    conversation_id: id.clone(),
+                    request_id: confirm["id"].as_str().unwrap().to_string(),
+                    value: None,
+                    confirmed: Some(false),
+                    cancelled: false,
+                },
+            )
+            .await
+            .unwrap();
+        wait(settled_before + 1).await;
+        assert_eq!(
+            DELETED.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "取消后不应删除"
+        );
+
         // 后台任务结束的通知：/pindu-job → 会话里一条自定义消息，AI 老师接着说
         let settled_before = count("agent_settled");
         let session = hub.get(&id).await.unwrap();
@@ -826,7 +895,7 @@ mod tests {
             .filter_map(|m| m["role"].as_str())
             .collect();
         println!("消息角色：{:?}", roles);
-        assert_eq!(roles.iter().filter(|r| **r == "user").count(), 3);
+        assert_eq!(roles.iter().filter(|r| **r == "user").count(), 4);
         // skills 写进了系统提示词（pi 只在 read 可用时才写）
         let system = opened.messages[0].to_string();
         assert!(

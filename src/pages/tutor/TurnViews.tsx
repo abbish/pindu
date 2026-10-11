@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Bell, BookOpen, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus } from 'lucide-react';
+import { Bell, BookOpen, CalendarCheck, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus } from 'lucide-react';
 import { JobProgress } from '@/components/Jobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ const OUTPUT_ICON: Record<StepOutput['kind'], React.ComponentType<{ className?: 
   passage: FileText,
   questions: ListChecks,
   words: Plus,
+  plan: CalendarCheck,
 };
 
 const OUTPUT_LABEL: Record<StepOutput['kind'], string> = {
@@ -26,12 +27,14 @@ const OUTPUT_LABEL: Record<StepOutput['kind'], string> = {
   passage: '短文',
   questions: '题组',
   words: '词汇',
+  plan: '学习计划',
 };
 
 /** 打开收进来的素材（词汇：所在词汇本；题组：所属短文） */
 export function openOutput(output: StepOutput, onNavigate: NavigateFn) {
   if (output.id === undefined) return;
-  if (output.kind === 'wordbook' || output.kind === 'words') onNavigate('wordbook-detail', { id: output.id });
+  if (output.kind === 'plan') onNavigate('plan-detail', { planId: output.id });
+  else if (output.kind === 'wordbook' || output.kind === 'words') onNavigate('wordbook-detail', { id: output.id });
   else onNavigate('passage-detail', { passageId: output.id, tab: output.kind === 'questions' ? 'sets' : undefined });
 }
 
@@ -265,10 +268,10 @@ const AskCard: React.FC<{
         {ask.method === 'confirm' && (
           <>
             <Button size="sm" onClick={() => onAnswer({ confirmed: true })}>
-              好的
+              确定
             </Button>
             <Button size="sm" variant="outline" onClick={() => onAnswer({ confirmed: false })}>
-              不用
+              取消
             </Button>
           </>
         )}

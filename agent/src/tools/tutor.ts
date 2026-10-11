@@ -63,6 +63,24 @@ export function registerPindu(pi: ExtensionAPI) {
   });
   registerAutoTitle(pi);
   registerJobNotice(pi);
+  registerConfirmGate(pi);
+}
+
+/**
+ * 会删除、结束的操作先问学习者（pi 文档的权限控制写法：按工具的 destructiveHint 注解，在 tool_call 里 confirm，不同意就 block）。
+ * 确认卡片的标题用模型写的这一步意图（reason）。
+ */
+function registerConfirmGate(pi: ExtensionAPI) {
+  pi.on("tool_call", async (event, ctx) => {
+    if (!event.toolName.startsWith(`mcp__${PINDU_SERVER}__`)) return;
+    const hints = pi.getAllTools().find(tool => tool.name === event.toolName)?.annotations;
+    if (hints?.destructiveHint !== true) return;
+    const reason = String((event.input as { reason?: unknown }).reason ?? "").trim();
+    const ok = await ctx.ui.confirm(reason || "确定要这样做吗？", "这一步会删除或结束，确认后才会执行。", { signal: ctx.signal });
+    if (!ok) {
+      return { block: true, reason: "The learner did not confirm, so nothing was changed. Do not retry unless they ask again." };
+    }
+  });
 }
 
 /** 自定义消息类型：后台任务结束的通知（界面显示成系统提示） */

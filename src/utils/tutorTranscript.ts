@@ -201,7 +201,7 @@ export function applyEvent(state: TranscriptState, event: PiEvent): TranscriptSt
 
 /** 工具结果 details 里给界面的部分（拼读的工具约定写在 `redlark` 下） */
 export interface StepOutput {
-  kind: 'wordbook' | 'passage' | 'questions' | 'words';
+  kind: 'wordbook' | 'passage' | 'questions' | 'words' | 'plan';
   id?: number;
   title: string;
   meta?: string;
@@ -245,7 +245,9 @@ export type ViewTurn =
 const SKILL_NAMES: Record<string, string> = {
   'tutor-vocabulary': '词汇本',
   'tutor-passages': '短文与题组',
-  'tutor-learning': '学习情况',
+  'tutor-plans': '学习计划',
+  'tutor-videos': '视频',
+  'tutor-organize': '整理',
   'tutor-materials': '读材料',
 };
 

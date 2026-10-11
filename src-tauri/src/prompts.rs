@@ -460,7 +460,7 @@ pub const MATERIAL_SKILLS: [(&str, &str); 3] = [
 ];
 
 /// AI 老师独立对话的 pi skills：各功能域怎么用拼读的工具（同素材阅读，运行前写到数据目录再用 `--skill` 加载）
-pub const TUTOR_SKILLS: [(&str, &str); 4] = [
+pub const TUTOR_SKILLS: [(&str, &str); 6] = [
     (
         "tutor-vocabulary",
         include_str!("prompts/skills/tutor-vocabulary/SKILL.md"),
@@ -470,8 +470,16 @@ pub const TUTOR_SKILLS: [(&str, &str); 4] = [
         include_str!("prompts/skills/tutor-passages/SKILL.md"),
     ),
     (
-        "tutor-learning",
-        include_str!("prompts/skills/tutor-learning/SKILL.md"),
+        "tutor-plans",
+        include_str!("prompts/skills/tutor-plans/SKILL.md"),
+    ),
+    (
+        "tutor-videos",
+        include_str!("prompts/skills/tutor-videos/SKILL.md"),
+    ),
+    (
+        "tutor-organize",
+        include_str!("prompts/skills/tutor-organize/SKILL.md"),
     ),
     (
         "tutor-materials",

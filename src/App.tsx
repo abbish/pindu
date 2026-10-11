@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { ErrorBoundary, ToastProvider } from './components';
 import { AppShell } from './components/AppShell/AppShell';
 import { DevTools } from './components/DevTools';
@@ -43,6 +44,19 @@ function App() {
   const canForward = stepTarget(history, 1, skipInHistory) !== null;
   const back = useCallback(() => setHistory((h) => stepRoute(h, -1, skipInHistory)), []);
   const forward = useCallback(() => setHistory((h) => stepRoute(h, 1, skipInHistory)), []);
+
+  // AI 老师打开页面（MCP 工具 open_page，页面键与参数由后端按路由表给出）
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    void listen<{ page: PageKey; params: RouteParams[PageKey] | null }>('tutor-open-page', ({ payload }) =>
+      navigate(payload.page, payload.params ?? undefined)
+    ).then((fn) => (disposed ? fn() : (unlisten = fn)));
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [navigate]);
 
   // ⌘[ / ⌘] 与鼠标侧键：后退 / 前进（整窗页面里不响应，它们有自己的退出流程）
   const inFocusPage = FOCUS_PAGES.has(route.page);

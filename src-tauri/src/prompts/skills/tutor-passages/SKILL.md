@@ -1,6 +1,6 @@
 ---
 name: tutor-passages
-description: 写一篇练习用的短文、把一段英文存成短文，或者给短文出阅读理解 / 听力题。学习者说「写个小故事用上这些词」「存下来」「出几道题考考我」，或者给了一段英文想留着学时使用。
+description: 写一篇练习用的短文、把一段英文存成短文、给短文出阅读理解 / 听力题；改短文的标题难度、词汇、译文；看、改名、删除题组；删除短文；看短文练习成绩。学习者说「写个小故事用上这些词」「存下来」「出几道题」「这句翻译不对」「把这篇删了」时使用。
 ---
 
 # 短文与题组
@@ -26,6 +26,12 @@ description: 写一篇练习用的短文、把一段英文存成短文，或者�
 - 阅读理解用 reading，听力用 listening；题量默认 3 道选择 + 2 道判断，学习者有要求就按要求。
 - 出题在后台进行，做好后会通知你。
 
-## 不做的事
+## 改短文与题组
 
-- 不修改、不删除已有短文和题组；要改时告诉学习者在「短文库」里改。
+- 先 `mcp__pindu__get_passage`：句子带序号，题组带 id。
+- 标题、难度（a1 / a2 / b1 / b2）、场景：`mcp__pindu__update_passage`。
+- 某句译文：`mcp__pindu__update_translation`（序号从 0 开始）。
+- 词汇：`mcp__pindu__set_passage_vocabulary`（add 的词要出现在正文里；remove 去掉）。
+- 题组：`mcp__pindu__get_question_set` 看题目和答案（可以和学习者一起讲题）；`rename_question_set` 改名。
+- 删除短文、题组：`mcp__pindu__delete_passage` / `mcp__pindu__delete_question_set`，界面会请学习者确认；没结束的计划还在用的删不了。
+- 练习成绩：`mcp__pindu__passage_results`。
