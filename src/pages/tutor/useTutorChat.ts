@@ -75,6 +75,22 @@ export function useTutorChat(initialPrompt?: string) {
     setActiveIdState(id);
   }, []);
 
+  // pi 的事件按帧合并处理：流式增量很密，逐个重画会让界面一卡一卡
+  const pending = useRef<{ id: string; event: PiEvent }[]>([]);
+  const frame = useRef(0);
+  const enqueue = useCallback((id: string, event: PiEvent) => {
+    pending.current.push({ id, event });
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      // 这一帧里切换了对话：只用当前对话的
+      const events = pending.current.filter((p) => p.id === activeRef.current).map((p) => p.event);
+      pending.current = [];
+      if (events.length > 0) setTranscript((s) => events.reduce(applyEvent, s));
+    });
+  }, []);
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
   const refreshList = useCallback(async () => {
     listing ??= tutorService.list().finally(() => {
       listing = null;
@@ -108,7 +124,7 @@ export function useTutorChat(initialPrompt?: string) {
         b.events.set(conversationId, [...(b.events.get(conversationId) ?? []), event]);
         return;
       }
-      if (conversationId === activeRef.current) setTranscript((s) => applyEvent(s, event));
+      if (conversationId === activeRef.current) enqueue(conversationId, event);
     }).then((fn) => (disposed ? fn() : (unlisten = fn)));
     return () => {
       disposed = true;

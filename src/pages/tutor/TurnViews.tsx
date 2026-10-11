@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useJobActions } from '@/components/Jobs/useJobActions';
 import { useJob } from '@/hooks/useJobs';
+import { useSmoothText } from '@/hooks/useSmoothText';
 import { isJobActive, type Job } from '@/types/job';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '@/navigation';
@@ -133,6 +134,14 @@ export const AgentTurnView: React.FC<{
   );
 };
 
+const REMARK_PLUGINS = [remarkGfm];
+
+/** Markdown 正文：文字没变就不重新解析（流式时只有正在写的那段在变） */
+const Markdown = React.memo<{ text: string }>(({ text }) => <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown>);
+
+/** 正在写的那段：逐帧平滑追上模型输出 */
+const StreamingMarkdown: React.FC<{ text: string }> = ({ text }) => <Markdown text={useSmoothText(text, true)} />;
+
 /**
  * 一轮的内容。运行中按顺序全部显示；结束后，最后一段回答之前的过程（工具调用与中途说的话）
  * 收成一行「处理了 N 步 · 用时 X 秒」，点开再看，只把最后的回答留在外面。
@@ -147,7 +156,7 @@ const TurnItems: React.FC<{ turn: Extract<ViewTurn, { role: 'agent' }> }> = ({ t
   const render = (item: ViewItem, last: boolean) =>
     item.kind === 'text' ? (
       <div key={item.key} className={cn('markdown-body select-text', turn.running && last && 'markdown-streaming')}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
+        {turn.running && last ? <StreamingMarkdown text={item.text} /> : <Markdown text={item.text} />}
       </div>
     ) : (
       <StepList key={item.key} steps={item.steps} />
