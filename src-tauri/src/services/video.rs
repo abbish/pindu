@@ -1,7 +1,7 @@
 //! 视频库：导入（后台任务：复制 → 读取信息 → 需要时转成可编辑格式 → 波形与缩略图）、列表与详情、规划草稿、删除。
 //!
 //! 文件都在 `<数据目录>/videos/<id>/`：source.<扩展名>（原视频）、proxy.mp4（编辑用，原视频能直接播放时没有）、
-//! peaks.json（波形）、thumbs/thumb_0001.jpg…（时间轴缩略图）、clips/（切出来的短片）。数据库只存文件名。
+//! peaks.json（波形）、thumbs/thumb_0001.jpg…（时间轴缩略图）、cover.jpg（封面）、clips/（切出来的短片）。数据库只存文件名。
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::JobCtx;
@@ -18,6 +18,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 const PEAKS_FILE: &str = "peaks.json";
 const THUMBS_DIR: &str = "thumbs";
 const PROXY_FILE: &str = "proxy.mp4";
+const COVER_FILE: &str = "cover.jpg";
+/// 黑场 / 纯色的 360p 封面只有 2KB 左右，有画面的一般 10KB 以上
+const MIN_COVER_BYTES: u64 = 6 * 1024;
+/// 封面最多试几个位置
+const COVER_TRIES: usize = 5;
 const COPY_CHUNK: usize = 4 * 1024 * 1024;
 
 /// 视频文件所在目录
@@ -47,28 +52,108 @@ fn thumbs(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// 封面：从时间轴缩略图里挑画面信息最多的一张（JPEG 越大细节越多；黑场、纯色只有几百字节）。
-/// 跳过开头和结尾各 5%（片头、片尾字幕）；同样大小取靠前的
-fn cover_of(thumbs: &[PathBuf]) -> Option<&PathBuf> {
-    let sizes: Vec<u64> = thumbs
-        .iter()
-        .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
-        .collect();
-    pick_cover(&sizes).map(|i| &thumbs[i])
+fn file_size(path: &Path) -> u64 {
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
 }
 
-fn pick_cover(sizes: &[u64]) -> Option<usize> {
+/// 做封面的候选缩略图，按画面信息从多到少（JPEG 越大细节越多；黑场、纯色只有几百字节）。
+/// 跳过开头和结尾各 5%（片头、片尾字幕）；同样大小靠前的在前
+fn cover_candidates(sizes: &[u64]) -> Vec<usize> {
     let n = sizes.len();
-    if n == 0 {
-        return None;
-    }
     let skip = n / 20;
-    let range = if n - 2 * skip > 0 {
-        skip..n - skip
+    let mut out: Vec<usize> = if n > 2 * skip {
+        (skip..n - skip).collect()
     } else {
-        0..n
+        (0..n).collect()
     };
-    range.rev().max_by_key(|&i| sizes[i])
+    out.sort_by_key(|&i| std::cmp::Reverse(sizes[i]));
+    out
+}
+
+/// 还没有封面（cover.jpg）时用的缩略图
+fn fallback_cover(thumbs: &[PathBuf]) -> Option<&PathBuf> {
+    let sizes: Vec<u64> = thumbs.iter().map(|p| file_size(p)).collect();
+    cover_candidates(&sizes).first().map(|&i| &thumbs[i])
+}
+
+/// 生成封面 cover.jpg：在画面信息最多的几张缩略图的位置截 360p 的关键帧，截到黑场就换下一个位置。
+/// 返回是否生成成功（都不行时不留文件，列表继续用缩略图）
+pub async fn make_cover(
+    tools: &MediaTools,
+    dir: &Path,
+    media_file: &str,
+    duration_ms: i64,
+) -> AppResult<bool> {
+    let thumbs = thumbs(dir);
+    let sizes: Vec<u64> = thumbs.iter().map(|p| file_size(p)).collect();
+    let interval = thumb_interval_ms(duration_ms);
+    let out = dir.join(COVER_FILE);
+    for i in cover_candidates(&sizes).into_iter().take(COVER_TRIES) {
+        // 第 i 张缩略图大约在 i × 间隔处；从半个间隔前开始找关键帧
+        let at = (i as i64 * interval - interval / 2).max(0);
+        tools
+            .keyframe_poster(&dir.join(media_file), at, &out)
+            .await?;
+        if file_size(&out) >= MIN_COVER_BYTES {
+            return Ok(true);
+        }
+    }
+    let _ = std::fs::remove_file(&out);
+    Ok(false)
+}
+
+/// 已导入、还没有封面的视频：(id, 视频目录, 编辑用文件, 时长)
+pub fn missing_covers(rows: &[VideoRow], data_dir: &Path) -> Vec<(i64, PathBuf, String, i64)> {
+    rows.iter()
+        .filter_map(|row| {
+            let media = row.media_file.clone()?;
+            let dir = video_dir(data_dir, row.id);
+            (!dir.join(COVER_FILE).exists() && !thumbs(&dir).is_empty()).then_some((
+                row.id,
+                dir,
+                media,
+                row.duration_ms,
+            ))
+        })
+        .collect()
+}
+
+/// 本次运行里补过封面的视频（列表每次加载都会检查：不重复补，补不出来的也不反复试）
+static COVER_BACKFILL: std::sync::Mutex<Vec<i64>> = std::sync::Mutex::new(Vec::new());
+
+/// 给更新前导入的视频补封面（后台逐个生成，下次加载列表时显示）
+pub fn backfill_covers(
+    tools: MediaTools,
+    list: Vec<(i64, PathBuf, String, i64)>,
+    logger: Arc<Logger>,
+) {
+    let list: Vec<_> = {
+        let Ok(mut tried) = COVER_BACKFILL.lock() else {
+            return;
+        };
+        let fresh: Vec<_> = list
+            .into_iter()
+            .filter(|(id, ..)| !tried.contains(id))
+            .collect();
+        tried.extend(fresh.iter().map(|(id, ..)| *id));
+        fresh
+    };
+    if list.is_empty() {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        for (id, dir, media, duration_ms) in list {
+            match make_cover(&tools, &dir, &media, duration_ms).await {
+                Ok(true) => logger.info("VIDEO", &format!("视频 {id} 已补封面")),
+                Ok(false) => {}
+                Err(e) => logger.warn(
+                    "VIDEO",
+                    &format!("视频 {id} 补封面失败，继续用缩略图"),
+                    Some(&e.to_string()),
+                ),
+            }
+        }
+    });
 }
 
 /// 数据库行 → 前端类型（文件名换成绝对路径）
@@ -82,7 +167,11 @@ pub fn to_video(row: &VideoRow, data_dir: &Path, url: UrlOf) -> Video {
         subtitle_name: row.subtitle_name.clone(),
         has_source: row.source_file.is_some(),
         media_url: row.media_file.as_ref().and_then(|f| url(&dir.join(f))),
-        cover_url: cover_of(&thumbs).and_then(|p| url(p)),
+        cover_url: Some(dir.join(COVER_FILE))
+            .filter(|p| p.exists())
+            .as_ref()
+            .or(fallback_cover(&thumbs))
+            .and_then(|p| url(p)),
         duration_ms: row.duration_ms,
         width: row.width,
         height: row.height,
@@ -240,6 +329,14 @@ impl VideoImport {
         self.tools
             .filmstrip(&dir.join(&media_file), &dir.join(THUMBS_DIR), interval_s)
             .await?;
+        // 封面不影响导入：失败时列表用缩略图
+        if let Err(e) = make_cover(&self.tools, dir, &media_file, info.duration_ms).await {
+            self.logger.warn(
+                "VIDEO",
+                &format!("视频 {} 生成封面失败，用缩略图代替", self.video_id),
+                Some(&e.to_string()),
+            );
+        }
 
         VideoRepository::finish_import(
             &self.pool,
@@ -417,17 +514,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cover_skips_black_frames_and_credits() {
-        assert_eq!(pick_cover(&[]), None);
-        assert_eq!(pick_cover(&[300]), Some(0));
-        // 开头黑场、中间有画面：取细节最多的；同样大小取靠前的
-        assert_eq!(pick_cover(&[316, 313, 1423, 2471, 2071, 2471]), Some(3));
-        // 20 张：最后 1 张（片尾字幕）再大也不选
+    fn cover_candidates_skip_black_frames_and_credits() {
+        assert!(cover_candidates(&[]).is_empty());
+        assert_eq!(cover_candidates(&[300]), [0]);
+        // 开头黑场、中间有画面：细节多的在前，同样大小靠前的在前，黑场最后
+        assert_eq!(
+            cover_candidates(&[316, 313, 1423, 2471, 2071, 2471]),
+            [3, 5, 4, 2, 0, 1]
+        );
+        // 20 张：第一张和最后一张（片头、片尾字幕）再大也不选
         let mut sizes = vec![1000; 20];
         sizes[0] = 5000;
         sizes[19] = 9000;
         sizes[7] = 2000;
-        assert_eq!(pick_cover(&sizes), Some(7));
+        let out = cover_candidates(&sizes);
+        assert_eq!(out[0], 7);
+        assert!(!out.contains(&0) && !out.contains(&19));
     }
 
     #[test]

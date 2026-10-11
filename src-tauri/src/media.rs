@@ -274,6 +274,26 @@ impl MediaTools {
         self.run(args, 0, |_| {}, || false).await
     }
 
+    /// 封面：从 at_ms 起的第一个关键帧（只解码关键帧，长视频也只要零点几秒）
+    pub async fn keyframe_poster(&self, src: &Path, at_ms: i64, out: &Path) -> AppResult<()> {
+        let args = vec![
+            "-skip_frame".into(),
+            "nokey".into(),
+            "-ss".into(),
+            seconds(at_ms),
+            "-i".into(),
+            path_arg(src),
+            "-frames:v".into(),
+            "1".into(),
+            "-vf".into(),
+            "scale=-2:360".into(),
+            "-q:v".into(),
+            "4".into(),
+            path_arg(out),
+        ];
+        self.run(args, 0, |_| {}, || false).await
+    }
+
     /// 时间轴缩略图：每 `interval_s` 秒一张（只解码关键帧，很快），文件名 thumb_0001.jpg…，返回张数
     pub async fn filmstrip(&self, src: &Path, out_dir: &Path, interval_s: u32) -> AppResult<usize> {
         std::fs::create_dir_all(out_dir).map_err(io_error)?;

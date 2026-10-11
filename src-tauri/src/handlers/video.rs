@@ -202,6 +202,12 @@ pub async fn get_videos(app: AppHandle) -> AppResult<Vec<Video>> {
     let data = crate::app_paths::dirs(&app).data;
     let result = async {
         let rows = VideoRepository::list(pool.inner()).await?;
+        let missing = video_service::missing_covers(&rows, &data);
+        if !missing.is_empty() {
+            if let Some(tools) = media_tools(&app).await? {
+                video_service::backfill_covers(tools, missing, Arc::new(logger.inner().clone()));
+            }
+        }
         let mut tags =
             crate::repositories::tag_repository::TagRepository::new(Arc::new(pool.inner().clone()))
                 .tags_of_kind(crate::types::material::MaterialKind::Video)
