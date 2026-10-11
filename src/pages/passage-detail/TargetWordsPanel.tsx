@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { WandSparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InlineError } from '@/components/InlineError';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +25,10 @@ export interface TargetWordsPanelProps {
   focusWord?: string | null;
   /** 「其他素材」里打开短文 / 片段 */
   onOpenPassage?: (passageId: number, isClip: boolean) => void;
+  /** 移除一个目标词 */
+  onRemove?: (word: string) => void;
+  /** 重新挑选目标词 */
+  onRepick?: () => void;
 }
 
 /**
@@ -33,7 +38,7 @@ export interface TargetWordsPanelProps {
 /** 本次打开应用期间已请求过补生成单词卡的「短文 + 那组词」（页签切走再回来不重复提交） */
 const requestedCards = new Set<string>();
 
-export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord, onOpenPassage }) => {
+export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, footer, focusWord, onOpenPassage, onRemove, onRepick }) => {
   const [details, setDetails] = useState<Map<string, Word> | null>(null);
   /** 不在词汇本的目标词的单词卡（小写单词 → 卡片） */
   const [cards, setCards] = useState<Map<string, WordCard> | null>(null);
@@ -122,23 +127,40 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
                 {items.map(({ w, i }) => {
                   const m = details?.get(w.word.toLowerCase())?.meaning || cards?.get(w.word.toLowerCase())?.meaning || w.meaning;
                   return (
-                    <button
-                      key={w.word}
-                      type="button"
-                      onClick={() => setIndex(i)}
-                      className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50', i === index && 'bg-accent text-accent-foreground hover:bg-accent')}
-                      aria-current={i === index ? 'true' : undefined}
-                    >
-                      <span className="font-medium">{w.word}</span>
-                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{m}</span>
-                      {w.wordId === null && <span className="size-1.5 shrink-0 rounded-full bg-warning" title="未收录" />}
-                    </button>
+                    <div key={w.word} className="group relative">
+                      <button
+                        type="button"
+                        onClick={() => setIndex(i)}
+                        className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50', onRemove && 'pr-7', i === index && 'bg-accent text-accent-foreground hover:bg-accent')}
+                        aria-current={i === index ? 'true' : undefined}
+                      >
+                        <span className="font-medium">{w.word}</span>
+                        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{m}</span>
+                        {w.wordId === null && <span className="size-1.5 shrink-0 rounded-full bg-warning" title="未收录" />}
+                      </button>
+                      {onRemove && (
+                        <button
+                          type="button"
+                          onClick={() => onRemove(w.word)}
+                          aria-label={`移除目标词 ${w.word}`}
+                          className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5 text-muted-foreground opacity-0 outline-none group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
             );
           })}
         </Card>
+        {onRepick && (
+          <Button variant="outline" size="sm" className="self-start" onClick={onRepick}>
+            <WandSparkles />
+            重新挑选目标词
+          </Button>
+        )}
         {footer}
       </div>
 

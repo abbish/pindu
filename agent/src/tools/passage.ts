@@ -372,3 +372,47 @@ export const submitTranslationTool = defineTool({
     return { content: [{ type: "text", text: "Accepted." }], details: params, terminate: true };
   },
 });
+
+// ==================== submit_target_words ====================
+
+/** 重新挑选目标词最多这么多个 */
+const MAX_TARGET_WORDS = 20;
+
+const TargetWordsParams = Type.Object({
+  words: Type.Array(
+    Type.Object({
+      word: Type.String({ description: "base form of a word or phrase that appears in the text (e.g. give up)" }),
+      meaning: Type.String({ description: "Chinese meaning in this text" }),
+      uses: Type.Optional(Type.Array(Type.String(), { description: "for a phrase: how it is written in the text, copied exactly (e.g. gave it up); one entry per distinct writing" })),
+    }),
+    { description: `target words, most worth learning first (at most ${MAX_TARGET_WORDS})` },
+  ),
+});
+export type TargetWordsSubmission = Static<typeof TargetWordsParams>;
+
+export function targetWordsProblems(t: TargetWordsSubmission): string[] {
+  const problems: string[] = [];
+  if (t.words.length === 0) problems.push("words 不能为空");
+  if (t.words.length > MAX_TARGET_WORDS) problems.push(`words 最多 ${MAX_TARGET_WORDS} 个`);
+  const seen = new Set<string>();
+  t.words.forEach((k, i) => {
+    const word = k.word.trim();
+    if (!/^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,5}$/.test(word)) problems.push(`words[${i + 1}].word 应是一个英文单词或词组`);
+    if (!k.meaning.trim()) problems.push(`words[${i + 1}]（${word}）缺少中文意思`);
+    if (seen.has(word.toLowerCase())) problems.push(`「${word}」重复了`);
+    seen.add(word.toLowerCase());
+  });
+  return problems;
+}
+
+export const submitTargetWordsTool = defineTool({
+  name: "submit_target_words",
+  label: "提交目标词",
+  description: "Submit the target words picked from the text in one call. The submission is validated; if it returns errors, fix only the listed problems and call again.",
+  parameters: TargetWordsParams,
+  async execute(_toolCallId, params) {
+    const problems = targetWordsProblems(params);
+    if (problems.length > 0) fail(problems);
+    return { content: [{ type: "text", text: "Accepted." }], details: params, terminate: true };
+  },
+});

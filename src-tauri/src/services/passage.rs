@@ -32,6 +32,10 @@ const OPEN_ANSWER_MAX: usize = 1000;
 /// 自定主题的最大长度（字符）
 /// 自定场景 / 调整意见最多几个字（start_passage_planning 提交前也按它校验）
 pub const TOPIC_MAX: usize = 200;
+/// 短文标题最长（字）
+pub const TITLE_MAX: usize = 100;
+/// 一句译文最长（字）
+const TRANSLATION_MAX: usize = 500;
 /// 按描述生成时写作要求的最大字数
 const INSTRUCTION_MAX: usize = 500;
 /// 按描述生成时 AI 为整份规划选目标词的上限
@@ -399,6 +403,150 @@ impl PassageService {
             }
         }
         Ok((scenes.join("\n\n"), labels.join("\n")))
+    }
+
+    /// 重新挑选目标词：AI 从原文里挑 `count` 个值得学的词（5–20），来源词汇本里原文也用到的词优先。
+    /// 只返回建议，确认后由 `WordCardService::replace_target_words` 保存
+    pub async fn suggest_target_words(
+        &self,
+        passage_id: Id,
+        count: i64,
+        paths: &AgentPaths,
+    ) -> AppResult<Vec<crate::types::passage::TargetWordSuggestion>> {
+        let passage = self.get(passage_id).await?;
+        let count = count.clamp(5, passage_rules::MAX_SUGGESTED_TARGETS as i64) as usize;
+        let full = passage
+            .sentences
+            .iter()
+            .map(|s| s.en.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        // 来源词汇本（计划来源用计划里的词汇本）里、原文也用到的词
+        let mut books: Vec<Id> = Vec::new();
+        let plans = StudyPlanRepository::new(self.pool.clone(), self.logger.clone());
+        for source in &passage.sources {
+            let ids = match source.kind.as_str() {
+                "book" => vec![source.ref_id],
+                "plan" => plans.find_word_book_ids(source.ref_id).await?,
+                _ => Vec::new(),
+            };
+            for id in ids {
+                if !books.contains(&id) {
+                    books.push(id);
+                }
+            }
+        }
+        let mut book_words: Vec<String> = Vec::new();
+        for book in books {
+            for row in self.repository.book_candidates(book).await? {
+                if passage_rules::text_uses(&full, &row.word)
+                    && !book_words.iter().any(|w| w.eq_ignore_ascii_case(&row.word))
+                {
+                    book_words.push(row.word);
+                }
+            }
+        }
+        book_words.truncate(80);
+        let current: Vec<String> = passage
+            .target_words
+            .iter()
+            .map(|t| t.word.clone())
+            .collect();
+        let text = passage
+            .sentences
+            .iter()
+            .enumerate()
+            .map(|(i, s)| format!("{}. {}", i + 1, s.en))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let profile = PromptProfileService::load(&self.pool).await?;
+        let model = self.model().await?;
+        let message = tasks::passage_target_words_message(
+            &passage.title,
+            &text,
+            count,
+            &book_words,
+            &current,
+        );
+        let words =
+            tasks::suggest_target_words(paths, &model, &profile, &message, &full, &self.logger)
+                .await?;
+        self.logger.info(
+            "PASSAGE",
+            &format!(
+                "短文 {passage_id} 重新挑选目标词：要 {count} 个，挑出 {} 个（词汇本里原文用到 {} 个）",
+                words.len(),
+                book_words.len()
+            ),
+        );
+        Ok(words
+            .into_iter()
+            .map(
+                |(word, meaning, forms)| crate::types::passage::TargetWordSuggestion {
+                    word,
+                    meaning,
+                    forms,
+                },
+            )
+            .collect())
+    }
+
+    /// 改标题、难度（用户修改为准）；返回更新后的短文
+    pub async fn update_info(
+        &self,
+        passage_id: Id,
+        title: Option<&str>,
+        level: Option<&str>,
+    ) -> AppResult<Passage> {
+        let passage = self.get(passage_id).await?;
+        let title = match title.map(str::trim) {
+            Some("") => return Err(AppError::ValidationError("标题不能为空".into())),
+            Some(t) if t.chars().count() > TITLE_MAX => {
+                return Err(AppError::ValidationError(format!(
+                    "标题最多 {TITLE_MAX} 个字"
+                )))
+            }
+            Some(t) => t.to_string(),
+            None => passage.title.clone(),
+        };
+        let level = match level {
+            Some(l) if ["a1", "a2", "b1", "b2"].contains(&l) => l.to_string(),
+            Some(_) => {
+                return Err(AppError::ValidationError(
+                    "难度只能是 A1、A2、B1、B2".into(),
+                ))
+            }
+            None => passage.level.clone(),
+        };
+        self.repository
+            .update_info(passage_id, &title, &level)
+            .await?;
+        self.get(passage_id).await
+    }
+
+    /// 改一句的中文译文（英文不变）；返回更新后的短文
+    pub async fn update_translation(
+        &self,
+        passage_id: Id,
+        index: i64,
+        zh: &str,
+    ) -> AppResult<Passage> {
+        let mut passage = self.get(passage_id).await?;
+        let zh = zh.trim();
+        if zh.chars().count() > TRANSLATION_MAX {
+            return Err(AppError::ValidationError(format!(
+                "译文最多 {TRANSLATION_MAX} 个字"
+            )));
+        }
+        let sentence = usize::try_from(index)
+            .ok()
+            .and_then(|i| passage.sentences.get_mut(i))
+            .ok_or_else(|| AppError::NotFound("这句话不存在".into()))?;
+        sentence.zh = zh.to_string();
+        self.repository
+            .update_sentences(passage_id, &passage.sentences)
+            .await?;
+        self.get(passage_id).await
     }
 
     /// 新建短文时的场景建议：按所选词汇本（含指定单词所在的词汇本）的场景，给 4–6 个能用上这些词的场景
@@ -1355,6 +1503,33 @@ pub(crate) mod tests {
         .unwrap();
         tx.commit().await.unwrap();
         (passage_id, set_id)
+    }
+
+    /// 用户改标题、难度、单句译文：以用户修改为准，英文与其他句子不变；不合法的拒绝
+    #[tokio::test]
+    async fn user_edits_title_level_and_translation() {
+        let pool = memory_pool().await;
+        let id = seed_plain_passage(&pool, "AI Title").await;
+        let service = PassageService::new(pool.clone(), test_logger());
+        let before = service.get(id).await.unwrap();
+        let p = service
+            .update_info(id, Some("  My Title "), Some("b1"))
+            .await
+            .unwrap();
+        assert_eq!((p.title.as_str(), p.level.as_str()), ("My Title", "b1"));
+        let p = service.update_info(id, None, Some("a2")).await.unwrap();
+        assert_eq!((p.title.as_str(), p.level.as_str()), ("My Title", "a2"));
+        assert!(service.update_info(id, Some(" "), None).await.is_err());
+        assert!(service.update_info(id, None, Some("c1")).await.is_err());
+        let p = service
+            .update_translation(id, 1, " 改过的译文 ")
+            .await
+            .unwrap();
+        assert_eq!(p.sentences[1].zh, "改过的译文");
+        assert_eq!(p.sentences[1].en, before.sentences[1].en);
+        assert_eq!(p.sentences[0], before.sentences[0]);
+        assert!(service.update_translation(id, 99, "x").await.is_err());
+        crate::time::assert_instants_canonical(&pool).await;
     }
 
     #[tokio::test]

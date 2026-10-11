@@ -88,7 +88,13 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ la
 /** 选中的文字是一个英文单词或 2–6 个词的词组（可以加成目标词） */
 
 /** onAddTarget：读的时候选中原文里的一个词，加成这篇的目标词 */
-export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: string, stay?: boolean, form?: string) => void; onOpenWord?: (word: string) => void }> = ({ passage, onAddTarget, onOpenWord }) => {
+export const ReadAloudPanel: React.FC<{
+  passage: Passage;
+  onAddTarget?: (word: string, stay?: boolean, form?: string) => void;
+  onOpenWord?: (word: string) => void;
+  /** 句子分析里改译文；失败时返回原因 */
+  onEditTranslation?: (index: number, zh: string) => Promise<string | null>;
+}> = ({ passage, onAddTarget, onOpenWord, onEditTranslation }) => {
   const [prefs, setPrefs] = useState<ReadAloudPrefs>(readPrefs);
   const [blind, setBlind] = useState(false);
   const [blindDone, setBlindDone] = useState(false);
@@ -392,7 +398,7 @@ export const ReadAloudPanel: React.FC<{ passage: Passage; onAddTarget?: (word: s
       />
       </SelectionAction>
       {analyzing !== null && (
-        <SentenceAnalysisPanel passageId={passage.id} sentences={passage.sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targets} onAddTarget={onAddTarget && ((w, form) => onAddTarget(w, true, form))} onClose={() => setAnalyzing(null)} />
+        <SentenceAnalysisPanel passageId={passage.id} sentences={passage.sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targets} onAddTarget={onAddTarget && ((w, form) => onAddTarget(w, true, form))} onEditTranslation={onEditTranslation} onClose={() => setAnalyzing(null)} />
       )}
     </Card>
   );

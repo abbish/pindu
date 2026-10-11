@@ -19,6 +19,51 @@ pub struct PassageSentence {
     pub end_ms: Option<i64>,
 }
 
+/// 重新挑选目标词时 AI 的建议（原文里出现过的词或词组）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetWordSuggestion {
+    pub word: String,
+    /// 在这篇短文里的中文意思
+    pub meaning: String,
+    /// 词组在原文里的写法
+    #[serde(default)]
+    pub forms: Vec<String>,
+}
+
+/// 重新挑选目标词时确认的一个词
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetWordPick {
+    pub word: String,
+    /// 词组在原文里的写法
+    #[serde(default)]
+    pub forms: Vec<String>,
+    /// 在这篇短文里的中文意思
+    #[serde(default)]
+    pub meaning: Option<String>,
+}
+
+/// 把短文的目标词整体换成这组（重新挑选后确认的）
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPassageTargetWordsRequest {
+    pub passage_id: Id,
+    pub words: Vec<TargetWordPick>,
+}
+
+/// 改短文的标题 / 难度（不传的不改）
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePassageInfoRequest {
+    pub passage_id: Id,
+    #[serde(default)]
+    pub title: Option<String>,
+    /// a1 / a2 / b1 / b2
+    #[serde(default)]
+    pub level: Option<String>,
+}
+
 /// 短文用到的目标词
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]

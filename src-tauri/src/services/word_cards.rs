@@ -8,7 +8,7 @@ use crate::repositories::passage_repository::PassageRepository;
 use crate::repositories::word_card_repository::WordCardRepository;
 use crate::services::passage_rules;
 use crate::types::material::WordCard;
-use crate::types::passage::{Passage, PassageTargetWord};
+use crate::types::passage::{Passage, PassageTargetWord, TargetWordPick};
 use crate::types::word_analysis::PhonicsWord;
 use crate::types::Id;
 use sqlx::SqlitePool;
@@ -59,6 +59,13 @@ fn proper_noun_form(passage: &Passage, word: &str) -> Option<String> {
         }
     }
     found.filter(|_| mid_sentence)
+}
+
+/// 同一个目标词：同一个词（含变形，双向：birds 与 bird）或同一个词组（gave up 与 give up）
+fn same_target(a: &str, b: &str) -> bool {
+    a.eq_ignore_ascii_case(b)
+        || (passage_rules::is_phrase(a) == passage_rules::is_phrase(b)
+            && (passage_rules::text_uses(a, b) || passage_rules::text_uses(b, a)))
 }
 
 /// 选中的文字是不是可以加成目标词的英文单词或词组（2–6 个词）
@@ -126,6 +133,93 @@ impl WordCardService {
         word: &str,
         form: Option<&str>,
     ) -> AppResult<Passage> {
+        let mut passage = self.passage(passage_id).await?;
+        let forms: Vec<String> = form.map(|f| vec![f.to_string()]).unwrap_or_default();
+        let target = self.resolve_target(&passage, word, &forms).await?;
+        if passage
+            .target_words
+            .iter()
+            .any(|t| same_target(&t.word, &target.word))
+        {
+            return Err(AppError::ValidationError(format!(
+                "「{}」已经是目标词",
+                word.trim()
+            )));
+        }
+        passage.target_words.push(target);
+        PassageRepository::new(self.pool.clone())
+            .update_target_words(passage_id, &passage.target_words)
+            .await?;
+        self.passage(passage_id).await
+    }
+
+    /// 移除一个目标词（按单词，不区分大小写）；返回更新后的短文
+    pub async fn remove_target_word(&self, passage_id: Id, word: &str) -> AppResult<Passage> {
+        let mut passage = self.passage(passage_id).await?;
+        let before = passage.target_words.len();
+        passage
+            .target_words
+            .retain(|t| !t.word.eq_ignore_ascii_case(word.trim()));
+        if passage.target_words.len() == before {
+            return Err(AppError::NotFound(format!(
+                "「{}」已经不是目标词",
+                word.trim()
+            )));
+        }
+        PassageRepository::new(self.pool.clone())
+            .update_target_words(passage_id, &passage.target_words)
+            .await?;
+        self.passage(passage_id).await
+    }
+
+    /// 整体换成这组目标词（重新挑选后确认的）：原来就有的词保留原来的标记（指定单词 / 写法 / wordId），
+    /// 新词按读原文加词的同一套规则核对；重复的只留一个。返回更新后的短文
+    pub async fn replace_target_words(
+        &self,
+        passage_id: Id,
+        picks: &[TargetWordPick],
+    ) -> AppResult<Passage> {
+        let passage = self.passage(passage_id).await?;
+        let mut out: Vec<PassageTargetWord> = Vec::new();
+        for pick in picks {
+            let target = match passage
+                .target_words
+                .iter()
+                .find(|t| t.word.eq_ignore_ascii_case(pick.word.trim()))
+            {
+                Some(existing) => existing.clone(),
+                None => {
+                    let mut t = self
+                        .resolve_target(&passage, &pick.word, &pick.forms)
+                        .await?;
+                    t.required = false;
+                    t.meaning = pick
+                        .meaning
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|m| !m.is_empty())
+                        .map(str::to_string);
+                    t
+                }
+            };
+            if !out.iter().any(|t| same_target(&t.word, &target.word)) {
+                out.push(target);
+            }
+        }
+        PassageRepository::new(self.pool.clone())
+            .update_target_words(passage_id, &out)
+            .await?;
+        self.passage(passage_id).await
+    }
+
+    /// 一个词作为这篇短文的目标词：英文单词或词组、正文里出现过（含变形）；变形按原形存（词汇本或单词卡里有原形时），
+    /// 词汇本里有的关联 wordId。`forms`：词组在原文里的写法（核对后才用）
+    async fn resolve_target(
+        &self,
+        passage: &Passage,
+        word: &str,
+        forms: &[String],
+    ) -> AppResult<PassageTargetWord> {
         let normalized = crate::types::wordbook::normalize_vocab(
             word.trim_matches(|c: char| !c.is_ascii_alphabetic()),
         );
@@ -133,7 +227,6 @@ impl WordCardService {
         if !valid_selection(word) {
             return Err(AppError::ValidationError("请选中一个英文单词或词组".into()));
         }
-        let mut passage = self.passage(passage_id).await?;
         let text = passage
             .sentences
             .iter()
@@ -141,14 +234,18 @@ impl WordCardService {
             .collect::<Vec<_>>()
             .join(" ");
         // 词组的写法：给了就核对（和词组对得上、原样在文中），没给就是选中的文字本身
-        let forms: Vec<String> = match form {
-            Some(f) if passage_rules::is_phrase(word) => passage_rules::annotated_forms(
-                &[serde_json::json!({ "phrase": word, "text": f })],
-                &text,
-                word,
-            ),
-            _ if passage_rules::is_phrase(word) => vec![word.to_string()],
-            _ => Vec::new(),
+        let forms: Vec<String> = if passage_rules::is_phrase(word) {
+            if forms.is_empty() {
+                vec![word.to_string()]
+            } else {
+                let uses: Vec<serde_json::Value> = forms
+                    .iter()
+                    .map(|f| serde_json::json!({ "phrase": word, "text": f }))
+                    .collect();
+                passage_rules::annotated_forms(&uses, &text, word)
+            }
+        } else {
+            Vec::new()
         };
         if !passage_rules::text_uses_forms(&text, word, &forms) {
             return Err(AppError::ValidationError(format!(
@@ -157,7 +254,7 @@ impl WordCardService {
         }
         // 选中的是变形（fossils、studied、gave up 里的 gave）时，词汇本或单词卡里有原形就按原形加入
         let repository = PassageRepository::new(self.pool.clone());
-        let mut stored = proper_noun_form(&passage, word).unwrap_or_else(|| word.to_lowercase());
+        let mut stored = proper_noun_form(passage, word).unwrap_or_else(|| word.to_lowercase());
         let mut known = repository
             .word_ids_by_text(std::slice::from_ref(&stored))
             .await?;
@@ -177,26 +274,13 @@ impl WordCardService {
                 }
             }
         }
-        // 判重：同一个词（含变形，双向：birds 与 bird）或同一个词组（gave up 与 give up）
-        let same = |a: &str, b: &str| {
-            a.eq_ignore_ascii_case(b)
-                || (passage_rules::is_phrase(a) == passage_rules::is_phrase(b)
-                    && (passage_rules::text_uses(a, b) || passage_rules::text_uses(b, a)))
-        };
-        if passage.target_words.iter().any(|t| same(&t.word, &stored)) {
-            return Err(AppError::ValidationError(format!("「{word}」已经是目标词")));
-        }
-        passage.target_words.push(PassageTargetWord {
+        Ok(PassageTargetWord {
             word_id: known.get(&stored.to_lowercase()).copied(),
             word: stored,
             required: true,
             meaning: None,
             forms,
-        });
-        repository
-            .update_target_words(passage_id, &passage.target_words)
-            .await?;
-        self.passage(passage_id).await
+        })
     }
 
     /// AI 没能分析的词：存一张只有单词与释义（有的话）的卡片，标记为已处理
@@ -280,7 +364,9 @@ pub async fn learning_word(
 mod tests {
     use super::*;
     use crate::test_support::{memory_pool, test_logger};
-    use crate::types::passage::PassageSentence;
+    use crate::types::passage::{PassageSentence, TargetWordPick};
+    use crate::types::Id;
+    use sqlx::SqlitePool;
 
     fn phonics(word: &str) -> PhonicsWord {
         PhonicsWord {
@@ -298,6 +384,107 @@ mod tests {
             phrase_type: String::new(),
             separable: false,
         }
+    }
+
+    /// 一篇只有正文的短文（AI 写的），返回 id
+    async fn seed(pool: &Arc<SqlitePool>, en: &str) -> Id {
+        let mut tx = pool.begin().await.unwrap();
+        let id = PassageRepository::insert_passage_conn(
+            &mut tx,
+            &crate::repositories::passage_repository::NewPassage {
+                origin: "generated",
+                source_label: None,
+                scene: None,
+                level: "a2",
+                sources: &[],
+                model_name: None,
+                prompt_fingerprint: None,
+            },
+            &passage_rules::GeneratedPassage {
+                title: "Water".into(),
+                sentences: vec![PassageSentence {
+                    en: en.into(),
+                    zh: "译文".into(),
+                    paragraph: true,
+                    start_ms: None,
+                    end_ms: None,
+                }],
+                target_words: vec![],
+                word_count: 12,
+                tags: vec![],
+            },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        id
+    }
+
+    fn pick(word: &str, forms: &[&str], meaning: &str) -> TargetWordPick {
+        TargetWordPick {
+            word: word.into(),
+            forms: forms.iter().map(|f| f.to_string()).collect(),
+            meaning: Some(meaning.into()),
+        }
+    }
+
+    /// 重新挑选后整体替换：原有的保留标记，新词按原文核对、带上释义，重复的只留一个；不在原文的整体拒绝
+    #[tokio::test]
+    async fn replace_keeps_existing_marks_and_checks_new_words() {
+        let pool = memory_pool().await;
+        let id = seed(
+            &pool,
+            "The new policy failed, so the team gave it up and made a plan.",
+        )
+        .await;
+        let service = WordCardService::new(pool.clone(), test_logger());
+        service.add_target_word(id, "plan", None).await.unwrap();
+        let passage = service
+            .replace_target_words(
+                id,
+                &[
+                    pick("plan", &[], "计划"),
+                    pick("policy", &[], "政策"),
+                    pick("give up", &["gave it up"], "放弃"),
+                    pick("Policy", &[], "重复"),
+                ],
+            )
+            .await
+            .unwrap();
+        let words: Vec<(&str, bool, Option<&str>)> = passage
+            .target_words
+            .iter()
+            .map(|t| (t.word.as_str(), t.required, t.meaning.as_deref()))
+            .collect();
+        assert_eq!(
+            words,
+            [
+                ("plan", true, None),
+                ("policy", false, Some("政策")),
+                ("give up", false, Some("放弃"))
+            ]
+        );
+        assert_eq!(
+            passage.target_words[2].forms,
+            vec!["gave it up".to_string()]
+        );
+        // 原文里没有的词：整次替换失败，原来的目标词不变
+        assert!(service
+            .replace_target_words(id, &[pick("airport", &[], "机场")])
+            .await
+            .is_err());
+        assert_eq!(service.passage(id).await.unwrap().target_words.len(), 3);
+        // 移除一个；已经不是目标词的再移除报错
+        let passage = service.remove_target_word(id, "Policy").await.unwrap();
+        assert_eq!(
+            passage
+                .target_words
+                .iter()
+                .map(|t| t.word.as_str())
+                .collect::<Vec<_>>(),
+            ["plan", "give up"]
+        );
+        assert!(service.remove_target_word(id, "policy").await.is_err());
     }
 
     #[tokio::test]

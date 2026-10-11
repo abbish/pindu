@@ -460,3 +460,13 @@
   3. 拆成几篇时各篇目标词大致均衡、每篇至少 3 个：`submit_passage_plan` 在还能从候选词里挑时校验（只有必用词或已挑满时不限）。
 - **证据**：`agent::tasks::tests::real_passage_plan_picks_worthwhile_words_with_kimi_k3`（同一词表与场景）。改前两次：called, plan, hopes, said, more, instead, get, days, measure, ahead / according, called, days, get, hopes, instead, measure, more, plan, said；改后两次：according, ahead, cap, challenging, hopes, instead, measure, plan, policy, voluntary / 两篇各 5 个（plan, policy, hopes, measure, according · challenging, instead, accept, ahead, response）。
 - **未改**：学习者档案默认仍是小学生；词汇本与学习者水平差距大时，挑出的词仍会偏向较易的一端，由用户在「设置 → AI 助手 → 学习者与风格」调整。
+
+## D51 · 2026-10-11 · 短文由 AI 生成的内容都能由用户修改或重做
+
+- **背景**：单词这一侧（释义、例句、讲解、句子分析、题组）都能编辑或重新生成；短文（含导入材料与视频片段）的目标词只能加不能删，标题、逐句译文、难度都改不了，挑得不好只能删掉短文重来。
+- **决定**：
+  1. 目标词：可以移除；「重新挑选目标词」由新任务 `passage_target_words.md` + `submit_target_words` 从**原文**里挑（个数是上限，取「设置 → 素材 → AI 选词数量」；来源词汇本里原文也用到的词优先；基础词与专有名词不挑），Rust 用与导入重点词同一套 `passage_rules::vocab_from_submission` 只留原文里出现的。只返回建议，用户勾选后 `set_passage_target_words` 整体替换：原来就有的词保留原标记（指定单词 / 写法 / wordId），新词按读原文加词的同一套规则核对（`WordCardService::resolve_target`），有不在原文的词整次拒绝。
+  2. 标题、难度（a1–b2）、逐句译文直接改，以用户修改为准；改译文只动 `zh`，英文与目标词位置不变。
+  3. 题组、计划里的短文任务、练习记录不受影响：题目按原文出，目标词只决定高亮、单词卡与计划挑短文时的相关度。
+- **未做**：学习计划的学习顺序不提供重排（开始后已有记忆等级在调整复习，重排会打乱已学进度）。
+- **证据**：`agent::tasks::tests::real_target_words_repick_with_kimi_k3`（《The Water Team's Big Idea》，原目标词 plan / more）：稳定挑出 save、waste、tap、meter、write down；收紧「个数是上限、不凑数」后不再为了凑满挑 more、number。

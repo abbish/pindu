@@ -4,6 +4,7 @@ import {
   inflectionMatches,
   passageProblems,
   planProblems,
+  targetWordsProblems,
   questionProblems,
   submitGradeTool,
   translationProblems,
@@ -162,4 +163,13 @@ test('用词判断与 Rust 同规则：不规则动词、词组变形与拆开�
   assert.ok(uses(tok('Take care of my sister.'), 'take care of sb'));
   assert.ok(uses(tok('A well-known fact.'), 'well-known'));
   assert.ok(uses(tok('The constructor works.'), 'constructor'));
+});
+
+test('重新挑选目标词：格式、释义、重复与数量', () => {
+  assert.deepEqual(targetWordsProblems({ words: [{ word: 'policy', meaning: '政策' }, { word: 'give up', meaning: '放弃', uses: ['gave it up'] }] }), []);
+  const problems = targetWordsProblems({ words: [{ word: 'policy', meaning: '' }, { word: 'Policy', meaning: '政策' }, { word: '政策', meaning: 'x' }] }).join('\n');
+  assert.match(problems, /缺少中文意思/);
+  assert.match(problems, /重复了/);
+  assert.match(problems, /应是一个英文单词或词组/);
+  assert.match(targetWordsProblems({ words: [] }).join('\n'), /不能为空/);
 });

@@ -17,6 +17,8 @@ pub const MIN_TARGET_WORDS: usize = 1;
 pub const MAX_AI_PICK: i64 = 20;
 /// 导入材料时最多标出几个重点词
 pub const MAX_KEY_WORDS: usize = 12;
+/// 重新挑选目标词：最多这么多个（与 submit_target_words 一致）
+pub const MAX_SUGGESTED_TARGETS: usize = 20;
 /// 交给 AI 挑选的候选词最多多少个
 pub const MAX_POOL: usize = 120;
 
@@ -816,39 +818,15 @@ pub fn translation_from_submission(
     } else {
         "b2".to_string()
     };
-    let full = sentences.join(" ");
-    let mut words: Vec<(String, String, Vec<String>)> = Vec::new();
-    if key_words {
-        for item in details
-            .get("key_words")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let word = crate::types::wordbook::normalize_vocab(&text(item, "word"));
-            let meaning = text(item, "meaning");
-            // 词组在原文里的写法（AI 标注，核对过的才用，D47）
-            let uses: Vec<Value> = item
-                .get("uses")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .map(|t| serde_json::json!({ "phrase": word, "text": t }))
-                .collect();
-            let forms = if is_phrase(&word) {
-                annotated_forms(&uses, &full, &word)
-            } else {
-                Vec::new()
-            };
-            // 单词或词组（D45）
-            let valid = valid_vocab(&word)
-                && text_uses_forms(&full, &word, &forms)
-                && !words.iter().any(|(w, _, _)| w.eq_ignore_ascii_case(&word));
-            if valid && words.len() < MAX_KEY_WORDS {
-                words.push((word, meaning, forms));
-            }
-        }
-    }
+    let words = if key_words {
+        vocab_from_submission(
+            details.get("key_words"),
+            &sentences.join(" "),
+            MAX_KEY_WORDS,
+        )
+    } else {
+        Vec::new()
+    };
     Ok(Translation {
         zh,
         title: text(details, "title"),
@@ -856,6 +834,41 @@ pub fn translation_from_submission(
         key_words: words,
         tags: crate::services::tag::tags_from_submission(details),
     })
+}
+
+/// AI 从原文里挑的词（导入材料的重点词、重新挑选的目标词）→ （原形, 中文意思, 词组在原文里的写法）：
+/// 单词或词组、在原文里出现过（含变形）、去重，最多 `max` 个
+pub fn vocab_from_submission(
+    items: Option<&Value>,
+    full_text: &str,
+    max: usize,
+) -> Vec<(String, String, Vec<String>)> {
+    let mut words: Vec<(String, String, Vec<String>)> = Vec::new();
+    for item in items.and_then(Value::as_array).into_iter().flatten() {
+        let word = crate::types::wordbook::normalize_vocab(&text(item, "word"));
+        let meaning = text(item, "meaning");
+        // 词组在原文里的写法（AI 标注，核对过的才用，D47）
+        let uses: Vec<Value> = item
+            .get("uses")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|t| serde_json::json!({ "phrase": word, "text": t }))
+            .collect();
+        let forms = if is_phrase(&word) {
+            annotated_forms(&uses, full_text, &word)
+        } else {
+            Vec::new()
+        };
+        // 单词或词组（D45）
+        let valid = valid_vocab(&word)
+            && text_uses_forms(full_text, &word, &forms)
+            && !words.iter().any(|(w, _, _)| w.eq_ignore_ascii_case(&word));
+        if valid && words.len() < max {
+            words.push((word, meaning, forms));
+        }
+    }
+    words
 }
 
 #[cfg(test)]
@@ -885,6 +898,25 @@ mod tests {
     }
     use crate::types::common::Id;
     use serde_json::json;
+
+    #[test]
+    fn picked_vocab_must_appear_in_text_and_is_deduplicated() {
+        let items = json!([
+            { "word": "policy", "meaning": "政策" },
+            { "word": "Policy", "meaning": "重复" },
+            { "word": "give up", "meaning": "放弃", "uses": ["gave it up"] },
+            { "word": "airport", "meaning": "不在原文" },
+            { "word": "decide", "meaning": "决定" }
+        ]);
+        let text = "The new policy failed, so they gave it up. They decided to wait.";
+        let out = vocab_from_submission(Some(&items), text, 10);
+        assert_eq!(
+            out.iter().map(|(w, _, _)| w.as_str()).collect::<Vec<_>>(),
+            ["policy", "give up", "decide"]
+        );
+        assert_eq!(out[1].2, vec!["gave it up".to_string()]);
+        assert_eq!(vocab_from_submission(Some(&items), text, 1).len(), 1);
+    }
 
     #[test]
     fn translation_keeps_order_clamps_level_and_filters_key_words() {

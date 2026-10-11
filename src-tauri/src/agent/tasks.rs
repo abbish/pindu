@@ -1836,6 +1836,70 @@ pub async fn suggest_passage_scenes(
     .await
 }
 
+pub fn passage_target_words_task(profile: &PromptProfile) -> AgentTask {
+    AgentTask {
+        name: "passage-target-words",
+        system_prompt: prompts::system_prompt(PromptTask::PassageTargetWords, profile, &[]),
+        tools: &["submit_target_words"],
+        default_thinking: "low",
+    }
+}
+
+/// 重新挑选目标词：标题、原文、目标个数、来源词汇本里原文也用到的词、现在的目标词
+pub fn passage_target_words_message(
+    title: &str,
+    text: &str,
+    count: usize,
+    book_words: &[String],
+    current: &[String],
+) -> String {
+    prompts::message(
+        MessageTemplate::PassageTargetWords,
+        &[
+            ("title", title.trim()),
+            ("text", text.trim()),
+            ("count", &count.to_string()),
+            ("book_words", &book_words.join(", ")),
+            ("current", &current.join(", ")),
+        ],
+    )
+}
+
+/// 从原文里重新挑选目标词 →（原形, 中文意思, 词组在原文里的写法）；只留原文里确实出现的
+pub async fn suggest_target_words(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &PromptProfile,
+    message: &str,
+    full_text: &str,
+    logger: &Logger,
+) -> AppResult<Vec<(String, String, Vec<String>)>> {
+    let run = run_task(
+        paths,
+        &passage_target_words_task(profile),
+        model,
+        message,
+        logger,
+        |_| {},
+    )
+    .await?;
+    let submission = run
+        .outcome
+        .last_successful_call("submit_target_words")
+        .ok_or_else(|| AppError::ExternalServiceError("没有挑出目标词，请再试一次".to_string()))?;
+    let words = crate::services::passage_rules::vocab_from_submission(
+        submission.details.get("words"),
+        full_text,
+        crate::services::passage_rules::MAX_SUGGESTED_TARGETS,
+    );
+    if words.is_empty() {
+        return Err(AppError::ExternalServiceError(
+            "没有挑出原文里的目标词，请再试一次".to_string(),
+        ));
+    }
+    Ok(words)
+}
+
 /// 跑一次「给建议」任务（submit_topic_suggestions），整理成最多 6 条不重复的建议
 async fn run_suggestions(
     paths: &AgentPaths,
@@ -2580,6 +2644,77 @@ mod tests {
                     .join(", ")
             );
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 真实调用：从已写好的短文里重新挑选目标词（原文出现、值得学、去掉基础词）：
+    /// `REDLARK_E2E_MOONSHOT_KEY=<key> cargo test agent::tasks::tests::real_target_words -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn real_target_words_repick_with_kimi_k3() {
+        let key = std::env::var("REDLARK_E2E_MOONSHOT_KEY").expect("需要 REDLARK_E2E_MOONSHOT_KEY");
+        let model: AIModelConfig = serde_json::from_value(json!({
+            "id": 1, "name": "kimi-k3", "displayName": "Kimi K3", "modelId": "kimi-k3",
+            "description": null, "maxTokens": 32000, "temperature": 1.0,
+            "isActive": true, "isDefault": true, "createdAt": "", "updatedAt": "",
+            "provider": { "id": 2, "name": "moonshot", "displayName": "月之暗面", "baseUrl": "https://api.moonshot.cn/v1",
+                "apiKey": key, "description": null, "piProvider": "moonshotai-cn", "api": "openai-completions",
+                "isActive": true, "createdAt": "", "updatedAt": "" }
+        }))
+        .unwrap();
+        let program = std::env::var_os("REDLARK_AGENT_BIN")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("target/debug/redlark-agent")
+            });
+        let root = std::env::temp_dir().join(format!("redlark-agent-e2e-{}", uuid::Uuid::new_v4()));
+        let paths = AgentPaths {
+            program,
+            root: root.clone(),
+        };
+        let sentences = [
+            "The science group has a new plan to save water at school.",
+            "One day, they visit the water room.",
+            "They find many taps are often left open.",
+            "Water runs and runs, and nobody uses it.",
+            "\"This is a big waste!\" says Meimei.",
+            "The team puts small water-saving parts on every tap.",
+            "Every day, they write down the numbers on the water meter.",
+            "A few days later, the numbers are much lower.",
+            "The school uses less water and saves more money.",
+            "Everyone is happy and gives the plan a fun name: \"Tap Team\".",
+        ];
+        let full = sentences.join(" ");
+        let text = sentences
+            .iter()
+            .enumerate()
+            .map(|(i, s)| format!("{}. {}", i + 1, s))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let message = passage_target_words_message(
+            "The Water Team's Big Idea",
+            &text,
+            10,
+            &["plan".into(), "more".into()],
+            &["plan".into(), "more".into()],
+        );
+        let started = Instant::now();
+        let words = suggest_target_words(
+            &paths,
+            &model,
+            &PromptProfile::default(),
+            &message,
+            &full,
+            &crate::test_support::test_logger(),
+        )
+        .await
+        .unwrap();
+        println!("{:.1}s", started.elapsed().as_secs_f64());
+        for (w, m, forms) in &words {
+            println!("· {w} {m} {forms:?}");
+        }
+        assert!(words.len() >= 5);
         let _ = std::fs::remove_dir_all(&root);
     }
 

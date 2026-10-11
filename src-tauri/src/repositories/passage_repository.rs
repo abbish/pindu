@@ -598,6 +598,33 @@ impl PassageRepository {
         Ok(rows.into_iter().collect())
     }
 
+    /// 改标题与难度
+    pub async fn update_info(&self, passage_id: Id, title: &str, level: &str) -> AppResult<()> {
+        sqlx::query("UPDATE passages SET title = ?, level = ?, updated_at = ? WHERE id = ?")
+            .bind(title)
+            .bind(level)
+            .bind(crate::time::now_utc())
+            .bind(passage_id)
+            .execute(self.pool.as_ref())
+            .await?;
+        Ok(())
+    }
+
+    /// 改写正文（只用于改译文：英文不变，目标词与词的出现位置不受影响）
+    pub async fn update_sentences(
+        &self,
+        passage_id: Id,
+        sentences: &[PassageSentence],
+    ) -> AppResult<()> {
+        sqlx::query("UPDATE passages SET sentences = ?, updated_at = ? WHERE id = ?")
+            .bind(json(&sentences)?)
+            .bind(crate::time::now_utc())
+            .bind(passage_id)
+            .execute(self.pool.as_ref())
+            .await?;
+        Ok(())
+    }
+
     /// 改写短文的目标词（生词加进词汇本后补上 wordId）
     pub async fn update_target_words(
         &self,

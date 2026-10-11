@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, GraduationCap, Plus, RefreshCw, ScanText, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GraduationCap, Loader2, Pencil, Plus, RefreshCw, ScanText, X } from 'lucide-react';
 import { AiWorking } from '@/components/AiWorking';
 import { InlineError } from '@/components/InlineError';
 import { WordExplanationView } from '@/components/WordExplanation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import { passageService } from '@/services/passageService';
 import { sentenceChatId } from '@/services/wordExplanationService';
 import { cn } from '@/lib/utils';
@@ -25,8 +26,78 @@ export interface SentenceAnalysisPanelProps {
   targets: string[];
   /** 把词组加成这篇的目标词（form：它在原句里的写法）；不传则不显示按钮 */
   onAddTarget?: (word: string, form?: string) => void;
+  /** 改这句的中文译文；失败时返回原因。不传则不能改 */
+  onEditTranslation?: (index: number, zh: string) => Promise<string | null>;
   onClose: () => void;
 }
+
+/** 译文一行：悬停出现「改」，点开就地编辑（Enter 保存、Esc 取消；⇧Enter 换行） */
+const TranslationLine: React.FC<{ zh: string; onSave?: (zh: string) => Promise<string | null> }> = ({ zh, onSave }) => {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    if (draft === null || !onSave) return;
+    if (draft.trim() === zh.trim()) {
+      setDraft(null);
+      return;
+    }
+    setSaving(true);
+    const failed = await onSave(draft);
+    setSaving(false);
+    if (failed) setError(failed);
+    else {
+      setDraft(null);
+      setError(null);
+    }
+  };
+  if (draft !== null) {
+    return (
+      <div className="space-y-1.5">
+        <Textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void save();
+            } else if (e.key === 'Escape') {
+              e.stopPropagation();
+              setDraft(null);
+              setError(null);
+            }
+          }}
+          maxLength={500}
+          rows={2}
+          aria-label="译文"
+          className="min-h-0 text-sm"
+          autoFocus
+        />
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        <div className="flex justify-end gap-1.5">
+          <Button variant="ghost" size="sm" className="h-7" onClick={() => (setDraft(null), setError(null))} disabled={saving}>
+            取消
+          </Button>
+          <Button size="sm" className="h-7" onClick={() => void save()} disabled={saving}>
+            {saving && <Loader2 className="animate-spin" />}
+            保存
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (!zh && !onSave) return null;
+  return (
+    <div className="group flex items-start gap-1">
+      <p className={cn('min-w-0 flex-1 text-sm select-text', zh ? 'text-muted-foreground' : 'text-muted-foreground/60')}>{zh || '没有译文'}</p>
+      {onSave && (
+        <Button variant="ghost" size="icon" className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label="改译文" onClick={() => setDraft(zh)}>
+          <Pencil className="size-3.5" />
+        </Button>
+      )}
+    </div>
+  );
+};
 
 /** 本次打开应用期间按句子保留分析结果（后端也有缓存，这里只省去切换时的闪烁） */
 const store = new Map<string, SentenceAnalysis>();
@@ -39,7 +110,7 @@ type Tab = 'analysis' | 'teacher';
  * 句子分析面板：固定在窗口右侧（与 AI 老师面板同一位置）。分析页签讲句式、成分、语法点、交际功能、词组与发音要点；
  * 「问老师」页签围绕这句话和 AI 老师对话。上一句 / 下一句可以逐句精读。
  */
-export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ passageId, sentences, index, onIndexChange, targets, onAddTarget, onClose }) => {
+export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ passageId, sentences, index, onIndexChange, targets, onAddTarget, onEditTranslation, onClose }) => {
   const [tab, setTab] = useState<Tab>('analysis');
   const sentence = sentences[index];
   const key = `${passageId}:${index}`;
@@ -108,7 +179,7 @@ export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ pa
           </Button>
         </div>
         <p className="text-[15px] leading-snug font-medium select-text">{sentence.en}</p>
-        {sentence.zh && <p className="text-sm text-muted-foreground select-text">{sentence.zh}</p>}
+        <TranslationLine key={index} zh={sentence.zh} onSave={onEditTranslation && ((zh) => onEditTranslation(index, zh))} />
         <div className="inline-flex gap-0.5 rounded-lg bg-muted p-[3px]" role="tablist" aria-label="句子分析">
           {(
             [

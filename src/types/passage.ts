@@ -12,6 +12,24 @@ export interface PassageSentence {
   endMs?: number;
 }
 
+/** 重新挑选目标词时的建议（原文里出现过的词或词组） */
+export interface TargetWordSuggestion {
+  word: string;
+  /** 在这篇短文里的中文意思 */
+  meaning: string;
+  /** 词组在原文里的写法 */
+  forms: string[];
+}
+
+/** 重新挑选目标词时确认的一个词 */
+export interface TargetWordPick {
+  word: string;
+  /** 词组在原文里的写法 */
+  forms?: string[];
+  /** 在这篇短文里的中文意思 */
+  meaning?: string | null;
+}
+
 /** 短文用到的目标词 */
 export interface PassageTargetWord {
   /** 手动输入的词为 null */

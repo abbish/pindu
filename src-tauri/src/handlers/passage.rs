@@ -481,6 +481,113 @@ pub async fn add_passage_target_word(
     finish(&logger, "add_passage_target_word", result)
 }
 
+/// 移除一个目标词；返回更新后的短文
+#[tauri::command]
+pub async fn remove_passage_target_word(
+    app: AppHandle,
+    passage_id: i64,
+    word: String,
+) -> AppResult<crate::types::passage::Passage> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "remove_passage_target_word",
+        Some(&format!("passage {passage_id} word {word}")),
+    );
+    let result = word_cards(&app).remove_target_word(passage_id, &word).await;
+    finish(&logger, "remove_passage_target_word", result)
+}
+
+/// 重新挑选目标词：AI 从原文里挑 `count` 个建议（不保存）
+#[tauri::command]
+pub async fn suggest_passage_target_words(
+    app: AppHandle,
+    passage_id: i64,
+    count: i64,
+) -> AppResult<Vec<crate::types::passage::TargetWordSuggestion>> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "suggest_passage_target_words",
+        Some(&format!("passage {passage_id} count {count}")),
+    );
+    let result = async {
+        let paths = agent_paths(&app)?;
+        service(&app)
+            .suggest_target_words(passage_id, count, &paths)
+            .await
+    }
+    .await;
+    finish(&logger, "suggest_passage_target_words", result)
+}
+
+/// 把目标词整体换成确认的这组；返回更新后的短文
+#[tauri::command]
+pub async fn set_passage_target_words(
+    app: AppHandle,
+    request: crate::types::passage::SetPassageTargetWordsRequest,
+) -> AppResult<crate::types::passage::Passage> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "set_passage_target_words",
+        Some(&format!(
+            "passage {} words {}",
+            request.passage_id,
+            request.words.len()
+        )),
+    );
+    let result = word_cards(&app)
+        .replace_target_words(request.passage_id, &request.words)
+        .await;
+    finish(&logger, "set_passage_target_words", result)
+}
+
+/// 改短文的标题 / 难度；返回更新后的短文
+#[tauri::command]
+pub async fn update_passage_info(
+    app: AppHandle,
+    request: crate::types::passage::UpdatePassageInfoRequest,
+) -> AppResult<crate::types::passage::Passage> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "update_passage_info",
+        Some(&format!(
+            "passage {} title_chars {:?} level {:?}",
+            request.passage_id,
+            request.title.as_ref().map(|t| t.chars().count()),
+            request.level
+        )),
+    );
+    let result = service(&app)
+        .update_info(
+            request.passage_id,
+            request.title.as_deref(),
+            request.level.as_deref(),
+        )
+        .await;
+    finish(&logger, "update_passage_info", result)
+}
+
+/// 改一句的中文译文（`index` 从 0 开始）；返回更新后的短文
+#[tauri::command]
+pub async fn update_passage_translation(
+    app: AppHandle,
+    passage_id: i64,
+    index: i64,
+    zh: String,
+) -> AppResult<crate::types::passage::Passage> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "update_passage_translation",
+        Some(&format!(
+            "passage {passage_id} sentence {index} chars {}",
+            zh.chars().count()
+        )),
+    );
+    let result = service(&app)
+        .update_translation(passage_id, index, &zh)
+        .await;
+    finish(&logger, "update_passage_translation", result)
+}
+
 /// 提交单词卡任务时加锁：同一篇短文同时只跑一个
 static WORD_CARD_SPAWN: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

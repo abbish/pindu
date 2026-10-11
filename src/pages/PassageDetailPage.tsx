@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BookOpen, BookOpenCheck, FileQuestion, Headphones, ListChecks, Loader2, MoreHorizontal, Play, Sparkles, Trash2 } from 'lucide-react';
+import { BookOpen, BookOpenCheck, ChevronDown, FileQuestion, Headphones, ListChecks, Loader2, MoreHorizontal, Pencil, Play, Sparkles, Trash2, WandSparkles, X } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,7 +13,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -31,6 +32,7 @@ import { isJobActive } from '@/types/job';
 import { jobErrorText } from '@/components/Jobs';
 import type { PassageVideo } from '@/types/video';
 import { NewWordsCard } from './passage-detail/NewWordsCard';
+import { RepickTargetWordsDialog } from './passage-detail/RepickTargetWordsDialog';
 import { usePageTitle } from '@/components/AppShell/pageTitle';
 import { useToast } from '@/components/Toast/ToastContainer';
 import { cn } from '@/lib/utils';
@@ -54,6 +56,19 @@ export interface PassageDetailPageProps {
 }
 
 const container = 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7';
+/** 侧栏的目标词：点开看单词卡；悬停时右侧出现移除 */
+const TargetChip: React.FC<{ word: string; meaning?: string | null; className?: string; onOpen: () => void; onRemove: () => void }> = ({ word, meaning, className, onOpen, onRemove }) => (
+  <span className={cn('group inline-flex items-center rounded-full text-xs hover:ring-1 hover:ring-primary/40', className)}>
+    <button type="button" onClick={onOpen} className="rounded-full py-0.5 pl-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" title={meaning ?? undefined}>
+      {word}
+      {meaning && <span className="text-muted-foreground"> {meaning}</span>}
+    </button>
+    <button type="button" onClick={onRemove} aria-label={`移除目标词 ${word}`} className="ml-0.5 rounded-full p-0.5 pr-1.5 text-muted-foreground opacity-0 outline-none group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100">
+      <X className="size-3" />
+    </button>
+  </span>
+);
+
 /** 题组行：名称、题型与难度、最近成绩；阅读 / 听力练习入口；⋯ 删除 */
 const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: (mode: PassageMode) => void; onDelete: () => void }> = ({ set, onStart, onDelete }) => (
   <Card className="flex-row items-center gap-4 px-5 py-4">
@@ -133,6 +148,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const isClip = Boolean(openedAsClip) || passage?.origin === 'video';
   const [showGenerate, setShowGenerate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** 改标题：输入框里的文字（null = 没在改） */
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [repicking, setRepicking] = useState(false);
   const [setToDelete, setSetToDelete] = useState<QuestionSetSummary | null>(null);
   usePageTitle(passage?.title);
 
@@ -185,6 +203,11 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   useEffect(() => {
     load();
   }, [load]);
+
+  // 目标词都移除后「目标词」页签不再显示，回到原文
+  useEffect(() => {
+    if (tab === 'words' && passage && passage.targetWords.length === 0) setTab('text');
+  }, [tab, passage]);
 
   useEffect(() => {
     if (!passageId) return;
@@ -273,6 +296,35 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     setFocusWord(word);
     setTab('words');
   };
+  const removeTarget = async (word: string) => {
+    const result = await passageService.removeTargetWord(passage.id, word);
+    if (!result.success) {
+      toast.showError('无法移除目标词', result.error);
+      return;
+    }
+    setPassage(result.data);
+    toast.showSuccess(`已移除目标词「${word}」`);
+  };
+  const saveInfo = async (info: { title?: string; level?: string }) => {
+    const result = await passageService.updateInfo(passage.id, info);
+    if (!result.success) {
+      toast.showError(info.title !== undefined ? '无法改标题' : '无法改难度', result.error);
+      return false;
+    }
+    setPassage(result.data);
+    return true;
+  };
+  const rename = async () => {
+    if (renaming === null) return;
+    if (renaming.trim() === passage.title || (await saveInfo({ title: renaming }))) setRenaming(null);
+  };
+  /** 改一句的译文；失败时返回原因（留在编辑框里显示） */
+  const editTranslation = async (index: number, zh: string): Promise<string | null> => {
+    const result = await passageService.updateTranslation(passage.id, index, zh);
+    if (!result.success) return result.error;
+    setPassage(result.data);
+    return null;
+  };
 
   return (
     <div className={container}>
@@ -280,8 +332,26 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">{passage.title}</h1>
-            <Badge variant="secondary">{LEVEL_LABEL[passage.level] ?? passage.level}</Badge>
+            <h1 className="truncate text-2xl font-semibold tracking-tight select-text">{passage.title}</h1>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label="难度" className="rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                  <Badge variant="secondary" className="gap-0.5 hover:bg-secondary/70">
+                    {LEVEL_LABEL[passage.level] ?? passage.level}
+                    <ChevronDown className="size-3 opacity-60" />
+                  </Badge>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuRadioGroup value={passage.level} onValueChange={(level) => level !== passage.level && void saveInfo({ level })}>
+                  {Object.entries(LEVEL_LABEL).map(([value, label]) => (
+                    <DropdownMenuRadioItem key={value} value={value}>
+                      {label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <p className="text-xs text-muted-foreground">
             {passage.origin === 'imported' && `导入${passage.sourceLabel ? `（${passage.sourceLabel}）` : ''} · `}
@@ -302,6 +372,15 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setRenaming(passage.title)}>
+                <Pencil />
+                改标题…
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setRepicking(true)}>
+                <WandSparkles />
+                重新挑选目标词…
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
                 <Trash2 />
                 {isClip ? '删除片段…' : '删除短文…'}
@@ -369,25 +448,30 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         {clip && (
           <TabsContent value="video">
-            <ClipStudyPanel video={clip} sentences={passage.sentences} passage={passage} onAddTarget={addTarget} onOpenWord={openWord} onPractice={passage.questionSets.length > 0 ? () => setTab('sets') : undefined} />
+            <ClipStudyPanel video={clip} sentences={passage.sentences} passage={passage} onAddTarget={addTarget} onOpenWord={openWord} onEditTranslation={editTranslation} onPractice={passage.questionSets.length > 0 ? () => setTab('sets') : undefined} />
           </TabsContent>
         )}
 
         <TabsContent value="text">
           <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6">
-            <ReadAloudPanel passage={passage} onAddTarget={addTarget} onOpenWord={openWord} />
+            <ReadAloudPanel passage={passage} onAddTarget={addTarget} onOpenWord={openWord} onEditTranslation={editTranslation} />
 
             <aside className="flex flex-col gap-4">
               <Card className="gap-3 px-5 py-4">
-                <h2 className="text-sm font-semibold">目标词</h2>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold">目标词</h2>
+                  <Button variant="ghost" size="sm" className="-mr-2 h-7 text-xs text-muted-foreground" onClick={() => setRepicking(true)}>
+                    <WandSparkles />
+                    重新挑选
+                  </Button>
+                </div>
+                {passage.targetWords.length === 0 && <p className="text-xs text-muted-foreground">还没有目标词</p>}
                 {required.length > 0 && (
                   <div className="space-y-1.5">
                     <div className="text-xs text-muted-foreground">指定单词</div>
                     <div className="flex flex-wrap gap-1">
                       {required.map((w) => (
-                        <button key={w.word} type="button" onClick={() => openWord(w.word)} className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground hover:ring-1 hover:ring-primary/40">
-                          {w.word}
-                        </button>
+                        <TargetChip key={w.word} word={w.word} className="bg-accent text-accent-foreground" onOpen={() => openWord(w.word)} onRemove={() => void removeTarget(w.word)} />
                       ))}
                     </div>
                   </div>
@@ -397,10 +481,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
                     <div className="text-xs text-muted-foreground">{imported ? '重点词' : 'AI 选词'}</div>
                     <div className="flex flex-wrap gap-1">
                       {picked.map((w) => (
-                        <button key={w.word} type="button" onClick={() => openWord(w.word)} className="rounded-full bg-muted px-2 py-0.5 text-xs hover:ring-1 hover:ring-primary/40" title={w.meaning ?? undefined}>
-                          {w.word}
-                          {w.meaning && <span className="text-muted-foreground"> {w.meaning}</span>}
-                        </button>
+                        <TargetChip key={w.word} word={w.word} meaning={w.meaning} className="bg-muted" onOpen={() => openWord(w.word)} onRemove={() => void removeTarget(w.word)} />
                       ))}
                     </div>
                   </div>
@@ -415,6 +496,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           <TargetWordsPanel
             passage={passage}
             focusWord={focusWord}
+            onRemove={(word) => void removeTarget(word)}
+            onRepick={() => setRepicking(true)}
             onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })}
             footer={hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
           />
@@ -454,6 +537,38 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           setTab('sets');
         }}
       />
+
+      <RepickTargetWordsDialog
+        passage={passage}
+        open={repicking}
+        onOpenChange={setRepicking}
+        onSaved={(p) => {
+          setPassage(p);
+          toast.showSuccess(`已换成 ${p.targetWords.length} 个目标词`);
+        }}
+      />
+
+      <AlertDialog open={renaming !== null} onOpenChange={(o) => !o && setRenaming(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>改标题</AlertDialogTitle>
+          </AlertDialogHeader>
+          <Input
+            value={renaming ?? ''}
+            maxLength={100}
+            onChange={(e) => setRenaming(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && void rename()}
+            aria-label="标题"
+            autoFocus
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <Button onClick={() => void rename()} disabled={!renaming?.trim()}>
+              保存
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

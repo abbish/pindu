@@ -332,10 +332,11 @@ pub enum PromptTask {
     SentenceAnalyze,
     VocabSuggest,
     PassageSceneSuggest,
+    PassageTargetWords,
 }
 
 impl PromptTask {
-    pub const ALL: [PromptTask; 18] = [
+    pub const ALL: [PromptTask; 19] = [
         PromptTask::Extract,
         PromptTask::Generate,
         PromptTask::Phonics,
@@ -354,6 +355,7 @@ impl PromptTask {
         PromptTask::SentenceAnalyze,
         PromptTask::VocabSuggest,
         PromptTask::PassageSceneSuggest,
+        PromptTask::PassageTargetWords,
     ];
 
     pub fn key(self) -> &'static str {
@@ -376,6 +378,7 @@ impl PromptTask {
             PromptTask::SentenceAnalyze => "sentence_analyze",
             PromptTask::VocabSuggest => "vocab_suggest",
             PromptTask::PassageSceneSuggest => "passage_scene_suggest",
+            PromptTask::PassageTargetWords => "passage_target_words",
         }
     }
 
@@ -399,6 +402,7 @@ impl PromptTask {
             PromptTask::SentenceAnalyze => "句子分析",
             PromptTask::VocabSuggest => "词汇本：词汇需求的建议",
             PromptTask::PassageSceneSuggest => "短文：场景的建议",
+            PromptTask::PassageTargetWords => "短文：重新挑选目标词",
         }
     }
 
@@ -424,6 +428,7 @@ impl PromptTask {
             PromptTask::PassageSceneSuggest => {
                 include_str!("prompts/agent/passage_scene_suggest.md")
             }
+            PromptTask::PassageTargetWords => include_str!("prompts/agent/passage_target_words.md"),
         }
     }
 }
@@ -528,6 +533,7 @@ pub enum MessageTemplate {
     SentenceTutor,
     VocabSuggest,
     PassageSceneSuggest,
+    PassageTargetWords,
 }
 
 pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
@@ -556,6 +562,9 @@ pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
         MessageTemplate::VocabSuggest => include_str!("prompts/messages/vocab_topic_suggest.md"),
         MessageTemplate::PassageSceneSuggest => {
             include_str!("prompts/messages/passage_scene_suggest.md")
+        }
+        MessageTemplate::PassageTargetWords => {
+            include_str!("prompts/messages/passage_target_words.md")
         }
     };
     render(text, vars)
@@ -712,6 +721,7 @@ mod tests {
             (PromptTask::SentenceAnalyze, "sentence_analyze.md"),
             (PromptTask::VocabSuggest, "vocab_topic_suggest.md"),
             (PromptTask::PassageSceneSuggest, "passage_scene_suggest.md"),
+            (PromptTask::PassageTargetWords, "passage_target_words.md"),
         ];
         let stopwords = crate::agent::tasks::FOCUS_STOPWORDS;
         for preset in ["primary", "secondary", "adult"] {

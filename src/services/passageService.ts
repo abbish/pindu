@@ -24,6 +24,8 @@ import type {
   PlanPassage,
   PlanPassageCandidate,
   PlanPassageCandidatesRequest,
+  TargetWordPick,
+  TargetWordSuggestion,
   QuestionSet,
   SetPlanPassagesRequest,
   SubmitPassageAttemptRequest,
@@ -88,6 +90,31 @@ class PassageService extends BaseService {
   /** `form`：词组在原文里的写法（句子分析给出的，如 picked it up）；读原文划选时不传 */
   async addTargetWord(passageId: number, word: string, form?: string): Promise<ApiResult<Passage>> {
     return this.executeWithLoading(() => this.client.invoke<Passage>('add_passage_target_word', { passageId, word, form }));
+  }
+
+  /** 移除一个目标词，返回更新后的短文 */
+  async removeTargetWord(passageId: number, word: string): Promise<ApiResult<Passage>> {
+    return this.executeWithLoading(() => this.client.invoke<Passage>('remove_passage_target_word', { passageId, word }));
+  }
+
+  /** 重新挑选目标词：AI 从原文里挑 `count` 个建议（不保存） */
+  async suggestTargetWords(passageId: number, count: number): Promise<ApiResult<TargetWordSuggestion[]>> {
+    return this.executeWithLoading(() => this.client.invoke<TargetWordSuggestion[]>('suggest_passage_target_words', { passageId, count }));
+  }
+
+  /** 把目标词整体换成这组，返回更新后的短文 */
+  async setTargetWords(passageId: number, words: TargetWordPick[]): Promise<ApiResult<Passage>> {
+    return this.executeWithLoading(() => this.client.invoke<Passage>('set_passage_target_words', { request: { passageId, words } }));
+  }
+
+  /** 改标题 / 难度（不传的不改），返回更新后的短文 */
+  async updateInfo(passageId: number, info: { title?: string; level?: string }): Promise<ApiResult<Passage>> {
+    return this.executeWithLoading(() => this.client.invoke<Passage>('update_passage_info', { request: { passageId, ...info } }));
+  }
+
+  /** 改一句的中文译文（`index` 从 0 开始），返回更新后的短文 */
+  async updateTranslation(passageId: number, index: number, zh: string): Promise<ApiResult<Passage>> {
+    return this.executeWithLoading(() => this.client.invoke<Passage>('update_passage_translation', { passageId, index, zh }));
   }
 
   /** 分析短文里的一句（已分析过且不要求重新分析时直接返回保存的结果） */
