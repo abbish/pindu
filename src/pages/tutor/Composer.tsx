@@ -50,14 +50,25 @@ export const Composer: React.FC<{
         ref={picker}
         type="file"
         multiple
-        hidden
+        // 不能用 hidden（display: none）：WebView 里对它 click() 不会弹出选择窗口，与 MaterialInput 一致用 sr-only
+        className="sr-only"
+        tabIndex={-1}
         accept={ACCEPT}
         onChange={(e) => {
           add(Array.from(e.target.files ?? []));
           e.target.value = '';
         }}
       />
-      <div className="mx-auto max-w-3xl rounded-xl border bg-background p-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+      <div
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          // 拖进来的文件同样作为附件
+          if (e.dataTransfer.files.length === 0) return;
+          e.preventDefault();
+          add(Array.from(e.dataTransfer.files));
+        }}
+        className="mx-auto max-w-3xl rounded-xl border bg-background p-2 shadow-sm focus-within:ring-1 focus-within:ring-ring"
+      >
         {attachments.length > 0 && (
           <div className="flex flex-wrap items-end gap-2 px-1 pt-1 pb-2">
             {attachments.map((a, i) => (
