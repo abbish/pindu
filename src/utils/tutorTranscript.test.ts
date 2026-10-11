@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, dropAsk, emptyTranscript, splitAttachments, toAsk, toTurns, type TranscriptState } from './tutorTranscript.ts';
+import { applyEvent, dropAsk, emptyTranscript, openedTranscript, splitAttachments, toAsk, toTurns, type TranscriptState } from './tutorTranscript.ts';
 import type { PiEvent } from '../types/tutor.ts';
 
 const run = (events: PiEvent[], state: TranscriptState = emptyTranscript()) => events.reduce(applyEvent, state);
@@ -246,4 +246,43 @@ test('自动重试成功后不显示前面那次的错误', () => {
   // 还在重试：不显示
   const retrying = toTurns(run([{ type: 'agent_start' }, { type: 'message_end', message: user }, { type: 'message_end', message: failed }, { type: 'auto_retry_start' }]));
   assert.equal(retrying[1].role === 'agent' && retrying[1].error, undefined);
+});
+
+test('回答写到一半时打开对话：从快照接着显示，打开期间的事件只补快照之后的，不重复也不缺', () => {
+  const delta = (text: string): PiEvent => ({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: text } });
+  const opened = {
+    messages: [user],
+    running: true,
+    seq: 10,
+    replay: [
+      { type: 'message_start', message: { role: 'assistant', content: [{ type: 'text', text: '行程' }], timestamp: 2 } },
+      { type: 'queue_update', steering: ['再举个例子'], followUp: [] },
+      { type: 'auto_retry_start' },
+    ] as PiEvent[],
+  };
+  // 序号 10 的「程」已经在快照里；11 起是快照之后的
+  const state = openedTranscript(opened, [], [
+    { seq: 10, event: delta('程') },
+    { seq: 11, event: delta('表') },
+    { seq: 12, event: { type: 'auto_retry_end' } },
+  ]);
+  const turns = toTurns(state);
+  assert.deepEqual(turns[1].role === 'agent' && turns[1].items.map((i) => i.kind === 'text' && i.text), ['行程表']);
+  assert.equal(turns[1].role === 'agent' && turns[1].running, true);
+  assert.deepEqual(state.queue, ['再举个例子']);
+  assert.equal(state.notice, null);
+
+  // 写完：以完整消息为准，不留半截
+  const done = run([{ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '行程表。' }], stopReason: 'stop', timestamp: 2 } }], state);
+  assert.equal(done.partial, null);
+  assert.equal(done.messages.length, 2);
+});
+
+test('打开时已经写完的回答：快照里没有半截，pi 的消息里已有的不重复', () => {
+  const answer = { role: 'assistant' as const, content: [{ type: 'text' as const, text: '行程表。' }], stopReason: 'stop', timestamp: 2 };
+  const state = openedTranscript({ messages: [user, answer], running: false, seq: 20, replay: [] }, [], [
+    { seq: 21, event: { type: 'message_end', message: answer } },
+  ]);
+  assert.equal(state.messages.length, 2);
+  assert.equal(state.partial, null);
 });

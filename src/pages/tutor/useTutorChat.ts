@@ -7,7 +7,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useToast } from '@/components';
 import { tutorService } from '@/services/tutorService';
 import type { PiEvent, TutorConversation, TutorEventPayload, TutorFileUpload, TutorImage } from '@/types/tutor';
-import { applyEvent, dropAsk, emptyTranscript, toAsk, type TranscriptState, type TutorAsk } from '@/utils/tutorTranscript';
+import { applyEvent, dropAsk, emptyTranscript, openedTranscript, toAsk, type SeqEvent, type TranscriptState, type TutorAsk } from '@/utils/tutorTranscript';
 
 /** 离开再回来时打开上次的对话 */
 let lastConversationId: string | null = null;
@@ -62,8 +62,10 @@ export function useTutorChat(initialPrompt?: string) {
   const [loading, setLoading] = useState(false);
 
   const activeRef = useRef(activeId);
-  /** 还没确定 id 的新对话、正在打开的对话：先存下事件，确定后补上 */
-  const buffer = useRef<{ id: string | null; events: Map<string, PiEvent[]>; holding: boolean }>({
+  /** 当前对话打开时的快照序号：之后到达的、不大于它的事件已经算在快照里 */
+  const seqFloor = useRef(0);
+  /** 还没确定 id 的新对话、正在打开的对话：先存下事件（带序号），确定后补上 */
+  const buffer = useRef<{ id: string | null; events: Map<string, SeqEvent[]>; holding: boolean }>({
     id: null,
     events: new Map(),
     holding: false,
@@ -112,7 +114,7 @@ export function useTutorChat(initialPrompt?: string) {
     let unlisten: (() => void) | undefined;
     let disposed = false;
     void listen<TutorEventPayload>('tutor-event', ({ payload }) => {
-      const { conversationId, event } = payload;
+      const { conversationId, seq, event } = payload;
       // pi 扩展的通知（如连不上拼读的工具服务）：轻提示
       if (event.type === 'extension_ui_request' && 'method' in event && event.method === 'notify' && conversationId === activeRef.current) {
         const { message, notifyType } = event as { message?: string; notifyType?: string };
@@ -121,10 +123,10 @@ export function useTutorChat(initialPrompt?: string) {
       if (['agent_start', 'agent_settled', 'session_info_changed', 'redlark_closed'].includes(event.type)) refreshSoon();
       const b = buffer.current;
       if (b.holding && (b.id === null || b.id === conversationId)) {
-        b.events.set(conversationId, [...(b.events.get(conversationId) ?? []), event]);
+        b.events.set(conversationId, [...(b.events.get(conversationId) ?? []), { seq, event }]);
         return;
       }
-      if (conversationId === activeRef.current) enqueue(conversationId, event);
+      if (conversationId === activeRef.current && seq > seqFloor.current) enqueue(conversationId, event);
     }).then((fn) => (disposed ? fn() : (unlisten = fn)));
     return () => {
       disposed = true;
@@ -133,11 +135,11 @@ export function useTutorChat(initialPrompt?: string) {
     };
   }, [refreshList, refreshSoon]);
 
-  /** 结束暂存：把这个对话暂存的事件补到状态上 */
-  const release = (id: string, state: TranscriptState) => {
+  /** 结束暂存：取出这个对话暂存的事件 */
+  const release = (id: string): SeqEvent[] => {
     const events = buffer.current.events.get(id) ?? [];
     buffer.current = { id: null, events: new Map(), holding: false };
-    return events.reduce(applyEvent, state);
+    return events;
   };
 
   const open = useCallback(
@@ -155,7 +157,9 @@ export function useTutorChat(initialPrompt?: string) {
         return;
       }
       const asks = result.data.pendingAsks.map((raw) => toAsk(raw)).filter((a): a is TutorAsk => a !== null);
-      setTranscript(release(id, emptyTranscript(result.data.messages, result.data.running, asks)));
+      // 回答写到一半时打开：从快照接着显示，打开期间收到的事件只补快照之后的
+      seqFloor.current = result.data.seq;
+      setTranscript(openedTranscript(result.data, asks, release(id)));
     },
     [setActiveId, toast]
   );
@@ -211,7 +215,8 @@ export function useTutorChat(initialPrompt?: string) {
       if (!conversationId) {
         const id = result.data;
         setActiveId(id);
-        setTranscript((s) => release(id, s));
+        const later = release(id);
+        setTranscript((s) => later.reduce((state, e) => applyEvent(state, e.event), s));
         refreshSoon();
       }
       return true;

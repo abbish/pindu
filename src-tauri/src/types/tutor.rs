@@ -28,6 +28,19 @@ pub struct TutorOpened {
     pub running: bool,
     /// 还在等学习者回答的提问（pi 的 extension_ui_request 原样）
     pub pending_asks: Vec<Value>,
+    /// 取现状时的事件序号：界面丢掉序号不大于它的事件
+    pub seq: u64,
+    /// 重建现状的事件（正在写的回答、排队的消息、重试提示），界面按 pi 事件重放
+    pub replay: Vec<Value>,
+}
+
+/// 在回答或在等学习者回答的对话（侧边栏「AI 老师」的标记）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TutorActivity {
+    pub conversation_id: String,
+    pub running: bool,
+    pub asking: bool,
 }
 
 /// 随消息发送的图片（粘贴的截图等）

@@ -9,6 +9,7 @@ import type {
   PiToolCallBlock,
   PiToolResultMessage,
   PiUserMessage,
+  TutorOpened,
 } from '../types/tutor';
 
 /** 工具向用户的提问（pi extension_ui_request 里要等回答的：select / confirm / input / editor） */
@@ -92,6 +93,25 @@ const sameMessage = (a: PiMessage, b: PiMessage) =>
   a.role === b.role &&
   a.timestamp === b.timestamp &&
   (a.role !== 'toolResult' || (b as PiToolResultMessage).toolCallId === a.toolCallId);
+
+/** 带序号的一条事件 */
+export interface SeqEvent {
+  seq: number;
+  event: PiEvent;
+}
+
+/**
+ * 打开对话时的状态：pi 的消息 + 重放现状（正在写的回答、排队的消息、重试提示）+ 打开期间收到的、序号大于快照的事件。
+ * 序号不大于快照的已经算在现状里，再用一次流式增量会把同一段字拼两次。
+ */
+export function openedTranscript(
+  opened: Pick<TutorOpened, 'messages' | 'running' | 'seq' | 'replay'>,
+  asks: TutorAsk[],
+  later: SeqEvent[]
+): TranscriptState {
+  const events = [...opened.replay, ...later.filter((e) => e.seq > opened.seq).map((e) => e.event)];
+  return events.reduce(applyEvent, emptyTranscript(opened.messages, opened.running, asks));
+}
 
 /** 回答了（或过期了）一个提问 */
 export const dropAsk = (state: TranscriptState, id: string): TranscriptState => ({

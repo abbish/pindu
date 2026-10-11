@@ -215,6 +215,7 @@ pub fn run() {
                 generate_word_explanation,
                 ask_word_tutor,
                 get_tutor_conversations,
+                get_tutor_activity,
                 open_tutor_conversation,
                 send_tutor_message,
                 stop_tutor_conversation,

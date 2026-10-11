@@ -1,8 +1,11 @@
 //! AI 老师的常驻对话：一个对话一个 pi 进程（RPC 模式 + 持久会话），对话内容由 pi 的会话文件保存。
 //!
 //! - 发送：空闲时 `prompt`，运行中 `steer`（pi 在当前工具调用结束后插入）；停止用 `abort`。
-//! - 事件：pi 的原始事件 JSON 原样交给 `Emit`（前端按 pi 的消息格式重建），
+//! - 事件：pi 的原始事件 JSON 交给 `Emit`（前端按 pi 的消息格式重建；流式增量只留增量，`slim_update`），
 //!   含 `extension_ui_request`（工具向用户提问），回答经 `respond_ui` 写回 `extension_ui_response`。
+//!   每条事件带一个递增序号（所有对话共用）；会话记着界面要的现状（正在写的回答、排队的消息、重试提示，`Live`），
+//!   重新打开对话时连同当时的序号交给界面，界面丢掉序号不大于它的事件、接着补后面的，不重复也不漏。
+//! - 在回答 / 等学习者回答变化时补发 `{"type":"redlark_activity","running","asking"}`（侧边栏「AI 老师」的标记）。
 //! - 进程退出（或被关闭）后从表里移除，并补发一条 `{"type":"redlark_closed"}`。
 //! - 闲置超过 `IDLE_LIMIT` 的进程每分钟回收一次（`start_reaper`）；应用内更新前也会关掉闲置的。
 
@@ -10,12 +13,12 @@ use super::session::{AgentLaunch, AgentProcess};
 use crate::error::{AppError, AppResult};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// 事件出口：（对话 id，pi 原始事件）
-pub type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
+/// 事件出口：（对话 id，序号，pi 原始事件）
+pub type Emit = Arc<dyn Fn(&str, u64, Value) + Send + Sync>;
 
 /// 闲置多久的对话进程会被关闭（再打开时由 pi 从会话文件恢复）
 pub const IDLE_LIMIT: Duration = Duration::from_secs(10 * 60);
@@ -28,12 +31,131 @@ pub struct ChatSession {
     last_used: Mutex<Instant>,
     /// 还没回答的提问（pi 扩展 UI 的对话类请求，原始 JSON）：重新打开对话时交给界面
     pending_ui: Mutex<Vec<(Instant, Value)>>,
+    /// 界面要的现状与最近的序号；推送事件时持锁，保证序号与推送顺序一致
+    live: Mutex<Live>,
+    /// 事件序号（ChatHub 的所有对话共用，进程重启后也只增不减）
+    seq: Arc<AtomicU64>,
+    emit: Emit,
+}
+
+/// 界面要的对话现状（pi 只在一条消息写完后才把它放进 `get_messages`）
+#[derive(Default)]
+struct Live {
+    /// 最近一次推送的序号
+    seq: u64,
+    /// 正在写的 assistant 消息（`message_update` 带的整条消息）
+    partial: Option<Value>,
+    /// 最近一次 `queue_update`
+    queue: Option<Value>,
+    /// 正在重试 / 整理之前的对话（`auto_retry_start` / `compaction_start` 原样）
+    notice: Option<Value>,
+    /// 上次推送的（在回答，等学习者回答）
+    activity: (bool, bool),
+}
+
+impl Live {
+    /// 按事件更新现状；`message_update` 的整条消息挪到这里（之后推给界面的只留增量）
+    fn track(&mut self, raw: &mut Value) {
+        let assistant = raw
+            .pointer("/message/role")
+            .and_then(Value::as_str)
+            .is_some_and(|r| r == "assistant");
+        match raw.get("type").and_then(Value::as_str) {
+            Some("message_start") if assistant => self.partial = raw.get("message").cloned(),
+            Some("message_update") => {
+                if let Some(message) = raw.as_object_mut().and_then(|o| o.remove("message")) {
+                    self.partial = Some(message);
+                }
+            }
+            Some("message_end") if assistant => self.partial = None,
+            Some("queue_update") => self.queue = Some(raw.clone()),
+            Some("auto_retry_start" | "compaction_start") => self.notice = Some(raw.clone()),
+            Some("auto_retry_end" | "compaction_end") => self.notice = None,
+            Some("agent_settled" | "redlark_closed") => {
+                self.partial = None;
+                self.queue = None;
+                self.notice = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// 重建现状的事件：界面用处理 pi 事件的同一套逻辑重放
+    fn replay(&self) -> Vec<Value> {
+        let mut events = Vec::new();
+        if let Some(message) = &self.partial {
+            events.push(json!({ "type": "message_start", "message": message }));
+        }
+        events.extend(self.queue.clone());
+        events.extend(self.notice.clone());
+        events
+    }
 }
 
 /// pi 扩展 UI 里要等回答的请求（其余 notify / setStatus 等不用回）
 pub const DIALOG_METHODS: [&str; 4] = ["select", "confirm", "input", "editor"];
 
 impl ChatSession {
+    fn new(id: String, process: Option<AgentProcess>, emit: Emit, seq: Arc<AtomicU64>) -> Self {
+        Self {
+            id,
+            process: tokio::sync::Mutex::new(process),
+            running: AtomicBool::new(false),
+            last_used: Mutex::new(Instant::now()),
+            pending_ui: Mutex::new(Vec::new()),
+            live: Mutex::new(Live::default()),
+            seq,
+            emit,
+        }
+    }
+
+    /// 推送一条 pi 事件：记下现状、只留增量、编上序号；在回答 / 等回答变了时再补一条 `redlark_activity`
+    fn publish(&self, mut raw: Value) {
+        let Ok(mut live) = self.live.lock() else {
+            return;
+        };
+        live.track(&mut raw);
+        slim_update(&mut raw);
+        self.emit_locked(&mut live, raw);
+        self.publish_activity_locked(&mut live);
+    }
+
+    fn emit_locked(&self, live: &mut Live, event: Value) {
+        live.seq = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
+        (self.emit)(&self.id, live.seq, event);
+    }
+
+    /// （在回答，等学习者回答）
+    pub fn activity(&self) -> (bool, bool) {
+        (self.is_running(), !self.pending_ui().is_empty())
+    }
+
+    fn publish_activity_locked(&self, live: &mut Live) {
+        let (running, asking) = self.activity();
+        if live.activity == (running, asking) {
+            return;
+        }
+        live.activity = (running, asking);
+        self.emit_locked(
+            live,
+            json!({ "type": "redlark_activity", "running": running, "asking": asking }),
+        );
+    }
+
+    fn publish_activity(&self) {
+        if let Ok(mut live) = self.live.lock() {
+            self.publish_activity_locked(&mut live);
+        }
+    }
+
+    /// 界面现状：（当时的序号，重建现状的事件）。打开对话时先取它再取消息，之后的事件界面接着补
+    pub fn snapshot(&self) -> (u64, Vec<Value>) {
+        self.live
+            .lock()
+            .map(|live| (live.seq, live.replay()))
+            .unwrap_or_default()
+    }
+
     /// 还没回答的提问（带 timeout 的过期后 pi 已按默认值收回，不再返回）
     pub fn pending_ui(&self) -> Vec<Value> {
         let Ok(mut pending) = self.pending_ui.lock() else {
@@ -139,6 +261,7 @@ impl ChatSession {
     pub async fn respond_ui(&self, response: Value) -> AppResult<()> {
         self.touch();
         self.forget_ui(response.get("id").and_then(Value::as_str));
+        self.publish_activity();
         let mut guard = self.process.lock().await;
         let process = guard
             .as_mut()
@@ -161,6 +284,8 @@ pub struct ChatHub {
     listed: Arc<Mutex<Option<Vec<SessionSummary>>>>,
     /// 闲置回收已经在跑
     reaper: Arc<AtomicBool>,
+    /// 事件序号（见模块说明）
+    seq: Arc<AtomicU64>,
 }
 
 impl ChatHub {
@@ -216,6 +341,18 @@ impl ChatHub {
             .collect()
     }
 
+    /// 在回答或在等学习者回答的对话：（id，在回答，等回答）
+    pub async fn activity(&self) -> Vec<(String, bool, bool)> {
+        self.sessions
+            .lock()
+            .await
+            .values()
+            .map(|s| (s.id.clone(), s.activity()))
+            .filter(|(_, (running, asking))| *running || *asking)
+            .map(|(id, (running, asking))| (id, running, asking))
+            .collect()
+    }
+
     /// 启动一个对话进程（新对话或按会话 id 恢复），返回 pi 的会话 id
     pub async fn start(&self, launch: AgentLaunch, emit: Emit) -> AppResult<Arc<ChatSession>> {
         self.start_reaper();
@@ -242,13 +379,12 @@ impl ChatHub {
                 "没能打开这个对话".to_string(),
             ));
         }
-        let session = Arc::new(ChatSession {
-            id: id.clone(),
-            process: tokio::sync::Mutex::new(Some(process)),
-            running: AtomicBool::new(false),
-            last_used: Mutex::new(Instant::now()),
-            pending_ui: Mutex::new(Vec::new()),
-        });
+        let session = Arc::new(ChatSession::new(
+            id.clone(),
+            Some(process),
+            emit,
+            self.seq.clone(),
+        ));
         // 同一个会话已有进程（并发打开）：保留先到的
         {
             let mut sessions = self.sessions.lock().await;
@@ -264,7 +400,7 @@ impl ChatHub {
         let hub = self.clone();
         let pump = session.clone();
         tokio::spawn(async move {
-            while let Some((_, mut raw)) = events.recv().await {
+            while let Some((_, raw)) = events.recv().await {
                 match raw.get("type").and_then(Value::as_str) {
                     Some("agent_start") => pump.running.store(true, Ordering::SeqCst),
                     Some("session_info_changed") => hub.invalidate_list(),
@@ -287,12 +423,12 @@ impl ChatHub {
                     _ => {}
                 }
                 pump.touch();
-                slim_update(&mut raw);
-                emit(&pump.id, raw);
+                pump.publish(raw);
             }
             pump.running.store(false, Ordering::SeqCst);
+            pump.forget_ui(None);
             hub.remove(&pump.id, &pump).await;
-            emit(&pump.id, json!({ "type": "redlark_closed" }));
+            pump.publish(json!({ "type": "redlark_closed" }));
         });
         Ok(session)
     }
@@ -405,6 +541,131 @@ pub async fn list_sessions(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    type Seen = Arc<Mutex<Vec<(u64, Value)>>>;
+
+    fn recording() -> (ChatSession, Seen) {
+        let seen: Seen = Arc::default();
+        let sink = seen.clone();
+        let emit: Emit = Arc::new(move |_, seq, e| sink.lock().unwrap().push((seq, e)));
+        let session = ChatSession::new("c1".into(), None, emit, Arc::default());
+        (session, seen)
+    }
+
+    fn update(text: &str, delta: &str) -> Value {
+        json!({
+            "type": "message_update",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": text}]},
+            "assistantMessageEvent": {"type": "text_delta", "contentIndex": 0, "delta": delta, "partial": {}}
+        })
+    }
+
+    #[test]
+    fn snapshot_rebuilds_the_answer_being_written() {
+        let (session, seen) = recording();
+        session.publish(
+            json!({"type": "message_start", "message": {"role": "assistant", "content": []}}),
+        );
+        session.publish(update("Hello", "Hello"));
+        session.publish(update("Hello wor", " wor"));
+        session
+            .publish(json!({"type": "queue_update", "steering": ["再举个例子"], "followUp": []}));
+        session.publish(json!({"type": "auto_retry_start", "attempt": 1}));
+
+        let (seq, replay) = session.snapshot();
+        // 序号就是最后一条推送的
+        assert_eq!(seq, seen.lock().unwrap().last().unwrap().0);
+        assert_eq!(
+            replay,
+            vec![
+                json!({"type": "message_start", "message": {"role": "assistant", "content": [{"type": "text", "text": "Hello wor"}]}}),
+                json!({"type": "queue_update", "steering": ["再举个例子"], "followUp": []}),
+                json!({"type": "auto_retry_start", "attempt": 1}),
+            ]
+        );
+        // 推给界面的增量不带整条消息
+        let (_, last_update) = seen.lock().unwrap()[2].clone();
+        assert!(last_update.get("message").is_none());
+
+        session.publish(json!({"type": "auto_retry_end"}));
+        session.publish(
+            json!({"type": "message_end", "message": {"role": "assistant", "content": []}}),
+        );
+        assert_eq!(
+            session.snapshot().1,
+            vec![json!({"type": "queue_update", "steering": ["再举个例子"], "followUp": []})]
+        );
+        session.publish(json!({"type": "agent_settled"}));
+        assert!(session.snapshot().1.is_empty());
+    }
+
+    #[test]
+    fn user_messages_do_not_become_the_partial_answer() {
+        let (session, _) = recording();
+        session
+            .publish(json!({"type": "message_start", "message": {"role": "user", "content": []}}));
+        session.publish(json!({"type": "message_end", "message": {"role": "user", "content": []}}));
+        assert!(session.snapshot().1.is_empty());
+    }
+
+    #[test]
+    fn sequence_is_shared_and_increasing_across_sessions() {
+        let seq: Arc<AtomicU64> = Arc::default();
+        let seen: Arc<Mutex<Vec<u64>>> = Arc::default();
+        let sink = seen.clone();
+        let emit: Emit = Arc::new(move |_, n, _| sink.lock().unwrap().push(n));
+        let a = ChatSession::new("a".into(), None, emit.clone(), seq.clone());
+        let b = ChatSession::new("b".into(), None, emit, seq);
+        a.publish(json!({"type": "turn_start"}));
+        b.publish(json!({"type": "turn_start"}));
+        a.publish(json!({"type": "turn_start"}));
+        assert_eq!(*seen.lock().unwrap(), vec![1, 2, 3]);
+        assert_eq!(b.snapshot().0, 2);
+    }
+
+    #[tokio::test]
+    async fn activity_is_published_only_when_it_changes() {
+        let (session, seen) = recording();
+        let activities = || {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, e)| e["type"] == "redlark_activity")
+                .map(|(_, e)| {
+                    (
+                        e["running"].as_bool().unwrap(),
+                        e["asking"].as_bool().unwrap(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        session.running.store(true, Ordering::SeqCst);
+        session.publish(json!({"type": "agent_start"}));
+        session.publish(json!({"type": "turn_start"}));
+        assert_eq!(activities(), vec![(true, false)]);
+
+        // 工具问学习者：等回答
+        session
+            .pending_ui
+            .lock()
+            .unwrap()
+            .push((Instant::now(), json!({"id": "q1", "method": "confirm"})));
+        session.publish(json!({"type": "extension_ui_request", "id": "q1", "method": "confirm"}));
+        assert_eq!(activities(), vec![(true, false), (true, true)]);
+
+        // 回答了（进程不在，写回失败，但提问已收回）
+        let _ = session
+            .respond_ui(json!({"type": "extension_ui_response", "id": "q1", "confirmed": true}))
+            .await;
+        assert_eq!(
+            activities(),
+            vec![(true, false), (true, true), (true, false)]
+        );
+
+        session.running.store(false, Ordering::SeqCst);
+        session.publish(json!({"type": "agent_settled"}));
+        assert_eq!(activities().last(), Some(&(false, false)));
+    }
 
     #[test]
     fn message_update_keeps_only_the_delta() {

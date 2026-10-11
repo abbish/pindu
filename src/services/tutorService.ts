@@ -1,11 +1,16 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '../types';
-import type { TutorConversation, TutorOpened, TutorSendRequest, TutorUiAnswer } from '../types/tutor';
+import type { TutorActivity, TutorConversation, TutorOpened, TutorSendRequest, TutorUiAnswer } from '../types/tutor';
 
 /** AI 老师独立对话（handlers/tutor.rs）：对话由 pi 会话保存，回答经 `tutor-event` 事件推送 */
 export class TutorService extends BaseService {
   async list(): Promise<ApiResult<TutorConversation[]>> {
     return this.executeWithLoading(() => this.client.invoke<TutorConversation[]>('get_tutor_conversations'));
+  }
+
+  /** 在回答或在等学习者回答的对话（之后的变化经 tutor-event 的 redlark_activity 推送） */
+  async activity(): Promise<ApiResult<TutorActivity[]>> {
+    return this.executeWithLoading(() => this.client.invoke<TutorActivity[]>('get_tutor_activity'));
   }
 
   async open(conversationId: string): Promise<ApiResult<TutorOpened>> {

@@ -244,12 +244,16 @@ impl TutorChatService {
     /// 打开对话：pi 的消息
     pub async fn open(&self, env: &ChatEnv<'_>, id: &str) -> AppResult<TutorOpened> {
         let session = self.session(env, Some(id)).await?;
+        // 先取界面现状再取消息：之后的事件（序号更大）界面接着补，已经算进消息的由界面去重
+        let (seq, replay) = session.snapshot();
         let data = session.request("get_messages", Value::Null).await?;
         Ok(TutorOpened {
             id: session.id.clone(),
             messages: data.get("messages").cloned().unwrap_or(json!([])),
             running: session.is_running(),
             pending_asks: session.pending_ui(),
+            seq,
+            replay,
         })
     }
 
@@ -572,7 +576,7 @@ mod tests {
         let hub = ChatHub::new();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
         let sink = events.clone();
-        let emit: Emit = Arc::new(move |_, e| sink.lock().unwrap().push(e));
+        let emit: Emit = Arc::new(move |_, _, e| sink.lock().unwrap().push(e));
         let env = ChatEnv {
             paths: &paths,
             hub: &hub,
@@ -622,6 +626,27 @@ mod tests {
             )
             .await
             .unwrap();
+        // 回答写到一半时打开对话：快照里有正在写的回答，序号不小于已经推送的增量
+        for _ in 0..300 {
+            let streamed = events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| e["type"] == "message_update");
+            if streamed {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let opened = service.open(&env, &id).await.unwrap();
+        let partial = opened
+            .replay
+            .iter()
+            .find(|e| e["type"] == "message_start")
+            .map(|e| e["message"]["role"].clone());
+        println!("打开时：序号 {}，正在写的回答 {:?}", opened.seq, partial);
+        assert!(opened.seq > 0);
+        assert!(partial.is_none_or(|role| role == "assistant"));
         // 运行中补一句：进 pi 的队列（queue_update）；删掉后队列变空
         service
             .send(&env, &request(Some(id.clone()), "顺便告诉我它的词性。"))
@@ -660,6 +685,16 @@ mod tests {
             println!("队列：补充送到时这一轮已经结束（没有排队）");
         }
         wait(1).await;
+        // 侧边栏的标记：开始回答时「在回答」，结束后都清掉
+        let activity: Vec<(bool, bool)> = events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e["type"] == "redlark_activity")
+            .map(|e| (e["running"] == true, e["asking"] == true))
+            .collect();
+        assert_eq!(activity.first(), Some(&(true, false)), "{activity:?}");
+        assert_eq!(activity.last(), Some(&(false, false)), "{activity:?}");
         let step = events
             .lock()
             .unwrap()

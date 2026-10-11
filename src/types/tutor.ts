@@ -23,6 +23,17 @@ export interface TutorOpened {
   running: boolean;
   /** 还在等学习者回答的提问（pi 的 extension_ui_request 原样） */
   pendingAsks: unknown[];
+  /** 取现状时的事件序号：序号不大于它的事件已经算在里面 */
+  seq: number;
+  /** 重建现状的事件（正在写的回答、排队的消息、重试提示），按 pi 事件重放 */
+  replay: PiEvent[];
+}
+
+/** 在回答或在等学习者回答的对话（侧边栏「AI 老师」的标记） */
+export interface TutorActivity {
+  conversationId: string;
+  running: boolean;
+  asking: boolean;
 }
 
 /** 随消息发送的图片（base64，不含 data: 前缀） */
@@ -113,9 +124,11 @@ export interface PiOtherMessage {
 }
 export type PiMessage = PiUserMessage | PiAssistantMessage | PiToolResultMessage | PiCustomMessage | PiOtherMessage;
 
-/** `tutor-event` 事件：pi 的原始事件（docs/json.md；message_update 去掉了整条消息的快照，只留增量）+ 对话 id */
+/** `tutor-event` 事件：pi 的原始事件（docs/json.md；message_update 去掉了整条消息的快照，只留增量）+ 对话 id + 序号 */
 export interface TutorEventPayload {
   conversationId: string;
+  /** 递增序号（所有对话共用）：打开对话时丢掉不大于快照序号的 */
+  seq: number;
   event: PiEvent;
 }
 
@@ -162,4 +175,6 @@ export type PiEvent =
     }
   /** 拼读补发：对话进程已结束 */
   | { type: 'redlark_closed' }
+  /** 拼读补发：在回答 / 等学习者回答变了 */
+  | { type: 'redlark_activity'; running: boolean; asking: boolean }
   | { type: string };
