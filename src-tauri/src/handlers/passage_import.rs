@@ -94,6 +94,7 @@ pub async fn start_passage_import(
         let label = request.items[0].source_label.clone();
         let spec = JobSpec {
             kind: "passage_import",
+            module: Some("passages"),
             title: if count == 1 {
                 format!("导入材料 · {label}")
             } else {
@@ -203,6 +204,7 @@ pub async fn start_material_import(
         let name = request.file_name.trim().to_string();
         let spec = JobSpec {
             kind: "material_read",
+            module: Some("passages"),
             title: format!("读取素材 · {name}"),
             lane: Lane::Agent,
             detached: false,

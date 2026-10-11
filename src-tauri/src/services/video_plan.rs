@@ -838,6 +838,7 @@ mod real_tests {
         let jobs = Jobs::new(|_| {});
         let spec = JobSpec {
             kind: "t",
+            module: None,
             title: "t".into(),
             lane: Lane::Agent,
             detached: true,

@@ -17,6 +17,7 @@ import { PracticeResultPage } from './pages/PracticeResultPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { TutorPage } from './pages/TutorPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { JobsPage } from './pages/JobsPage';
 import { PassagePracticePage } from './pages/PassagePracticePage';
 import { PassageLibraryPage } from './pages/PassageLibraryPage';
 import { CreatePassagePage } from './pages/CreatePassagePage';
@@ -133,6 +134,8 @@ function App() {
         return <CalendarPage onNavigate={navigate} />;
       case 'tutor':
         return <TutorPage key={route.params?.at} initialPrompt={route.params?.prompt} onNavigate={navigate} />;
+      case 'jobs':
+        return <JobsPage onNavigate={navigate} />;
       case 'settings':
         return <SettingsPage onNavigate={navigate} />;
       default: {

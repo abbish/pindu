@@ -651,6 +651,7 @@ mod real_tests {
         };
         let spec = JobSpec {
             kind: "video_import",
+            module: None,
             title: "t".into(),
             lane: Lane::Media,
             detached: true,

@@ -131,6 +131,7 @@ mod tests {
         Job {
             id: "j1".into(),
             kind: "passage_import".into(),
+            module: None,
             title: "导入短文 · A Day with My Phone".into(),
             status,
             stage: None,

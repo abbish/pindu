@@ -76,6 +76,8 @@ pub struct Job {
     pub id: String,
     /// 任务类型，如 `word_analysis`、`passage_generate`、`video_process`
     pub kind: String,
+    /// 属于哪个模块（侧边栏一级页面键：wordbooks / passages / videos / plans），菜单上显示进行中的数量
+    pub module: Option<String>,
     pub title: String,
     pub status: JobStatus,
     /// 当前阶段的说明，如「第 3/8 段 · 切分中」
@@ -99,6 +101,8 @@ pub struct Job {
 /// 提交任务时的描述
 pub struct JobSpec {
     pub kind: &'static str,
+    /// 属于哪个模块（侧边栏一级页面键），见 `Job::module`
+    pub module: Option<&'static str>,
     pub title: String,
     pub lane: Lane,
     pub detached: bool,
@@ -166,6 +170,7 @@ impl Jobs {
         let job = Job {
             id: id.clone(),
             kind: spec.kind.to_string(),
+            module: spec.module.map(str::to_string),
             title: spec.title,
             status: JobStatus::Queued,
             stage: None,
@@ -413,6 +418,7 @@ mod tests {
     fn spec(lane: Lane) -> JobSpec {
         JobSpec {
             kind: "test",
+            module: None,
             title: "测试".to_string(),
             lane,
             detached: true,
@@ -589,6 +595,7 @@ mod tests {
                 job: Job {
                     id,
                     kind: "t".into(),
+                    module: None,
                     title: "t".into(),
                     status,
                     stage: None,
@@ -625,6 +632,7 @@ mod tests {
                 job: Job {
                     id: format!("j{i}"),
                     kind: "t".into(),
+                    module: None,
                     title: "t".into(),
                     status: if i == 0 {
                         JobStatus::Running

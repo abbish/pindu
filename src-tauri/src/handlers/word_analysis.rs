@@ -166,6 +166,7 @@ pub async fn start_material_words(
         let name = request.file_name.trim().to_string();
         let spec = JobSpec {
             kind: "material_read",
+            module: Some("wordbooks"),
             title: format!("读取素材 · {name}"),
             lane: Lane::Agent,
             detached: false,
@@ -458,6 +459,7 @@ pub async fn start_word_analysis(
         };
         let spec = JobSpec {
             kind: "word_analysis",
+            module: Some("wordbooks"),
             title: format!("分析 {} 个单词 · {}", job.words.len(), book.title),
             lane: Lane::Agent,
             detached: true,

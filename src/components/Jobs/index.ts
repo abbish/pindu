@@ -1,5 +1,5 @@
 export { JobCenter } from './JobCenter';
-export { JobIndicator } from './JobIndicator';
+export { JobsButton, JobsNavItem, ModuleJobBadge } from './JobNav';
 export { jobErrorText, jobPercent } from './JobItem';
 export { JobProgress, activeJobFor } from './JobProgress';
 export { JobPanel, STOPPING_STAGE } from './JobPanel';

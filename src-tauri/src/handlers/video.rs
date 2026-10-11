@@ -137,6 +137,7 @@ pub async fn start_video_import(
         let job_id = app.state::<Jobs>().spawn(
             JobSpec {
                 kind: "video_import",
+                module: Some("videos"),
                 title: format!("导入视频 · {title}"),
                 lane: Lane::Media,
                 detached: true,
@@ -497,6 +498,7 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
         Ok(app.state::<Jobs>().spawn(
             JobSpec {
                 kind: "video_plan",
+                module: Some("videos"),
                 title: format!("规划切分 · {}", row.title),
                 lane: Lane::Agent,
                 detached: true,
@@ -559,6 +561,7 @@ pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<S
         Ok(app.state::<Jobs>().spawn(
             JobSpec {
                 kind: "video_process",
+                module: Some("videos"),
                 title: format!("切分视频 · {}", row.title),
                 lane: Lane::Media,
                 detached: true,
@@ -805,6 +808,7 @@ async fn spawn_translate(
     Ok(app.state::<Jobs>().spawn(
         JobSpec {
             kind: "video_translate",
+            module: Some("videos"),
             title: match range {
                 Some(_) => format!("翻译一段字幕 · {title}"),
                 None => format!("翻译字幕 · {title}"),

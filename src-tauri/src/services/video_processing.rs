@@ -536,6 +536,7 @@ mod real_tests {
     {
         let spec = JobSpec {
             kind: "t",
+            module: None,
             title: "t".into(),
             lane: Lane::Media,
             detached: true,

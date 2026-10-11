@@ -12,6 +12,8 @@ export interface Job {
   id: string;
   /** 任务类型，如 word_analysis、plan_ordering */
   kind: string;
+  /** 属于哪个模块（侧边栏一级页面键：wordbooks / passages / videos / plans），菜单上显示进行中的数量 */
+  module: string | null;
   title: string;
   status: JobStatus;
   /** 当前阶段的说明 */

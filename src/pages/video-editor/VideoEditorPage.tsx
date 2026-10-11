@@ -42,7 +42,7 @@ import { videoService } from '@/services/videoService';
 import { jobService } from '@/services/jobService';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { isJobActive } from '@/types/job';
-import { JobIndicator, jobErrorText } from '@/components/Jobs';
+import { JobsButton, jobErrorText } from '@/components/Jobs';
 import type { NavigateFn } from '@/navigation';
 import type { VideoDetail, VideoPlan, VideoPlanInfo, VideoSegment } from '@/types/video';
 import { AiPlanDialog } from './AiPlanDialog';
@@ -661,7 +661,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
             )}
           </span>
           <div className="ml-auto flex items-center gap-2">
-            {onNavigate && <JobIndicator onNavigate={onNavigate} />}
+            {onNavigate && <JobsButton onNavigate={onNavigate} />}
             {/* 规划 → 开始切分 */}
             <PlanMenu
               plans={detail.plans}

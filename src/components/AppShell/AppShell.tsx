@@ -30,10 +30,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/useTheme';
 import { PAGE_TITLE, TOP_LEVEL_OF, type NavigateFn, type PageKey, type TopLevelPage } from '@/navigation';
-import { JobIndicator } from '@/components/Jobs';
+import { JobsNavItem, ModuleJobBadge } from '@/components/Jobs';
 import { QuickAsk } from '@/components/QuickAsk';
 import { UpdateBanner } from '../UpdateBanner';
-import { useOnJobFinished } from '@/hooks/useJobs';
+import { markJobsSeen, useOnJobFinished } from '@/hooks/useJobs';
 import { refreshTagUsage, tagTotal, useTagUsage } from '@/hooks/useTagUsage';
 
 export interface AppShellProps {
@@ -153,6 +153,12 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
   const currentTitle = (dynamicTitle?.page === page ? dynamicTitle.title : null) ?? PAGE_TITLE[page];
   const isSubPage = active !== page;
 
+  // 进入、离开一个模块时，它已结束的任务算看过（侧边栏上的完成标记消失）
+  useEffect(() => {
+    markJobsSeen(active);
+    return () => markJobsSeen(active);
+  }, [active]);
+
   const handleOpenChange = (value: boolean) => {
     setOpen(value);
     try {
@@ -198,6 +204,7 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
                           <Icon />
                           <span>{label}</span>
                         </SidebarMenuButton>
+                        <ModuleJobBadge module={key} label={label} current={active === key} onNavigate={onNavigate} />
                       </SidebarMenuItem>
                     ))}
                   </SidebarMenu>
@@ -209,13 +216,13 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
 
           <SidebarFooter>
             <SidebarMenu>
-              <JobIndicator onNavigate={onNavigate} />
               <SidebarMenuItem>
                 <SidebarMenuButton tooltip={theme === 'dark' ? '浅色模式' : '深色模式'} onClick={toggleTheme}>
                   {theme === 'dark' ? <Sun /> : <Moon />}
                   <span>{theme === 'dark' ? '浅色模式' : '深色模式'}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <JobsNavItem current={active === 'jobs'} onNavigate={onNavigate} />
               <SidebarMenuItem>
                 <SidebarMenuButton isActive={active === 'settings'} tooltip="设置" onClick={() => onNavigate('settings')}>
                   <Settings />

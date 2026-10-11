@@ -1,11 +1,11 @@
 import { useCallback, useMemo } from 'react';
 import { useToast } from '@/components/Toast/ToastContainer';
-import { forgetJobs, setJobsSheetOpen } from '@/hooks/useJobs';
+import { forgetJobs } from '@/hooks/useJobs';
 import { jobService } from '@/services/jobService';
 import type { NavigateFn, PageKey } from '@/navigation';
 import type { Job } from '@/types/job';
 
-/** 任务的操作：停止、打开结果、移除（顶栏浮层与任务面板共用） */
+/** 任务的操作：停止、打开结果、移除（侧边栏的模块任务浮层与任务页共用） */
 export function useJobActions(onNavigate: NavigateFn) {
   const toast = useToast();
 
@@ -20,7 +20,6 @@ export function useJobActions(onNavigate: NavigateFn) {
   const open = useCallback(
     (job: Job) => {
       if (!job.link) return;
-      setJobsSheetOpen(false);
       // 页面键与参数由后端按 navigation.ts 的路由表给出
       (onNavigate as (page: PageKey, params?: unknown) => void)(job.link.page as PageKey, job.link.params);
     },
@@ -34,3 +33,10 @@ export function useJobActions(onNavigate: NavigateFn) {
 
   return useMemo(() => ({ cancel, open, remove }), [cancel, open, remove]);
 }
+
+/** 把操作接到 JobItem 的属性上 */
+export const actionProps = (actions: ReturnType<typeof useJobActions>) => ({
+  onCancel: actions.cancel,
+  onOpen: actions.open,
+  onRemove: actions.remove,
+});

@@ -43,6 +43,8 @@ export interface RouteParams {
   calendar: undefined;
   /** AI 老师：独立的对话工作台。prompt：从顶栏快速对话进入，开新对话并发出这句；at 区分两次相同的输入 */
   tutor: { prompt?: string; at?: number } | undefined;
+  /** 后台任务：进行中与已结束的全部任务 */
+  jobs: undefined;
   settings: undefined;
 }
 
@@ -54,7 +56,7 @@ export type PassagePracticeReturn = 'plan-detail' | 'home' | 'calendar';
 export type PassageDetailTab = 'video' | 'text' | 'words' | 'sets' | 'listening';
 
 /** 顶部导航中的一级页面 */
-export type TopLevelPage = 'home' | 'plans' | 'wordbooks' | 'passages' | 'videos' | 'tag' | 'calendar' | 'tutor' | 'settings';
+export type TopLevelPage = 'home' | 'plans' | 'wordbooks' | 'passages' | 'videos' | 'tag' | 'calendar' | 'tutor' | 'jobs' | 'settings';
 
 /** 从计划进入素材页面时带上的计划（面包屑显示「计划 › 计划名 › …」） */
 export interface PlanContext {
@@ -94,6 +96,7 @@ export const TOP_LEVEL_OF: Record<PageKey, TopLevelPage> = {
   tag: 'tag',
   calendar: 'calendar',
   tutor: 'tutor',
+  jobs: 'jobs',
   settings: 'settings',
 };
 
@@ -117,5 +120,6 @@ export const PAGE_TITLE: Record<PageKey, string> = {
   tag: '标签',
   calendar: '学习日历',
   tutor: 'AI 老师',
+  jobs: '后台任务',
   settings: '设置',
 };

@@ -11,16 +11,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/Toast/ToastContainer';
-import { isJobWatched, setJobsSheetOpen, startJobSync, useJobs } from '@/hooks/useJobs';
+import { isJobWatched, startJobSync, useJobs } from '@/hooks/useJobs';
 import { jobService } from '@/services/jobService';
 import type { NavigateFn } from '@/navigation';
 import { isJobActive, type Job } from '@/types/job';
 import { jobErrorText } from './JobItem';
-import { JobsSheet } from './JobsSheet';
 import { useJobActions } from './useJobActions';
 
 /**
- * 后台任务的 App 级部分：同步任务状态、任务面板、菜单「窗口 → 后台任务」、
+ * 后台任务的 App 级部分：同步任务状态、菜单「窗口 → 后台任务」打开任务页、
  * 后台任务结束时的提示（发起页面还开着就不提示，页面里已经有进度）、退出确认。
  */
 export const JobCenter: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) => {
@@ -33,7 +32,7 @@ export const JobCenter: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) 
   useEffect(() => {
     void startJobSync();
     const unlisteners = [
-      listen('menu-show-jobs', () => setJobsSheetOpen(true)),
+      listen('menu-show-jobs', () => onNavigate('jobs')),
       listen<string[]>('quit-requested', (event) => setQuitTitles(event.payload)),
     ];
     return () => unlisteners.forEach((p) => p.then((off) => off()));
@@ -57,7 +56,7 @@ export const JobCenter: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) 
           type: 'error',
           title: `没有完成：${job.title}`,
           message: jobErrorText(job),
-          action: { label: '查看', onClick: () => setJobsSheetOpen(true) },
+          action: { label: '查看', onClick: () => onNavigate('jobs') },
         });
       }
     }
@@ -70,7 +69,6 @@ export const JobCenter: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) 
 
   return (
     <>
-      <JobsSheet onNavigate={onNavigate} />
       <AlertDialog open={quitTitles !== null} onOpenChange={(open) => !open && setQuitTitles(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
