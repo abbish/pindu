@@ -304,11 +304,30 @@ impl TutorChatService {
         Ok(session.id.clone())
     }
 
-    pub async fn abort(&self, hub: &ChatHub, id: &str) -> AppResult<()> {
+    /// 停止，返回被清掉的排队消息
+    pub async fn abort(&self, hub: &ChatHub, id: &str) -> AppResult<Vec<String>> {
         match hub.get(id).await {
             Some(session) => session.abort().await,
-            None => Ok(()),
+            None => Ok(Vec::new()),
         }
+    }
+
+    /// 改排队的消息（删掉 / 拿回输入框编辑后剩下的，按顺序）
+    pub async fn set_queue(&self, hub: &ChatHub, id: &str, messages: &[String]) -> AppResult<()> {
+        if messages.len() > 20
+            || messages
+                .iter()
+                .any(|m| m.chars().count() > MAX_MESSAGE_CHARS)
+        {
+            return Err(AppError::ValidationError(
+                "排队的消息太多或太长".to_string(),
+            ));
+        }
+        let session = hub
+            .get(id)
+            .await
+            .ok_or_else(|| AppError::ValidationError("这个对话已经结束，请重新提问".to_string()))?;
+        session.replace_queue(messages).await
     }
 
     /// 回答工具向用户的提问
@@ -536,6 +555,43 @@ mod tests {
             )
             .await
             .unwrap();
+        // 运行中补一句：进 pi 的队列（queue_update）；删掉后队列变空
+        service
+            .send(&env, &request(Some(id.clone()), "顺便告诉我它的词性。"))
+            .await
+            .unwrap();
+        let queued = |text: &str| {
+            let text = text.to_string();
+            let events = events.clone();
+            async move {
+                for _ in 0..50 {
+                    let last = events
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .rev()
+                        .find(|e| e["type"] == "queue_update")
+                        .cloned();
+                    if let Some(e) = last {
+                        let has = e["steering"]
+                            .as_array()
+                            .is_some_and(|q| q.iter().any(|m| m == &json!(text)));
+                        if has == !text.is_empty() {
+                            return true;
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                false
+            }
+        };
+        if queued("顺便告诉我它的词性。").await {
+            service.set_queue(&hub, &id, &[]).await.unwrap();
+            assert!(queued("").await, "删掉后队列应为空");
+            println!("队列：补充进了队列，删掉后清空");
+        } else {
+            println!("队列：补充送到时这一轮已经结束（没有排队）");
+        }
         wait(1).await;
         let step = events
             .lock()

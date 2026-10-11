@@ -17,8 +17,14 @@ export class TutorService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<string>('send_tutor_message', { request }));
   }
 
-  async stop(conversationId: string): Promise<ApiResult<void>> {
-    return this.executeWithLoading(() => this.client.invoke<void>('stop_tutor_conversation', { conversationId }));
+  /** 停止，返回被清掉的排队消息（放回输入框） */
+  async stop(conversationId: string): Promise<ApiResult<string[]>> {
+    return this.executeWithLoading(() => this.client.invoke<string[]>('stop_tutor_conversation', { conversationId }));
+  }
+
+  /** 改排队的消息（删掉 / 拿回编辑后剩下的，按顺序） */
+  async setQueue(conversationId: string, messages: string[]): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('set_tutor_queue', { conversationId, messages }));
   }
 
   async answer(request: TutorUiAnswer): Promise<ApiResult<void>> {

@@ -213,6 +213,7 @@ pub fn run() {
                 open_tutor_conversation,
                 send_tutor_message,
                 stop_tutor_conversation,
+                set_tutor_queue,
                 answer_tutor_question,
                 rename_tutor_conversation,
                 set_tutor_conversation_flags,

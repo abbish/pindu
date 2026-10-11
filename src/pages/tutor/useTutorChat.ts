@@ -134,11 +134,16 @@ export function useTutorChat(initialPrompt?: string) {
         return false;
       }
       const conversationId = activeRef.current;
-      setTranscript((s) => ({
-        ...s,
-        running: true,
-        pendingUser: { text: message, images: imageFiles.map((a) => a.preview ?? ''), files: otherFiles.map((a) => a.file.name) },
-      }));
+      // 运行中发的进 pi 的队列（显示在输入框上方）；空闲时先显示出来
+      setTranscript((s) =>
+        s.running
+          ? s
+          : {
+              ...s,
+              running: true,
+              pendingUser: { text: message, images: imageFiles.map((a) => a.preview ?? ''), files: otherFiles.map((a) => a.file.name) },
+            }
+      );
       // 新对话：id 由后端返回，期间的事件先存着
       if (!conversationId) buffer.current = { id: null, events: new Map(), holding: true };
       const result = await tutorService.send({ conversationId: conversationId ?? undefined, message, images, files });
@@ -159,12 +164,36 @@ export function useTutorChat(initialPrompt?: string) {
     [setActiveId, refreshSoon, toast]
   );
 
-  const stop = useCallback(async () => {
+  /** 停止；返回被清掉的排队消息（放回输入框） */
+  const stop = useCallback(async (): Promise<string[]> => {
     const id = activeRef.current;
-    if (!id) return;
+    if (!id) return [];
     const result = await tutorService.stop(id);
-    if (!result.success) toast.showError('没能停止', result.error);
+    if (!result.success) {
+      toast.showError('没能停止', result.error);
+      return [];
+    }
+    return result.data;
   }, [toast]);
+
+  /** 从队列里拿掉一条（删除，或拿回输入框编辑） */
+  const dropQueued = useCallback(
+    async (index: number): Promise<string | null> => {
+      const id = activeRef.current;
+      const queue = transcript.queue;
+      if (!id || index < 0 || index >= queue.length) return null;
+      const removed = queue[index];
+      const rest = queue.filter((_, i) => i !== index);
+      setTranscript((s) => ({ ...s, queue: rest }));
+      const result = await tutorService.setQueue(id, rest);
+      if (!result.success) {
+        toast.showError('没能修改排队的消息', result.error);
+        return null;
+      }
+      return removed;
+    },
+    [transcript.queue, toast]
+  );
 
   const answer = useCallback(
     async (reply: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
@@ -221,6 +250,7 @@ export function useTutorChat(initialPrompt?: string) {
     newConversation,
     send,
     stop,
+    dropQueued,
     answer,
     setFlags,
     rename,

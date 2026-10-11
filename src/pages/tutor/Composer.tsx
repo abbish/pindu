@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { ArrowUp, FileText, Paperclip, Square, X } from 'lucide-react';
+import { ArrowUp, Clock, FileText, Paperclip, Pencil, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import type { Attachment } from './useTutorChat';
@@ -19,11 +19,15 @@ export const Composer: React.FC<{
   draft: string;
   attachments: Attachment[];
   running: boolean;
+  /** 排队等 AI 老师看的消息 */
+  queue: string[];
+  onEditQueued: (index: number) => void;
+  onRemoveQueued: (index: number) => void;
   onDraft: (text: string) => void;
   onAttachments: (attachments: Attachment[]) => void;
   onSend: () => void;
   onStop: () => void;
-}> = ({ draft, attachments, running, onDraft, onAttachments, onSend, onStop }) => {
+}> = ({ draft, attachments, running, queue, onEditQueued, onRemoveQueued, onDraft, onAttachments, onSend, onStop }) => {
   const picker = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const canSend = draft.trim().length > 0 || attachments.length > 0;
@@ -69,6 +73,36 @@ export const Composer: React.FC<{
         }}
         className="mx-auto max-w-3xl rounded-xl border bg-background p-2 shadow-sm focus-within:ring-1 focus-within:ring-ring"
       >
+        {queue.length > 0 && (
+          <ol className="mb-2 flex flex-col gap-1 border-b px-1 pb-2" aria-label="排队的消息">
+            {queue.map((text, i) => (
+              <li key={`${i}-${text}`} className="group flex items-center gap-2 rounded-md px-1 py-0.5 text-sm hover:bg-accent">
+                <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-label="排队中" />
+                <span className="min-w-0 flex-1 truncate" title={text}>
+                  {text}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onEditQueued(i)}
+                  className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
+                  aria-label="编辑"
+                  title="拿回输入框编辑"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemoveQueued(i)}
+                  className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
+                  aria-label="删除"
+                  title="删除"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
         {attachments.length > 0 && (
           <div className="flex flex-wrap items-end gap-2 px-1 pt-1 pb-2">
             {attachments.map((a, i) => (
@@ -112,7 +146,7 @@ export const Composer: React.FC<{
               if (canSend) onSend();
             }
           }}
-          placeholder={running ? '补充一句（AI 老师做完这一步就会看到）' : '问问题，或者让 AI 老师帮你做点什么…（可以直接粘贴截图）'}
+          placeholder={running ? '补充一句（排队，AI 老师做完这一步就会看到）' : '问问题，或者让 AI 老师帮你做点什么…（可以直接粘贴截图）'}
           rows={2}
           className="max-h-60 min-h-0 resize-none border-0 shadow-none focus-visible:ring-0"
         />

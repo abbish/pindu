@@ -167,3 +167,13 @@ test('读 skill 显示成看了哪类做法', () => {
   const agent = toTurns(state)[1];
   assert.equal(agent.role === 'agent' && agent.steps[0].label, '看了「短文与题组」的做法');
 });
+
+test('排队的消息：按 pi 的完整队列显示，结束时清空', () => {
+  const queued = run([
+    { type: 'agent_start' },
+    { type: 'queue_update', steering: ['再简单一点', '加个例句'], followUp: [] },
+  ]);
+  assert.deepEqual(queued.queue, ['再简单一点', '加个例句']);
+  assert.deepEqual(run([{ type: 'queue_update', steering: ['加个例句'], followUp: [] }], queued).queue, ['加个例句']);
+  assert.deepEqual(run([{ type: 'agent_settled' }], queued).queue, []);
+});

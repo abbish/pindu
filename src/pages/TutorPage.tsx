@@ -125,10 +125,22 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
           draft={draft}
           attachments={attachments}
           running={running}
+          queue={chat.transcript.queue}
+          onEditQueued={(i) =>
+            void chat.dropQueued(i).then((text) => {
+              if (text !== null) setDraft((d) => (d.trim() ? `${text}\n${d}` : text));
+            })
+          }
+          onRemoveQueued={(i) => void chat.dropQueued(i)}
           onDraft={setDraft}
           onAttachments={setAttachments}
           onSend={() => void send(draft)}
-          onStop={() => void chat.stop()}
+          onStop={() =>
+            // 排队的消息放回输入框（pi 的做法：停止前先清空队列）
+            void chat.stop().then((queued) => {
+              if (queued.length > 0) setDraft((d) => [...queued, d].filter((t) => t.trim()).join('\n'));
+            })
+          }
         />
       </section>
     </div>

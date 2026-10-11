@@ -130,6 +130,8 @@ export type PiEvent =
   | { type: 'tool_execution_start'; toolCallId: string; toolName: string; args?: Record<string, unknown> }
   | { type: 'tool_execution_update'; toolCallId: string; toolName: string; partialResult?: { details?: unknown } }
   | { type: 'tool_execution_end'; toolCallId: string; toolName: string; isError: boolean; result?: { details?: unknown } }
+  /** pi 排队的消息（运行中发的补充），每次都是完整的队列 */
+  | { type: 'queue_update'; steering: string[]; followUp: string[] }
   | { type: 'auto_retry_start' }
   | { type: 'auto_retry_end' }
   | { type: 'compaction_start' }

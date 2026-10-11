@@ -41,6 +41,8 @@ export interface TranscriptState {
   /** 正在重试 / 整理之前的对话 */
   notice: string | null;
   pendingUser: PendingUser | null;
+  /** 排队等 AI 老师看的消息（pi 的队列） */
+  queue: string[];
 }
 
 export const emptyTranscript = (messages: PiMessage[] = [], running = false): TranscriptState => ({
@@ -51,6 +53,7 @@ export const emptyTranscript = (messages: PiMessage[] = [], running = false): Tr
   ask: null,
   notice: null,
   pendingUser: null,
+  queue: [],
 });
 
 const sameMessage = (a: PiMessage, b: PiMessage) =>
@@ -65,7 +68,7 @@ export function applyEvent(state: TranscriptState, event: PiEvent): TranscriptSt
       return { ...state, running: true };
     case 'agent_settled':
     case 'redlark_closed':
-      return { ...state, running: false, partial: null, ask: null, notice: null };
+      return { ...state, running: false, partial: null, ask: null, notice: null, queue: [] };
     case 'message_start': {
       const { message } = event as { message: PiMessage };
       if (message.role === 'assistant') return { ...state, partial: { ...message, content: [...message.content] } };
@@ -134,6 +137,10 @@ export function applyEvent(state: TranscriptState, event: PiEvent): TranscriptSt
         ...state,
         tools: { ...state.tools, [e.toolCallId]: { status: e.isError ? 'error' : 'done', details: e.result?.details } },
       };
+    }
+    case 'queue_update': {
+      const e = event as Extract<PiEvent, { type: 'queue_update' }>;
+      return { ...state, queue: [...(e.steering ?? []), ...(e.followUp ?? [])] };
     }
     case 'auto_retry_start':
       return { ...state, notice: '网络不太稳定，正在重试' };

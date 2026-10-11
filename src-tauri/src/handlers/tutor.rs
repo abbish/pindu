@@ -99,12 +99,34 @@ pub async fn send_tutor_message(app: AppHandle, request: TutorSendRequest) -> Ap
     finish(&logger, "send_tutor_message", result)
 }
 
+/// 停止本轮，返回被清掉的排队消息（前端放回输入框）
 #[tauri::command]
-pub async fn stop_tutor_conversation(app: AppHandle, conversation_id: String) -> AppResult<()> {
+pub async fn stop_tutor_conversation(
+    app: AppHandle,
+    conversation_id: String,
+) -> AppResult<Vec<String>> {
     let logger = app.state::<Logger>();
     logger.api_request("stop_tutor_conversation", Some(&conversation_id));
     let result = service(&app).abort(&hub(&app), &conversation_id).await;
     finish(&logger, "stop_tutor_conversation", result)
+}
+
+/// 改排队的消息（pi 的队列：删掉、拿回输入框编辑后剩下的，按顺序）
+#[tauri::command]
+pub async fn set_tutor_queue(
+    app: AppHandle,
+    conversation_id: String,
+    messages: Vec<String>,
+) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "set_tutor_queue",
+        Some(&format!("{} messages: {}", conversation_id, messages.len())),
+    );
+    let result = service(&app)
+        .set_queue(&hub(&app), &conversation_id, &messages)
+        .await;
+    finish(&logger, "set_tutor_queue", result)
 }
 
 #[tauri::command]

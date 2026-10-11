@@ -75,10 +75,35 @@ impl ChatSession {
         Ok(())
     }
 
-    /// 停止本轮（清掉排队的插话）
-    pub async fn abort(&self) -> AppResult<()> {
-        let _ = self.request("clear_queue", Value::Null).await;
-        self.request("abort", Value::Null).await.map(|_| ())
+    /// 清空排队的消息（插话 / 跟进），返回它们的文字（pi `clear_queue`）
+    pub async fn clear_queue(&self) -> AppResult<Vec<String>> {
+        let data = self.request("clear_queue", Value::Null).await?;
+        Ok(["steering", "followUp"]
+            .iter()
+            .flat_map(|k| {
+                data.get(*k)
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect())
+    }
+
+    /// 改排队的消息：pi 没有单条删改，按 pi 的做法先清空，再按顺序重新排上
+    pub async fn replace_queue(&self, messages: &[String]) -> AppResult<()> {
+        self.clear_queue().await?;
+        for message in messages.iter().map(|m| m.trim()).filter(|m| !m.is_empty()) {
+            self.send(message, Vec::new()).await?;
+        }
+        Ok(())
+    }
+
+    /// 停止本轮：先清空排队的消息再 abort（pi 文档的做法），返回被清掉的文字（放回输入框）
+    pub async fn abort(&self) -> AppResult<Vec<String>> {
+        let queued = self.clear_queue().await.unwrap_or_default();
+        self.request("abort", Value::Null).await?;
+        Ok(queued)
     }
 
     /// 回答工具向用户的提问（`extension_ui_request` 的 id）
