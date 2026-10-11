@@ -9,6 +9,7 @@ description: "审查产品宣传视频：用户要求 review、检查清晰度�
 
 ## 按需读取
 
+- 每次审片：读 `../references/promo-standard.md`；同批有海报时核对共同品牌与功能口径。
 - 审片：读当前剧本、对应导出记录及 `references/quality-standard.md`。
 - 技术检查和抽帧：读 `docs/videos/tools.md`，使用 `scripts/video/review.py`。
 - 需要修正且用户已授权修改：进入 `../promo-video-produce/SKILL.md`。

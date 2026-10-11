@@ -77,4 +77,4 @@ python3 scripts/video/review.py \
 - 实际播放声音的结果；没有播放则写未验证。
 - 技术检查记录入口及未解决问题。
 
-检查规则的唯一来源为[公共质量标准](../../.claude/skills/promo-video-review/references/quality-standard.md)。自动检查通过后仍需据实记录人工审片状态。
+视频检查细则见[视频质量标准](../../.claude/skills/promo-video-review/references/quality-standard.md)，共同内容和素材规则见[公共标准](../../.claude/skills/references/promo-standard.md)。自动检查通过后仍需据实记录人工审片状态。

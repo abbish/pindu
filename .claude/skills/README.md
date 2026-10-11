@@ -6,13 +6,15 @@
 
 ## Product Communication
 
+- `promo-poster-design`：海报策划、文案、版式、生成与修改；只看方案时交付设计说明，生成时使用符合请求的制作能力并衔接审图。
+- `promo-poster-review`：检查实际海报的文字、层级、品牌、产品截图、观看尺寸、链接与二维码；区分机械检查与实际审图。
 - `promo-video-script`：宣传片策划、卖点与分镜、剧本和字幕修订；只要求规划时不渲染。
 - `promo-video-produce`：按当前剧本生成成片，或调整封面、文案、镜头和片尾；沿用已有授权，交付前衔接审片。
 - `promo-video-review`：检查实际导出视频的清晰度、定位、功能真实性、首帧、片尾与技术质量；纯 review 交付问题，已授权优化时衔接修片。
 
-剧本管理入口：`docs/videos/README.md`；制作与审片工具：`docs/videos/tools.md`；公共质量标准：`promo-video-review/references/quality-standard.md`。单片设置保存在对应剧本中。
+宣传素材共同入口：`docs/promo/README.md`；公共标准：`references/promo-standard.md`。视频管理与工具见 `docs/videos/README.md`、`docs/videos/tools.md`，媒介细则见 `promo-video-review/references/quality-standard.md`；海报管理见 `docs/posters/README.md`，媒介细则见 `promo-poster-design/references/poster-design-standard.md`。单次设置保存在对应剧本或设计说明中。
 
-宣传视频的策划、制作和审片走以上入口；应用的视频库、导入、剪辑、学习功能开发仍走 `sdd-work`。修改 Skill 和通用工具走 `harness-governance`，按实际改动验证。
+宣传视频、海报的策划、制作和审查走以上入口；应用的视频库、导入、剪辑、学习功能开发仍走 `sdd-work`。修改 Skill 和通用工具走 `harness-governance`，按实际改动验证。
 
 ## Workflow
 

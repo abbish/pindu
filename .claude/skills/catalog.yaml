@@ -10,7 +10,7 @@ usage:
     - .claude/skills/deliver-contract-and-data/references/time-and-timezone.md
     - .claude/skills/deliver-backend-rust/references/sqlx-migration-standards.md
     - .claude/skills/sdd-verify/references/verification-methods.md
-    - .claude/skills/promo-video-review/references/quality-standard.md
+    - .claude/skills/references/promo-standard.md
 
 groups:
   workflow:
@@ -22,9 +22,18 @@ groups:
   engineering-governance:
     description: 维护 CLAUDE.md、Skill 目录与可执行 gate
   product-communication:
-    description: 策划、制作与审查产品宣传视频
+    description: 策划、制作与审查产品宣传视频及海报
 
 skills:
+  - id: promo-poster-design
+    group: product-communication
+    path: .claude/skills/promo-poster-design/SKILL.md
+    summary: 策划、设计、生成或修改产品宣传海报，按请求交付方案或实际成图
+  - id: promo-poster-review
+    group: product-communication
+    path: .claude/skills/promo-poster-review/SKILL.md
+    summary: 审查产品宣传海报，以实际成图与观看尺寸核对文案、品牌、布局及导出质量
+
   - id: promo-video-script
     group: product-communication
     path: .claude/skills/promo-video-script/SKILL.md

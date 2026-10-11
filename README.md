@@ -135,7 +135,7 @@ npm run verify          # 提交前检查：静态检查与前后端测试
 - 架构、数据表、AI 任务与开发规范：[CLAUDE.md](./CLAUDE.md)
 - AI 助手设计：[docs/agent-harness/](./docs/agent-harness/DESIGN.md)
 - 贡献流程：[CONTRIBUTING.md](./CONTRIBUTING.md)
-- 产品视频剧本与分镜：[docs/videos/](./docs/videos/README.md)
+- 产品宣传视频与海报：[docs/promo/](./docs/promo/README.md)
 
 ## 许可证
 

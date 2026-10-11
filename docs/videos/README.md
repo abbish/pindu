@@ -2,7 +2,7 @@
 
 每支产品视频独立保存剧本、分镜和字幕。当前采用的内容保存在同一份剧本中，修订历史由 Git 保留，成片记录对应的剧本版本与导出批次。
 
-工作流由 `promo-video-script`（策划）、`promo-video-produce`（制作）、`promo-video-review`（审片）承接，见 [Skills 索引](../../.claude/skills/README.md#product-communication)。制作配置、可复现导出与成片检查用法见 [制作与审片工具](tools.md)。
+工作流由 `promo-video-script`（策划）、`promo-video-produce`（制作）、`promo-video-review`（审片）承接，见 [Skills 索引](../../.claude/skills/README.md#product-communication)。制作配置、可复现导出与成片检查用法见 [制作与审片工具](tools.md)，与海报共用的内容和品牌规则见 [宣传素材规约](../promo/README.md)。
 
 ## 当前剧本
 
@@ -23,4 +23,4 @@
 
 调整视频时先更新剧本，再按当前剧本制作。制作完成后核对总时长、封面、片尾、文案与素材，并更新成片记录。历史内容通过 Git 查看，不把多个相互冲突的方案并列为当前剧本。
 
-新增视频时，在本索引登记名称、时长、当前版本和文件入口。产品功能与截图更新后，重新核对涉及的镜头，文案以实际功能为准。
+新增视频时，在本索引登记名称、时长、当前版本和文件入口，并同步宣传素材索引。产品功能与截图更新后，重新核对涉及的镜头，文案以实际功能为准。

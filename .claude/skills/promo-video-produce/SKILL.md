@@ -9,6 +9,7 @@ description: "按当前剧本制作或修改产品宣传视频：用户要求生
 
 ## 按需读取
 
+- 每次制作：读 `../references/promo-standard.md`，沿用共同品牌、素材和生成边界。
 - 每次制作：读对应 `script.md`、字幕和 `docs/videos/README.md`；最新用户修改优先，同步进剧本后制作。
 - 本仓库截图动画制作：读 `docs/videos/tools.md`，运行 `scripts/video/render.py`；制作配置与镜头代码放在该视频目录。
 - 裁切、转场、标注、示意动画、编码或封面：读 `../promo-video-review/references/quality-standard.md`。

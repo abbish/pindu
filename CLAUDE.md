@@ -316,6 +316,8 @@ export const fooService = new FooService();
 
 | 场景 | 入口 |
 | --- | --- |
+| 产品宣传海报方案、文案、版式、生成与修改 | `promo-poster-design`（共同规约：`docs/promo/README.md`） |
+| 海报审图、文字与排版检查 | `promo-poster-review` |
 | 产品宣传片策划、剧本与分镜 | `promo-video-script`（剧本管理：`docs/videos/README.md`） |
 | 按剧本生成宣传片、换封面或修改画面 | `promo-video-produce` |
 | 宣传片审片、清晰度与元素定位检查 | `promo-video-review` |
