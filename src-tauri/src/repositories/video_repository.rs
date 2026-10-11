@@ -26,6 +26,8 @@ pub struct VideoRow {
     pub created_at: String,
     pub updated_at: String,
     pub clip_count: i64,
+    /// 用到它切出的场景片段的学习计划数
+    pub linked_plans: i64,
     /// 字幕条数（SQL 里算，列表不读字幕本身）
     pub cue_count: i64,
     /// 字幕时间纠偏（毫秒，正数 = 字幕延后），迁移 060
@@ -116,6 +118,10 @@ pub struct ClipRow {
 const SELECT: &str = "SELECT v.id, v.title, v.source_name, v.source_file, v.media_file, v.subtitle_name,
         v.duration_ms, v.width, v.height, v.size_bytes, v.status, v.error, v.created_at, v.updated_at,
         (SELECT COUNT(*) FROM video_clips c WHERE c.video_id = v.id) AS clip_count, v.subtitle_offset_ms,
+        (SELECT COUNT(DISTINCT pp.plan_id) FROM study_plan_passages pp
+         JOIN video_clips c ON c.passage_id = pp.passage_id
+         JOIN study_plans sp ON sp.id = pp.plan_id
+         WHERE c.video_id = v.id AND sp.deleted_at IS NULL) AS linked_plans,
         json_array_length(v.cues) AS cue_count, v.cues, v.plan_suggestions
      FROM videos v";
 

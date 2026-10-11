@@ -3,11 +3,10 @@ import { WordMaterialsSheet } from '@/components/WordMaterialsSheet/WordMaterial
 import { tagService } from '@/services/tagService';
 import type { WordMaterialCount } from '@/types/material';
 import type { WordQuery } from '@/types/wordbook';
-import { ChevronDown, FileUp, ListChecks, Loader2, MoreHorizontal, PanelLeft, Pencil, PencilLine, Plus, Sparkles, Table2, Trash2, SearchX } from 'lucide-react';
+import { ChevronDown, FileUp, Loader2, MoreHorizontal, PanelLeft, Pencil, PencilLine, Plus, Sparkles, Table2, Trash2, SearchX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -48,16 +47,14 @@ import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { activeJobFor } from '@/components/Jobs';
 import { BatchAnalysisPanel } from '@/components/AddWordsDialog/BatchAnalysisPanel';
 import { formatDate } from '@/utils/datetime';
-import { getStatusDisplay } from '@/types/study';
 import {
-  type StudyPlanWithProgress,
-  type UnifiedStudyPlanStatus,
   type Word,
   type WordBook,
   type WordTypeDistribution,
 } from '@/types';
 import type { NavigateFn } from '@/navigation';
 import { PageError } from '@/components/PageError';
+import { LinkedPlanList, useLinkedPlans } from '@/components/LinkedPlans';
 import { InlineError } from '@/components/InlineError';
 import { takePendingAddWords } from './wordbook-detail/pendingAddWords';
 
@@ -100,12 +97,11 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
   const toast = useToast();
 
   const [wordBook, setWordBook] = useState<WordBook | null>(null);
+  const { plans: linkedPlans, error: linkedPlansError, reload: reloadLinkedPlans } = useLinkedPlans('word_book', id);
   const [words, setWords] = useState<Word[]>([]);
   const [statistics, setStatistics] = useState<WordTypeDistribution | null>(null);
-  const [linkedPlans, setLinkedPlans] = useState<StudyPlanWithProgress[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [linkedPlansLoading, setLinkedPlansLoading] = useState(false);
   const [wordsLoading, setWordsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalWords, setTotalWords] = useState(0);
@@ -200,18 +196,6 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
     return null;
   }, [id]);
 
-  const loadLinkedPlans = useCallback(async () => {
-    if (!id) return;
-    setLinkedPlansLoading(true);
-    const result = await wordBookService.getWordBookLinkedPlans(id);
-    if (result.success) {
-      setLinkedPlans(result.data);
-    } else {
-      toast.showError('无法加载关联计划', result.error);
-    }
-    setLinkedPlansLoading(false);
-  }, [id, toast]);
-
   const loadAll = useCallback(async () => {
     if (!id) {
       setError('没有指定要打开的词汇本');
@@ -226,9 +210,9 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
       setLoading(false);
       return;
     }
-    await Promise.all([loadWords(1), loadStatistics(), loadLinkedPlans()]);
+    await Promise.all([loadWords(1), loadStatistics(), reloadLinkedPlans()]);
     setLoading(false);
-  }, [id, loadWordBook, loadWords, loadStatistics, loadLinkedPlans]);
+  }, [id, loadWordBook, loadWords, loadStatistics, reloadLinkedPlans]);
 
   useEffect(() => {
     loadAll();
@@ -484,7 +468,7 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
             单词<span className="text-xs text-muted-foreground tabular-nums">{bookTotal}</span>
           </TabsTrigger>
           <TabsTrigger value="plans" className="gap-1.5 px-3">
-            关联计划<span className="text-xs text-muted-foreground tabular-nums">{linkedPlans.length}</span>
+            关联计划{linkedPlans && <span className="text-xs text-muted-foreground tabular-nums">{linkedPlans.length}</span>}
           </TabsTrigger>
           <TabsTrigger value="passages" className="gap-1.5 px-3">
             短文{passageCount != null && <span className="text-xs text-muted-foreground tabular-nums">{passageCount}</span>}
@@ -570,43 +554,13 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
         </TabsContent>
 
         <TabsContent value="plans">
-          {linkedPlansLoading ? (
-            <div className="flex flex-col gap-3">
-              {[0, 1].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
-            </div>
-          ) : linkedPlans.length === 0 ? (
-            <EmptyState icon={<ListChecks />} title="还没有学习计划用到这个词汇本" />
-          ) : (
-            <div className="flex flex-col gap-3">
-              {linkedPlans.map((plan) => {
-                const planStatus = getStatusDisplay((plan.unified_status || 'Draft') as UnifiedStudyPlanStatus);
-                const progress = plan.progress_percentage ?? 0;
-                return (
-                  <Card key={plan.id} className="flex-row items-center gap-6 px-5 py-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-semibold">{plan.name}</span>
-                        <Badge variant="secondary">{planStatus.text}</Badge>
-                      </div>
-                      <div className="mt-0.5 truncate text-sm text-muted-foreground">
-                        {[plan.description, `${plan.total_words || 0} 个单词`, `周期 ${plan.study_period_days || 0} 天`].filter(Boolean).join(' · ')}
-                      </div>
-                    </div>
-                    <div className="w-48 space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">学习进度</span>
-                        <span className="tabular-nums">{progress.toFixed(1)}%</span>
-                      </div>
-                      <Progress value={progress} className="h-1.5 [&>[data-slot=progress-indicator]]:bg-brand" />
-                    </div>
-                    <Button variant="outline" onClick={() => onNavigate?.('plan-detail', { planId: plan.id })}>
-                      查看详情
-                    </Button>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+          <LinkedPlanList
+            plans={linkedPlans}
+            error={linkedPlansError}
+            onRetry={reloadLinkedPlans}
+            emptyTitle="还没有学习计划用到这个词汇本"
+            onOpen={(planId) => onNavigate?.('plan-detail', { planId })}
+          />
         </TabsContent>
 
         {/* forceMount：页签计数在首次打开前也能显示 */}

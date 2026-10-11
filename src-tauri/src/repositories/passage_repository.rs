@@ -329,6 +329,8 @@ impl PassageRepository {
                     (SELECT COUNT(*) FROM passage_question_sets qs WHERE qs.passage_id = p.id) AS set_count,
                     (SELECT COUNT(*) FROM passage_attempts a
                      WHERE a.passage_id = p.id AND a.status = 'completed') AS completed_attempts,
+                    (SELECT COUNT(DISTINCT pp.plan_id) FROM study_plan_passages pp JOIN study_plans sp ON sp.id = pp.plan_id
+                     WHERE pp.passage_id = p.id AND sp.deleted_at IS NULL) AS linked_plans,
                     la.id AS la_id, la.mode AS la_mode, la.objective_correct AS la_correct,
                     la.objective_total AS la_total, la.open_score AS la_open, la.open_total AS la_open_total,
                     la.completed_at AS la_completed_at
@@ -374,6 +376,7 @@ impl PassageRepository {
                     question_sets: r.get("set_count"),
                     completed_attempts: r.get("completed_attempts"),
                     last_attempt: brief_from_row(&r),
+                    linked_plans: r.get("linked_plans"),
                 }
             })
             .collect())

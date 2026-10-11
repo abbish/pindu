@@ -2,9 +2,11 @@
 
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::services::study_plan::StudyPlanService;
 use crate::services::tag::TagService;
 use crate::services::word_materials::WordMaterialsService;
 use crate::types::material::{MaterialKind, Tag, TagUsage, WordMaterial, WordMaterialCount};
+use crate::types::study::StudyPlanWithProgress;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
@@ -162,4 +164,30 @@ pub async fn get_book_word_materials(
     }
     .await;
     super::finish(&logger, "get_book_word_materials", result)
+}
+
+/// 用到这个素材的学习计划；kind = word_book / passage（含场景片段）/ video（用到它切出的场景片段）
+#[tauri::command]
+pub async fn get_material_linked_plans(
+    app: AppHandle,
+    kind: String,
+    ref_id: i64,
+) -> AppResult<Vec<StudyPlanWithProgress>> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "get_material_linked_plans",
+        Some(&format!("{kind} {ref_id}")),
+    );
+    let result = async {
+        let kind = MaterialKind::parse(&kind)
+            .ok_or_else(|| AppError::ValidationError(format!("未知的素材种类：{kind}")))?;
+        StudyPlanService::new(
+            Arc::new(app.state::<SqlitePool>().inner().clone()),
+            Arc::new(logger.inner().clone()),
+        )
+        .get_linked_plans(kind, ref_id)
+        .await
+    }
+    .await;
+    super::finish(&logger, "get_material_linked_plans", result)
 }

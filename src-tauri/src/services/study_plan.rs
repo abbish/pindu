@@ -12,6 +12,7 @@ use crate::repositories::study_plan_repository::{StatusChange, StudyPlanReposito
 use crate::services::calendar::{day_status, plan_can_be_overdue, DayScheduleState};
 use crate::services::plan_passages;
 use crate::types::common::Id;
+use crate::types::material::MaterialKind;
 use crate::types::study::*;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -355,14 +356,13 @@ impl StudyPlanService {
         self.repository.find_plan_schedules(plan_id).await
     }
 
-    /// 获取关联到指定词汇本的学习计划
-    pub async fn get_linked_plans_by_wordbook(
+    /// 获取用到某个素材（词汇本 / 短文与场景片段 / 原始视频）的学习计划
+    pub async fn get_linked_plans(
         &self,
-        wordbook_id: Id,
+        kind: MaterialKind,
+        ref_id: Id,
     ) -> AppResult<Vec<StudyPlanWithProgress>> {
-        self.repository
-            .find_linked_plans_by_wordbook(wordbook_id)
-            .await
+        self.repository.find_linked_plans(kind, ref_id).await
     }
 
     /// 创建带 AI 规划的学习计划（批量操作）
@@ -1237,10 +1237,90 @@ mod tests {
             .await
             .unwrap();
 
-        let plans = service.get_linked_plans_by_wordbook(book).await.unwrap();
+        let plans = service
+            .get_linked_plans(MaterialKind::WordBook, book)
+            .await
+            .unwrap();
 
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].progress_percentage, 100.0);
+    }
+
+    /// 短文、场景片段、原始视频都能查到用到它的计划，列表上的计划数与之一致
+    #[tokio::test]
+    async fn linked_plans_of_passages_clips_and_videos() {
+        use crate::repositories::passage_repository::PassageRepository;
+        use crate::repositories::video_repository::VideoRepository;
+        let (service, pool, fx, _) = setup(1, "normal").await;
+        let now = "2026-10-11T00:00:00.000Z";
+        let mut ids = Vec::new();
+        for title in ["Text", "Clip", "Unused"] {
+            let id: Id = sqlx::query_scalar(
+                "INSERT INTO passages (title, sentences, target_words, level, word_count, created_at, updated_at)
+                 VALUES (?1, '[]', '[]', 'a2', 0, ?2, ?2) RETURNING id",
+            )
+            .bind(title)
+            .bind(now)
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+            ids.push(id);
+        }
+        let (text, clip, unused) = (ids[0], ids[1], ids[2]);
+        let video: Id = sqlx::query_scalar(
+            "INSERT INTO videos (title, source_name, created_at, updated_at) VALUES ('v', 'v.mp4', ?1, ?1) RETURNING id",
+        )
+        .bind(now)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO video_clips (video_id, passage_id, seq, start_ms, end_ms, file, created_at)
+             VALUES (?, ?, 1, 0, 5000, 'c.mp4', ?)",
+        )
+        .bind(video)
+        .bind(clip)
+        .bind(now)
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        for (order, passage) in [text, clip].into_iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO study_plan_passages (plan_id, passage_id, sort_order, scheduled_date, created_at)
+                 VALUES (?, ?, ?, '2026-10-11', ?)",
+            )
+            .bind(fx.plan_id)
+            .bind(passage)
+            .bind(order as i64)
+            .bind(now)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        }
+
+        let plan_ids = |plans: Vec<StudyPlanWithProgress>| -> Vec<Id> {
+            plans.into_iter().map(|p| p.id).collect()
+        };
+        for (kind, id, expected) in [
+            (MaterialKind::Passage, text, vec![fx.plan_id]),
+            (MaterialKind::Passage, clip, vec![fx.plan_id]),
+            (MaterialKind::Passage, unused, vec![]),
+            (MaterialKind::Video, video, vec![fx.plan_id]),
+        ] {
+            assert_eq!(
+                plan_ids(service.get_linked_plans(kind, id).await.unwrap()),
+                expected
+            );
+        }
+
+        let passages = PassageRepository::new(pool.clone())
+            .list_with_clips()
+            .await
+            .unwrap();
+        let count = |id: Id| passages.iter().find(|p| p.id == id).unwrap().linked_plans;
+        assert_eq!((count(text), count(clip), count(unused)), (1, 1, 0));
+        let videos = VideoRepository::list(pool.as_ref()).await.unwrap();
+        assert_eq!(videos[0].linked_plans, 1);
     }
 
     #[test]

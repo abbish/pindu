@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { LinkedPlanList, useLinkedPlans } from '@/components/LinkedPlans';
 import { PageError } from '@/components/PageError';
 import { InlineError } from '@/components/InlineError';
 import { QuestionSetDialog } from '@/components/QuestionSetDialog';
@@ -183,6 +184,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const isClip = Boolean(openedAsClip) || passage?.origin === 'video';
   /** 从学习计划进来：是在学、完成计划任务，不在这里准备或改动素材（不生成题组、不编辑、不改词汇与译文） */
   const studying = Boolean(fromPlan);
+  /** 用到这篇的学习计划（「关联计划」页签；在计划里学习时不显示） */
+  const { plans: linkedPlans, error: linkedPlansError, reload: reloadLinkedPlans } = useLinkedPlans('passage', studying ? null : passageId);
   const [showGenerate, setShowGenerate] = useState(false);
   /** 生成题组弹窗打开时选中的方式 */
   const [generateMode, setGenerateMode] = useState<PassageMode>('reading');
@@ -477,6 +480,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           <TabsTrigger value="listening" className="gap-1.5 px-3">
             听力练习<span className="text-xs text-muted-foreground tabular-nums">{setsOf('listening').length}</span>
           </TabsTrigger>
+          <TabsTrigger value="plans" className="gap-1.5 px-3">
+            关联计划{linkedPlans && <span className="text-xs text-muted-foreground tabular-nums">{linkedPlans.length}</span>}
+          </TabsTrigger>
             </>
           )}
         </TabsList>
@@ -567,6 +573,18 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             )}
           </TabsContent>
         ))}
+
+        {!studying && (
+          <TabsContent value="plans">
+            <LinkedPlanList
+              plans={linkedPlans}
+              error={linkedPlansError}
+              onRetry={reloadLinkedPlans}
+              emptyTitle={isClip ? '还没有学习计划用到这个场景片段' : '还没有学习计划用到这篇短文'}
+              onOpen={(planId) => onNavigate?.('plan-detail', { planId })}
+            />
+          </TabsContent>
+        )}
       </Tabs>
 
       <QuestionSetDialog

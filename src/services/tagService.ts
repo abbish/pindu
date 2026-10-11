@@ -1,5 +1,6 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '@/types';
+import type { StudyPlanWithProgress } from '@/types/study';
 import type { MaterialKind, MaterialSettings, Tag, TagUsage, WordMaterial, WordMaterialCount } from '@/types/material';
 
 /** 标签或素材的标签变了（侧边栏「标签」与标签页据此刷新数量），见 hooks/useTagUsage */
@@ -53,6 +54,11 @@ class TagService extends BaseService {
   }
 
   /** 一个词出现在哪些短文 / 视频切片里（重点词在前） */
+  /** 用到这个素材的学习计划（短文含场景片段；视频 = 用到它切出的场景片段） */
+  async getLinkedPlans(kind: MaterialKind, refId: number): Promise<ApiResult<StudyPlanWithProgress[]>> {
+    return this.executeWithLoading(() => this.client.invoke<StudyPlanWithProgress[]>('get_material_linked_plans', { kind, refId }));
+  }
+
   async getWordMaterials(word: string, wordId?: number): Promise<ApiResult<WordMaterial[]>> {
     return this.executeWithLoading(() => this.client.invoke<WordMaterial[]>('get_word_materials', { word, wordId }));
   }

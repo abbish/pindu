@@ -198,6 +198,8 @@ export interface PassageSummary {
   /** 完成的作答次数（所有题组） */
   completedAttempts: number;
   lastAttempt: PassageAttemptBrief | null;
+  /** 用到这篇的学习计划数 */
+  linkedPlans: number;
   /** generated：AI 写的；imported：导入的用户材料 */
   origin: PassageOrigin;
   /** 导入材料的来源说明 */

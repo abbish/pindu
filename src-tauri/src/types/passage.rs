@@ -250,6 +250,8 @@ pub struct PassageSummary {
     /// 完成的作答次数（所有题组）
     pub completed_attempts: i64,
     pub last_attempt: Option<PassageAttemptBrief>,
+    /// 用到这篇的学习计划数
+    pub linked_plans: i64,
 }
 
 /// 选词填空一空的结果

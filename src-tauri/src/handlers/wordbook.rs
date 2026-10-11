@@ -50,43 +50,6 @@ pub async fn get_word_books(
     }
 }
 
-/// 获取词汇本关联的学习计划
-#[tauri::command]
-pub async fn get_word_book_linked_plans(
-    app: AppHandle,
-    book_id: Id,
-) -> AppResult<Vec<StudyPlanWithProgress>> {
-    use crate::services::study_plan::StudyPlanService;
-
-    let pool = app.state::<SqlitePool>();
-    let logger = app.state::<Logger>();
-
-    logger.api_request(
-        "get_word_book_linked_plans",
-        Some(&format!("book_id: {}", book_id)),
-    );
-
-    let service = StudyPlanService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone()),
-    );
-
-    match service.get_linked_plans_by_wordbook(book_id).await {
-        Ok(plans) => {
-            logger.api_response(
-                "get_word_book_linked_plans",
-                true,
-                Some(&format!("Found {} linked plans", plans.len())),
-            );
-            Ok(plans)
-        }
-        Err(e) => {
-            logger.api_response("get_word_book_linked_plans", false, Some(&e.to_string()));
-            Err(e)
-        }
-    }
-}
-
 /// 根据ID获取词汇本详情
 #[tauri::command]
 pub async fn get_word_book_detail(app: AppHandle, book_id: Id) -> AppResult<WordBook> {

@@ -11,6 +11,7 @@ import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import type { Tag } from '@/types/material';
 import type { Job } from '@/types/job';
 import { JobProgress } from '@/components/Jobs';
+import { PlanUsageBadge } from '@/components/LinkedPlans';
 import { CardMenu, CardMenuButton, SelectCheckbox, type CardAction } from '@/components/MaterialSelection/MaterialSelection';
 
 export interface WordBookSummaryCardProps {
@@ -134,13 +135,7 @@ export const WordBookSummaryCard: React.FC<WordBookSummaryCardProps> = ({
           <span className="text-2xl font-semibold tabular-nums">{totalWords}</span>
           <span className="ml-1 text-sm text-muted-foreground">个单词</span>
         </div>
-        {linkedPlans > 0 ? (
-          <Badge variant="outline" className="border-transparent bg-accent text-accent-foreground">
-            用于 {linkedPlans} 个计划
-          </Badge>
-        ) : (
-          <span className="text-xs text-muted-foreground">未加入计划</span>
-        )}
+        <PlanUsageBadge count={linkedPlans} />
       </div>
 
       <div className="space-y-1.5">

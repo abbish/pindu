@@ -7,9 +7,41 @@
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::types::common::Id;
+use crate::types::material::MaterialKind;
 use crate::types::study::*;
 use sqlx::{Row, SqliteConnection, SqlitePool};
 use std::sync::Arc;
+
+/// 素材关联计划列表：与计划列表同一口径的进度（练完的日程数 / 日程数、完成的短文数）
+const LINKED_PLAN_SELECT: &str = "SELECT
+                sp.id,
+                sp.name,
+                sp.description,
+                sp.status,
+                sp.unified_status,
+                sp.total_words,
+                sp.mastery_level,
+                sp.intensity_level,
+                sp.study_period_days,
+                sp.review_frequency,
+                sp.start_date,
+                sp.end_date,
+                sp.actual_start_date,
+                sp.actual_end_date,
+                sp.actual_terminated_date,
+                sp.ai_plan_data, sp.daily_new_words,
+                sp.deleted_at,
+                sp.created_at,
+                sp.updated_at,
+                sp.practice_content, sp.passage_interval_days,
+                (SELECT COUNT(*) FROM study_plan_passages pp WHERE pp.plan_id = sp.id) as total_passages,
+                (SELECT COUNT(*) FROM study_plan_passages pp
+                 WHERE pp.plan_id = sp.id AND pp.completed_at IS NOT NULL) as completed_passages,
+                -- 与计划列表同一口径：练完的日程数 / 日程数
+                (SELECT COUNT(*) FROM study_plan_schedules ss WHERE ss.plan_id = sp.id) as total_schedules,
+                (SELECT COUNT(*) FROM study_plan_schedules ss
+                 WHERE ss.plan_id = sp.id AND ss.status = 'completed') as completed_schedules
+            FROM study_plans sp";
 
 /// 学习计划仓储
 ///
@@ -542,53 +574,33 @@ impl StudyPlanRepository {
         Ok(result)
     }
 
-    /// 查询关联到指定词汇本的学习计划
-    pub async fn find_linked_plans_by_wordbook(
+    /// 查询用到某个素材的学习计划（词汇本：计划里有它的单词；短文 / 场景片段：计划里有这篇；
+    /// 原始视频：计划里有它切出的场景片段），最新建的在前
+    pub async fn find_linked_plans(
         &self,
-        wordbook_id: Id,
+        kind: MaterialKind,
+        ref_id: Id,
     ) -> AppResult<Vec<StudyPlanWithProgress>> {
-        let query = r#"
-            SELECT DISTINCT
-                sp.id,
-                sp.name,
-                sp.description,
-                sp.status,
-                sp.unified_status,
-                sp.total_words,
-                sp.mastery_level,
-                sp.intensity_level,
-                sp.study_period_days,
-                sp.review_frequency,
-                sp.start_date,
-                sp.end_date,
-                sp.actual_start_date,
-                sp.actual_end_date,
-                sp.actual_terminated_date,
-                sp.ai_plan_data, sp.daily_new_words,
-                sp.deleted_at,
-                sp.created_at,
-                sp.updated_at,
-                sp.practice_content, sp.passage_interval_days,
-                (SELECT COUNT(*) FROM study_plan_passages pp WHERE pp.plan_id = sp.id) as total_passages,
-                (SELECT COUNT(*) FROM study_plan_passages pp
-                 WHERE pp.plan_id = sp.id AND pp.completed_at IS NOT NULL) as completed_passages,
-                -- 与计划列表同一口径：练完的日程数 / 日程数
-                (SELECT COUNT(*) FROM study_plan_schedules ss WHERE ss.plan_id = sp.id) as total_schedules,
-                (SELECT COUNT(*) FROM study_plan_schedules ss
-                 WHERE ss.plan_id = sp.id AND ss.status = 'completed') as completed_schedules
-            FROM study_plans sp
-            WHERE sp.id IN (
-                SELECT DISTINCT spw.plan_id
-                FROM study_plan_words spw
-                JOIN words w ON spw.word_id = w.id
-                WHERE w.word_book_id = ?
-            )
-            AND sp.deleted_at IS NULL
-            ORDER BY sp.created_at DESC
-        "#;
+        let plan_ids = match kind {
+            MaterialKind::WordBook => {
+                "SELECT spw.plan_id FROM study_plan_words spw
+                 JOIN words w ON spw.word_id = w.id WHERE w.word_book_id = ?"
+            }
+            MaterialKind::Passage => {
+                "SELECT pp.plan_id FROM study_plan_passages pp WHERE pp.passage_id = ?"
+            }
+            MaterialKind::Video => {
+                "SELECT pp.plan_id FROM study_plan_passages pp
+                 JOIN video_clips vc ON vc.passage_id = pp.passage_id WHERE vc.video_id = ?"
+            }
+        };
+        let query = format!(
+            "{LINKED_PLAN_SELECT} WHERE sp.id IN ({plan_ids}) AND sp.deleted_at IS NULL
+             ORDER BY sp.created_at DESC"
+        );
 
-        let rows = sqlx::query(query)
-            .bind(wordbook_id)
+        let rows = sqlx::query(&query)
+            .bind(ref_id)
             .fetch_all(self.pool.as_ref())
             .await
             .map_err(|e| {
@@ -601,23 +613,9 @@ impl StudyPlanRepository {
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        let plans: Vec<StudyPlanWithProgress> = rows
-            .into_iter()
+        rows.into_iter()
             .map(|row| self.row_to_study_plan_with_progress(row))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        self.logger.database_operation(
-            "SELECT",
-            "study_plans",
-            true,
-            Some(&format!(
-                "Found {} linked plans for wordbook {}",
-                plans.len(),
-                wordbook_id
-            )),
-        );
-
-        Ok(plans)
+            .collect()
     }
 
     /// 获取学习计划名称

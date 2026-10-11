@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { MaterialEditDialog, type MaterialEditTarget } from '@/components/MaterialEditDialog';
 import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import { JobProgress, activeJobFor } from '@/components/Jobs';
+import { PlanUsageBadge } from '@/components/LinkedPlans';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { isJobActive, type Job } from '@/types/job';
 import {
@@ -122,8 +123,9 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
           {job ? (
             <JobProgress job={job} fallback="正在生成题组" />
           ) : (
-            <div className="text-xs text-muted-foreground">
-              {p.questionSets > 0 ? `${p.questionSets} 个题组` : '还没有题组'}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">{p.questionSets > 0 ? `${p.questionSets} 个题组` : '还没有题组'}</span>
+              <PlanUsageBadge count={p.linkedPlans} />
             </div>
           )}
         </Card>

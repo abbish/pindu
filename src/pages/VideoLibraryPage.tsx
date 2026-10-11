@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
 import { MaterialEditDialog, type MaterialEditTarget } from '@/components/MaterialEditDialog';
+import { PlanUsageBadge } from '@/components/LinkedPlans';
 import { ClipGrid } from './videos/ClipGrid';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { SortSelect, useSortPref } from '@/components/SortSelect';
@@ -290,6 +291,12 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
                           <Scissors />
                           规划切分
                         </Button>
+                      )}
+                      {/* 计划用的是切出的场景片段：还没切出来时不显示 */}
+                      {video.status !== 'ready' && video.clipCount > 0 && (
+                        <span className="ml-auto">
+                          <PlanUsageBadge count={video.linkedPlans} />
+                        </span>
                       )}
                     </div>
                   )}

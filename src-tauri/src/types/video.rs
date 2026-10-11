@@ -27,6 +27,8 @@ pub struct Video {
     pub error: Option<String>,
     pub cue_count: i64,
     pub clip_count: i64,
+    /// 用到它切出的场景片段的学习计划数
+    pub linked_plans: i64,
     /// 字幕时间纠偏（毫秒，正数 = 字幕延后）；详情里的 cues 已按它换算
     pub subtitle_offset_ms: i64,
     /// 标签（列表里有；详情里为空）

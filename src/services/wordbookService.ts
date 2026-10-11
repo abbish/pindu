@@ -2,7 +2,6 @@ import { BaseService } from './baseService';
 import { notifyOnSuccess } from './tagService';
 import {
   AnalyzedWord,
-  StudyPlanWithProgress,
   WordBook,
   CreateWordBookRequest,
   UpdateWordBookRequest,
@@ -43,17 +42,6 @@ export class WordBookService extends BaseService {
       this.validateRequired({ id }, ['id']);
 
       return this.client.invoke<WordBook>('get_word_book_detail', { bookId: id });
-    });
-  }
-
-  /**
-   * 获取词汇本关联的学习计划
-   */
-  async getWordBookLinkedPlans(id: Id): Promise<ApiResult<StudyPlanWithProgress[]>> {
-    return this.executeWithLoading(async () => {
-      this.validateRequired({ id }, ['id']);
-
-      return this.client.invoke<StudyPlanWithProgress[]>('get_word_book_linked_plans', { bookId: id });
     });
   }
 

@@ -26,6 +26,7 @@ import { SortSelect, useSortPref } from '@/components/SortSelect';
 import { byNumber, byText, sortItems, type SortOption } from '@/utils/sorting';
 import { ListPagination, usePagination } from '@/components/ListPagination';
 import { MaterialToolbar, TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
+import { PlanUsageBadge } from '@/components/LinkedPlans';
 import { tagService } from '@/services/tagService';
 import { formatDuration } from '@/utils/datetime';
 import type { ClipSummary, Video } from '@/types/video';
@@ -303,6 +304,7 @@ const ClipCard: React.FC<{ clip: ClipSummary; subtitle?: string; selection: Sele
               </div>
             )
           )}
+          <PlanUsageBadge count={c.linkedPlans} />
         </div>
       </Card>
     </CardMenu>

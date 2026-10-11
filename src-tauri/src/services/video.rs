@@ -180,6 +180,7 @@ pub fn to_video(row: &VideoRow, data_dir: &Path, url: UrlOf) -> Video {
         error: row.error.clone(),
         cue_count: row.cue_count,
         clip_count: row.clip_count,
+        linked_plans: row.linked_plans,
         subtitle_offset_ms: row.subtitle_offset_ms,
         tags: Vec::new(),
         created_at: row.created_at.clone(),
