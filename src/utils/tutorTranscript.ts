@@ -293,17 +293,6 @@ function userText(message: PiUserMessage): { text: string; images: string[]; fil
   };
 }
 
-/** 模型服务的报错 → 学习者能看懂的话（原文另外保留给悬停提示） */
-export function friendlyError(raw: string): string {
-  const text = raw.toLowerCase();
-  if (/\b429\b|rate.?limit|overload|too many requests|busy/.test(text)) return 'AI 服务现在太忙，请稍后再试';
-  if (/\b401\b|\b403\b|api.?key|unauthori|authentication|forbidden/.test(text)) return 'AI 服务的密钥不对，请在「设置 → AI 模型」检查';
-  if (/quota|insufficient|balance|billing|credit|余额|额度/.test(text)) return 'AI 服务的额度用完了，请检查账户余额';
-  if (/timeout|timed out|network|econn|socket|fetch failed|网络/.test(text)) return '网络不太稳定，请再试一次';
-  if (/context|too long|maximum.*token/.test(text)) return '对话太长了，可以新开一个对话接着聊';
-  return 'AI 老师这次没能回答完，请再试一次';
-}
-
 /** 界面元信息工具：不算「做了的事」，不显示成步骤（推荐下一步显示成按钮，标题进对话列表） */
 const META_TOOLS = new Set(['suggest_replies', 'name_conversation']);
 

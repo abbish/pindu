@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, dropAsk, emptyTranscript, friendlyError, splitAttachments, toAsk, toTurns, type TranscriptState } from './tutorTranscript.ts';
+import { applyEvent, dropAsk, emptyTranscript, splitAttachments, toAsk, toTurns, type TranscriptState } from './tutorTranscript.ts';
 import type { PiEvent } from '../types/tutor.ts';
 
 const run = (events: PiEvent[], state: TranscriptState = emptyTranscript()) => events.reduce(applyEvent, state);
@@ -236,7 +236,7 @@ test('后台任务结束的通知显示成系统提示，AI 老师接着说的�
   assert.equal(turns[2].role === 'notice' && turns[2].text, '后台任务完成：导入短文 · A Day');
 });
 
-test('自动重试成功后不显示前面那次的错误；常见错误换成好懂的话', () => {
+test('自动重试成功后不显示前面那次的错误', () => {
   const failed = { role: 'assistant' as const, content: [], stopReason: 'error' as const, errorMessage: '429 {"error":{"type":"rate_limit_error"}}', timestamp: 2 };
   const ok = { role: 'assistant' as const, content: [{ type: 'text' as const, text: '今天可以做的练习有……' }], stopReason: 'stop' as const, timestamp: 3 };
   const retried = toTurns(run([{ type: 'message_end', message: user }, { type: 'message_end', message: failed }, { type: 'message_end', message: ok }]));
@@ -246,7 +246,4 @@ test('自动重试成功后不显示前面那次的错误；常见错误换成�
   // 还在重试：不显示
   const retrying = toTurns(run([{ type: 'agent_start' }, { type: 'message_end', message: user }, { type: 'message_end', message: failed }, { type: 'auto_retry_start' }]));
   assert.equal(retrying[1].role === 'agent' && retrying[1].error, undefined);
-  assert.equal(friendlyError(failed.errorMessage), 'AI 服务现在太忙，请稍后再试');
-  assert.equal(friendlyError('401 invalid api key'), 'AI 服务的密钥不对，请在「设置 → AI 模型」检查');
-  assert.equal(friendlyError('something odd'), 'AI 老师这次没能回答完，请再试一次');
 });

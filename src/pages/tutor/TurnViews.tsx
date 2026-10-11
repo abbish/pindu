@@ -12,7 +12,7 @@ import { useJob } from '@/hooks/useJobs';
 import { isJobActive, type Job } from '@/types/job';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '@/navigation';
-import { friendlyError, type StepOutput, type TutorAsk, type ViewItem, type ViewStep, type ViewTurn } from '@/utils/tutorTranscript';
+import { type StepOutput, type TutorAsk, type ViewItem, type ViewStep, type ViewTurn } from '@/utils/tutorTranscript';
 
 const OUTPUT_ICON: Record<StepOutput['kind'], React.ComponentType<{ className?: string }>> = {
   wordbook: BookOpen,
@@ -117,12 +117,7 @@ export const AgentTurnView: React.FC<{
           </div>
         )}
 
-        {turn.error !== undefined && (
-          <div className="flex items-start gap-1.5 text-sm text-destructive">
-            <CircleAlert className="mt-0.5 size-4 shrink-0" />
-            <span title={turn.error || undefined}>{friendlyError(turn.error)}</span>
-          </div>
-        )}
+        {turn.error !== undefined && <TurnError raw={turn.error} />}
         {turn.stopped && <div className="text-xs text-muted-foreground">已停止</div>}
         {onSuggest && !turn.running && !ask && turn.suggestions.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -188,6 +183,34 @@ function formatSeconds(seconds: number): string {
   const s = seconds % 60;
   return s ? `${m} 分 ${s} 秒` : `${m} 分钟`;
 }
+
+/**
+ * 这一轮最终没回答出来（pi 已按它的规则自动重试过）：不猜原因，原始报错放在「查看原因」里
+ */
+const TurnError: React.FC<{ raw: string }> = ({ raw }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      <div className="flex items-start gap-1.5 text-destructive">
+        <CircleAlert className="mt-0.5 size-4 shrink-0" />
+        <span className="flex-1">
+          AI 老师这次没能回答完，可以再试一次。经常出现时，可以在「设置 → AI 助手」给「AI 老师」换一个模型。
+        </span>
+      </div>
+      {raw && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="ml-5.5 flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          查看原因
+          <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} />
+        </button>
+      )}
+      {open && <div className="ml-5.5 text-xs break-all whitespace-pre-wrap text-muted-foreground select-text">{raw}</div>}
+    </div>
+  );
+};
 
 /** 正在等模型想下一步：还没有内容，或者最后一组工具都做完了（说话时正文在流式显示，不用另外提示） */
 function thinking(turn: Extract<ViewTurn, { role: 'agent' }>): boolean {
