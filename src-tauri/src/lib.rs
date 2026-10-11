@@ -146,8 +146,12 @@ pub fn run() {
             // 立即显示窗口：启动画面写在 index.html 里，第一帧就能画出来（不设原生背景色：
             // 应用主题可以和系统不同，原生侧拿不到，设了反而让 macOS 标题栏颜色不对）
             let window = app.get_webview_window("main").unwrap();
-            if let Err(e) = main_window::fit_to_screen(&window) {
-                logger.warn("APP", "无法按屏幕调整窗口大小", Some(&e.to_string()));
+            match main_window::fit_to_screen(&window) {
+                Ok(Some((size, position))) => {
+                    logger.debug("APP", &format!("主窗口 {size:?} 放在 {position:?}"), None)
+                }
+                Ok(None) => logger.warn("APP", "取不到屏幕信息，窗口按默认大小显示", None),
+                Err(e) => logger.warn("APP", "无法按屏幕调整窗口大小", Some(&e.to_string())),
             }
             window.show().unwrap();
 
