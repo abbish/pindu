@@ -267,6 +267,27 @@ pub fn pick_preferences(difficulty: Option<&str>, frequency: Option<&str>) -> St
     }
 }
 
+/// 题组名称：`name` 为空时取下一个没用过的「第 N 套」（N 从已有套数 + 1 起）；与 `taken` 重名时加「（2）」「（3）」
+pub fn unique_set_name(name: &str, taken: &[String]) -> String {
+    let name = name.trim();
+    let used = |n: &str| taken.iter().any(|t| t.trim() == n);
+    if name.is_empty() {
+        let mut n = taken.len() + 1;
+        while used(&format!("第 {n} 套")) {
+            n += 1;
+        }
+        return format!("第 {n} 套");
+    }
+    if !used(name) {
+        return name.to_string();
+    }
+    let mut i = 2;
+    while used(&format!("{name}（{i}）")) {
+        i += 1;
+    }
+    format!("{name}（{i}）")
+}
+
 /// 手动输入的单词：单个英文单词（字母，可含连字符 / 撇号，2–30 字）
 pub fn valid_extra_word(word: &str) -> bool {
     let w = word.trim();
@@ -898,6 +919,35 @@ mod tests {
     }
     use crate::types::common::Id;
     use serde_json::json;
+
+    #[test]
+    fn set_names_never_repeat() {
+        let taken = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(unique_set_name("", &[]), "第 1 套");
+        assert_eq!(unique_set_name(" ", &taken(&["第 1 套"])), "第 2 套");
+        // 几套同时生成：先保存的占了「第 2 套」，后保存的顺延
+        assert_eq!(
+            unique_set_name("", &taken(&["第 1 套", "第 2 套"])),
+            "第 3 套"
+        );
+        // 删过中间的：从套数 + 1 起找没用过的
+        assert_eq!(
+            unique_set_name("", &taken(&["第 1 套", "第 3 套"])),
+            "第 4 套"
+        );
+        assert_eq!(
+            unique_set_name("期中复习", &taken(&["第 1 套"])),
+            "期中复习"
+        );
+        assert_eq!(
+            unique_set_name("期中复习", &taken(&["期中复习"])),
+            "期中复习（2）"
+        );
+        assert_eq!(
+            unique_set_name("期中复习", &taken(&["期中复习", "期中复习（2）"])),
+            "期中复习（3）"
+        );
+    }
 
     #[test]
     fn picked_vocab_must_appear_in_text_and_is_deduplicated() {

@@ -141,6 +141,11 @@ class PassageService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<QuestionSet>('get_question_set', { setId }));
   }
 
+  /** 题组改名（同一篇同一方式不能重名），返回改名后的题组 */
+  async renameQuestionSet(setId: number, name: string): Promise<ApiResult<QuestionSet>> {
+    return this.executeWithLoading(() => this.client.invoke<QuestionSet>('rename_question_set', { setId, name }));
+  }
+
   async deleteQuestionSet(setId: number): Promise<ApiResult<void>> {
     return this.executeWithLoading(() => this.client.invoke<void>('delete_question_set', { setId }));
   }

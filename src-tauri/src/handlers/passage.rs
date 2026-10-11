@@ -326,6 +326,8 @@ pub async fn start_question_set_generation(
         let paths = agent_paths(&app)?;
         let svc = service(&app);
         let passage = svc.get(request.passage_id).await?;
+        // 名称不合适的提交时就拒绝，不等 AI 出完题才报错
+        svc.check_new_set_name(&request).await?;
         let listening = request.mode.as_deref() == Some("listening");
         // 任务带上方式：页面按它把进度放进「阅读理解」/「听力练习」页签，任务面板点开也到那个页签
         let spec = JobSpec {
@@ -362,6 +364,25 @@ pub async fn get_question_set(app: AppHandle, set_id: i64) -> AppResult<Question
     logger.api_request("get_question_set", Some(&format!("set_id: {}", set_id)));
     let result = service(&app).get_set(set_id).await;
     finish(&logger, "get_question_set", result)
+}
+
+/// 题组改名；返回改名后的题组
+#[tauri::command]
+pub async fn rename_question_set(
+    app: AppHandle,
+    set_id: i64,
+    name: String,
+) -> AppResult<crate::types::passage::QuestionSet> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "rename_question_set",
+        Some(&format!(
+            "set_id: {set_id}, chars: {}",
+            name.chars().count()
+        )),
+    );
+    let result = service(&app).rename_set(set_id, &name).await;
+    finish(&logger, "rename_question_set", result)
 }
 
 /// 删除题组（连同它的作答记录）

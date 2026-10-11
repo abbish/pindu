@@ -978,6 +978,56 @@ impl PassageService {
     }
 
     /// 删除题组：没结束的计划里还没完成的任务用着时不能删
+    /// 生成前检查名称：不超长、不和这种方式已有的题组重名（空 = 自动编号）
+    pub async fn check_new_set_name(&self, request: &GenerateQuestionSetRequest) -> AppResult<()> {
+        let mode = request.mode.as_deref().unwrap_or("reading");
+        validate_mode(mode)?;
+        let name = request.name.as_deref().unwrap_or("").trim();
+        self.check_set_name(request.passage_id, mode, name, None)
+            .await
+    }
+
+    async fn check_set_name(
+        &self,
+        passage_id: Id,
+        mode: &str,
+        name: &str,
+        except: Option<&str>,
+    ) -> AppResult<()> {
+        if name.chars().count() > SET_NAME_MAX {
+            return Err(AppError::ValidationError(format!(
+                "题组名称最多 {SET_NAME_MAX} 个字"
+            )));
+        }
+        if !name.is_empty()
+            && Some(name) != except
+            && self
+                .repository
+                .set_names(passage_id, mode)
+                .await?
+                .iter()
+                .any(|n| n.trim() == name)
+        {
+            return Err(AppError::ValidationError(format!(
+                "已经有一套「{name}」了，换个名称"
+            )));
+        }
+        Ok(())
+    }
+
+    /// 题组改名：不能为空、不和同一篇短文同一方式的其他题组重名
+    pub async fn rename_set(&self, id: Id, name: &str) -> AppResult<QuestionSet> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(AppError::ValidationError("题组名称不能为空".into()));
+        }
+        let set = self.get_set(id).await?;
+        self.check_set_name(set.passage_id, &set.mode, name, Some(set.name.trim()))
+            .await?;
+        self.repository.rename_set(id, name).await?;
+        self.get_set(id).await
+    }
+
     pub async fn delete_set(&self, id: Id) -> AppResult<()> {
         let plans = PlanPassageRepository::new(self.pool.clone())
             .unfinished_plans_using_set(id)
@@ -1012,14 +1062,7 @@ impl PassageService {
         let mode = request.mode.as_deref().unwrap_or("reading");
         validate_mode(mode)?;
         let passage = self.get(request.passage_id).await?;
-        let name = if name.is_empty() {
-            format!(
-                "第 {} 套",
-                self.repository.set_count(passage.id, mode).await? + 1
-            )
-        } else {
-            name
-        };
+        // 名称为空时保存这一刻再编号（几套同时生成也不会重复），见 insert_set_conn
         let profile = PromptProfileService::load(&self.pool).await?;
         let model = self.model().await?;
         let generated = tasks::generate_questions(
@@ -1984,6 +2027,56 @@ pub(crate) mod tests {
         .await
         .unwrap();
         new_id
+    }
+
+    /// 题组改名与重名检查：同一篇同一方式不能重名，阅读和听力之间可以同名
+    #[tokio::test]
+    async fn question_set_names_are_unique_per_mode_and_renamable() {
+        let pool = memory_pool().await;
+        let (passage_id, set_id) = seed_passage(&pool).await;
+        let listen_id = seed_listening_copy(&pool, set_id).await;
+        let service = PassageService::new(pool.clone(), test_logger());
+        let request = |mode: &str, name: &str| GenerateQuestionSetRequest {
+            passage_id,
+            mode: Some(mode.into()),
+            name: Some(name.into()),
+            spec: QuestionSetSpec {
+                cloze: 1,
+                choice: 1,
+                true_false: 1,
+                open: 0,
+                difficulty: "standard".into(),
+            },
+        };
+        // 生成前就拒绝重名；空名称自动编号，不检查
+        assert!(service
+            .check_new_set_name(&request("reading", " 第 1 套 "))
+            .await
+            .is_err());
+        assert!(service
+            .check_new_set_name(&request("reading", ""))
+            .await
+            .is_ok());
+        assert!(service
+            .check_new_set_name(&request("reading", "期中复习"))
+            .await
+            .is_ok());
+        // 改名：去空白、不能为空；改成自己原来的名字可以；听力那套同名不冲突
+        let renamed = service.rename_set(set_id, "  期中复习 ").await.unwrap();
+        assert_eq!(renamed.name, "期中复习");
+        assert!(service.rename_set(set_id, "期中复习").await.is_ok());
+        assert!(service.rename_set(set_id, "  ").await.is_err());
+        assert!(service.rename_set(listen_id, "期中复习").await.is_ok());
+        let second = sqlx::query_scalar::<_, Id>(
+            "INSERT INTO passage_question_sets (passage_id, name, mode, spec, created_at)
+             VALUES (?, '第 2 套', 'reading', '{}', '2026-10-11T00:00:00.000Z') RETURNING id",
+        )
+        .bind(passage_id)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        let err = service.rename_set(second, "期中复习").await.unwrap_err();
+        assert!(err.to_string().contains("已经有一套"), "{err}");
     }
 
     #[tokio::test]

@@ -347,6 +347,7 @@ pub fn run() {
                 delete_passage,
                 start_question_set_generation,
                 get_question_set,
+                rename_question_set,
                 delete_question_set,
                 start_passage_attempt,
                 submit_passage_attempt,

@@ -390,19 +390,28 @@ impl PassageRepository {
 
     // ==================== 题组 ====================
 
-    /// 写入题组与题目（同一事务由调用方提供）
+    /// 写入题组与题目（同一事务由调用方提供）。名称为空时取这种方式下一个没用过的「第 N 套」；
+    /// 与已有题组重名时加「（2）」「（3）」区分（几套同时生成时在保存这一刻定名，不会重复）
     pub async fn insert_set_conn(
         conn: &mut SqliteConnection,
         meta: &NewQuestionSet<'_>,
         set: &GeneratedQuestionSet,
     ) -> AppResult<Id> {
+        let taken: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM passage_question_sets WHERE passage_id = ? AND mode = ?",
+        )
+        .bind(meta.passage_id)
+        .bind(meta.mode)
+        .fetch_all(&mut *conn)
+        .await?;
+        let name = passage_rules::unique_set_name(meta.name, &taken);
         let id = sqlx::query(
             "INSERT INTO passage_question_sets (passage_id, name, mode, spec, cloze_distractors, model_name,
                  prompt_fingerprint, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(meta.passage_id)
-        .bind(meta.name)
+        .bind(&name)
         .bind(meta.mode)
         .bind(json(meta.spec)?)
         .bind(json(&set.cloze_distractors)?)
@@ -443,17 +452,6 @@ impl PassageRepository {
     }
 
     /// 某篇短文的题组数（给新题组起默认名）
-    /// 这篇短文某种方式（reading / listening）的题组数
-    pub async fn set_count(&self, passage_id: Id, mode: &str) -> AppResult<i64> {
-        Ok(sqlx::query_scalar(
-            "SELECT COUNT(*) FROM passage_question_sets WHERE passage_id = ? AND mode = ?",
-        )
-        .bind(passage_id)
-        .bind(mode)
-        .fetch_one(self.pool.as_ref())
-        .await?)
-    }
-
     async fn set_summaries(&self, passage_id: Id) -> AppResult<Vec<QuestionSetSummary>> {
         let rows = sqlx::query(&format!(
             "{SET_SUMMARY_SELECT} WHERE qs.passage_id = ? ORDER BY qs.created_at DESC, qs.id DESC"
@@ -549,6 +547,29 @@ impl PassageRepository {
             cloze_bank: passage_rules::cloze_bank(&answers, &distractors, id),
             questions,
         }))
+    }
+
+    /// 这篇短文某种方式（reading / listening）已有的题组名称
+    pub async fn set_names(&self, passage_id: Id, mode: &str) -> AppResult<Vec<String>> {
+        Ok(sqlx::query_scalar(
+            "SELECT name FROM passage_question_sets WHERE passage_id = ? AND mode = ? ORDER BY id",
+        )
+        .bind(passage_id)
+        .bind(mode)
+        .fetch_all(self.pool.as_ref())
+        .await?)
+    }
+
+    pub async fn rename_set(&self, id: Id, name: &str) -> AppResult<bool> {
+        Ok(
+            sqlx::query("UPDATE passage_question_sets SET name = ? WHERE id = ?")
+                .bind(name)
+                .bind(id)
+                .execute(self.pool.as_ref())
+                .await?
+                .rows_affected()
+                > 0,
+        )
     }
 
     pub async fn delete_set(&self, id: Id) -> AppResult<bool> {

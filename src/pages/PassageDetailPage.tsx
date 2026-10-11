@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { PageError } from '@/components/PageError';
+import { InlineError } from '@/components/InlineError';
 import { QuestionSetDialog } from '@/components/QuestionSetDialog';
 import { TargetWordsPanel } from './passage-detail/TargetWordsPanel';
 import { ReadAloudPanel } from './passage-detail/ReadAloudPanel';
@@ -71,7 +72,7 @@ const TargetChip: React.FC<{ word: string; meaning?: string | null; className?: 
 );
 
 /** 题组行：名称、题型与难度、最近成绩；开始练习；⋯ 删除（阅读、听力题组各是各的） */
-const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: () => void; onDelete: () => void }> = ({ set, onStart, onDelete }) => {
+const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: () => void; onRename: () => void; onDelete: () => void }> = ({ set, onStart, onRename, onDelete }) => {
   const mode = set.mode;
   return (
   <Card className="flex-row items-center gap-4 px-5 py-4">
@@ -99,6 +100,11 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: () => void; o
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onRename}>
+          <Pencil />
+          改名…
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onSelect={onDelete}>
           <Trash2 />
           删除题组…
@@ -151,6 +157,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   /** 待确认移除的词 */
   const [removing, setRemoving] = useState<string | null>(null);
   const [setToDelete, setSetToDelete] = useState<QuestionSetSummary | null>(null);
+  /** 改名中的题组与输入框里的名称；renameError：保存失败的原因（留在弹窗里） */
+  const [renamingSet, setRenamingSet] = useState<{ set: QuestionSetSummary; name: string } | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
   usePageTitle(passage?.title);
 
   // 从计划打开：这篇短文在计划里的任务（状态以后端为准）
@@ -234,6 +243,15 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     } else {
       toast.showError(isClip ? '无法删除场景片段' : '无法删除短文', result.error);
     }
+  };
+
+  const renameSet = async () => {
+    if (!renamingSet) return;
+    if (renamingSet.name.trim() === renamingSet.set.name) return setRenamingSet(null);
+    const result = await passageService.renameQuestionSet(renamingSet.set.id, renamingSet.name);
+    if (!result.success) return setRenameError(result.error);
+    setRenamingSet(null);
+    load();
   };
 
   const removeSet = async () => {
@@ -528,7 +546,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             ) : (
               <div className="flex flex-col gap-3">
                 {setsOf(mode).map((s) => (
-                  <QuestionSetRow key={s.id} set={s} onStart={() => startPractice(s.id, mode)} onDelete={() => setSetToDelete(s)} />
+                  <QuestionSetRow key={s.id} set={s} onStart={() => startPractice(s.id, mode)} onRename={() => (setRenameError(null), setRenamingSet({ set: s, name: s.name }))} onDelete={() => setSetToDelete(s)} />
                 ))}
               </div>
             )}
@@ -542,7 +560,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         passageId={passage.id}
         level={passage.level}
         mode={generateMode}
-        existingSets={{ reading: setsOf('reading').length, listening: setsOf('listening').length }}
+        existingSets={{ reading: setsOf('reading').length + generatingSets('reading').length, listening: setsOf('listening').length + generatingSets('listening').length }}
         onStarted={(_jobId, mode) => {
           // 到生成的那一类题组的页签看进度
           setTab(mode === 'listening' ? 'listening' : 'sets');
@@ -611,6 +629,32 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             <AlertDialogAction variant="destructive" onClick={removePassage}>
               {isClip ? '删除场景片段' : '删除短文'}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={renamingSet !== null} onOpenChange={(o) => !o && setRenamingSet(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>改名</AlertDialogTitle>
+          </AlertDialogHeader>
+          <Input
+            value={renamingSet?.name ?? ''}
+            maxLength={30}
+            onChange={(e) => {
+              setRenameError(null);
+              setRenamingSet((r) => (r ? { ...r, name: e.target.value } : r));
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && void renameSet()}
+            aria-label="题组名称"
+            autoFocus
+          />
+          {renameError && <InlineError title="无法改名">{renameError}</InlineError>}
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <Button onClick={() => void renameSet()} disabled={!renamingSet?.name.trim()}>
+              保存
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
