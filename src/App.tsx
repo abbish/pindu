@@ -108,7 +108,7 @@ function App() {
       case 'import-passage':
         return <ImportPassagePage onNavigate={navigate} />;
       case 'passage-detail':
-        return <PassageDetailPage key={route.params?.passageId} passageId={route.params?.passageId} fromPlan={route.params?.fromPlan} returnTo={route.params?.returnTo} clip={route.params?.clip} onNavigate={navigate} />;
+        return <PassageDetailPage key={route.params?.passageId} passageId={route.params?.passageId} fromPlan={route.params?.fromPlan} returnTo={route.params?.returnTo} clip={route.params?.clip} tab={route.params?.tab} onNavigate={navigate} />;
       case 'passage-practice':
         return (
           // key：切换题组 / 模式时重新挂载

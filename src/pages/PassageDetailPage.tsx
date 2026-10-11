@@ -40,7 +40,7 @@ import { studyService } from '@/services/studyService';
 import { formatDate, formatRelative } from '@/utils/datetime';
 import { LEVEL_LABEL, scoreSummary, specSummary } from '@/utils/passage';
 import type { Passage, PassageMode, PlanPassage, QuestionSetSummary } from '@/types/passage';
-import type { NavigateFn, PassagePracticeReturn, PlanContext } from '../navigation';
+import type { NavigateFn, PassageDetailTab, PassagePracticeReturn, PlanContext } from '../navigation';
 import { PASSAGE_STATUS, taskLabel } from '@/components/PlanPassagePicker';
 
 export interface PassageDetailPageProps {
@@ -52,6 +52,8 @@ export interface PassageDetailPageProps {
   /** 从视频库打开的片段（加载前就按片段显示返回与删除） */
   clip?: boolean;
   onNavigate?: NavigateFn;
+  /** 打开时的页签 */
+  tab?: PassageDetailTab;
 }
 
 const container = 'mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-8 py-7';
@@ -111,11 +113,11 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; mode: PassageMode; onS
  * 短文详情：「原文」页签自由阅读（显示翻译、标出目标词、全文 / 逐句朗读）+ 侧栏（目标词、来源、场景）；
  * 「阅读理解」页签管理题组（生成、删除、阅读 / 听力练习）。
  */
-export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId, fromPlan, returnTo, clip: openedAsClip, onNavigate }) => {
+export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId, fromPlan, returnTo, clip: openedAsClip, tab: initialTab, onNavigate }) => {
   const toast = useToast();
   const [passage, setPassage] = useState<Passage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState('text');
+  const [tab, setTab] = useState<string>(initialTab ?? 'text');
   const [focusWord, setFocusWord] = useState<string | null>(null);
   /** 正在给这篇出题的后台任务（离开再回来也接得上；这个页面开着时由页面提示结果） */
   const jobs = useJobs();
@@ -197,10 +199,6 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     load();
   }, [load]);
 
-  // 目标词都移除后「目标词」页签不再显示，回到原文
-  useEffect(() => {
-    if (tab === 'words' && passage && passage.targetWords.length === 0) setTab('text');
-  }, [tab, passage]);
 
   useEffect(() => {
     if (!passageId) return;
@@ -208,7 +206,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     videoService.getPassageVideo(passageId).then((r) => {
       if (stale || !r.success || !r.data) return;
       setClip(r.data);
-      setTab('video');
+      // 视频片段默认看视频；指定了页签（如练完回来）时不改
+      if (!initialTab) setTab('video');
     });
     return () => {
       stale = true;
@@ -430,11 +429,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           <TabsTrigger value="text" className="px-3">
             原文
           </TabsTrigger>
-          {passage.targetWords.length > 0 && (
-            <TabsTrigger value="words" className="gap-1.5 px-3">
-              词汇<span className="text-xs text-muted-foreground tabular-nums">{passage.targetWords.length}</span>
-            </TabsTrigger>
-          )}
+          <TabsTrigger value="words" className="gap-1.5 px-3">
+            词汇<span className="text-xs text-muted-foreground tabular-nums">{passage.targetWords.length}</span>
+          </TabsTrigger>
           <TabsTrigger value="sets" className="gap-1.5 px-3">
             阅读理解<span className="text-xs text-muted-foreground tabular-nums">{passage.questionSets.length}</span>
           </TabsTrigger>
@@ -445,7 +442,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         {clip && (
           <TabsContent value="video">
-            <ClipStudyPanel video={clip} sentences={passage.sentences} passage={passage} onAddTarget={addTarget} onOpenWord={openWord} onEditTranslation={editTranslation} onPractice={passage.questionSets.length > 0 ? () => setTab('sets') : undefined} />
+            <ClipStudyPanel video={clip} sentences={passage.sentences} passage={passage} onAddTarget={addTarget} onOpenWord={openWord} onEditTranslation={editTranslation} onPractice={() => setTab('listening')} />
           </TabsContent>
         )}
 
@@ -484,6 +481,14 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         </TabsContent>
 
         <TabsContent value="words">
+          {passage.targetWords.length === 0 ? (
+            <EmptyState icon={<BookOpen />} title="还没有词汇">
+              <Button onClick={() => setRepicking(true)}>
+                <WandSparkles />
+                挑选词汇
+              </Button>
+            </EmptyState>
+          ) : (
           <TargetWordsPanel
             passage={passage}
             focusWord={focusWord}
@@ -491,6 +496,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
             onOpenPassage={(passageId, isClip) => onNavigate?.('passage-detail', { passageId, clip: isClip || undefined })}
             footer={hasNewWords && <NewWordsCard passageId={passage.id} sourceLabel={passage.sourceLabel ?? passage.title} onAdded={load} onOpenBook={(id) => onNavigate?.('wordbook-detail', { id })} />}
           />
+          )}
         </TabsContent>
 
         {(['reading', 'listening'] as const).map((mode) => (

@@ -26,7 +26,8 @@ export interface RouteParams {
   /** fromPlan：从计划的短文任务打开（面包屑与返回都回到这个计划） */
   /** fromPlan：从计划的短文任务打开；returnTo：读完 / 返回回到哪里（默认这个计划的短文页签） */
   /** clip：视频片段（面包屑与侧边栏在「视频库」下） */
-  'passage-detail': { passageId: number; fromPlan?: PlanContext; returnTo?: PassagePracticeReturn; clip?: boolean };
+  /** tab：打开时的页签（练习结束回到对应的「阅读理解」/「听力练习」） */
+  'passage-detail': { passageId: number; fromPlan?: PlanContext; returnTo?: PassagePracticeReturn; clip?: boolean; tab?: PassageDetailTab };
   /**
    * 按题组练习（阅读 / 听力）。planId：从计划里的短文任务进入（完成后计入计划）；
    * returnTo：练完 / 退出回到哪里（默认短文详情）
@@ -46,6 +47,8 @@ export type PageKey = keyof RouteParams;
 
 /** 短文练习结束后回到的页面 */
 export type PassagePracticeReturn = 'plan-detail' | 'home' | 'calendar';
+/** 短文详情的页签 */
+export type PassageDetailTab = 'video' | 'text' | 'words' | 'sets' | 'listening';
 
 /** 顶部导航中的一级页面 */
 export type TopLevelPage = 'home' | 'plans' | 'wordbooks' | 'passages' | 'videos' | 'tag' | 'calendar' | 'settings';
