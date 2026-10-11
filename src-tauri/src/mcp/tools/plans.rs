@@ -142,6 +142,41 @@ pub struct SessionArgs {
     pub session_id: String,
 }
 
+/// 改了一部分后失败：如实说明哪些已经改好了
+fn partly_failed(
+    done_changes: &[&str],
+    what: &str,
+    e: AppError,
+) -> Result<CallToolResult, ErrorData> {
+    if done_changes.is_empty() {
+        return failed(what, e);
+    }
+    let message = format!(
+        "{}（{} 已经改好了）",
+        e.user_message(),
+        done_changes.join("、")
+    );
+    failed(what, AppError::ValidationError(message))
+}
+
+/// 这些词汇本里还在进行的加词分析任务（id）
+fn analyzing_books(app: &tauri::AppHandle, book_ids: &[i64]) -> Vec<String> {
+    use tauri::Manager;
+    app.state::<crate::jobs::Jobs>()
+        .list()
+        .into_iter()
+        .filter(|job| job.kind == "word_analysis" && job.status.is_active())
+        .filter(|job| {
+            job.link
+                .as_ref()
+                .and_then(|link| link.params.get("id"))
+                .and_then(serde_json::Value::as_i64)
+                .is_some_and(|id| book_ids.contains(&id))
+        })
+        .map(|job| job.id)
+        .collect()
+}
+
 #[tool_router(router = plans_router, vis = "pub(super)")]
 impl PinduTools {
     #[tool(
@@ -182,9 +217,12 @@ impl PinduTools {
             Err(e) => return failed("没能打开学习计划", e),
         };
         let today = crate::time::format_date(crate::time::local_today());
-        let schedules = crate::handlers::get_study_plan_schedules(self.app.clone(), args.plan_id)
-            .await
-            .unwrap_or_default();
+        // 查不到时如实说没能查看，不当成「没有」
+        let schedules =
+            match crate::handlers::get_study_plan_schedules(self.app.clone(), args.plan_id).await {
+                Ok(s) => s,
+                Err(e) => return failed("没能查看计划的日程", e),
+            };
         let upcoming: Vec<Value> = schedules
             .iter()
             .filter(|s| s.schedule_date >= today || !s.completed)
@@ -194,17 +232,21 @@ impl PinduTools {
                         "reviewWords": s.review_words_count, "done": s.completed })
             })
             .collect();
-        let words = crate::handlers::get_study_plan_words(self.app.clone(), args.plan_id)
-            .await
-            .unwrap_or_default();
+        let words =
+            match crate::handlers::get_study_plan_words(self.app.clone(), args.plan_id).await {
+                Ok(w) => w,
+                Err(e) => return failed("没能查看计划的单词", e),
+            };
         let word_list: Vec<Value> = words
             .iter()
             .take(200)
             .map(|w| json!({ "id": w.id, "word": w.word, "meaning": w.meaning, "date": w.scheduled_date }))
             .collect();
-        let passages = crate::handlers::get_plan_passages(self.app.clone(), args.plan_id)
-            .await
-            .unwrap_or_default();
+        let passages =
+            match crate::handlers::get_plan_passages(self.app.clone(), args.plan_id).await {
+                Ok(p) => p,
+                Err(e) => return failed("没能查看计划的短文", e),
+            };
         let passage_list: Vec<Value> = passages
             .iter()
             .map(|p| json!({ "passageId": p.passage_id, "title": p.title, "date": p.scheduled_date, "done": p.completed_at.is_some() }))
@@ -276,6 +318,17 @@ impl PinduTools {
                 )
             }
         };
+        // 词要等后台分析完才进词汇本：还在分析的词汇本现在建计划会漏掉这些词
+        let analyzing = analyzing_books(&self.app, &args.book_ids);
+        if !analyzing.is_empty() {
+            return failed(
+                "还不能新建计划",
+                AppError::ValidationError(format!(
+                    "词汇本里的词还在后台分析（任务 {}），分析完才会进词汇本；收到完成通知后再建计划",
+                    analyzing.join("、")
+                )),
+            );
+        }
         let (end_date, plan_data) = if args.book_ids.is_empty() {
             let days = (passages.len() as i64 - 1).max(0) * interval.unwrap_or(2);
             let end = crate::time::local_today() + chrono::Duration::days(days);
@@ -337,7 +390,8 @@ impl PinduTools {
             }
         }
         done(
-            json!({ "planId": plan_id, "orderingInBackground": job.is_some() }),
+            json!({ "planId": plan_id, "orderingInBackground": job.is_some(),
+                    "note": job.is_some().then_some("The plan exists and can be used now; its words are being arranged from easy to hard in the background.") }),
             format!("新建了学习计划《{}》", name),
             Some(json!({ "kind": "plan", "id": plan_id, "title": name, "jobId": job })),
         )
@@ -379,11 +433,22 @@ impl PinduTools {
             if let Err(e) =
                 crate::handlers::replan_study_plan_pace(self.app.clone(), args.plan_id, daily).await
             {
-                return failed("没能改每天新词数", e);
+                return partly_failed(&changes, "没能改每天新词数", e);
             }
             changes.push("每天新词数");
         }
         if !args.add_book_ids.is_empty() {
+            let analyzing = analyzing_books(&self.app, &args.add_book_ids);
+            if !analyzing.is_empty() {
+                return partly_failed(
+                    &changes,
+                    "还不能追加词汇本",
+                    AppError::ValidationError(format!(
+                        "词汇本里的词还在后台分析（任务 {}），分析完才会进词汇本；收到完成通知后再追加",
+                        analyzing.join("、")
+                    )),
+                );
+            }
             if let Err(e) = crate::handlers::add_word_books_to_plan(
                 self.app.clone(),
                 args.plan_id,
@@ -391,7 +456,7 @@ impl PinduTools {
             )
             .await
             {
-                return failed("没能追加词汇本", e);
+                return partly_failed(&changes, "没能追加词汇本", e);
             }
             changes.push("追加了词汇本");
         }
@@ -545,13 +610,16 @@ impl PinduTools {
         Parameters(args): Parameters<StatsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let days_back = args.days.unwrap_or(14).clamp(1, 90);
-        let trouble = crate::repositories::tutor_repository::trouble_words(
+        let trouble = match crate::repositories::tutor_repository::trouble_words(
             &self.pool(),
             &crate::time::days_ago_utc(days_back),
             20,
         )
         .await
-        .unwrap_or_default();
+        {
+            Ok(t) => t,
+            Err(e) => return failed("没能查看学习统计", e),
+        };
         let trouble: Vec<Value> = trouble
             .iter()
             .map(|t| json!({ "word": t.word, "meaning": t.meaning, "book": t.book_title, "wrong": t.wrong, "answers": t.attempts }))
@@ -732,9 +800,9 @@ impl PinduTools {
     ) -> Result<CallToolResult, ErrorData> {
         match crate::handlers::start_study_plan_ordering(self.app.clone(), args.plan_id).await {
             Ok(job) => {
-                crate::mcp::job_notice::track(&job, false);
+                crate::mcp::job_notice::track(&job, true);
                 done(
-                    json!({ "started": true }),
+                    json!({ "started": true, "jobId": job, "note": "Not done yet: the new order applies when the job finishes; you will get a notice." }),
                     "开始按从易到难重新排学习顺序（后台进行）".to_string(),
                     None,
                 )

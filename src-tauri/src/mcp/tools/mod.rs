@@ -394,8 +394,8 @@ impl PinduTools {
             },
         )
         .await?;
-        // 拼读分析只影响词什么时候出现在词汇本里：记下来源，不用结束时通知
-        crate::mcp::job_notice::track(&job, false);
+        // 词在分析完成后才进词汇本：结束时通知对话，AI 老师才能接着做等着这些词的事（如建计划）
+        crate::mcp::job_notice::track(&job, true);
         Ok((new, skipped, Some(job)))
     }
 }

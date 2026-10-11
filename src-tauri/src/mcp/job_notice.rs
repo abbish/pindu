@@ -75,6 +75,9 @@ pub fn notice_text(job: &Job) -> String {
         JobStatus::Succeeded if !ids.is_empty() => {
             format!("后台任务完成：{}（短文 id：{}）", job.title, ids.join("、"))
         }
+        JobStatus::Succeeded if job.kind == "word_analysis" => {
+            format!("后台任务完成：{}（词已进词汇本）", job.title)
+        }
         JobStatus::Succeeded => format!("后台任务完成：{}", job.title),
         JobStatus::Cancelled => format!("后台任务已停止：{}", job.title),
         _ => {

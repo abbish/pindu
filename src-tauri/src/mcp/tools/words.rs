@@ -9,6 +9,9 @@ pub struct OptionalBookArgs {
     pub book_id: Option<i64>,
 }
 
+/// 加词后的说明：词要等后台分析完才进词汇本
+const QUEUED_NOTE: &str = "The words are being analyzed in a background job and are NOT in the book yet; they appear when the job finishes, and you will get a notice then. Anything that needs these words (a study plan, the word list) has to wait for that notice: tell the learner, and do it when the notice arrives.";
+
 #[tool_router(router = words_router, vis = "pub(super)")]
 impl PinduTools {
     #[tool(
@@ -128,7 +131,7 @@ impl PinduTools {
     }
 
     #[tool(
-        description = "Create a new word book with the given words. Spelling analysis and example sentences are added in the background. Use when the learner wants to collect words into a new book.",
+        description = "Create a new word book with the given words. The words are analyzed (spelling, examples) in a background job and only appear in the book when it finishes; you are notified then. Use when the learner wants to collect words into a new book.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn create_word_book(
@@ -153,11 +156,11 @@ impl PinduTools {
         };
         match self.add_to_book(book_id, &args.words).await {
             Ok((added, _, job)) => {
-                let step = format!("新建词汇本《{}》，收进 {} 个词", title, added.len());
+                let step = format!("新建词汇本《{}》，{} 个词正在分析", title, added.len());
                 let output = json!({ "kind": "wordbook", "id": book_id, "title": title,
                                      "meta": format!("{} 个词", added.len()), "jobId": job });
                 done(
-                    json!({ "bookId": book_id, "added": added, "note": "Words appear in the book after the background analysis finishes." }),
+                    json!({ "bookId": book_id, "queued": added, "jobId": job, "note": QUEUED_NOTE }),
                     step,
                     Some(output),
                 )
@@ -166,7 +169,7 @@ impl PinduTools {
                 let output = json!({ "kind": "wordbook", "id": book_id, "title": title, "meta": "还没有词" });
                 let message = e.user_message();
                 done(
-                    json!({ "bookId": book_id, "added": [], "error": message }),
+                    json!({ "bookId": book_id, "queued": [], "error": message }),
                     format!("新建了词汇本《{}》，但没能加词：{}", title, message),
                     Some(output),
                 )
@@ -175,7 +178,7 @@ impl PinduTools {
     }
 
     #[tool(
-        description = "Add words to an existing word book (words already in the book are skipped). Spelling analysis and examples are added in the background.",
+        description = "Add words to an existing word book (words already in the book are skipped). The words are analyzed (spelling, examples) in a background job and only appear in the book when it finishes; you are notified then.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn add_words(
@@ -191,7 +194,7 @@ impl PinduTools {
                 let mut step = if added.is_empty() {
                     format!("这些词《{}》里都有了", book.title)
                 } else {
-                    format!("把 {} 加进了《{}》", preview(&added, 3), book.title)
+                    format!("正在把 {} 加进《{}》", preview(&added, 3), book.title)
                 };
                 if !added.is_empty() && !skipped.is_empty() {
                     step.push_str(&format!("（{} 个本里已有）", skipped.len()));
@@ -201,7 +204,8 @@ impl PinduTools {
                             "meta": format!("加进《{}》", book.title), "jobId": job })
                 });
                 done(
-                    json!({ "added": added, "alreadyInBook": skipped }),
+                    json!({ "queued": added, "alreadyInBook": skipped, "jobId": job,
+                            "note": (!added.is_empty()).then_some(QUEUED_NOTE) }),
                     step,
                     output,
                 )

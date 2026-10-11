@@ -125,17 +125,20 @@ impl PinduTools {
             let _ = self
                 .app
                 .emit("tutor-start-practice", json!({ "planId": plan_id }));
+            // 只是请界面去开始（和计划卡的按钮一样）；今天没东西练、计划暂停等情况由界面告诉学习者
             return done(
-                json!({ "started": plan_id }),
-                "开始今天的练习".to_string(),
+                json!({ "requested": plan_id, "note": "The app opens today's practice for this plan, like the plan card button; if there is nothing to practise or the plan is paused, the app tells the learner." }),
+                "打开今天的练习".to_string(),
                 None,
             );
         }
         // 接着练没练完的那次：用 unfinished_practice 给的会话
         if args.target.trim() == "continue_practice" {
-            let sessions = crate::handlers::get_incomplete_practice_sessions(self.app.clone())
-                .await
-                .unwrap_or_default();
+            let sessions =
+                match crate::handlers::get_incomplete_practice_sessions(self.app.clone()).await {
+                    Ok(s) => s,
+                    Err(e) => return failed("没能查看没练完的练习", e),
+                };
             let Some(s) = sessions.iter().find(|s| {
                 args.session_id
                     .as_deref()

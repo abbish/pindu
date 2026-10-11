@@ -224,7 +224,7 @@ impl PinduTools {
             Ok(job) => {
                 crate::mcp::job_notice::track(&job, true);
                 done(
-                    json!({ "planId": plan_id }),
+                    json!({ "planId": plan_id, "jobId": job, "note": "Not done yet: the cut plan is written in the background; you will get a notice, then read it with get_video." }),
                     "开始规划怎么切分（后台进行）".to_string(),
                     None,
                 )
@@ -245,7 +245,7 @@ impl PinduTools {
             Ok(job) => {
                 crate::mcp::job_notice::track(&job, true);
                 done(
-                    json!({ "started": true }),
+                    json!({ "started": true, "jobId": job, "note": "Not done yet: the clips are cut in the background; you will get a notice when they are saved." }),
                     "开始切出场景片段（后台进行）".to_string(),
                     None,
                 )

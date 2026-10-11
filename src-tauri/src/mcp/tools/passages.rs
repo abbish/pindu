@@ -178,7 +178,7 @@ impl PinduTools {
                 let step = format!("存成短文《{}》，后台在翻译", name);
                 let output = json!({ "kind": "passage", "title": name, "meta": format!("约 {} 词", preview.total_words), "jobId": job });
                 done(
-                    json!({ "words": preview.total_words, "note": "Saved. Translation runs in the background; the passage appears in the library when it is done." }),
+                    json!({ "words": preview.total_words, "jobId": job, "note": "Not in the library yet: the passage is created when the background translation finishes, and you will get a notice with its id. Until then it has no id, so question sets or study plans for it have to wait for that notice." }),
                     step,
                     Some(output),
                 )
@@ -226,7 +226,7 @@ impl PinduTools {
                 let output = json!({ "kind": "questions", "id": passage.id, "title": format!("{}题", label),
                                      "meta": format!("《{}》", passage.title), "jobId": job });
                 done(
-                    json!({ "note": "Generating in the background." }),
+                    json!({ "jobId": job, "note": "Not ready yet: the questions are being written in the background; you will get a notice when the set is ready." }),
                     format!("开始为《{}》出{}题", passage.title, label),
                     Some(output),
                 )
@@ -470,7 +470,7 @@ impl PinduTools {
     }
 
     #[tool(
-        description = "Add key words of a passage to a word book (spelling analysis in the background, then they become this passage's vocabulary linked to the book).",
+        description = "Add key words of a passage to a word book (spelling analysis runs first, so this can take a while; when it returns the words are in the book and linked to the passage's vocabulary).",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn add_passage_words_to_book(
@@ -487,9 +487,8 @@ impl PinduTools {
                 .filter(|w| !w.is_empty())
                 .collect(),
         };
-        let count = request.words.len();
         match crate::handlers::add_passage_words_to_book(self.app.clone(), request).await {
-            Ok(_) => {
+            Ok(ids) => {
                 let book = self
                     .word_books()
                     .get_word_book(args.book_id)
@@ -497,8 +496,8 @@ impl PinduTools {
                     .map(|b| b.title)
                     .unwrap_or_default();
                 done(
-                    json!({ "added": count }),
-                    format!("把短文里的 {} 个词加进了《{}》", count, book),
+                    json!({ "inBook": ids.len() }),
+                    format!("把短文里的 {} 个词加进了《{}》", ids.len(), book),
                     Some(
                         json!({ "kind": "words", "id": args.book_id, "title": preview(&args.words, 3), "meta": format!("加进《{}》", book) }),
                     ),
@@ -520,7 +519,7 @@ impl PinduTools {
             Ok(Some(job)) => {
                 crate::mcp::job_notice::track(&job, false);
                 done(
-                    json!({ "started": true }),
+                    json!({ "started": true, "jobId": job, "note": "Not ready yet: the cards are prepared in the background." }),
                     "开始准备单词卡（后台进行）".to_string(),
                     None,
                 )
