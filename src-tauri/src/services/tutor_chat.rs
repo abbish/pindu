@@ -1,11 +1,13 @@
 //! AI 老师独立对话：对话的保存、恢复、命名、压缩都交给 pi 会话（`agent::chat`）；
-//! 这里只负责启动参数（模型、学习者档案、提示词）、对话列表与置顶 / 归档（pi 没有，存 app_settings）。
+//! 这里只负责启动参数（模型、学习者档案、提示词、工具与 skills、拼读 MCP 服务地址）、对话的资料夹（附件），
+//! 对话列表与置顶 / 归档（pi 没有，存 app_settings）。
 
 use crate::agent::chat::{ChatHub, ChatSession, Emit};
 use crate::agent::config::{prepare_launch, SessionMode, TaskWorkspace};
 use crate::agent::{tasks, AgentPaths};
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::mcp::McpEndpoint;
 use crate::repositories::settings_repository::SettingsRepository;
 use crate::types::tutor::{
     TutorConversation, TutorFlags, TutorOpened, TutorSendRequest, TutorUiAnswer,
@@ -22,6 +24,8 @@ const FLAGS_KEY: &str = "tutor.conversations";
 pub const MAX_MESSAGE_CHARS: usize = 20_000;
 /// 一次最多带几张图片
 pub const MAX_IMAGES: usize = 8;
+/// 一次最多带几个文件
+pub const MAX_FILES: usize = 5;
 /// 标题最长（字符）
 const MAX_TITLE_CHARS: usize = 60;
 
@@ -29,6 +33,40 @@ const MAX_TITLE_CHARS: usize = 60;
 fn dirs(paths: &AgentPaths) -> (PathBuf, PathBuf) {
     let root = paths.root.join("tutor");
     (root.join("sessions"), root.join("cwd"))
+}
+
+/// 对话的资料夹：附件放这里，素材阅读工具只能读这里
+fn files_dir(paths: &AgentPaths, id: &str) -> PathBuf {
+    paths.root.join("tutor").join("files").join(id)
+}
+
+/// 会话 id 的写法与 pi 一致（字母数字开头结尾，中间可有 `._-`）；拼路径前校验，防止跳出目录
+fn check_id(id: &str) -> AppResult<()> {
+    let ok = !id.is_empty()
+        && id.len() <= 100
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+        && id.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && id.ends_with(|c: char| c.is_ascii_alphanumeric());
+    if ok {
+        Ok(())
+    } else {
+        Err(AppError::ValidationError("对话不存在".to_string()))
+    }
+}
+
+/// 消息里附件的标记（最后一行）：前端据此显示文件，模型据此知道去资料夹里读
+pub fn attachment_line(names: &[String]) -> String {
+    format!("〔附件：{}〕", names.join("、"))
+}
+
+/// 启动 / 找到对话进程所需的环境
+pub struct ChatEnv<'a> {
+    pub paths: &'a AgentPaths,
+    pub hub: &'a ChatHub,
+    pub mcp: &'a McpEndpoint,
+    pub emit: Emit,
 }
 
 /// 解析符号链接后的路径（pi 记录的工作目录是真实路径，如 macOS 的 /var → /private/var）
@@ -115,16 +153,11 @@ impl TutorChatService {
         Ok(list)
     }
 
-    /// 已有的对话进程，或按会话 id 启动（id 为空 = 新对话）
-    async fn session(
-        &self,
-        paths: &AgentPaths,
-        hub: &ChatHub,
-        id: Option<&str>,
-        emit: Emit,
-    ) -> AppResult<Arc<ChatSession>> {
+    /// 已有的对话进程，或按会话 id 启动（id 为空 = 新对话，由这里生成 id）
+    async fn session(&self, env: &ChatEnv<'_>, id: Option<&str>) -> AppResult<Arc<ChatSession>> {
         if let Some(id) = id {
-            if let Some(session) = hub.get(id).await {
+            check_id(id)?;
+            if let Some(session) = env.hub.get(id).await {
                 return Ok(session);
             }
         }
@@ -136,23 +169,44 @@ impl TutorChatService {
         .await?;
         let profile =
             crate::services::prompt_profile::PromptProfileService::load(&self.pool).await?;
-        let (session_dir, cwd) = dirs(paths);
+        let (session_dir, cwd) = dirs(env.paths);
         std::fs::create_dir_all(&session_dir)
             .map_err(|e| AppError::InternalError(format!("准备对话目录失败：{}", e)))?;
+        let conversation = id
+            .map(str::to_string)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let files = files_dir(env.paths, &conversation);
+        std::fs::create_dir_all(&files)
+            .map_err(|e| AppError::InternalError(format!("准备对话目录失败：{}", e)))?;
+        let images = crate::services::material_read::model_sees_images(env.paths, &model).await;
+        let skills = crate::services::tutor_skills::write(&env.paths.root)?;
         let launch = prepare_launch(
-            paths,
+            env.paths,
             &tasks::tutor_chat_task(&profile),
             &model,
             SessionMode::Persistent {
                 dir: session_dir,
-                session: id.map(str::to_string),
+                id: conversation.clone(),
+                resume: id.is_some(),
             },
             Some(&TaskWorkspace {
                 dir: cwd,
-                ..Default::default()
+                skills,
+                env: vec![
+                    (
+                        "REDLARK_MATERIAL_DIR".to_string(),
+                        files.to_string_lossy().into_owned(),
+                    ),
+                    (
+                        "REDLARK_MODEL_IMAGES".to_string(),
+                        if images { "1" } else { "0" }.to_string(),
+                    ),
+                    ("REDLARK_MCP_URL".to_string(), env.mcp.url.clone()),
+                    ("REDLARK_MCP_TOKEN".to_string(), env.mcp.token.clone()),
+                ],
             }),
         )?;
-        let session = hub.start(launch, emit).await?;
+        let session = env.hub.start(launch, env.emit.clone()).await?;
         self.logger.info(
             "TUTOR",
             &format!(
@@ -170,14 +224,8 @@ impl TutorChatService {
     }
 
     /// 打开对话：pi 的消息
-    pub async fn open(
-        &self,
-        paths: &AgentPaths,
-        hub: &ChatHub,
-        id: &str,
-        emit: Emit,
-    ) -> AppResult<TutorOpened> {
-        let session = self.session(paths, hub, Some(id), emit).await?;
+    pub async fn open(&self, env: &ChatEnv<'_>, id: &str) -> AppResult<TutorOpened> {
+        let session = self.session(env, Some(id)).await?;
         let data = session.request("get_messages", Value::Null).await?;
         Ok(TutorOpened {
             id: session.id.clone(),
@@ -187,15 +235,9 @@ impl TutorChatService {
     }
 
     /// 发一条消息（没有对话 id 时开新对话），返回对话 id；回答经事件推送
-    pub async fn send(
-        &self,
-        paths: &AgentPaths,
-        hub: &ChatHub,
-        request: &TutorSendRequest,
-        emit: Emit,
-    ) -> AppResult<String> {
+    pub async fn send(&self, env: &ChatEnv<'_>, request: &TutorSendRequest) -> AppResult<String> {
         let message = request.message.trim();
-        if message.is_empty() && request.images.is_empty() {
+        if message.is_empty() && request.images.is_empty() && request.files.is_empty() {
             return Err(AppError::ValidationError("说点什么吧".to_string()));
         }
         if message.chars().count() > MAX_MESSAGE_CHARS {
@@ -210,15 +252,55 @@ impl TutorChatService {
                 MAX_IMAGES
             )));
         }
-        let session = self
-            .session(paths, hub, request.conversation_id.as_deref(), emit)
+        if request.files.len() > MAX_FILES {
+            return Err(AppError::ValidationError(format!(
+                "一次最多发 {} 个文件",
+                MAX_FILES
+            )));
+        }
+        let has_image = !request.images.is_empty()
+            || request
+                .files
+                .iter()
+                .any(|f| crate::services::material_read::is_image(&f.name));
+        if has_image {
+            let model = crate::services::agent_settings::AgentSettingsService::new(
+                self.pool.clone(),
+                self.logger.clone(),
+            )
+            .model_for(crate::services::agent_settings::AgentTaskKind::Tutor, None)
             .await?;
+            crate::services::material_read::check_can_read(
+                env.paths,
+                &model,
+                "截图.png",
+                "AI 老师",
+            )
+            .await?;
+        }
+        let session = self
+            .session(env, request.conversation_id.as_deref())
+            .await?;
+        let mut text = message.to_string();
+        if !request.files.is_empty() {
+            let dir = files_dir(env.paths, &session.id);
+            let mut names = Vec::new();
+            for file in &request.files {
+                names.extend(crate::services::material_read::add_to_folder(
+                    &dir, &file.name, &file.data,
+                )?);
+            }
+            if !text.is_empty() {
+                text.push_str("\n\n");
+            }
+            text.push_str(&attachment_line(&names));
+        }
         let images = request
             .images
             .iter()
             .map(|i| json!({ "type": "image", "data": i.data, "mimeType": i.mime_type }))
             .collect();
-        session.send(message, images).await?;
+        session.send(&text, images).await?;
         Ok(session.id.clone())
     }
 
@@ -247,20 +329,13 @@ impl TutorChatService {
     }
 
     /// 改名（pi 的会话名）
-    pub async fn rename(
-        &self,
-        paths: &AgentPaths,
-        hub: &ChatHub,
-        id: &str,
-        name: &str,
-        emit: Emit,
-    ) -> AppResult<()> {
+    pub async fn rename(&self, env: &ChatEnv<'_>, id: &str, name: &str) -> AppResult<()> {
         let name = name.trim();
         if name.is_empty() {
             return Err(AppError::ValidationError("名称不能为空".to_string()));
         }
         let name: String = name.chars().take(MAX_TITLE_CHARS).collect();
-        let session = self.session(paths, hub, Some(id), emit).await?;
+        let session = self.session(env, Some(id)).await?;
         session
             .request("set_session_name", json!({ "name": name }))
             .await
@@ -279,7 +354,9 @@ impl TutorChatService {
 
     /// 删除对话：关掉进程，删除 pi 的会话文件
     pub async fn delete(&self, paths: &AgentPaths, hub: &ChatHub, id: &str) -> AppResult<()> {
+        check_id(id)?;
         hub.close(id).await;
+        let _ = std::fs::remove_dir_all(files_dir(paths, id));
         let (session_dir, cwd) = dirs(paths);
         let sessions = list_sessions(paths, &session_dir, &cwd).await?;
         if let Some(session) = sessions.iter().find(|s| s.id == id) {
@@ -301,10 +378,58 @@ impl TutorChatService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
+    use rmcp::model::CallToolResult;
+    use rmcp::{schemars, tool, tool_handler, tool_router, ErrorData};
     use std::sync::Mutex;
     use std::time::Duration;
 
-    /// 真实调用：新对话 → 流式回答 → 接着聊 → 列表 → 打开 → 改名 → 删除。
+    #[test]
+    fn conversation_ids_cannot_leave_the_folder() {
+        assert!(check_id("01a129d6-e8fe-767a-a15d-d1eff7a0905d").is_ok());
+        for bad in ["", "..", "../x", "a/b", ".hidden", "a..", "x\\y"] {
+            assert!(check_id(bad).is_err(), "{bad}");
+        }
+        assert_eq!(
+            attachment_line(&["讲义.pdf".into(), "a.txt".into()]),
+            "〔附件：讲义.pdf、a.txt〕"
+        );
+    }
+
+    /// 测试用的 MCP 服务：和拼读工具同样的结果形状
+    #[derive(Clone)]
+    struct FakePindu {
+        tool_router: ToolRouter<Self>,
+    }
+
+    #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+    struct Words {
+        words: Vec<String>,
+    }
+
+    #[tool_router]
+    impl FakePindu {
+        #[tool(
+            description = "Look up words in the learner's own word books.",
+            annotations(read_only_hint = true)
+        )]
+        async fn lookup_words(
+            &self,
+            Parameters(args): Parameters<Words>,
+        ) -> Result<CallToolResult, ErrorData> {
+            crate::mcp::tool_result(
+                json!({ "found": [], "notInBooks": args.words }),
+                "查了你的词汇本：没有 itinerary".to_string(),
+                None,
+            )
+        }
+    }
+
+    #[tool_handler(router = self.tool_router)]
+    impl rmcp::ServerHandler for FakePindu {}
+
+    /// 真实调用：新对话 → 调用拼读的 MCP 工具（步骤说明进 details）→ 接着聊（ask_user 经扩展 UI 回答）
+    /// → 列表 → 关掉进程后打开 → 改名 → 删除。
     /// `REDLARK_E2E_DB=<数据库副本> REDLARK_AGENT_BIN=<sidecar> cargo test real_tutor_chat -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
@@ -322,24 +447,43 @@ mod tests {
                 .into(),
             root: root.join("agent"),
         };
+        let mcp = crate::mcp::serve(|| {
+            Ok(FakePindu {
+                tool_router: FakePindu::tool_router(),
+            })
+        })
+        .await
+        .unwrap();
         let service = TutorChatService::new(pool, crate::test_support::test_logger());
         let hub = ChatHub::new();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
         let sink = events.clone();
         let emit: Emit = Arc::new(move |_, e| sink.lock().unwrap().push(e));
-        let settled = |events: &Arc<Mutex<Vec<Value>>>| {
+        let env = ChatEnv {
+            paths: &paths,
+            hub: &hub,
+            mcp: &mcp,
+            emit,
+        };
+        let count = |kind: &str| {
             events
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|e| e["type"] == "agent_settled")
+                .filter(|e| e["type"] == kind)
                 .count()
         };
         let wait = |n: usize| {
             let events = events.clone();
             async move {
-                for _ in 0..600 {
-                    if settled(&events) >= n {
+                for _ in 0..900 {
+                    let settled = events
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .filter(|e| e["type"] == "agent_settled")
+                        .count();
+                    if settled >= n {
                         return;
                     }
                     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -347,49 +491,88 @@ mod tests {
                 panic!("没有等到第 {} 轮结束", n);
             }
         };
-
         let request = |id: Option<String>, message: &str| TutorSendRequest {
             conversation_id: id,
             message: message.to_string(),
             images: vec![],
+            files: vec![],
         };
+
         let id = service
             .send(
-                &paths,
-                &hub,
-                &request(None, "itinerary 是什么意思？一句话回答。"),
-                emit.clone(),
+                &env,
+                &request(
+                    None,
+                    "查一下我的词汇本里有没有 itinerary，然后一句话告诉我。",
+                ),
             )
             .await
             .unwrap();
         wait(1).await;
-        let deltas = events
+        let step = events
             .lock()
             .unwrap()
             .iter()
-            .filter(|e| e["type"] == "message_update")
-            .count();
-        assert!(deltas > 0, "应有流式增量");
+            .find(|e| {
+                e["type"] == "tool_execution_end" && e["toolName"] == "mcp__pindu__lookup_words"
+            })
+            .map(|e| e["result"]["details"]["redlark"]["step"].clone());
+        assert_eq!(
+            step,
+            Some(json!("查了你的词汇本：没有 itinerary")),
+            "应调用拼读的 MCP 工具"
+        );
+        assert!(count("message_update") > 0, "应有流式增量");
 
+        // ask_user：等提问出现后回答
         service
             .send(
-                &paths,
+                &env,
+                &request(
+                    Some(id.clone()),
+                    "用 ask_user 问我要把它放进「旅行」还是「工作」，然后告诉我我选了什么。",
+                ),
+            )
+            .await
+            .unwrap();
+        let mut asked = None;
+        for _ in 0..600 {
+            asked = events
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|e| e["type"] == "extension_ui_request" && e["method"] == "select")
+                .cloned();
+            if asked.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        let asked = asked.expect("应通过 ask_user 提问");
+        let option = asked["options"][0].as_str().unwrap().to_string();
+        service
+            .answer(
                 &hub,
-                &request(Some(id.clone()), "再给一个例句。"),
-                emit.clone(),
+                &TutorUiAnswer {
+                    conversation_id: id.clone(),
+                    request_id: asked["id"].as_str().unwrap().to_string(),
+                    value: Some(option.clone()),
+                    confirmed: None,
+                    cancelled: false,
+                },
             )
             .await
             .unwrap();
         wait(2).await;
+        println!("提问：{} → 选了 {}", asked["title"], option);
 
         let list = service.list(&paths, &hub).await.unwrap();
         let item = list.iter().find(|c| c.id == id).expect("列表里有这个对话");
-        assert!(item.message_count >= 4, "{:?}", item);
         println!("列表：{:?}", item);
 
         // 关掉进程后再打开：pi 从会话文件恢复
         hub.close(&id).await;
-        let opened = service.open(&paths, &hub, &id, emit.clone()).await.unwrap();
+        let opened = service.open(&env, &id).await.unwrap();
         let roles: Vec<&str> = opened
             .messages
             .as_array()
@@ -399,11 +582,17 @@ mod tests {
             .collect();
         println!("消息角色：{:?}", roles);
         assert_eq!(roles.iter().filter(|r| **r == "user").count(), 2);
+        let saved_step = opened.messages.as_array().unwrap().iter().find_map(|m| {
+            (m["role"] == "toolResult" && m["toolName"] == "mcp__pindu__lookup_words")
+                .then(|| m["details"]["redlark"]["step"].clone())
+        });
+        assert_eq!(
+            saved_step,
+            Some(json!("查了你的词汇本：没有 itinerary")),
+            "步骤说明应存进会话"
+        );
 
-        service
-            .rename(&paths, &hub, &id, "itinerary 查词", emit.clone())
-            .await
-            .unwrap();
+        service.rename(&env, &id, "itinerary 查词").await.unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
         let list = service.list(&paths, &hub).await.unwrap();
         assert_eq!(

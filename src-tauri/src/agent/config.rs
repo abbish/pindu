@@ -28,10 +28,11 @@ pub struct AgentTask {
 pub enum SessionMode {
     /// 一次性任务：不落盘
     Ephemeral,
-    /// AI 老师的对话：pi 把会话存在 `dir`；`session` 为要接着聊的会话 id（空 = 新对话）
+    /// AI 老师的对话：pi 把会话存在 `dir`；`resume` 时接着聊这个会话，否则用 `id` 开新会话
     Persistent {
         dir: PathBuf,
-        session: Option<String>,
+        id: String,
+        resume: bool,
     },
 }
 
@@ -191,26 +192,35 @@ pub fn launch_args(
     let mut args: Vec<String> = Vec::new();
     match session {
         SessionMode::Ephemeral => args.push("--no-session".into()),
-        SessionMode::Persistent { dir, session } => {
+        SessionMode::Persistent { dir, id, resume } => {
             args.push("--session-dir".into());
             args.push(dir.to_string_lossy().into_owned());
-            if let Some(session) = session {
-                args.push("--session".into());
-                args.push(session.clone());
-            }
+            args.push(if *resume { "--session" } else { "--session-id" }.into());
+            args.push(id.clone());
         }
     }
-    // 不加载任何外部资源：扩展 / MCP / 技能 / 提示模板 / AGENTS.md / 主题 / 项目 .pi
+    // 不加载任何外部资源：扩展 / MCP / 技能 / 提示模板 / AGENTS.md / 主题 / 项目 .pi。
+    // 任务的工具里有 `mcp__` 开头的（AI 老师用拼读的 MCP 服务，由 sidecar 扩展注册）时才开 MCP：
+    // `-ne` 也会关掉 pi 内置的 MCP 扩展，按 pi 文档用 `-e builtin:mcp` 单独加回；
+    // agentDir 每次运行独立、工作目录里没有 .pi，不会读到其它 MCP 配置
+    let uses_mcp = task.tools.iter().any(|t| t.starts_with("mcp__"));
     for flag in [
         "-ne",
-        "--no-mcp",
+        if uses_mcp { "" } else { "--no-mcp" },
         "-ns",
         "-np",
         "-nc",
         "--no-themes",
         "--no-approve",
     ] {
+        if flag.is_empty() {
+            continue;
+        }
         args.push(flag.into());
+    }
+    if uses_mcp {
+        args.push("-e".into());
+        args.push("builtin:mcp".into());
     }
     // 显式指定的 skills 仍会加载（-ns 只关掉自动发现）
     for skill in skills {
@@ -367,6 +377,47 @@ mod tests {
         assert!(joined.contains("--skill /skills/bilingual-handout"));
         assert!(joined.contains("--provider moonshotai-cn --model kimi-k3 --thinking low"));
         assert!(!joined.contains(SECRET));
+    }
+
+    #[test]
+    fn mcp_tools_enable_only_builtin_mcp_and_sessions_persist() {
+        let mut chat = task();
+        chat.tools = &["ask_user", "mcp__pindu__*"];
+        let persistent = |resume| SessionMode::Persistent {
+            dir: PathBuf::from("/data/tutor/sessions"),
+            id: "abc-1".to_string(),
+            resume,
+        };
+        let args = launch_args(
+            &chat,
+            &model(Some("moonshotai-cn")),
+            Path::new("/tmp/s.md"),
+            &persistent(false),
+            &[],
+        );
+        let joined = args.join(" ");
+        assert!(joined.starts_with("--session-dir /data/tutor/sessions --session-id abc-1 -ne -ns"));
+        assert!(!joined.contains("--no-mcp"));
+        assert!(joined.contains("-e builtin:mcp"));
+        assert!(joined.contains("--tools ask_user,mcp__pindu__*"));
+        let resumed = launch_args(
+            &chat,
+            &model(Some("moonshotai-cn")),
+            Path::new("/tmp/s.md"),
+            &persistent(true),
+            &[],
+        );
+        assert!(resumed.join(" ").contains("--session abc-1"));
+        // 其它任务仍然关掉 MCP
+        let plain = launch_args(
+            &task(),
+            &model(Some("moonshotai-cn")),
+            Path::new("/tmp/s.md"),
+            &SessionMode::Ephemeral,
+            &[],
+        );
+        assert!(plain.contains(&"--no-mcp".to_string()));
+        assert!(!plain.join(" ").contains("builtin:mcp"));
     }
 
     #[test]

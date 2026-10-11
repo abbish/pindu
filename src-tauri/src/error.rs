@@ -45,6 +45,21 @@ impl AppError {
     }
 }
 
+impl AppError {
+    /// 给用户（和 AI 老师）看的一句话：去掉类别前缀；数据库 / 内部错误不暴露细节
+    pub fn user_message(&self) -> String {
+        match self {
+            AppError::ValidationError(m)
+            | AppError::NotFound(m)
+            | AppError::Unauthorized(m)
+            | AppError::ExternalServiceError(m) => m.clone(),
+            AppError::DatabaseError(_) | AppError::InternalError(_) => {
+                "出了点问题，请再试一次".to_string()
+            }
+        }
+    }
+}
+
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut state = serializer.serialize_struct("AppError", 2)?;

@@ -29,11 +29,19 @@ export interface TutorImage {
   mimeType: string;
 }
 
+/** 随消息发送的文件（PDF、Word、图片），放进对话的资料夹 */
+export interface TutorFileUpload {
+  name: string;
+  /** base64（不含 data: 前缀） */
+  data: string;
+}
+
 export interface TutorSendRequest {
   /** 空 = 开新对话 */
   conversationId?: string;
   message: string;
   images: TutorImage[];
+  files: TutorFileUpload[];
 }
 
 /** 回答工具向用户的提问（pi extension_ui_response） */

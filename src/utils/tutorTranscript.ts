@@ -26,6 +26,8 @@ export interface PendingUser {
   text: string;
   /** 图片的 data: 地址 */
   images: string[];
+  /** 文件名 */
+  files: string[];
 }
 
 export interface TranscriptState {
@@ -183,7 +185,7 @@ export interface ViewStep {
 }
 
 export type ViewTurn =
-  | { role: 'user'; key: string; text: string; images: string[]; pending?: boolean }
+  | { role: 'user'; key: string; text: string; images: string[]; files: string[]; pending?: boolean }
   | {
       role: 'agent';
       key: string;
@@ -209,13 +211,25 @@ function redlarkDetails(details: unknown): { step?: string; detail?: string; out
   return r && typeof r === 'object' ? (r as { step?: string; detail?: string; output?: StepOutput }) : {};
 }
 
-function userText(message: PiUserMessage): { text: string; images: string[] } {
-  if (typeof message.content === 'string') return { text: message.content, images: [] };
+/** 消息末尾的附件标记（后端 `tutor_chat::attachment_line`）：〔附件：a.pdf、b.txt〕 */
+const ATTACHMENT_LINE = /\n*〔附件：([^〕]*)〕\s*$/;
+
+/** 拆出附件标记：正文 + 文件名 */
+export function splitAttachments(text: string): { text: string; files: string[] } {
+  const match = ATTACHMENT_LINE.exec(text);
+  if (!match) return { text, files: [] };
+  return { text: text.slice(0, match.index), files: match[1].split('、').filter(Boolean) };
+}
+
+function userText(message: PiUserMessage): { text: string; images: string[]; files: string[] } {
+  if (typeof message.content === 'string') return { images: [], ...splitAttachments(message.content) };
   return {
-    text: message.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { text: string }).text)
-      .join('\n'),
+    ...splitAttachments(
+      message.content
+        .filter((b) => b.type === 'text')
+        .map((b) => (b as { text: string }).text)
+        .join('\n')
+    ),
     images: message.content
       .filter((b) => b.type === 'image')
       .map((b) => {
@@ -261,7 +275,7 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
   });
   if (state.pendingUser) {
     agent = null;
-    turns.push({ role: 'user', key: 'pending', text: state.pendingUser.text, images: state.pendingUser.images, pending: true });
+    turns.push({ role: 'user', key: 'pending', ...state.pendingUser, pending: true });
   }
   if (state.partial) addAssistant(state.partial, 'partial');
   if (state.running) {

@@ -576,6 +576,88 @@ pub fn save_upload(dir: &Path, file_name: &str, data: &str) -> AppResult<PathBuf
     Ok(path)
 }
 
+/// 文件名里只留字母、数字、汉字与 `-_.`（其余换成 `-`），避免路径与奇怪字符
+fn safe_stem(name: &str) -> String {
+    let stem: String = Path::new(name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file")
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let stem = stem.trim_matches('-').chars().take(60).collect::<String>();
+    if stem.is_empty() {
+        "file".to_string()
+    } else {
+        stem
+    }
+}
+
+/// `dir` 里还没被占用的文件名（同名加序号）
+fn unused_name(dir: &Path, stem: &str, ext: &str) -> String {
+    let name = |i: usize| {
+        if i == 0 {
+            format!("{}.{}", stem, ext)
+        } else {
+            format!("{}-{}.{}", stem, i + 1, ext)
+        }
+    };
+    (0..)
+        .map(name)
+        .find(|n| !dir.join(n).exists())
+        .unwrap_or_else(|| format!("{}-{}.{}", stem, uuid::Uuid::new_v4().simple(), ext))
+}
+
+/// 把上传的文件放进资料夹（AI 老师的对话，素材阅读工具从这里读）：保留原文件名（同名加序号）；
+/// Word 另存成文字（`<名字>.txt`）与内嵌图片。返回放进去的文件名
+pub fn add_to_folder(dir: &Path, file_name: &str, data: &str) -> AppResult<Vec<String>> {
+    std::fs::create_dir_all(dir).map_err(io)?;
+    // 临时目录放在同一个上级目录（同一磁盘，rename 不会跨卷失败）
+    let incoming = dir
+        .parent()
+        .unwrap_or(dir)
+        .join(format!(".incoming-{}", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let upload = save_upload(&incoming, file_name, data)?;
+        let stem = safe_stem(file_name);
+        let ext = extension(&upload);
+        let mut names = Vec::new();
+        if ext == "docx" {
+            let unpacked = incoming.join("docx");
+            prepare_workspace(&unpacked, &upload)?;
+            for entry in std::fs::read_dir(&unpacked).map_err(io)?.flatten() {
+                let file = entry.file_name().to_string_lossy().into_owned();
+                let target = if file == "document.txt" {
+                    unused_name(dir, &stem, "txt")
+                } else {
+                    let image = Path::new(&file);
+                    unused_name(
+                        dir,
+                        &format!("{}-{}", stem, safe_stem(&file)),
+                        &extension(image),
+                    )
+                };
+                std::fs::rename(entry.path(), dir.join(&target)).map_err(io)?;
+                names.push(target);
+            }
+        } else {
+            let target = unused_name(dir, &stem, &ext);
+            std::fs::rename(&upload, dir.join(&target)).map_err(io)?;
+            names.push(target);
+        }
+        names.sort();
+        Ok(names)
+    })();
+    let _ = std::fs::remove_dir_all(&incoming);
+    result
+}
+
 /// 读一份素材：准备工作目录 → pi 自主读取 → 核对。`work_root` 下为本次运行建临时目录，结束后删除
 #[allow(clippy::too_many_arguments)]
 pub async fn read_material(

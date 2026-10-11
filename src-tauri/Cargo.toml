@@ -45,6 +45,8 @@ encoding_rs = "0.8"
 quick-xml = "0.42"
 zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
 pdf-extract = "0.12.1"
+rmcp = { version = "3.5", features = ["server", "macros", "transport-streamable-http-server"] }
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
 
 # 发布版只允许运行一个实例：新旧两个版本同时打开会同时升级同一个数据库
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

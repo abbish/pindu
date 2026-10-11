@@ -459,6 +459,26 @@ pub const MATERIAL_SKILLS: [(&str, &str); 3] = [
     ),
 ];
 
+/// AI 老师独立对话的 pi skills：各功能域怎么用拼读的工具（同素材阅读，运行前写到数据目录再用 `--skill` 加载）
+pub const TUTOR_SKILLS: [(&str, &str); 4] = [
+    (
+        "tutor-vocabulary",
+        include_str!("prompts/skills/tutor-vocabulary/SKILL.md"),
+    ),
+    (
+        "tutor-passages",
+        include_str!("prompts/skills/tutor-passages/SKILL.md"),
+    ),
+    (
+        "tutor-learning",
+        include_str!("prompts/skills/tutor-learning/SKILL.md"),
+    ),
+    (
+        "tutor-materials",
+        include_str!("prompts/skills/tutor-materials/SKILL.md"),
+    ),
+];
+
 /// 某个任务的系统提示词。`extra` 为任务自己的变量（如提取模式规则）
 pub fn system_prompt(task: PromptTask, profile: &PromptProfile, extra: &[(&str, &str)]) -> String {
     let interests = if profile.interests.is_empty() {

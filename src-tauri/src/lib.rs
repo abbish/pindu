@@ -8,6 +8,7 @@ mod lemma;
 mod log_bridge;
 mod logger;
 mod main_window;
+mod mcp;
 mod media;
 mod media_server;
 #[cfg(target_os = "macos")]

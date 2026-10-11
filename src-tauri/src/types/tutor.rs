@@ -37,6 +37,15 @@ pub struct TutorImage {
     pub mime_type: String,
 }
 
+/// 随消息发送的文件（PDF、Word、图片），放进对话的资料夹，AI 老师用素材阅读工具读
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TutorFileUpload {
+    pub name: String,
+    /// base64（不含 data: 前缀）
+    pub data: String,
+}
+
 /// 发一条消息：没有对话 id 时开新对话
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,6 +54,8 @@ pub struct TutorSendRequest {
     pub message: String,
     #[serde(default)]
     pub images: Vec<TutorImage>,
+    #[serde(default)]
+    pub files: Vec<TutorFileUpload>,
 }
 
 /// 回答工具向用户的提问（pi `extension_ui_response`）

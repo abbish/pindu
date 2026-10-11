@@ -914,12 +914,23 @@ pub fn word_tutor_task(profile: &PromptProfile) -> AgentTask {
     }
 }
 
-/// AI 老师独立对话（常驻会话，pi 保存对话；工具与 skills 随批次加入）
+/// AI 老师独立对话可用的工具：问学习者（pi 扩展 UI）、读对话资料夹里的文件（只读，与素材阅读同一套）+ 拼读的 MCP 服务
+pub const TUTOR_CHAT_TOOLS: [&str; 7] = [
+    "ask_user",
+    "list_material",
+    "read_pdf_text",
+    "view_pdf_page",
+    "view_image",
+    "read_text",
+    "mcp__pindu__*",
+];
+
+/// AI 老师独立对话（常驻会话，pi 保存对话）
 pub fn tutor_chat_task(profile: &PromptProfile) -> AgentTask {
     AgentTask {
         name: "tutor-chat",
         system_prompt: prompts::system_prompt(PromptTask::Chat, profile, &[]),
-        tools: &[],
+        tools: &TUTOR_CHAT_TOOLS,
         default_thinking: "low",
     }
 }

@@ -508,4 +508,10 @@
   4. 工具向用户提问用 pi 的 RPC Extension UI（`extension_ui_request` / `_response`），界面显示成选项按钮。
   5. 查 / 建拼读的素材走 **MCP**：拼读在本机开 MCP 服务，sidecar 经 `pi.registerMcpServer` 接入，工具带只读 / 写入注解；各功能域的用法写成 pi skills。耗时的写入沿用现有后台任务。
 - **影响**：`SessionMode::Persistent`；`AgentConnection` 的事件带上原始 JSON（`take_events` / `send_value`）；提示词 `tutor_chat.md`（`PromptTask::Chat`，用「AI 老师」的任务模型）。
-- **验证**：`services::tutor_chat::tests::real_tutor_chat_round_trip`（Kimi K3，真实调用）：新对话流式回答 → 接着聊 → 列表 → 关掉进程后从会话文件恢复 → 改名 → 删除。注意 pi 按工作目录的真实路径归类会话（macOS 临时目录 /var → /private/var），列表前先解析符号链接。
+- **验证**：`services::tutor_chat::tests::real_tutor_chat_round_trip`（Kimi K3，真实调用）：新对话经 pi 调用测试用 MCP 服务的工具（步骤说明进 details 并存进会话）→ 接着聊、`ask_user` 经扩展 UI 回答 → 自动标题 → 列表 → 关掉进程后从会话文件恢复 → 改名 → 删除。注意 pi 按工作目录的真实路径归类会话（macOS 临时目录 /var → /private/var），列表前先解析符号链接。
+- **补充（同日，B3/B4）**：
+  1. MCP 服务 `src/mcp/`（rmcp 官方 SDK + axum）；sidecar 扩展在有 `REDLARK_MCP_URL` / `REDLARK_MCP_TOKEN` 时 `pi.registerMcpServer("pindu", { exposure: "direct" })`。启动参数：任务工具里有 `mcp__` 开头的才不加 `--no-mcp`，并用 `-ne -e builtin:mcp` 只加回 pi 内置的 MCP 扩展。
+  2. 工具只新增不改不删，写入调用同名命令（同样的校验与后台任务）；学习计划与练习只读。
+  3. pi 把 MCP 结果整个放在 `structuredContent`、details 只有 server / tool：sidecar 用 pi 的 `tool_result` 处理器把 `structuredContent.structuredContent.redlark` 放进 details。
+  4. 新对话由拼读生成会话 id（pi `--session-id`），对话资料夹按 id 建（附件、Word 转出的文字与图片）；id 按 pi 的写法校验后才拼路径。
+  5. AI 老师不加载素材阅读的 skills（那套按 `submit_material` 写），另写 `tutor-*` skills；标题用 pi 示例的做法：`ctx.modelRegistry.complete` + `pi.setSessionName`。

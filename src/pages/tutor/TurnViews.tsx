@@ -6,8 +6,9 @@ import { JobProgress } from '@/components/Jobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useJobActions } from '@/components/Jobs/useJobActions';
 import { useJob } from '@/hooks/useJobs';
-import { isJobActive } from '@/types/job';
+import { isJobActive, type Job } from '@/types/job';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '@/navigation';
 import type { StepOutput, TutorAsk, ViewStep, ViewTurn } from '@/utils/tutorTranscript';
@@ -39,6 +40,16 @@ export const UserBubble: React.FC<{ turn: Extract<ViewTurn, { role: 'user' }> }>
       <div className="flex flex-wrap justify-end gap-1.5">
         {turn.images.map((src, i) => (
           <img key={i} src={src} alt="图片" className="max-h-48 max-w-64 rounded-md border object-cover" />
+        ))}
+      </div>
+    )}
+    {turn.files.length > 0 && (
+      <div className="flex flex-wrap justify-end gap-1.5">
+        {turn.files.map((name) => (
+          <span key={name} className="inline-flex max-w-56 items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs" title={name}>
+            <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{name}</span>
+          </span>
         ))}
       </div>
     )}
@@ -193,9 +204,21 @@ const AskCard: React.FC<{
   );
 };
 
-const OutputCard: React.FC<{ output: StepOutput; onNavigate: NavigateFn }> = ({ output, onNavigate }) => {
-  const Icon = OUTPUT_ICON[output.kind];
-  const job = useJob(output.jobId);
+/** 后台任务写好的短文（job.detail.items 里的第一篇） */
+function jobPassage(job: Job | undefined): { id: number; title?: string } | null {
+  const items = (job?.detail as { items?: { passageId?: number | null; title?: string | null }[] } | null)?.items;
+  const done = items?.find((i) => typeof i.passageId === 'number');
+  return done ? { id: done.passageId as number, title: done.title ?? undefined } : null;
+}
+
+const OutputCard: React.FC<{ output: StepOutput; onNavigate: NavigateFn }> = ({ output: given, onNavigate }) => {
+  const Icon = OUTPUT_ICON[given.kind];
+  const job = useJob(given.jobId);
+  const jobActions = useJobActions(onNavigate);
+  // 短文在后台写好 / 存好后才有 id 与标题
+  const written = given.kind === 'passage' ? jobPassage(job) : null;
+  const output = written ? { ...given, id: given.id ?? written.id, title: written.title || given.title } : given;
+  const failed = job?.status === 'failed' || job?.status === 'cancelled';
   return (
     <div className="flex items-start gap-3 rounded-lg border bg-card p-3">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
@@ -210,11 +233,19 @@ const OutputCard: React.FC<{ output: StepOutput; onNavigate: NavigateFn }> = ({ 
             <JobProgress job={job} />
           </div>
         )}
+        {failed && <div className="mt-1 text-xs text-destructive">{job?.status === 'cancelled' ? '已停止' : '没能完成'}</div>}
       </div>
-      {output.id !== undefined && (
+      {output.id !== undefined ? (
         <Button size="sm" variant="ghost" onClick={() => openOutput(output, onNavigate)}>
           打开
         </Button>
+      ) : (
+        job?.status === 'succeeded' &&
+        job.link && (
+          <Button size="sm" variant="ghost" onClick={() => jobActions.open(job)}>
+            打开
+          </Button>
+        )
       )}
     </div>
   );

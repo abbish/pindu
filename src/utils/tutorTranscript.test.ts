@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, emptyTranscript, toTurns, type TranscriptState } from './tutorTranscript.ts';
+import { applyEvent, emptyTranscript, splitAttachments, toTurns, type TranscriptState } from './tutorTranscript.ts';
 import type { PiEvent } from '../types/tutor.ts';
 
 const run = (events: PiEvent[], state: TranscriptState = emptyTranscript()) => events.reduce(applyEvent, state);
@@ -72,7 +72,7 @@ test('同一条消息重复到达只算一次；先显示没确认的消息', ()
   const state = run([{ type: 'message_end', message: user }, { type: 'message_end', message: user }]);
   assert.equal(state.messages.length, 1);
 
-  const pending = { ...emptyTranscript(), pendingUser: { text: '你好', images: [] } };
+  const pending = { ...emptyTranscript(), pendingUser: { text: '你好', images: [], files: [] } };
   assert.equal(toTurns(pending)[0].role === 'user' && toTurns(pending)[0].pending, true);
   assert.equal(run([{ type: 'message_end', message: user }], pending).pendingUser, null);
 });
@@ -98,4 +98,13 @@ test('停止：没有结果的步骤显示为没完成，回答标记已停止',
   assert.equal(agent.role === 'agent' && agent.stopped, true);
   assert.equal(agent.role === 'agent' && agent.steps[0].status, 'error');
   assert.equal(agent.role === 'agent' && agent.steps[0].label, '看了图片');
+});
+
+test('附件标记：拆成正文与文件名', () => {
+  assert.deepEqual(splitAttachments('看看这份讲义\n\n〔附件：讲义.pdf、讲义-image1.png〕'), {
+    text: '看看这份讲义',
+    files: ['讲义.pdf', '讲义-image1.png'],
+  });
+  assert.deepEqual(splitAttachments('〔附件：a.pdf〕'), { text: '', files: ['a.pdf'] });
+  assert.deepEqual(splitAttachments('没有附件'), { text: '没有附件', files: [] });
 });

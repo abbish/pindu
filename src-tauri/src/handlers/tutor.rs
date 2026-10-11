@@ -4,7 +4,7 @@ use crate::agent::chat::{ChatHub, Emit};
 use crate::error::AppResult;
 use crate::handlers::{agent_paths, finish};
 use crate::logger::Logger;
-use crate::services::tutor_chat::TutorChatService;
+use crate::services::tutor_chat::{ChatEnv, TutorChatService};
 use crate::types::tutor::{
     TutorConversation, TutorFlags, TutorOpened, TutorSendRequest, TutorUiAnswer,
 };
@@ -50,14 +50,18 @@ pub async fn open_tutor_conversation(
     let logger = app.state::<Logger>();
     logger.api_request("open_tutor_conversation", Some(&conversation_id));
     let result = async {
-        service(&app)
-            .open(
-                &agent_paths(&app)?,
-                &hub(&app),
-                &conversation_id,
-                emitter(&app),
-            )
-            .await
+        let (paths, hub, mcp) = (
+            agent_paths(&app)?,
+            hub(&app),
+            crate::mcp::endpoint(&app).await?,
+        );
+        let env = ChatEnv {
+            paths: &paths,
+            hub: &hub,
+            mcp: &mcp,
+            emit: emitter(&app),
+        };
+        service(&app).open(&env, &conversation_id).await
     }
     .await;
     finish(&logger, "open_tutor_conversation", result)
@@ -70,16 +74,26 @@ pub async fn send_tutor_message(app: AppHandle, request: TutorSendRequest) -> Ap
     logger.api_request(
         "send_tutor_message",
         Some(&format!(
-            "conversation: {:?}, {} chars, {} images",
+            "conversation: {:?}, {} chars, {} images, {} files",
             request.conversation_id,
             request.message.chars().count(),
-            request.images.len()
+            request.images.len(),
+            request.files.len()
         )),
     );
     let result = async {
-        service(&app)
-            .send(&agent_paths(&app)?, &hub(&app), &request, emitter(&app))
-            .await
+        let (paths, hub, mcp) = (
+            agent_paths(&app)?,
+            hub(&app),
+            crate::mcp::endpoint(&app).await?,
+        );
+        let env = ChatEnv {
+            paths: &paths,
+            hub: &hub,
+            mcp: &mcp,
+            emit: emitter(&app),
+        };
+        service(&app).send(&env, &request).await
     }
     .await;
     finish(&logger, "send_tutor_message", result)
@@ -110,15 +124,18 @@ pub async fn rename_tutor_conversation(
     let logger = app.state::<Logger>();
     logger.api_request("rename_tutor_conversation", Some(&conversation_id));
     let result = async {
-        service(&app)
-            .rename(
-                &agent_paths(&app)?,
-                &hub(&app),
-                &conversation_id,
-                &name,
-                emitter(&app),
-            )
-            .await
+        let (paths, hub, mcp) = (
+            agent_paths(&app)?,
+            hub(&app),
+            crate::mcp::endpoint(&app).await?,
+        );
+        let env = ChatEnv {
+            paths: &paths,
+            hub: &hub,
+            mcp: &mcp,
+            emit: emitter(&app),
+        };
+        service(&app).rename(&env, &conversation_id, &name).await
     }
     .await;
     finish(&logger, "rename_tutor_conversation", result)

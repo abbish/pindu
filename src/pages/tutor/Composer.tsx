@@ -1,14 +1,18 @@
 import React, { useEffect, useRef } from 'react';
-import { ArrowUp, ImagePlus, Square, X } from 'lucide-react';
+import { ArrowUp, FileText, Paperclip, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import type { Attachment } from './useTutorChat';
 
-/** 一次最多带几张图片（与后端一致） */
+/** 一次最多带几个附件（图片 8 张、文件 5 个，与后端一致） */
 const MAX_IMAGES = 8;
+const MAX_FILES = 5;
+/** 可以发的文件 */
+const ACCEPT = '.pdf,.docx,image/png,image/jpeg,image/webp,image/gif';
+const isImage = (f: File) => f.type.startsWith('image/');
 
 /**
- * 输入框：Enter 发送（Shift+Enter 换行）；可以选图片或直接粘贴截图（显示缩略图）。
+ * 输入框：Enter 发送（Shift+Enter 换行）；可以选文件（PDF、Word、图片）或直接粘贴截图（图片显示缩略图）。
  * 回答进行中：输入了内容就发送（AI 在当前一步做完后看到），没输入时是停止按钮。
  */
 export const Composer: React.FC<{
@@ -29,9 +33,15 @@ export const Composer: React.FC<{
   }, []);
 
   const add = (files: File[]) => {
-    const images = files.filter((f) => f.type.startsWith('image/'));
-    const room = MAX_IMAGES - attachments.length;
-    onAttachments([...attachments, ...images.slice(0, room).map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
+    const imageRoom = MAX_IMAGES - attachments.filter((a) => isImage(a.file)).length;
+    const fileRoom = MAX_FILES - attachments.filter((a) => !isImage(a.file)).length;
+    const images = files.filter(isImage).slice(0, Math.max(0, imageRoom));
+    const others = files.filter((f) => !isImage(f) && /\.(pdf|docx)$/i.test(f.name)).slice(0, Math.max(0, fileRoom));
+    onAttachments([
+      ...attachments,
+      ...images.map((file) => ({ file, preview: URL.createObjectURL(file) })),
+      ...others.map((file) => ({ file })),
+    ]);
   };
 
   return (
@@ -41,7 +51,7 @@ export const Composer: React.FC<{
         type="file"
         multiple
         hidden
-        accept="image/*"
+        accept={ACCEPT}
         onChange={(e) => {
           add(Array.from(e.target.files ?? []));
           e.target.value = '';
@@ -51,8 +61,15 @@ export const Composer: React.FC<{
         {attachments.length > 0 && (
           <div className="flex flex-wrap items-end gap-2 px-1 pt-1 pb-2">
             {attachments.map((a, i) => (
-              <span key={a.preview ?? i} className="group relative inline-block">
-                <img src={a.preview} alt={a.file.name} title={a.file.name} className="size-14 rounded-md border object-cover" />
+              <span key={a.preview ?? `${a.file.name}-${i}`} className="group relative inline-block">
+                {a.preview ? (
+                  <img src={a.preview} alt={a.file.name} title={a.file.name} className="size-14 rounded-md border object-cover" />
+                ) : (
+                  <span className="inline-flex h-14 max-w-48 items-center gap-1.5 rounded-md border bg-muted/40 px-2 text-xs" title={a.file.name}>
+                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{a.file.name}</span>
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => onAttachments(attachments.filter((_, j) => j !== i))}
@@ -94,11 +111,10 @@ export const Composer: React.FC<{
             variant="ghost"
             className="size-8"
             onClick={() => picker.current?.click()}
-            disabled={attachments.length >= MAX_IMAGES}
-            aria-label="添加图片"
-            title="添加图片"
+            aria-label="添加文件"
+            title="添加文件（PDF、Word、图片）"
           >
-            <ImagePlus />
+            <Paperclip />
           </Button>
           <div className="flex-1" />
           {running && !canSend ? (

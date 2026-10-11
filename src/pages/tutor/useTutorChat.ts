@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useToast } from '@/components';
 import { tutorService } from '@/services/tutorService';
-import type { PiEvent, TutorConversation, TutorEventPayload, TutorImage } from '@/types/tutor';
+import type { PiEvent, TutorConversation, TutorEventPayload, TutorFileUpload, TutorImage } from '@/types/tutor';
 import { applyEvent, emptyTranscript, type TranscriptState } from '@/utils/tutorTranscript';
 
 /** 离开再回来时打开上次的对话 */
@@ -120,24 +120,28 @@ export function useTutorChat(initialPrompt?: string) {
   const send = useCallback(
     async (text: string, attachments: Attachment[] = []): Promise<boolean> => {
       const message = text.trim();
+      // 图片（选的、粘贴的截图）直接随消息发；其它文件放进对话的资料夹，AI 老师用工具读
       const imageFiles = attachments.filter((a) => a.file.type.startsWith('image/'));
-      if (!message && imageFiles.length === 0) return false;
+      const otherFiles = attachments.filter((a) => !a.file.type.startsWith('image/'));
+      if (!message && attachments.length === 0) return false;
       let images: TutorImage[];
+      let files: TutorFileUpload[];
       try {
         images = await Promise.all(imageFiles.map(async (a) => ({ data: await readBase64(a.file), mimeType: a.file.type })));
+        files = await Promise.all(otherFiles.map(async (a) => ({ name: a.file.name, data: await readBase64(a.file) })));
       } catch {
-        toast.showError('无法读取图片');
+        toast.showError('无法读取文件');
         return false;
       }
       const conversationId = activeRef.current;
       setTranscript((s) => ({
         ...s,
         running: true,
-        pendingUser: { text: message, images: imageFiles.map((a) => a.preview ?? '') },
+        pendingUser: { text: message, images: imageFiles.map((a) => a.preview ?? ''), files: otherFiles.map((a) => a.file.name) },
       }));
       // 新对话：id 由后端返回，期间的事件先存着
       if (!conversationId) buffer.current = { id: null, events: new Map(), holding: true };
-      const result = await tutorService.send({ conversationId: conversationId ?? undefined, message, images });
+      const result = await tutorService.send({ conversationId: conversationId ?? undefined, message, images, files });
       if (!result.success) {
         if (!conversationId) buffer.current = { id: null, events: new Map(), holding: false };
         setTranscript((s) => ({ ...s, running: false, pendingUser: null }));

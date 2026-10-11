@@ -22,6 +22,11 @@ pub fn now_utc() -> String {
     format_instant(Utc::now())
 }
 
+/// `days` 天前的此刻（UTC 规范格式），用于“最近 N 天”的查询下限
+pub fn days_ago_utc(days: i64) -> String {
+    format_instant(Utc::now() - chrono::Duration::days(days))
+}
+
 /// 把 UTC 时刻格式化为规范字符串
 pub fn format_instant(at: DateTime<Utc>) -> String {
     at.to_rfc3339_opts(SecondsFormat::Millis, true)

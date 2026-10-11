@@ -35,6 +35,7 @@ pub mod subtitle;
 pub mod tag;
 pub mod tts;
 pub mod tutor_chat;
+pub mod tutor_skills;
 pub mod video;
 pub mod video_plan;
 pub mod video_processing;
