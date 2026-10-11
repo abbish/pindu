@@ -202,6 +202,8 @@ export type ViewTurn =
       items: ViewItem[];
       /** 全部工具调用（收进来的素材从这里取） */
       steps: ViewStep[];
+      /** 推荐的下一步（回答末尾 `<<<下一步>>>` 之后），点一下就发 */
+      suggestions: string[];
       error?: string;
       stopped?: boolean;
       running: boolean;
@@ -257,6 +259,53 @@ function userText(message: PiUserMessage): { text: string; images: string[]; fil
   };
 }
 
+/** 正文与推荐下一步之间的分隔行（提示词 tutor_chat.md 要求模型原样输出；兼容讲解用的「追问」） */
+const NEXT_MARKERS = ['<<<下一步>>>', '<<<追问>>>'];
+/** 最多几条推荐、每条最长几个字（与讲解的追问一致：agent/follow_up.rs） */
+const MAX_SUGGESTIONS = 3;
+const MAX_SUGGESTION_CHARS = 30;
+
+const normalizeText = (text: string) => text.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+
+/** 一行推荐：去掉列表符号、编号与引号；太长或为空返回 null */
+function cleanSuggestion(line: string): string | null {
+  const text = line
+    .trim()
+    .replace(/^[-*•·\s]+/, '')
+    .replace(/^\d+[.、)]\s*/, '')
+    .replace(/^["“”「」*`]+|["“”「」*`]+$/g, '')
+    .trim();
+  return text && [...text].length <= MAX_SUGGESTION_CHARS ? text : null;
+}
+
+/**
+ * 拆出回答末尾的推荐下一步。流式输出时分隔行可能只到一半（如「<<<下」），一并挡住不显示。
+ * `said` 是学习者已经说过的话（不再推荐）。
+ */
+export function splitSuggestions(text: string, said: string[] = []): { body: string; suggestions: string[] } {
+  const found = NEXT_MARKERS.map((m) => ({ m, at: text.indexOf(m) })).find((x) => x.at >= 0);
+  if (!found) {
+    // 末尾是分隔行开头的一截：先不显示
+    const tail = NEXT_MARKERS.flatMap((m) => [...Array(m.length).keys()].map((n) => m.slice(0, n + 1))).find(
+      (prefix) => text.trimEnd().endsWith(prefix)
+    );
+    return { body: tail ? text.trimEnd().slice(0, -tail.length).trimEnd() : text, suggestions: [] };
+  }
+  const body = text.slice(0, found.at).trimEnd().replace(/[*`]+$/, '').trimEnd();
+  const seen = new Set(said.map(normalizeText));
+  const suggestions: string[] = [];
+  for (const line of text.slice(found.at + found.m.length).split('\n')) {
+    const item = cleanSuggestion(line);
+    if (!item) continue;
+    const key = normalizeText(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    suggestions.push(item);
+    if (suggestions.length === MAX_SUGGESTIONS) break;
+  }
+  return { body, suggestions };
+}
+
 /** 状态 → 界面轮次：用户一条一轮；之后的 assistant 消息与工具结果按发生顺序合成 AI 的一轮 */
 export function toTurns(state: TranscriptState): ViewTurn[] {
   const turns: ViewTurn[] = [];
@@ -266,7 +315,7 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
   let agent: Extract<ViewTurn, { role: 'agent' }> | null = null;
   const agentTurn = (key: string) => {
     if (!agent) {
-      agent = { role: 'agent', key, items: [], steps: [], running: false };
+      agent = { role: 'agent', key, items: [], steps: [], suggestions: [], running: false };
       turns.push(agent);
     }
     return agent;
@@ -306,6 +355,17 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
     const last = turns[turns.length - 1];
     const turn = last?.role === 'agent' ? last : agentTurn('running');
     turn.running = true;
+  }
+  // 每段说的话都拆掉推荐下一步；推荐取这一轮最后一段的
+  const said = turns.flatMap((t) => (t.role === 'user' ? [t.text] : []));
+  for (const turn of turns) {
+    if (turn.role !== 'agent') continue;
+    turn.items = turn.items.flatMap((item): ViewItem[] => {
+      if (item.kind !== 'text') return [item];
+      const { body, suggestions } = splitSuggestions(item.text, said);
+      if (suggestions.length > 0) turn.suggestions = suggestions;
+      return body.trim() ? [{ ...item, text: body }] : [];
+    });
   }
   return turns;
 }

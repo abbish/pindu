@@ -111,6 +111,7 @@ export const TutorPage: React.FC<{ initialPrompt?: string; onNavigate: NavigateF
                     ask={i === turns.length - 1 ? chat.transcript.ask : null}
                     notice={chat.transcript.notice}
                     onAnswer={(reply) => void chat.answer(reply)}
+                    onSuggest={i === turns.length - 1 ? (text) => void send(text, []) : undefined}
                     onNavigate={onNavigate}
                   />
                 )

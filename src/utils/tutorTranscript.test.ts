@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, emptyTranscript, splitAttachments, toTurns, type TranscriptState } from './tutorTranscript.ts';
+import { applyEvent, emptyTranscript, splitAttachments, splitSuggestions, toTurns, type TranscriptState } from './tutorTranscript.ts';
 import type { PiEvent } from '../types/tutor.ts';
 
 const run = (events: PiEvent[], state: TranscriptState = emptyTranscript()) => events.reduce(applyEvent, state);
@@ -23,6 +23,7 @@ test('流式回答：增量拼成正文，message_end 以完整消息为准', ()
     key: 'partial',
     items: [{ kind: 'text', key: 'partial-0', text: '行程表' }],
     steps: [],
+    suggestions: [],
     running: true,
   });
 
@@ -176,4 +177,28 @@ test('排队的消息：按 pi 的完整队列显示，结束时清空', () => {
   assert.deepEqual(queued.queue, ['再简单一点', '加个例句']);
   assert.deepEqual(run([{ type: 'queue_update', steering: ['加个例句'], followUp: [] }], queued).queue, ['加个例句']);
   assert.deepEqual(run([{ type: 'agent_settled' }], queued).queue, []);
+});
+
+test('推荐下一步：拆出来、清理、去重，流式时挡住半截分隔行', () => {
+  const text = '行程表的意思。\n\n<<<下一步>>>\n- 用它造个句子\n- 「把它加进《机场英语》」\n2. 再给我两个例句\n- 第四条不要\n';
+  assert.deepEqual(splitSuggestions(text), {
+    body: '行程表的意思。',
+    suggestions: ['用它造个句子', '把它加进《机场英语》', '再给我两个例句'],
+  });
+  // 学习者说过的不再推荐
+  assert.deepEqual(splitSuggestions(text, ['用它造个句子！']).suggestions, ['把它加进《机场英语》', '再给我两个例句', '第四条不要']);
+  // 流式：分隔行只写了一半
+  assert.equal(splitSuggestions('好的。\n\n<<<下').body, '好的。');
+  assert.equal(splitSuggestions('a < b').body, 'a < b');
+  // 兼容「追问」
+  assert.deepEqual(splitSuggestions('答。\n<<<追问>>>\n- 为什么').suggestions, ['为什么']);
+
+  const done = run([
+    { type: 'message_end', message: user },
+    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text }], stopReason: 'stop', timestamp: 2 } },
+  ]);
+  const agent = toTurns(done)[1];
+  assert.ok(agent.role === 'agent');
+  assert.equal(agent.suggestions.length, 3);
+  assert.deepEqual(agent.items.map((i) => i.kind === 'text' && i.text), ['行程表的意思。']);
 });

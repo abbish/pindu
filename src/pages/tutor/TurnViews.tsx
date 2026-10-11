@@ -66,8 +66,10 @@ export const AgentTurnView: React.FC<{
   ask: TutorAsk | null;
   notice: string | null;
   onAnswer: (reply: { value?: string; confirmed?: boolean; cancelled?: boolean }) => void;
+  /** 最后一轮回答完后显示推荐下一步，点一下就发 */
+  onSuggest?: (text: string) => void;
   onNavigate: NavigateFn;
-}> = ({ turn, ask, notice, onAnswer, onNavigate }) => {
+}> = ({ turn, ask, notice, onAnswer, onSuggest, onNavigate }) => {
   const outputs = turn.steps.flatMap((s) => (s.output ? [s.output] : []));
   return (
     <div className="flex gap-3">
@@ -112,6 +114,15 @@ export const AgentTurnView: React.FC<{
           </div>
         )}
         {turn.stopped && <div className="text-xs text-muted-foreground">已停止</div>}
+        {onSuggest && !turn.running && !ask && turn.suggestions.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {turn.suggestions.map((text) => (
+              <Button key={text} size="sm" variant="outline" className="h-auto rounded-full py-1 font-normal" onClick={() => onSuggest(text)}>
+                {text}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

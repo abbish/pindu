@@ -688,6 +688,26 @@ mod tests {
             .unwrap();
         wait(2).await;
         println!("提问：{} → 选了 {}", asked["title"], option);
+        let last_text = events
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|e| {
+                e["type"] == "message_end"
+                    && e["message"]["role"] == "assistant"
+                    && e["message"]["stopReason"] == "stop"
+            })
+            .map(|e| e["message"]["content"].to_string())
+            .unwrap_or_default();
+        let next = last_text
+            .split("<<<下一步>>>")
+            .nth(1)
+            .unwrap_or("（没有推荐）")
+            .chars()
+            .take(200)
+            .collect::<String>();
+        println!("推荐下一步：{}", next);
 
         let list = service.list(&paths, &hub).await.unwrap();
         let item = list.iter().find(|c| c.id == id).expect("列表里有这个对话");
