@@ -513,6 +513,7 @@ impl PassageService {
         passage_id: Id,
         title: Option<&str>,
         level: Option<&str>,
+        scene: Option<&str>,
     ) -> AppResult<Passage> {
         let passage = self.get(passage_id).await?;
         let title = match title.map(str::trim) {
@@ -534,8 +535,18 @@ impl PassageService {
             }
             None => passage.level.clone(),
         };
+        // 场景描述：空 = 清除
+        let scene = match scene.map(str::trim) {
+            Some(s) if s.chars().count() > TOPIC_MAX => {
+                return Err(AppError::ValidationError(format!(
+                    "场景描述最多 {TOPIC_MAX} 个字"
+                )))
+            }
+            Some(s) => (!s.is_empty()).then(|| s.to_string()),
+            None => passage.scene.clone(),
+        };
         self.repository
-            .update_info(passage_id, &title, &level)
+            .update_info(passage_id, &title, &level, scene.as_deref())
             .await?;
         self.get(passage_id).await
     }
@@ -1587,14 +1598,30 @@ pub(crate) mod tests {
         let service = PassageService::new(pool.clone(), test_logger());
         let before = service.get(id).await.unwrap();
         let p = service
-            .update_info(id, Some("  My Title "), Some("b1"))
+            .update_info(id, Some("  My Title "), Some("b1"), Some(" 去医院 "))
             .await
             .unwrap();
         assert_eq!((p.title.as_str(), p.level.as_str()), ("My Title", "b1"));
-        let p = service.update_info(id, None, Some("a2")).await.unwrap();
+        assert_eq!(p.scene.as_deref(), Some("去医院"));
+        let p = service
+            .update_info(id, None, Some("a2"), None)
+            .await
+            .unwrap();
         assert_eq!((p.title.as_str(), p.level.as_str()), ("My Title", "a2"));
-        assert!(service.update_info(id, Some(" "), None).await.is_err());
-        assert!(service.update_info(id, None, Some("c1")).await.is_err());
+        assert_eq!(p.scene.as_deref(), Some("去医院"));
+        let p = service
+            .update_info(id, None, None, Some(" "))
+            .await
+            .unwrap();
+        assert_eq!(p.scene, None);
+        assert!(service
+            .update_info(id, Some(" "), None, None)
+            .await
+            .is_err());
+        assert!(service
+            .update_info(id, None, Some("c1"), None)
+            .await
+            .is_err());
         let p = service
             .update_translation(id, 1, " 改过的译文 ")
             .await

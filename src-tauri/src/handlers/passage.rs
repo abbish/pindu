@@ -608,6 +608,7 @@ pub async fn update_passage_info(
             request.passage_id,
             request.title.as_deref(),
             request.level.as_deref(),
+            request.scene.as_deref(),
         )
         .await;
     finish(&logger, "update_passage_info", result)

@@ -25,8 +25,10 @@ import {
   ZoomIn,
   ZoomOut,
   X,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { MaterialEditDialog } from '@/components/MaterialEditDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
@@ -190,6 +192,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   }, [translatedChunks]);
 
   /** 重新读字幕与视频信息（翻译写回、改了纠偏之后） */
+  /** 顶栏标题「编辑…」：视频标题与标签（与视频库卡片同一个弹窗） */
+  const [editingVideo, setEditingVideo] = useState(false);
   const reloadCues = useCallback(async () => {
     if (!videoId) return;
     const result = await videoService.getVideo(videoId);
@@ -613,7 +617,20 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
             视频库
           </Button>
           <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
-          <div className="min-w-0 truncate font-medium">{detail.video.title}</div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="group min-w-0 font-medium" onClick={() => setEditingVideo(true)}>
+                <span className="truncate">{detail.video.title}</span>
+                <Pencil className="opacity-0 group-hover:opacity-60" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>编辑…</TooltipContent>
+          </Tooltip>
+          <MaterialEditDialog
+            target={editingVideo ? { kind: 'video', id: detail.video.id, title: detail.video.title, tags: detail.video.tags } : null}
+            onClose={() => setEditingVideo(false)}
+            onSaved={() => void reloadCues()}
+          />
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             {saveState === 'saving' ? (
               <>

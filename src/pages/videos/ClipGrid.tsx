@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Clapperboard, ListVideo, Play, Scissors, SearchX, Trash2 } from 'lucide-react';
+import { Clapperboard, ListVideo, Pencil, Play, Scissors, SearchX, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
 import {
@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
+import { MaterialEditDialog, type MaterialEditTarget } from '@/components/MaterialEditDialog';
 import { PASSAGE_SORTS } from '@/components/PassageList';
 import { SortSelect, useSortPref } from '@/components/SortSelect';
 import { byNumber, byText, sortItems, type SortOption } from '@/utils/sorting';
@@ -77,6 +78,8 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
   /** 字幕里出现了搜索词的片段：passageId → 那一句 */
   const [subtitleHits, setSubtitleHits] = useState<Map<number, string>>(new Map());
   const [playlist, setPlaylist] = useState<ClipSummary[] | null>(null);
+  /** 「编辑…」中的场景片段 */
+  const [editing, setEditing] = useState<MaterialEditTarget | null>(null);
   const [toDelete, setToDelete] = useState<ClipSummary[] | null>(null);
 
   useEffect(() => {
@@ -212,6 +215,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
               onOpen={() => onOpen(c)}
               actions={[
                 { label: '打开学习', icon: <Play />, onSelect: () => onOpen(c) },
+                { label: '编辑…', icon: <Pencil />, onSelect: () => setEditing({ kind: 'passage', id: c.id, title: c.title, level: c.level, tags: c.tags, isClip: true }) },
                 { label: '播放', icon: <ListVideo />, onSelect: () => setPlaylist([c]) },
                 ...(onOpenEditor ? [{ label: '在剪辑编辑器里查看', icon: <Scissors />, onSelect: () => onOpenEditor(c.videoId) }] : []),
                 { label: '删除场景片段…', icon: <Trash2 />, onSelect: () => setToDelete([c]), destructive: true, separator: true },
@@ -223,6 +227,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
         </>
       )}
       <ClipPlaylistDialog clips={playlist} onClose={() => setPlaylist(null)} onOpen={onOpen} />
+      <MaterialEditDialog target={editing} onClose={() => setEditing(null)} onSaved={() => onTagsChanged?.()} />
       <BatchDeleteDialog
         items={toDelete}
         onClose={() => setToDelete(null)}

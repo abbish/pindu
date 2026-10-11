@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BookOpen, BookOpenCheck, ChevronDown, FileQuestion, Headphones, ListChecks, Loader2, MoreHorizontal, Pencil, Play, Sparkles, Trash2, WandSparkles, X } from 'lucide-react';
+import { BookOpen, BookOpenCheck, FileQuestion, Headphones, ListChecks, Loader2, MoreHorizontal, Pencil, Play, Sparkles, Trash2, WandSparkles, X } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,7 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -25,7 +25,8 @@ import { TargetWordsPanel } from './passage-detail/TargetWordsPanel';
 import { ReadAloudPanel } from './passage-detail/ReadAloudPanel';
 import { ClipStudyPanel } from './passage-detail/ClipStudyPanel';
 import { videoService } from '@/services/videoService';
-import { MaterialTags } from '@/components/MaterialTags/MaterialTags';
+import { MaterialEditDialog } from '@/components/MaterialEditDialog';
+import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { STOPPING_STAGE, jobPercent } from '@/components/Jobs';
 import { isJobActive, type Job } from '@/types/job';
@@ -182,8 +183,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   /** 生成题组弹窗打开时选中的方式 */
   const [generateMode, setGenerateMode] = useState<PassageMode>('reading');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  /** 改标题：输入框里的文字（null = 没在改） */
-  const [renaming, setRenaming] = useState<string | null>(null);
+  /** 「编辑…」：标题、难度、场景描述、标签 */
+  const [editing, setEditing] = useState(false);
   const [repicking, setRepicking] = useState(false);
   /** 待确认移除的词 */
   const [removing, setRemoving] = useState<string | null>(null);
@@ -357,19 +358,6 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
     setPassage(result.data);
     toast.showSuccess(`已移除「${word}」`);
   };
-  const saveInfo = async (info: { title?: string; level?: string }) => {
-    const result = await passageService.updateInfo(passage.id, info);
-    if (!result.success) {
-      toast.showError(info.title !== undefined ? '无法改标题' : '无法改难度', result.error);
-      return false;
-    }
-    setPassage(result.data);
-    return true;
-  };
-  const rename = async () => {
-    if (renaming === null) return;
-    if (renaming.trim() === passage.title || (await saveInfo({ title: renaming }))) setRenaming(null);
-  };
   /** 改一句的译文；失败时返回原因（留在编辑框里显示） */
   const editTranslation = async (index: number, zh: string): Promise<string | null> => {
     const result = await passageService.updateTranslation(passage.id, index, zh);
@@ -385,32 +373,15 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-2xl font-semibold tracking-tight select-text">{passage.title}</h1>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button type="button" aria-label="难度" className="rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-                  <Badge variant="secondary" className="gap-0.5 hover:bg-secondary/70">
-                    {LEVEL_LABEL[passage.level] ?? passage.level}
-                    <ChevronDown className="size-3 opacity-60" />
-                  </Badge>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuRadioGroup value={passage.level} onValueChange={(level) => level !== passage.level && void saveInfo({ level })}>
-                  {Object.entries(LEVEL_LABEL).map(([value, label]) => (
-                    <DropdownMenuRadioItem key={value} value={value}>
-                      {label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Badge variant="secondary">{LEVEL_LABEL[passage.level] ?? passage.level}</Badge>
           </div>
           <p className="text-xs text-muted-foreground">
             {passage.origin === 'imported' && `导入${passage.sourceLabel ? `（${passage.sourceLabel}）` : ''} · `}
             {passage.origin === 'video' && `视频${passage.sourceLabel ? `（${passage.sourceLabel}）` : ''} · `}
             {passage.wordCount} 词 · {passage.sentences.length} 句 · {passage.origin === 'generated' ? '创建于' : '导入于'} {formatDate(passage.createdAt)}
           </p>
-          <MaterialTags key={passage.id} kind="passage" refId={passage.id} tags={passage.tags} />
+          {passage.scene && <p className="text-sm text-muted-foreground select-text">{passage.scene}</p>}
+          {passage.tags.length > 0 && <TagChips tags={passage.tags} />}
         </div>
         <div className="flex shrink-0 gap-2">
           <Button onClick={() => openGenerate(tab === 'listening' ? 'listening' : 'reading')}>
@@ -424,9 +395,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setRenaming(passage.title)}>
+              <DropdownMenuItem onSelect={() => setEditing(true)}>
                 <Pencil />
-                改标题…
+                编辑…
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setRepicking(true)}>
                 <WandSparkles />
@@ -621,27 +592,11 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={renaming !== null} onOpenChange={(o) => !o && setRenaming(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>改标题</AlertDialogTitle>
-          </AlertDialogHeader>
-          <Input
-            value={renaming ?? ''}
-            maxLength={100}
-            onChange={(e) => setRenaming(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && void rename()}
-            aria-label="标题"
-            autoFocus
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <Button onClick={() => void rename()} disabled={!renaming?.trim()}>
-              保存
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <MaterialEditDialog
+        target={editing ? { kind: 'passage', id: passage.id, title: passage.title, level: passage.level, scene: passage.scene, tags: passage.tags, isClip } : null}
+        onClose={() => setEditing(false)}
+        onSaved={() => void load()}
+      />
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, FileText, Clapperboard, FileUp, ListChecks, SearchX, Sparkles, Trash2 } from 'lucide-react';
+import { BookOpen, FileText, Clapperboard, FileUp, ListChecks, Pencil, SearchX, Sparkles, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { byInstant, byText, sortItems, type SortOption } from '@/utils/sorting';
 import { ListPagination, usePagination } from '@/components/ListPagination';
 import { PageError } from '@/components/PageError';
 import { cn } from '@/lib/utils';
+import { MaterialEditDialog, type MaterialEditTarget } from '@/components/MaterialEditDialog';
 import { TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import { JobProgress, activeJobFor } from '@/components/Jobs';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
@@ -65,10 +66,11 @@ export const SourceBadge: React.FC<{ source: PassageSource }> = ({ source }) => 
 );
 
 /** 短文卡片：整张可点进入详情（选择状态下点击即勾选）；⋯ 菜单与右键菜单是同一组操作，悬停左上角可勾选 */
-const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onOpen: () => void; onDelete: () => void; job?: Job }> = ({ passage: p, selection, onOpen, onDelete, job }) => {
+const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onOpen: () => void; onEdit: () => void; onDelete: () => void; job?: Job }> = ({ passage: p, selection, onOpen, onEdit, onDelete, job }) => {
   const checked = selection.selected.has(p.id);
   const actions: CardAction[] = [
     { label: '打开', icon: <FileText />, onSelect: onOpen },
+    { label: '编辑…', icon: <Pencil />, onSelect: onEdit },
     { label: '删除短文…', icon: <Trash2 />, onSelect: onDelete, destructive: true, separator: true },
   ];
   return (
@@ -162,6 +164,8 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   // 新写 / 导入的短文只在短文库首页显示占位（词汇本、标签页里的列表不知道新短文归不归它）
   const creating = bookId === undefined && tagId === undefined ? jobs.filter((j) => isJobActive(j) && CREATING_KINDS.includes(j.kind)) : [];
 
+  /** 「编辑…」中的短文 */
+  const [editing, setEditing] = useState<MaterialEditTarget | null>(null);
   const load = useCallback(async () => {
     setError(null);
     const result = await passageService.getPassages({ bookId });
@@ -273,10 +277,11 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
       <div ref={pager.anchorRef} className="grid scroll-mt-20 grid-cols-2 gap-3 xl:grid-cols-3">
         {pager.page === 1 && creating.map((job) => <PendingPassageCard key={job.id} job={job} />)}
         {(pager.pageItems ?? []).map((p) => (
-          <PassageCard key={p.id} passage={p} selection={selection} onOpen={() => onOpen(p.id)} onDelete={() => setToDelete([p])} job={activeJobFor(jobs, ['question_set'], 'passageId', p.id)} />
+          <PassageCard key={p.id} passage={p} selection={selection} onOpen={() => onOpen(p.id)} onEdit={() => setEditing({ kind: 'passage', id: p.id, title: p.title, level: p.level, tags: p.tags })} onDelete={() => setToDelete([p])} job={activeJobFor(jobs, ['question_set'], 'passageId', p.id)} />
         ))}
       </div>
       <ListPagination page={pager.page} pageSize={pager.pageSize} total={pager.total} onChange={pager.setPage} hideSinglePage unit="篇" />
+      <MaterialEditDialog target={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
       <BatchDeleteDialog
         items={toDelete}
         onClose={() => setToDelete(null)}

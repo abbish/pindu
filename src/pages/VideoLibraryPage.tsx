@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Clapperboard, Film, Pencil, Plus, Scissors, SearchX, Tags, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
+import { MaterialToolbar, TagChips } from '@/components/MaterialToolbar/MaterialToolbar';
 import {
   BatchDeleteButton,
   BatchDeleteDialog,
@@ -13,23 +13,13 @@ import {
   useSelection,
   type CardAction,
 } from '@/components/MaterialSelection/MaterialSelection';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MetricCard } from '@/components/MetricCard/MetricCard';
-import { MaterialTags } from '@/components/MaterialTags/MaterialTags';
+import { MaterialEditDialog, type MaterialEditTarget } from '@/components/MaterialEditDialog';
 import { ClipGrid } from './videos/ClipGrid';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { SortSelect, useSortPref } from '@/components/SortSelect';
@@ -90,8 +80,8 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
   const [clips, setClips] = useState<ClipSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const [renaming, setRenaming] = useState<Video | null>(null);
-  const [renameText, setRenameText] = useState('');
+  /** 「编辑…」中的原始视频 */
+  const [editing, setEditing] = useState<MaterialEditTarget | null>(null);
   const [toDelete, setToDelete] = useState<Video[] | null>(null);
   const [sourceQuery, setSourceQuery] = useState('');
   const [sourceTag, setSourceTag] = useState(embedded ? String(tagId) : 'all');
@@ -122,17 +112,6 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
   const open = (video: Video) => {
     if (video.status === 'importing' || video.status === 'failed' || !video.mediaUrl) return;
     onNavigate?.('video-editor', { videoId: video.id });
-  };
-
-  const rename = async () => {
-    if (!renaming) return;
-    const result = await videoService.rename(renaming.id, renameText);
-    if (!result.success) {
-      toast.showError('无法改名', result.error);
-      return;
-    }
-    setRenaming(null);
-    load();
   };
 
   const shownVideos = useMemo(() => {
@@ -246,14 +225,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
             const actions: CardAction[] = [
               { label: '在剪辑编辑器里打开', icon: <Scissors />, onSelect: () => open(video), disabled: !clickable },
               ...(video.clipCount > 0 ? [{ label: '查看场景片段', icon: <Clapperboard />, onSelect: () => onNavigate?.('videos', { tab: 'clips', videoId: video.id }) }] : []),
-              {
-                label: '改名…',
-                icon: <Pencil />,
-                onSelect: () => {
-                  setRenameText(video.title);
-                  setRenaming(video);
-                },
-              },
+              { label: '编辑…', icon: <Pencil />, onSelect: () => setEditing({ kind: 'video', id: video.id, title: video.title, tags: video.tags }) },
               { label: '删除…', icon: <Trash2 />, onSelect: () => setToDelete([video]), destructive: true, separator: true, disabled: Boolean(job) },
             ];
             return (
@@ -321,7 +293,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
                       )}
                     </div>
                   )}
-                  {(video.status === 'ready' || video.status === 'done') && <MaterialTags kind="video" refId={video.id} tags={video.tags} onChange={() => void load()} />}
+                  {video.tags.length > 0 && <TagChips tags={video.tags} limit={3} />}
                   {video.status === 'failed' && video.error && <p className="line-clamp-2 text-xs text-destructive">{video.error}</p>}
                   {interrupted && video.status === 'importing' && <p className="text-xs text-muted-foreground">删除后重新导入</p>}
                 </div>
@@ -345,20 +317,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
         }}
       />
 
-      <AlertDialog open={renaming !== null} onOpenChange={(o) => !o && setRenaming(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>改名</AlertDialogTitle>
-          </AlertDialogHeader>
-          <Input value={renameText} maxLength={100} onChange={(e) => setRenameText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && rename()} autoFocus />
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={rename} disabled={!renameText.trim()}>
-              保存
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <MaterialEditDialog target={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
 
       <BatchDeleteDialog
         items={toDelete}

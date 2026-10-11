@@ -108,8 +108,8 @@ class PassageService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<Passage>('set_passage_target_words', { request: { passageId, words } }));
   }
 
-  /** 改标题 / 难度（不传的不改），返回更新后的短文 */
-  async updateInfo(passageId: number, info: { title?: string; level?: string }): Promise<ApiResult<Passage>> {
+  /** 改标题 / 难度 / 场景描述（不传的不改；场景描述传空字符串为清除），返回更新后的短文 */
+  async updateInfo(passageId: number, info: { title?: string; level?: string; scene?: string }): Promise<ApiResult<Passage>> {
     return this.executeWithLoading(() => this.client.invoke<Passage>('update_passage_info', { request: { passageId, ...info } }));
   }
 

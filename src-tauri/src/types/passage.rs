@@ -83,6 +83,9 @@ pub struct UpdatePassageInfoRequest {
     /// a1 / a2 / b1 / b2
     #[serde(default)]
     pub level: Option<String>,
+    /// 场景描述（空字符串 = 清除）
+    #[serde(default)]
+    pub scene: Option<String>,
 }
 
 /// 短文用到的目标词

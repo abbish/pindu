@@ -619,14 +619,23 @@ impl PassageRepository {
     }
 
     /// 改标题与难度
-    pub async fn update_info(&self, passage_id: Id, title: &str, level: &str) -> AppResult<()> {
-        sqlx::query("UPDATE passages SET title = ?, level = ?, updated_at = ? WHERE id = ?")
-            .bind(title)
-            .bind(level)
-            .bind(crate::time::now_utc())
-            .bind(passage_id)
-            .execute(self.pool.as_ref())
-            .await?;
+    pub async fn update_info(
+        &self,
+        passage_id: Id,
+        title: &str,
+        level: &str,
+        scene: Option<&str>,
+    ) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE passages SET title = ?, level = ?, scene = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(title)
+        .bind(level)
+        .bind(scene)
+        .bind(crate::time::now_utc())
+        .bind(passage_id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 
