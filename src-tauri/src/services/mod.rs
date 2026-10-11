@@ -12,6 +12,9 @@ pub mod calendar;
 #[cfg(debug_assertions)]
 pub mod diagnostics;
 pub mod log_settings;
+// 接入导入短文 / 提取单词（多模态素材 B3 / B4）后去掉
+#[allow(dead_code)]
+pub mod material_read;
 pub mod material_settings;
 pub mod passage;
 pub mod passage_import;

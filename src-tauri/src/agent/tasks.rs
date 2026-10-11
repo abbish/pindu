@@ -2,7 +2,7 @@
 //!
 //! 原则（DECISIONS D05）：确定性部分由代码完成，模型只做判断与标注；结构化结果经 `submit_*` 工具交付。
 
-use super::config::{prepare_launch, AgentPaths, AgentTask, SessionMode};
+use super::config::{prepare_launch, AgentPaths, AgentTask, SessionMode, TaskWorkspace};
 use super::follow_up;
 use super::protocol::AgentEvent;
 use super::run_log::RunLog;
@@ -160,11 +160,29 @@ pub async fn run_task_cancellable(
     message: &str,
     logger: &Logger,
     cancelled: impl Fn() -> bool,
+    on_event: impl FnMut(&super::protocol::AgentEvent),
+) -> AppResult<TaskRun> {
+    run_task_in(
+        paths, task, model, message, logger, None, cancelled, on_event,
+    )
+    .await
+}
+
+/// 同 `run_task_cancellable`，可在指定的工作目录里运行（带 skills 与额外环境变量，素材阅读等需要读文件的任务用）
+#[allow(clippy::too_many_arguments)]
+pub async fn run_task_in(
+    paths: &AgentPaths,
+    task: &AgentTask,
+    model: &AIModelConfig,
+    message: &str,
+    logger: &Logger,
+    workspace: Option<&TaskWorkspace>,
+    cancelled: impl Fn() -> bool,
     mut on_event: impl FnMut(&super::protocol::AgentEvent),
 ) -> AppResult<TaskRun> {
     let started = Instant::now();
     let log = RunLog::start(logger, task, model, message);
-    let launch = prepare_launch(paths, task, model, SessionMode::Ephemeral)
+    let launch = prepare_launch(paths, task, model, SessionMode::Ephemeral, workspace)
         .inspect_err(|e| log.failed(e, ""))?;
     let mut process = match AgentProcess::spawn(launch).await {
         Ok(p) => p,
@@ -2116,6 +2134,54 @@ pub async fn analyze_sentence(
         .outcome
         .last_successful_call("submit_sentence_analysis")
         .ok_or_else(|| AppError::ExternalServiceError("没有分析出来，请再试一次".to_string()))?;
+    Ok(submission.details.clone())
+}
+
+/// 素材阅读（多模态素材 B2）：pi 在素材的工作目录里自主读取（文字层 / 页面图片 / 图片 / 文本），交回 `submit_material`
+pub fn material_read_task(profile: &PromptProfile) -> AgentTask {
+    AgentTask {
+        name: "material-read",
+        system_prompt: prompts::system_prompt(PromptTask::MaterialRead, profile, &[]),
+        tools: &[
+            "list_material",
+            "read_pdf_text",
+            "view_pdf_page",
+            "view_image",
+            "read_text",
+            "submit_material",
+        ],
+        // 版面理解与对应关系要准确
+        default_thinking: "medium",
+    }
+}
+
+/// 运行素材阅读任务，返回 `submit_material` 的原始提交（由 `services::material_read` 核对）
+pub async fn read_material(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &PromptProfile,
+    workspace: &TaskWorkspace,
+    message: &str,
+    logger: &Logger,
+    cancelled: impl Fn() -> bool,
+) -> AppResult<Value> {
+    let run = run_task_in(
+        paths,
+        &material_read_task(profile),
+        model,
+        message,
+        logger,
+        Some(workspace),
+        cancelled,
+        |_| {},
+    )
+    .await?;
+    let submission = run
+        .outcome
+        .last_successful_call("submit_material")
+        .ok_or_else(|| {
+            AppError::ExternalServiceError("没有读出这份素材的内容，请再试一次".to_string())
+        })?;
     Ok(submission.details.clone())
 }
 

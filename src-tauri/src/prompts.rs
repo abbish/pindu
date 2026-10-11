@@ -333,10 +333,11 @@ pub enum PromptTask {
     VocabSuggest,
     PassageSceneSuggest,
     PassageTargetWords,
+    MaterialRead,
 }
 
 impl PromptTask {
-    pub const ALL: [PromptTask; 19] = [
+    pub const ALL: [PromptTask; 20] = [
         PromptTask::Extract,
         PromptTask::Generate,
         PromptTask::Phonics,
@@ -356,6 +357,7 @@ impl PromptTask {
         PromptTask::VocabSuggest,
         PromptTask::PassageSceneSuggest,
         PromptTask::PassageTargetWords,
+        PromptTask::MaterialRead,
     ];
 
     pub fn key(self) -> &'static str {
@@ -379,6 +381,7 @@ impl PromptTask {
             PromptTask::VocabSuggest => "vocab_suggest",
             PromptTask::PassageSceneSuggest => "passage_scene_suggest",
             PromptTask::PassageTargetWords => "passage_target_words",
+            PromptTask::MaterialRead => "material_read",
         }
     }
 
@@ -403,6 +406,7 @@ impl PromptTask {
             PromptTask::VocabSuggest => "词汇本：词汇需求的建议",
             PromptTask::PassageSceneSuggest => "短文：场景的建议",
             PromptTask::PassageTargetWords => "短文：重新挑选目标词",
+            PromptTask::MaterialRead => "素材：阅读与整理",
         }
     }
 
@@ -429,9 +433,27 @@ impl PromptTask {
                 include_str!("prompts/agent/passage_scene_suggest.md")
             }
             PromptTask::PassageTargetWords => include_str!("prompts/agent/passage_target_words.md"),
+            PromptTask::MaterialRead => include_str!("prompts/agent/material_read.md"),
         }
     }
 }
+
+/// 素材阅读任务随应用分发的 pi skills（Agent Skills 格式：目录 + SKILL.md），运行前写到数据目录再用 `--skill` 加载
+#[allow(dead_code)] // 多模态素材 B3 接入后去掉
+pub const MATERIAL_SKILLS: [(&str, &str); 3] = [
+    (
+        "bilingual-handout",
+        include_str!("prompts/skills/bilingual-handout/SKILL.md"),
+    ),
+    (
+        "vocabulary-sheet",
+        include_str!("prompts/skills/vocabulary-sheet/SKILL.md"),
+    ),
+    (
+        "scanned-pages",
+        include_str!("prompts/skills/scanned-pages/SKILL.md"),
+    ),
+];
 
 /// 某个任务的系统提示词。`extra` 为任务自己的变量（如提取模式规则）
 pub fn system_prompt(task: PromptTask, profile: &PromptProfile, extra: &[(&str, &str)]) -> String {
@@ -722,6 +744,7 @@ mod tests {
             (PromptTask::VocabSuggest, "vocab_topic_suggest.md"),
             (PromptTask::PassageSceneSuggest, "passage_scene_suggest.md"),
             (PromptTask::PassageTargetWords, "passage_target_words.md"),
+            (PromptTask::MaterialRead, "material_read.md"),
         ];
         let stopwords = crate::agent::tasks::FOCUS_STOPWORDS;
         for preset in ["primary", "secondary", "adult"] {

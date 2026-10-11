@@ -30,6 +30,15 @@ pub enum SessionMode {
     Ephemeral,
 }
 
+/// 需要读写文件的任务（如素材阅读）的运行环境：工作目录（工具只能访问这里）、显式加载的 skills、额外环境变量
+#[derive(Debug, Clone, Default)]
+pub struct TaskWorkspace {
+    pub dir: PathBuf,
+    /// skill 目录（含 SKILL.md）；启动参数仍带 -ns，不会加载其它来源的 skills
+    pub skills: Vec<PathBuf>,
+    pub env: Vec<(String, String)>,
+}
+
 /// sidecar 可执行文件与应用数据目录
 #[derive(Debug, Clone)]
 pub struct AgentPaths {
@@ -172,6 +181,7 @@ pub fn launch_args(
     model: &AIModelConfig,
     system_prompt_file: &Path,
     session: &SessionMode,
+    skills: &[PathBuf],
 ) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     match session {
@@ -188,6 +198,11 @@ pub fn launch_args(
         "--no-approve",
     ] {
         args.push(flag.into());
+    }
+    // 显式指定的 skills 仍会加载（-ns 只关掉自动发现）
+    for skill in skills {
+        args.push("--skill".into());
+        args.push(skill.to_string_lossy().into_owned());
     }
     if task.tools.is_empty() {
         // 纯对话任务：不开放任何工具（含扩展工具）
@@ -213,6 +228,7 @@ pub fn prepare_launch(
     task: &AgentTask,
     model: &AIModelConfig,
     session: SessionMode,
+    workspace: Option<&TaskWorkspace>,
 ) -> AppResult<AgentLaunch> {
     let provider = &model.provider;
     if !provider.has_api_key() {
@@ -229,7 +245,8 @@ pub fn prepare_launch(
         .join("runs")
         .join(format!("{}-{}", task.name, uuid::Uuid::new_v4()));
     let agent_dir = run_dir.join("agent");
-    let cwd = paths.root.join("cwd"); // 空目录：不会加载任何项目资源
+    // 默认空目录：不会加载任何项目资源；素材类任务在自己的工作目录里运行
+    let cwd = workspace.map_or_else(|| paths.root.join("cwd"), |w| w.dir.clone());
     std::fs::create_dir_all(&agent_dir).map_err(io)?;
     std::fs::create_dir_all(&cwd).map_err(io)?;
 
@@ -238,8 +255,14 @@ pub fn prepare_launch(
     let prompt_file = run_dir.join("system.md");
     std::fs::write(&prompt_file, &task.system_prompt).map_err(io)?;
 
-    let args = launch_args(task, model, &prompt_file, &session);
-    let env = vec![
+    let args = launch_args(
+        task,
+        model,
+        &prompt_file,
+        &session,
+        workspace.map_or(&[][..], |w| &w.skills),
+    );
+    let mut env = vec![
         (
             "PI_CODING_AGENT_DIR".to_string(),
             agent_dir.to_string_lossy().into_owned(),
@@ -252,6 +275,9 @@ pub fn prepare_launch(
         ),
         (key_env(provider), provider.api_key.clone()),
     ];
+    if let Some(w) = workspace {
+        env.extend(w.env.iter().cloned());
+    }
 
     Ok(AgentLaunch {
         program: paths.program.clone(),
@@ -317,12 +343,15 @@ mod tests {
             &m,
             Path::new("/tmp/system.md"),
             &SessionMode::Ephemeral,
+            &[PathBuf::from("/skills/bilingual-handout")],
         );
         let joined = args.join(" ");
         assert!(
             joined.starts_with("--no-session -ne --no-mcp -ns -np -nc --no-themes --no-approve")
         );
         assert!(joined.contains("--tools tokenize_text,submit_words"));
+        // 显式 skill 跟在 -ns 之后（-ns 只关自动发现）
+        assert!(joined.contains("--skill /skills/bilingual-handout"));
         assert!(joined.contains("--provider moonshotai-cn --model kimi-k3 --thinking low"));
         assert!(!joined.contains(SECRET));
     }
@@ -336,6 +365,7 @@ mod tests {
             &model(Some("moonshotai-cn")),
             Path::new("/tmp/s.md"),
             &SessionMode::Ephemeral,
+            &[],
         );
         assert!(args.contains(&"-nt".to_string()));
         assert!(!args.contains(&"--tools".to_string()));
@@ -364,6 +394,7 @@ mod tests {
             &task(),
             &model(Some("moonshotai-cn")),
             SessionMode::Ephemeral,
+            None,
         )
         .unwrap();
         let run_dir = launch.run_dir.clone().unwrap();
@@ -387,7 +418,7 @@ mod tests {
         let mut no_key = model(Some("moonshotai-cn"));
         no_key.provider.api_key = "PLEASE_SET_YOUR_API_KEY".to_string();
         assert!(matches!(
-            prepare_launch(&paths, &task(), &no_key, SessionMode::Ephemeral),
+            prepare_launch(&paths, &task(), &no_key, SessionMode::Ephemeral, None),
             Err(AppError::ValidationError(_))
         ));
     }

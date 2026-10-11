@@ -21,3 +21,13 @@ https://github.com/abbish/pindu/tree/main/scripts/ffmpeg （`build.sh`、`source
 | WordNet | 3.0 | WordNet 3.0 License（`WordNet-3.0-LICENSE.txt`） | https://wordnetcode.princeton.edu/3.0/WordNet-3.0.tar.gz |
 
 WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved. 只取用了四个词性的单词表（index.*）与不规则变形表（*.exc），生成方式见 `scripts/lemma/build.mjs`。
+
+## PDF 与图片读取
+
+导入 PDF、图片等素材时，内置 AI 助手用下列组件读取 PDF 文字与渲染页面（编译进 AI 助手程序）。
+
+| 组件 | 版本 | 许可证 | 来源 |
+|---|---|---|---|
+| PDFium（WebAssembly 版） | 随 @hyzyla/pdfium 3.0.0 | BSD-3-Clause 与 Apache-2.0（`pdfium-LICENSE.txt`） | https://pdfium.googlesource.com/pdfium/ |
+| @hyzyla/pdfium | 3.0.0 | MIT（`hyzyla-pdfium-MIT.txt`） | https://github.com/hyzyla/pdfium |
+| fast-png | 8.0.0 | MIT（`fast-png-MIT.txt`） | https://github.com/image-js/fast-png |

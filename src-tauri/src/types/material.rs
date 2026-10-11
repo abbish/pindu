@@ -117,3 +117,71 @@ pub struct WordCard {
     #[serde(default)]
     pub separable: bool,
 }
+
+// ==================== 素材阅读（pi 自主处理非文本素材，多模态素材 B2） ====================
+
+/// 素材里的一句：英文原文 + 材料里印的中文（没有为 None）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)] // 多模态素材 B3 接入后去掉
+pub struct MaterialSentence {
+    pub en: String,
+    #[serde(default)]
+    pub zh: Option<String>,
+    #[serde(default)]
+    pub paragraph: Option<i64>,
+    /// 有文字层时，这句在文件文字层里没找到（可能识别错了），界面上提示核对
+    #[serde(default)]
+    pub unverified: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)] // 多模态素材 B3 接入后去掉
+pub struct MaterialPassage {
+    #[serde(default)]
+    pub title: Option<String>,
+    pub sentences: Vec<MaterialSentence>,
+}
+
+/// 材料在正文里标出的词或词组（画线、加粗、旁注）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)] // 多模态素材 B3 接入后去掉
+pub struct MaterialPhrase {
+    /// 在原文句子里的写法
+    pub text: String,
+    pub meaning: String,
+}
+
+/// 材料里的词汇表条目
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)] // 多模态素材 B3 接入后去掉
+pub struct MaterialVocab {
+    pub word: String,
+    #[serde(default)]
+    pub ipa: Option<String>,
+    #[serde(default)]
+    pub pos: Option<String>,
+    #[serde(default)]
+    pub meaning: Option<String>,
+}
+
+/// pi 读完一份素材整理出的内容（Rust 已核对）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)] // 多模态素材 B3 接入后去掉
+pub struct MaterialContent {
+    #[serde(default)]
+    pub title: Option<String>,
+    pub passages: Vec<MaterialPassage>,
+    pub phrases: Vec<MaterialPhrase>,
+    pub vocabulary: Vec<MaterialVocab>,
+    /// pi 给学习者的说明（读不清、跳过、需要能看图的模型等）
+    #[serde(default)]
+    pub note: Option<String>,
+    /// 这次用的模型能看图
+    #[serde(default)]
+    pub used_images: bool,
+}
