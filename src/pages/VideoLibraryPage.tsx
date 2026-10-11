@@ -176,7 +176,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
       {loadError ? (
         <PageError title="无法加载视频库" message={loadError} onRetry={load} />
       ) : shownTab === 'clips' ? (
-        <ClipGrid clips={clips} videos={videos ?? []} cutting={cutting} videoId={videoId} onOpen={(c) => onNavigate?.('passage-detail', { passageId: c.id, clip: true })} onGoSources={() => setTab('sources')} onTagsChanged={load} onOpenEditor={(id) => onNavigate?.('video-editor', { videoId: id })} tagId={tagId} />
+        <ClipGrid clips={clips} videos={videos ?? []} cutting={cutting} videoId={videoId} onOpen={(c) => onNavigate?.('passage-detail', { passageId: c.id, clip: true })} onGoSources={() => setTab('sources')} onTagsChanged={load} onOpenEditor={(id, clipId) => onNavigate?.('video-editor', { videoId: id, clipId })} tagId={tagId} />
       ) : videos === null ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {[0, 1, 2].map((i) => (

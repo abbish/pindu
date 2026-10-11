@@ -36,7 +36,8 @@ export interface RouteParams {
   /** 视频库：tab 片段（默认）/ 原始视频；videoId 只看这个视频切出的片段 */
   videos: { tab?: 'clips' | 'sources'; videoId?: number } | undefined;
   /** 剪辑编辑器：预览、调整切分规划（整窗页面） */
-  'video-editor': { videoId: number };
+  /** clipId：从某个场景片段打开（短文 id）：切到切出它的规划，选中那一段并定位到开头 */
+  'video-editor': { videoId: number; clipId?: number };
   /** 标签：这个标签下的全部素材（侧边栏「标签」分组） */
   tag: { tagId: number };
   calendar: undefined;

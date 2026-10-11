@@ -75,6 +75,8 @@ import { Timeline } from './Timeline';
 
 export interface VideoEditorPageProps {
   videoId?: number;
+  /** 从这个场景片段打开（短文 id）：切到切出它的规划，选中对应的一段并定位到开头 */
+  clipId?: number;
   onNavigate?: NavigateFn;
 }
 
@@ -116,7 +118,7 @@ const typing = (e: KeyboardEvent) => {
  * 底部时间轴（刻度、缩略图、波形、字幕轨、片段轨），边界拖动默认吸附到字幕边界（按住 ⌥ 自由拖动）。
  * 规划草稿自动保存；撤销 / 重做；快捷键：空格 播放、J/K/L、←/→ 逐帧（⇧ 一秒）、I/O 入点出点、N 用入出点新建、S 拆分、M 合并、Delete 删除、⌘Z / ⇧⌘Z、+/- 缩放、Enter 播放当前片段。
  */
-export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNavigate }) => {
+export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipId, onNavigate }) => {
   const toast = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [detail, setDetail] = useState<VideoDetail | null>(null);
@@ -157,6 +159,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
   /** 连续编辑同一字段只记一次撤销 */
   const lastEditKey = useRef<string | null>(null);
   const loaded = useRef(false);
+  /** 打开时要定位到的位置（毫秒）：视频加载好之后再跳过去 */
+  const focusMs = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     if (!videoId) return;
@@ -167,15 +171,25 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
     }
     setDetail(d.data);
     setPeaks(p.success ? p.data : []);
-    // 上次在编辑的规划，没有就第一个
+    // 从场景片段打开：切出它的那个规划（没有记录时找含这一段的规划）里起止相同的一段
+    const clip = clipId ? d.data.clips.find((c) => c.passageId === clipId) : undefined;
+    const sameSpan = (s: VideoSegment) => clip !== undefined && s.startMs === clip.startMs && s.endMs === clip.endMs;
+    const clipPlan = clip ? (d.data.plans.find((x) => x.id === clip.planId && x.plan.segments.some(sameSpan)) ?? d.data.plans.find((x) => x.plan.segments.some(sameSpan))) : undefined;
+    // 否则上次在编辑的规划，没有就第一个
     const remembered = Number(readLastPlan(videoId));
-    const current = d.data.plans.find((x) => x.id === remembered) ?? d.data.plans[0];
+    const current = clipPlan ?? d.data.plans.find((x) => x.id === remembered) ?? d.data.plans[0];
     setPlanId(current.id);
     loaded.current = false;
     setHistory({ past: [], present: current.plan, future: [] });
+    const focus = clipPlan?.plan.segments.find(sameSpan);
+    if (focus && clip) {
+      setSelectedId(focus.id);
+      setPlayhead(clip.startMs);
+      focusMs.current = clip.startMs;
+    }
     // 整段大约铺满两屏
     setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(2400 / Math.max(1, d.data.video.durationMs / 1000)))));
-  }, [videoId]);
+  }, [videoId, clipId]);
 
   useEffect(() => {
     load();
@@ -758,6 +772,12 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, onNav
                 onClick={togglePlay}
                 onError={() => setMediaError(true)}
                 onLoadedData={() => setMediaError(false)}
+                onLoadedMetadata={() => {
+                  if (focusMs.current !== null && videoRef.current) {
+                    videoRef.current.currentTime = focusMs.current / 1000;
+                    focusMs.current = null;
+                  }
+                }}
                 preload="auto"
               />
               {mediaError && (

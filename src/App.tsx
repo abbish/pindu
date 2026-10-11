@@ -124,7 +124,7 @@ function App() {
       case 'videos':
         return <VideoLibraryPage key={JSON.stringify(route.params ?? {})} tab={route.params?.tab} videoId={route.params?.videoId} onNavigate={navigate} />;
       case 'video-editor':
-        return <VideoEditorPage key={route.params?.videoId} videoId={route.params?.videoId} onNavigate={navigate} />;
+        return <VideoEditorPage key={`${route.params?.videoId}:${route.params?.clipId ?? ''}`} videoId={route.params?.videoId} clipId={route.params?.clipId} onNavigate={navigate} />;
       case 'tag':
         return <TagPage key={route.params?.tagId} tagId={route.params?.tagId} onNavigate={navigate} />;
       case 'calendar':

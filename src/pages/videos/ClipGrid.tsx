@@ -44,7 +44,7 @@ export interface ClipGridProps {
   /** 管理标签、批量改标签、删除之后刷新 */
   onTagsChanged?: () => void;
   /** 在剪辑编辑器里打开来源视频 */
-  onOpenEditor?: (videoId: number) => void;
+  onOpenEditor?: (videoId: number, clipId: number) => void;
   /** 嵌在标签页里：只看这个标签的片段（不显示标签筛选） */
   tagId?: number;
 }
@@ -217,7 +217,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
                 { label: '打开学习', icon: <Play />, onSelect: () => onOpen(c) },
                 { label: '编辑…', icon: <Pencil />, onSelect: () => setEditing({ kind: 'passage', id: c.id, title: c.title, level: c.level, tags: c.tags, isClip: true }) },
                 { label: '播放', icon: <ListVideo />, onSelect: () => setPlaylist([c]) },
-                ...(onOpenEditor ? [{ label: '在剪辑编辑器里查看', icon: <Scissors />, onSelect: () => onOpenEditor(c.videoId) }] : []),
+                ...(onOpenEditor ? [{ label: '在剪辑编辑器里查看', icon: <Scissors />, onSelect: () => onOpenEditor(c.videoId, c.id) }] : []),
                 { label: '删除场景片段…', icon: <Trash2 />, onSelect: () => setToDelete([c]), destructive: true, separator: true },
               ]}
             />
