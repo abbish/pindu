@@ -25,41 +25,43 @@ export function formatContext(tokens: number): string {
   return `${Math.round(tokens / 1000)}K`;
 }
 
-const Item: React.FC<{ label: React.ReactNode; children: React.ReactNode }> = ({ label, children }) => (
+const Item: React.FC<{ label: React.ReactNode; off?: boolean; children: React.ReactNode }> = ({ label, off, children }) => (
   <Tooltip>
     <TooltipTrigger asChild>
-      <span className="inline-flex items-center gap-0.5 text-muted-foreground">{children}</span>
+      <span className={cn('inline-flex items-center gap-0.5 text-muted-foreground', off && 'opacity-30')}>{children}</span>
     </TooltipTrigger>
     <TooltipContent>{label}</TooltipContent>
   </Tooltip>
 );
 
-/** 模型能力的一排小图标（看图 / 思考 / 上下文 / 价格），只显示具备的；悬停看详情 */
+/**
+ * 模型能力的一排小图标（看图 / 思考 / 上下文 / 价格），悬停看详情。
+ * 每项位置固定，不具备的淡显，列表里上下对齐、一眼能比；不知道的（没有上下文、价格信息）留空位。
+ */
 export const ModelCapabilities: React.FC<ModelCapabilitiesProps> = ({ images, reasoning, thinkingLevels, contextWindow, costInput, costOutput, className }) => {
   const hasCost = costInput != null && costOutput != null && (costInput > 0 || costOutput > 0);
-  if (!images && !reasoning && !contextWindow && !hasCost) return null;
   return (
     <span className={cn('inline-flex shrink-0 items-center gap-2 [&_svg]:size-3.5', className)} aria-label="模型能力">
-      {images && (
-        <Item label="能看图片">
-          <ImageIcon />
-        </Item>
-      )}
-      {reasoning && (
-        <Item label={thinkingLevels?.length ? `深度思考：${thinkingLevels.join(' / ')}` : '深度思考'}>
-          <Brain />
-        </Item>
-      )}
-      {!!contextWindow && contextWindow > 0 && (
+      <Item label={images ? '能看图片' : images === false ? '不能看图片' : '不清楚能不能看图片'} off={!images}>
+        <ImageIcon />
+      </Item>
+      <Item label={reasoning ? (thinkingLevels?.length ? `深度思考：${thinkingLevels.join(' / ')}` : '深度思考') : '不支持深度思考'} off={!reasoning}>
+        <Brain />
+      </Item>
+      {!!contextWindow && contextWindow > 0 ? (
         <Item label={`一次最多处理约 ${contextWindow.toLocaleString()} tokens`}>
           <TextCursorInput />
-          <span className="text-xs tabular-nums">{formatContext(contextWindow)}</span>
+          <span className="w-8 text-xs tabular-nums">{formatContext(contextWindow)}</span>
         </Item>
+      ) : (
+        <span className="w-12" aria-hidden />
       )}
-      {hasCost && (
+      {hasCost ? (
         <Item label={`每百万 tokens：输入 $${costInput}，输出 $${costOutput}`}>
           <Coins />
         </Item>
+      ) : (
+        <span className="w-3.5" aria-hidden />
       )}
     </span>
   );

@@ -184,7 +184,7 @@ export const MaterialInput: React.FC<MaterialInputProps> = ({
       {privacyNote && (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <Info className="mt-0.5 size-3.5 shrink-0" />
-          文字会发送给所配置的 AI 模型处理
+          {onAiFile ? '文字和选择的文件会发送给所配置的 AI 模型处理' : '文字会发送给所配置的 AI 模型处理'}
         </p>
       )}
     </div>

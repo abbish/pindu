@@ -22,7 +22,7 @@ import { MaterialInput } from '@/components/MaterialInput';
 import { WordGrid, type ExtractedWord } from '@/components/WordGrid';
 import { useMaterialSettings } from '@/hooks/useMaterialSettings';
 import { useToast } from '@/components/Toast/ToastContainer';
-import { jobErrorText } from '@/components/Jobs';
+import { JobPanel, jobErrorText } from '@/components/Jobs';
 import { jobsNow, useJob } from '@/hooks/useJobs';
 import { activeJobFor } from '@/components/Jobs';
 import { jobService } from '@/services/jobService';
@@ -126,6 +126,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
   const [jobId, setJobId] = useState<string | null>(null);
   /** PDF / Word / 图片交给 AI 阅读的后台任务（提取单词用；读完进入选词） */
   const [materialJobId, setMaterialJobId] = useState<string | null>(null);
+  const [materialName, setMaterialName] = useState('');
   const materialRunRef = useRef(0);
   const [outcome, setOutcome] = useState<WordAnalysisOutcome | null>(null);
   const [stopped, setStopped] = useState(false);
@@ -311,7 +312,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     const run = ++runRef.current;
     materialRunRef.current = run;
     setError(null);
-    setFileName(file.fileName);
+    setMaterialName(file.fileName);
     setPhase('fetching');
     const started = await wordAnalysisService.startMaterialWords({ ...file, mode, bookId });
     if (run !== runRef.current) return;
@@ -488,7 +489,9 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
 
   const body = () => {
     if (phase === 'fetching') {
-      return <AiWorking title={source === 'ai' ? '正在生成单词' : materialJobId ? 'AI 正在阅读素材' : '正在提取单词'} />;
+      // 读素材要一两分钟：显示读到哪、已用时间（停止在底部操作栏）
+      if (materialJobId) return <JobPanel job={materialJob} title={`正在读取「${materialName}」`} />;
+      return <AiWorking title={source === 'ai' ? '正在生成单词' : '正在提取单词'} />;
     }
 
     switch (phase) {

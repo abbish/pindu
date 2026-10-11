@@ -10,6 +10,7 @@
 
 use crate::agent::catalog::{self, provider_models};
 use crate::agent::config::TaskWorkspace;
+use crate::agent::protocol::AgentEvent;
 use crate::agent::{tasks, AgentPaths};
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
@@ -103,6 +104,86 @@ pub fn prepare_workspace(dir: &Path, source: &Path) -> AppResult<()> {
         std::fs::write(dir.join(format!("material.{}", ext)), bytes).map_err(io)?;
     }
     Ok(())
+}
+
+/// 只能看图才读得出来的素材（照片、海报、扫描图片）
+pub fn is_image(file_name: &str) -> bool {
+    matches!(
+        extension(Path::new(file_name.trim())).as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "gif"
+    )
+}
+
+/// 开始读取前检查：图片只能看图读，模型不能看图时直接告诉用户换模型，不白跑一趟。
+/// `task_label` 是「设置 → AI 助手」里这项任务的名字
+pub async fn check_can_read(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    file_name: &str,
+    task_label: &str,
+) -> AppResult<()> {
+    if is_image(file_name) && !model_sees_images(paths, model).await {
+        return Err(AppError::ValidationError(format!(
+            "现在用的模型「{}」不能看图片。请在「设置 → AI 助手」给「{}」换一个能看图片的模型（模型列表里带图片图标的）",
+            model.display_name, task_label
+        )));
+    }
+    Ok(())
+}
+
+/// 读取进度：把 pi 的工具调用换成给用户看的阶段（读到第几页、正在整理）
+#[derive(Default)]
+pub struct ReadProgress {
+    pages: u64,
+}
+
+impl ReadProgress {
+    pub fn on_event(&mut self, event: &AgentEvent) -> Option<String> {
+        let (tool, details) = match event {
+            AgentEvent::AutoRetryStart { .. } => return Some("网络不太稳定，正在重试".to_string()),
+            AgentEvent::ToolExecutionEnd {
+                tool_name,
+                details,
+                is_error: false,
+                ..
+            } => (tool_name.as_str(), details),
+            _ => return None,
+        };
+        let refused = details.get("refused").and_then(Value::as_bool) == Some(true);
+        match tool {
+            "list_material" => {
+                self.pages = details
+                    .get("files")
+                    .and_then(Value::as_array)
+                    .map(|files| {
+                        files
+                            .iter()
+                            .filter_map(|f| f.get("pages").and_then(Value::as_u64))
+                            .sum()
+                    })
+                    .unwrap_or(0);
+                Some(if self.pages > 0 {
+                    format!("共 {} 页，开始阅读", self.pages)
+                } else {
+                    "开始阅读".to_string()
+                })
+            }
+            "view_pdf_page" if !refused => {
+                let page = details.get("page").and_then(Value::as_u64).unwrap_or(0);
+                Some(if self.pages > 0 && page >= self.pages {
+                    format!("已读完 {} 页，正在整理内容", self.pages)
+                } else if self.pages > 0 {
+                    format!("已读到第 {} 页，共 {} 页", page, self.pages)
+                } else {
+                    format!("已读到第 {} 页", page)
+                })
+            }
+            "view_image" if !refused => Some("已看完图片，正在整理内容".to_string()),
+            "read_pdf_text" | "read_text" => Some("已读取文字，正在整理内容".to_string()),
+            "submit_material" => Some("正在核对内容".to_string()),
+            _ => None,
+        }
+    }
 }
 
 /// 这个模型能不能看图：用户设置优先，其次 pi 内置目录；都没有按不能
@@ -505,6 +586,7 @@ pub async fn read_material(
     purpose: MaterialPurpose,
     logger: &Logger,
     cancelled: impl Fn() -> bool,
+    on_stage: impl Fn(String),
 ) -> AppResult<MaterialContent> {
     if !is_pi_material(source) {
         return Err(AppError::ValidationError(format!(
@@ -534,8 +616,20 @@ pub async fn read_material(
     };
     let name = source.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let message = format!("素材文件：{}\n{}", name, purpose_line(purpose));
+    let mut progress = ReadProgress::default();
     let result = tasks::read_material(
-        paths, model, profile, &workspace, &message, logger, cancelled,
+        paths,
+        model,
+        profile,
+        &workspace,
+        &message,
+        logger,
+        cancelled,
+        |event| {
+            if let Some(stage) = progress.on_event(event) {
+                on_stage(stage);
+            }
+        },
     )
     .await;
     let _ = std::fs::remove_dir_all(&dir);
@@ -551,6 +645,64 @@ pub async fn read_material(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn tool_end(name: &str, details: Value) -> AgentEvent {
+        AgentEvent::ToolExecutionEnd {
+            tool_call_id: "t".to_string(),
+            tool_name: name.to_string(),
+            details,
+            is_error: false,
+            content_text: String::new(),
+        }
+    }
+
+    #[test]
+    fn progress_reports_pages_read() {
+        let mut p = ReadProgress::default();
+        let files =
+            json!({"files": [{"name": "a.pdf", "kind": "pdf", "pages": 8}], "canViewImages": true});
+        assert_eq!(
+            p.on_event(&tool_end("list_material", files)).as_deref(),
+            Some("共 8 页，开始阅读")
+        );
+        assert_eq!(
+            p.on_event(&tool_end(
+                "view_pdf_page",
+                json!({"refused": false, "file": "a.pdf", "page": 3})
+            ))
+            .as_deref(),
+            Some("已读到第 3 页，共 8 页")
+        );
+        assert_eq!(
+            p.on_event(&tool_end(
+                "view_pdf_page",
+                json!({"refused": false, "file": "a.pdf", "page": 8})
+            ))
+            .as_deref(),
+            Some("已读完 8 页，正在整理内容")
+        );
+        // 模型不能看图时看图被拒：不算读到
+        assert_eq!(
+            p.on_event(&tool_end(
+                "view_pdf_page",
+                json!({"refused": true, "page": 1})
+            )),
+            None
+        );
+        assert_eq!(
+            p.on_event(&tool_end("read_pdf_text", json!({"file": "a.pdf"})))
+                .as_deref(),
+            Some("已读取文字，正在整理内容")
+        );
+    }
+
+    #[test]
+    fn images_are_recognized() {
+        assert!(is_image("poster.JPG"));
+        assert!(is_image(" a.webp "));
+        assert!(!is_image("handout.pdf"));
+        assert!(!is_image("notes.docx"));
+    }
 
     #[test]
     fn sentences_not_in_text_layer_are_flagged() {
@@ -747,6 +899,7 @@ mod tests {
             },
             &logger,
             || false,
+            |stage| println!("· {stage}"),
         )
         .await
         .unwrap();

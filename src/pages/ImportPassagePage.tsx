@@ -7,6 +7,7 @@ import {
   CircleAlert,
   Loader2,
   Merge,
+  Pencil,
   RotateCw,
   Scissors,
   Sparkles,
@@ -36,6 +37,7 @@ import { useJob, useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { JobPanel } from '@/components/Jobs';
 import { isJobActive } from '@/types/job';
 import {
+  englishWordCount,
   lengthHint,
   mergeWithPrevious,
   renameItem,
@@ -81,13 +83,18 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
   const [prepareError, setPrepareError] = useState<string | null>(null);
   /** PDF / Word / 图片交给 AI 读取的后台任务；读完直接进入预览 */
   const [materialJobId, setMaterialJobId] = useState<string | null>(null);
+  const [materialName, setMaterialName] = useState('');
   const materialJob = useJob(materialJobId);
-  const readingMaterial = !!materialJob && isJobActive(materialJob);
+  const readingMaterial = materialJobId !== null;
+  /** AI 读好的素材（回到上一步再点「下一步」直接用，不用重读；改了文本或换了文件就作废） */
+  const [aiPreview, setAiPreview] = useState<ImportPreview | null>(null);
 
   // ② 预览
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [items, setItems] = useState<DraftItem[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  /** 正在改的句子：哪一篇（key）第几句、输入框里的文字 */
+  const [editing, setEditing] = useState<{ key: string; index: number; value: string } | null>(null);
   const [books, setBooks] = useState<{ id: number; title: string; words: number }[] | null>(null);
   const [bookIds, setBookIds] = useState<number[]>([]);
   const [aiKeyWords, setAiKeyWords] = useState(true);
@@ -139,28 +146,49 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
     if (ids.length === run.indexes.length) toast.showSuccess(`已导入 ${ids.length} 篇短文`);
   });
 
-  const hasMaterial = text.trim().length > 0;
+  const hasMaterial = text.trim().length > 0 || aiPreview !== null;
   const running = statuses !== null && statuses.some((s) => s.state === 'running' || s.state === 'waiting');
   /** 正在导入的那一批（最近提交的进行中任务） */
   const activeRunJob = [...runs].reverse().map((r) => jobs.find((j) => j.id === r.jobId)).find((j) => j && isJobActive(j));
 
   /** ① → ②：后端清理、分句、拆篇（文件已由 MaterialInput 读成文本，sourceLabel 为文件名） */
   const prepare = async () => {
+    if (aiPreview && !text.trim()) {
+      // AI 读好的素材：回到上一步再前进时保留预览里改过的内容
+      if (preview !== aiPreview) showPreview(aiPreview);
+      return setStep(1);
+    }
     setPreparing(true);
     setPrepareError(null);
     const result = await passageService.prepareImport({ text, fileName: sourceLabel, targetWords });
     setPreparing(false);
     if (!result.success) return setPrepareError(result.error);
-    setPreview(result.data);
-    setItems(result.data.items.map(withKey));
-    setExpanded(new Set());
+    showPreview(result.data);
     setStep(1);
+  };
+
+  /** 进入预览；有「请核对」句子的篇展开，免得藏在折叠里 */
+  const showPreview = (result: ImportPreview) => {
+    const next = result.items.map(withKey);
+    setPreview(result);
+    setItems(next);
+    setExpanded(new Set(next.filter((it) => it.sentences.some((s) => s.unverified)).map((it) => it.key)));
+    setEditing(null);
+  };
+
+  /** 文本改了（粘贴、清除、读了另一个文本文件）：AI 读好的素材作废 */
+  const changeText = (value: string) => {
+    setText(value);
+    if (aiPreview) {
+      setAiPreview(null);
+      setSourceLabel(null);
+    }
   };
 
   /** PDF / Word / 图片：交给 AI 读取（整理出正文、材料里的译文与词汇），读完进入预览 */
   const readWithAi = async (file: { fileName: string; fileBase64: string }) => {
     setPrepareError(null);
-    setSourceLabel(file.fileName);
+    setMaterialName(file.fileName);
     const started = await passageService.startMaterialImport(file);
     if (!started.success) return setPrepareError(started.error);
     setMaterialJobId(started.data);
@@ -175,9 +203,10 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
     }
     const result = materialJob.result as ImportPreview;
     if (result.items.length === 0) return setPrepareError(result.warnings.join('；') || '这份素材里没有成段的英文文章');
-    setPreview(result);
-    setItems(result.items.map(withKey));
-    setExpanded(new Set());
+    setText('');
+    setSourceLabel(result.sourceLabel);
+    setAiPreview(result);
+    showPreview(result);
     // 材料自带词汇时不再让 AI 另挑
     if (result.items.some((it) => it.words.length > 0)) setAiKeyWords(false);
     setStep(1);
@@ -231,6 +260,24 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
   const retryable = (statuses ?? []).flatMap((s, i) => (s.state === 'failed' || s.state === 'cancelled' ? [i] : []));
 
   const totalWords = items.reduce((n, it) => n + it.wordCount, 0);
+  /** 改一句（核对 AI 读出的原文）；改成空的就删掉这句（一篇至少留一句） */
+  const saveSentence = () => {
+    if (!editing) return;
+    const value = editing.value.replace(/\s+/g, ' ').trim();
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.key !== editing.key) return it;
+        const sentences = value
+          ? it.sentences.map((s, j) => (j === editing.index ? { ...s, en: value, unverified: false } : s))
+          : it.sentences.length > 1
+            ? it.sentences.filter((_, j) => j !== editing.index).map((s, j) => (j === 0 ? { ...s, paragraph: true } : s))
+            : it.sentences;
+        return { ...it, sentences, wordCount: sentences.reduce((n, s) => n + englishWordCount(s.en), 0) };
+      }),
+    );
+    setEditing(null);
+  };
+
   const toggleExpanded = (key: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -251,19 +298,21 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
           <MaterialInput
             label="英文材料"
             text={text}
-            onTextChange={setText}
+            onTextChange={changeText}
             sourceLabel={sourceLabel}
             onSourceLabelChange={setSourceLabel}
+            placeholder={aiPreview ? '这份素材已经读好，点「下一步」查看' : undefined}
             privacyNote
             autoFocus
             disabled={preparing || readingMaterial}
             onAiFile={readWithAi}
           />
 
-          {materialJob && readingMaterial && (
-            <JobPanel job={materialJob} title="AI 正在阅读素材" actions={{ stop: true }} />
+          {readingMaterial && (
+            <JobPanel job={materialJob} title={`正在读取「${materialName}」`} actions={{ stop: true }} />
           )}
 
+          {!aiPreview && !readingMaterial && (
           <div className="flex items-center justify-between gap-4">
             <div className="text-sm font-medium">每篇篇幅</div>
             <ToggleGroup type="single" value={String(targetWords)} onValueChange={(v) => v && setTargetWords(Number(v))} className="rounded-lg bg-muted p-0.5" aria-label="每篇篇幅">
@@ -275,6 +324,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
               ))}
             </ToggleGroup>
           </div>
+          )}
 
           {prepareError && <InlineError title="无法整理这份材料">{prepareError}</InlineError>}
 
@@ -387,14 +437,47 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                       <div className="flex flex-wrap items-center gap-1.5 pl-8 text-xs">
                         <span className="text-muted-foreground">词汇 {item.words.length}</span>
                         {item.words.map((w) => (
-                          <Badge key={w.word} variant="secondary" className="h-5 font-normal" title={w.meaning ?? undefined}>
+                          <Badge key={w.word} variant="secondary" className="h-5 gap-0.5 pr-0.5 font-normal" title={w.meaning ?? undefined}>
                             {w.word}
+                            <button
+                              type="button"
+                              className="rounded-sm p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              aria-label={`不要「${w.word}」`}
+                              onClick={() => setItems((prev) => prev.map((it, k) => (k === i ? { ...it, words: it.words.filter((x) => x.word !== w.word) } : it)))}
+                            >
+                              <X className="size-3" />
+                            </button>
                           </Badge>
                         ))}
                       </div>
                     )}
                     <div className="space-y-0.5 pl-8 text-sm leading-relaxed">
-                      {shown.map((s, j) => (
+                      {shown.map((s, j) =>
+                        editing?.key === item.key && editing.index === j ? (
+                          <div key={j} className={cn('flex items-center gap-2 px-2 py-0.5', s.paragraph && j > 0 && 'mt-2')}>
+                            <Input
+                              value={editing.value}
+                              onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.nativeEvent.isComposing) return;
+                                if (e.key === 'Enter') saveSentence();
+                                if (e.key === 'Escape') {
+                                  e.stopPropagation();
+                                  setEditing(null);
+                                }
+                              }}
+                              aria-label="修改这句"
+                              className="h-8 flex-1"
+                              autoFocus
+                            />
+                            <Button size="sm" className="h-8" onClick={saveSentence}>
+                              保存
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-8" onClick={() => setEditing(null)}>
+                              取消
+                            </Button>
+                          </div>
+                        ) : (
                         <div key={j} className={cn('group relative flex items-start gap-2 rounded-md px-2 py-0.5 hover:bg-muted/50', s.paragraph && j > 0 && 'mt-2')}>
                           <span className="min-w-0 flex-1 select-text">
                             {s.en}
@@ -405,6 +488,15 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                             )}
                             {s.zh && <span className="block text-xs text-muted-foreground">{s.zh}</span>}
                           </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn('h-6 shrink-0 px-2 text-xs focus-visible:opacity-100', s.unverified ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}
+                            onClick={() => setEditing({ key: item.key, index: j, value: s.en })}
+                          >
+                            <Pencil />
+                            修改
+                          </Button>
                           {open && j > 0 && (
                             <Button
                               variant="ghost"
@@ -417,7 +509,8 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
                             </Button>
                           )}
                         </div>
-                      ))}
+                        ),
+                      )}
                     </div>
                     {item.sentences.length > COLLAPSED_SENTENCES && (
                       <Button variant="ghost" size="sm" className="self-start pl-8 text-muted-foreground" onClick={() => toggleExpanded(item.key)}>

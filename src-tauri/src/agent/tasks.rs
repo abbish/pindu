@@ -2166,6 +2166,7 @@ pub fn material_read_task(profile: &PromptProfile) -> AgentTask {
 }
 
 /// 运行素材阅读任务，返回 `submit_material` 的原始提交（由 `services::material_read` 核对）
+#[allow(clippy::too_many_arguments)]
 pub async fn read_material(
     paths: &AgentPaths,
     model: &AIModelConfig,
@@ -2174,6 +2175,7 @@ pub async fn read_material(
     message: &str,
     logger: &Logger,
     cancelled: impl Fn() -> bool,
+    on_event: impl FnMut(&AgentEvent),
 ) -> AppResult<Value> {
     let run = run_task_in(
         paths,
@@ -2183,7 +2185,7 @@ pub async fn read_material(
         logger,
         Some(workspace),
         cancelled,
-        |_| {},
+        on_event,
     )
     .await?;
     let submission = run

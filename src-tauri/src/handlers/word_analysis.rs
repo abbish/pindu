@@ -145,12 +145,14 @@ pub async fn start_material_words(
             )));
         }
         let paths = super::agent_paths(&app)?;
+        let model = get_model_config(AgentTaskKind::Extract, None, &pool, &logger).await?;
+        material_read::check_can_read(&paths, &model, &request.file_name, "提取 / 生成单词")
+            .await?;
         let upload = material_read::save_upload(
             &paths.root.join("materials"),
             &request.file_name,
             &request.file_base64,
         )?;
-        let model = get_model_config(AgentTaskKind::Extract, None, &pool, &logger).await?;
         let profile = PromptProfileService::load(pool.inner()).await?;
         let scene = PromptProfileService::book_scene(
             &Arc::new(pool.inner().clone()),
@@ -164,13 +166,13 @@ pub async fn start_material_words(
         let name = request.file_name.trim().to_string();
         let spec = JobSpec {
             kind: "material_read",
-            title: format!("AI 阅读素材 · {name}"),
+            title: format!("读取素材 · {name}"),
             lane: Lane::Agent,
             detached: false,
             link: None,
         };
         Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
-            ctx.stage("AI 正在阅读素材");
+            ctx.stage("正在准备");
             let content = material_read::read_material(
                 &paths,
                 &model,
@@ -179,6 +181,7 @@ pub async fn start_material_words(
                 MaterialPurpose::Words,
                 &logger_arc,
                 || ctx.is_cancelled(),
+                |stage| ctx.stage(stage),
             )
             .await;
             let _ = std::fs::remove_file(&upload);

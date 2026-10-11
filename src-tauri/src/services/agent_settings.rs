@@ -69,7 +69,7 @@ impl AgentTaskKind {
 
     fn description(self) -> &'static str {
         match self {
-            AgentTaskKind::Extract => "从课文或文章里找出要学的单词，或按描述生成词汇本",
+            AgentTaskKind::Extract => "从课文或文章里找出要学的单词，或按描述生成词汇本；读单词海报、照片要用能看图片的模型",
             AgentTaskKind::Phonics => {
                 "导入单词时拆音节、写拼读讲解、生成例句；准确性最重要，建议用能力强的模型"
             }
@@ -77,7 +77,7 @@ impl AgentTaskKind {
             AgentTaskKind::Plan => "新建计划时评估难度、安排学习顺序",
             AgentTaskKind::Explain => "练习时的单词深度讲解；建议用能力强的模型",
             AgentTaskKind::Tutor => "练习时向 AI 老师提问；回答要快，可用速度快、价格低的模型",
-            AgentTaskKind::Passage => "写阅读短文、出阅读理解题、给开放题评分；建议用能力强的模型",
+            AgentTaskKind::Passage => "写阅读短文、出阅读理解题、给开放题评分、读取导入的讲义和照片；建议用能力强、能看图片的模型",
             AgentTaskKind::Video => "整理字幕、规划切分视频；没有单独设置时用「短文库」的模型",
         }
     }

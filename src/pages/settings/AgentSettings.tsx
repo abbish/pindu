@@ -6,6 +6,8 @@ import { useToast } from '@/components/Toast/ToastContainer';
 import { PageError } from '@/components/PageError';
 import { aiModelService } from '@/services/aiModelService';
 import { agentSettingsService, type AgentSettings as AgentSettingsData, type UpdateAgentSettingsRequest } from '@/services/agentSettingsService';
+import { Image as ImageIcon } from 'lucide-react';
+import { capabilitiesOf } from '@/components/ModelCapabilities';
 import type { AIModelConfig } from '@/types';
 import { PromptProfileSettings } from './PromptProfileSettings';
 
@@ -31,7 +33,7 @@ export const AgentSettings: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([agentSettingsService.getSettings(), aiModelService.getAllAIModels()]).then(([s, m]) => {
+    Promise.all([agentSettingsService.getSettings(), aiModelService.getAllAIModels({ withCatalog: true })]).then(([s, m]) => {
       if (cancelled) return;
       if (s.success) setSettings(s.data);
       setLoadError(s.success ? null : s.error);
@@ -90,6 +92,7 @@ export const AgentSettings: React.FC = () => {
                   {usable.map((m) => (
                     <SelectItem key={m.id} value={String(m.id)}>
                       {modelLabel(m)}
+                      {capabilitiesOf(m).images && <ImageIcon className="text-muted-foreground" aria-label="能看图片" />}
                     </SelectItem>
                   ))}
                   {missing && (
