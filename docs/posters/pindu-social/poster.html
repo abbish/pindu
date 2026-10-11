@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>拼读 · 社交分享海报方案 2.0</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+    .poster { position: relative; width: 1080px; height: 1440px; overflow: hidden; color: #143a36; background: #f4f7f3 url("exports/20261011-preview-v2/background.png") center / cover; }
+    .brand { position: absolute; left: 66px; top: 66px; display: flex; align-items: center; gap: 22px; }
+    .brand img { display: block; width: 78px; height: 78px; border-radius: 15px; }
+    .brand-name { font-size: 44px; font-weight: 700; line-height: 1.15; letter-spacing: 2px; }
+    .brand-en { margin-top: 8px; font-size: 25px; font-weight: 500; letter-spacing: .6px; }
+    .category { position: absolute; right: 66px; top: 86px; font-size: 25px; color: #58706b; letter-spacing: 1px; }
+    h1 { position: absolute; left: 66px; top: 174px; margin: 0; font-size: 88px; font-weight: 700; letter-spacing: -2px; line-height: 1.18; }
+    h1 span { display: block; color: #087e76; }
+    .subtitle { position: absolute; left: 70px; top: 408px; margin: 0; font-size: 32px; font-weight: 500; letter-spacing: .5px; }
+    .screen { position: absolute; top: 476px; left: 66px; width: 948px; margin: 0; }
+    .screen::before { content: ""; position: absolute; z-index: 0; inset: -14px -14px -17px; border: 1px solid #b4d9ca; border-radius: 24px; background: #e1eee6; }
+    .screen img { position: relative; display: block; width: 948px; height: auto; border-radius: 10px; box-shadow: 0 18px 45px #143a3621; }
+    .features { position: absolute; top: 1136px; left: 52px; width: 976px; padding: 0 14px; display: grid; grid-template-columns: repeat(3, 1fr); background: #f4f7f3ed; }
+    .feature { padding-left: 20px; border-left: 3px solid #087e76; }
+    .feature:first-child { padding-left: 0; border-left: 0; }
+    .feature h2 { margin: 0; font-size: 32px; font-weight: 600; line-height: 1.2; }
+    .feature p { margin: 9px 0 0; font-size: 24px; line-height: 1.3; color: #58706b; }
+    .footer { position: absolute; bottom: 0; left: 0; width: 1080px; height: 220px; background: #143a36; color: #f4f7f3; }
+    .footer::before { content: ""; position: absolute; left: 0; top: 0; width: 1080px; height: 5px; background: #f4df63; }
+    .cta { position: absolute; left: 66px; top: 28px; margin: 0; font-size: 38px; font-weight: 600; letter-spacing: 1px; color: #f4df63; }
+    .url { position: absolute; left: 69px; top: 90px; font-family: Arial, sans-serif; font-size: 29px; letter-spacing: .2px; }
+    .platforms { position: absolute; left: 69px; top: 135px; margin: 0; font-family: Arial, sans-serif; font-size: 25px; letter-spacing: .2px; color: #c6f2e6; }
+    .condition { position: absolute; left: 69px; top: 175px; margin: 0; font-size: 22px; color: #c6f2e6; }
+    .qr { position: absolute; right: 66px; top: 21px; width: 185px; height: 185px; image-rendering: pixelated; }
+  </style>
+</head>
+<body>
+  <main class="poster" aria-label="拼读产品宣传海报">
+    <header class="brand">
+      <img src="../../../public/logo-maskable.png" alt="拼读原始标识">
+      <div><div class="brand-name">拼读</div><div class="brand-en">Pindu.app</div></div>
+    </header>
+    <div class="category">英语学习桌面应用</div>
+    <h1>把身边的英语素材，<span>变成每天的学习。</span></h1>
+    <p class="subtitle">从学习、生活、工作中遇到的内容开始。</p>
+    <figure class="screen"><img src="../../screenshots/home.png" alt="拼读真实首页截图，包含素材库、学习计划与统计"></figure>
+    <section class="features" aria-label="三个核心能力">
+      <div class="feature"><h2>用自己的素材</h2><p>文本 · 文档 · 视频</p></div>
+      <div class="feature"><h2>转成学练资源</h2><p>词汇 · 短文 · 片段</p></div>
+      <div class="feature"><h2>每天继续学习</h2><p>练习 · 计划 · 复习</p></div>
+    </section>
+    <footer class="footer">
+      <p class="cta">扫码了解与下载拼读</p>
+      <div class="url">github.com/abbish/pindu</div>
+      <p class="platforms">macOS · Windows · Linux</p>
+      <p class="condition">安装与服务配置说明见仓库</p>
+      <img class="qr" src="exports/20261011-preview-v2/qr.png" alt="访问 https://github.com/abbish/pindu 的二维码">
+    </footer>
+  </main>
+</body>
+</html>

@@ -1,6 +1,12 @@
 # 产品宣传海报管理
 
-每张海报保存当前设计说明、文案、素材来源与制作方式。与视频共用的规约见[宣传素材入口](../promo/README.md)，静态排版细则见[海报设计标准](../../.claude/skills/promo-poster-design/references/poster-design-standard.md)。目前没有已采用的具体海报。
+每张海报保存当前设计说明、文案、素材来源与制作方式。与视频共用的规约见[宣传素材入口](../promo/README.md)，静态排版细则见[海报设计标准](../../.claude/skills/promo-poster-design/references/poster-design-standard.md)。
+
+## 当前海报
+
+| 海报 | 版本 | 尺寸 | 状态 | 设计说明 |
+| --- | --- | --- | --- | --- |
+| 拼读社交分享海报 | 2.0 | 1080 × 1440，3:4 | 已生成设计预览 | [文案与构图](pindu-social/brief.md) |
 
 ## 保存方式
 

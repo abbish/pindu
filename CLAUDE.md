@@ -5,9 +5,9 @@
 
 ## 1. 项目速览
 
-拼读（Pindu.app）是 RedLark 的产品之一：Tauri 2 + React 19 的跨平台桌面单词学习应用，bundle id `com.redlark.pindu-app`。
+拼读（Pindu.app）是 RedLark 的产品之一：Tauri 2 + React 19 的跨平台桌面英语学习应用，bundle id `com.redlark.pindu-app`。
 **命名**：面向用户的产品名中文「拼读」、英文「Pindu.app」（窗口标题、侧边栏、安装包、README）；RedLark 是出品方（发布者、版权、仓库）。已用于标识、路径与包名的 `redlark`（`redlark-agent`、`redlark_app_lib`、`REDLARK_*` 环境变量、`com.redlark.pindu-app`）保留不改；「自然拼读」只指教学方法，不作产品名。
-核心价值：**AI 自然拼读分析** + **AI 生成学习日程** + **三步练习法**（完整信息 → 隐藏英文 → 仅中文/音节/拼读+发音）+ 本地 SQLite，数据不出本机。
+核心价值：**把自己身边的英语素材，变成每天能学、能练、能复习的学习资源。** 产品定位与宣传主张以 `docs/product/value-proposition.md` 为共同依据；现有能力与使用条件以 README 和实现为准。AI 是部分素材整理、补充与讲解的实现手段；日程与复习排期由规则执行。资料本地保存，AI / 语音请求会向用户配置的服务商发送相关内容。
 
 | 层 | 技术 |
 |---|---|
@@ -287,7 +287,10 @@ export const fooService = new FooService();
 - 前端解析与展示只经 `src/utils/datetime.ts`（ESLint 强制）；后端取时只经 `src-tauri/src/time.rs`（`scripts/check-time.py` 棘轮，基线 `.time-baseline.json`），写入时刻显式绑定（INSERT 列出全部时刻列，不依赖旧格式的列 DEFAULT）；写入路径的测试末尾调用 `time::assert_instants_canonical`。
 
 ### 7.6 面向用户的内容
-用户是学英语的普通人，不是计算机从业者。界面文案、提示与报错、更新说明（`docs/releases/`，同时显示在应用「更新内容」里）、用户文档（README 的功能 / 安装 / 隐私部分、INSTALL.md）只写用户能感知的变化和要做的事，不写路径、数据库、签名、组件与依赖名、内部流程、构建与测试过程；唯一例外是用户必须亲自操作的步骤。规约 owner：`.claude/skills/sdd-work/references/user-facing-writing.md`（界面细则另见 `ui-interaction-patterns.md` §6–7）。
+
+写文档前明确主要读者与目标任务；产品用户、开发维护人员、产品与宣传制作人员、编码助手的内容按各自用途分开，正文、导航、相关链接与附录均不得混用。文档受众与入口的具体边界见下方规约。
+
+用户是学英语的普通人，不是计算机从业者。界面文案、提示与报错、更新说明（`docs/releases/`，同时显示在应用「更新内容」里）、用户文档（README 全文、INSTALL.md、SECURITY.md）只写用户能感知的变化和要做的事。README 不设开发章节或内部资料索引；实现与开发管理内容及其入口归开发者或内部产品文档。操作所需的路径、服务配置和准确隐私披露按规约中的例外处理。规约 owner：`.claude/skills/sdd-work/references/user-facing-writing.md`（界面细则另见 `ui-interaction-patterns.md` §6–7）。
 
 ## 8. 已知债务 / 注意事项
 

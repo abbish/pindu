@@ -2,6 +2,23 @@
 
 欢迎提交 issue 和 pull request，中英文均可（Issues and PRs in English are welcome）。
 
+本文面向开发者与维护者，说明如何开发、验证、维护与发布拼读。核对用户安装和使用流程时，参阅 [INSTALL.md](./INSTALL.md)。
+
+## 开发与维护资料
+
+- 架构、数据表、AI 任务与开发规范：[工程说明](./CLAUDE.md)
+- AI 助手实现与设计：[设计文档](./docs/agent-harness/DESIGN.md)
+- 发布与维护流程：[发布说明](./docs/RELEASING.md)
+
+## 技术栈
+
+| 部分 | 技术 |
+|---|---|
+| 界面 | React 19、shadcn/ui、Tailwind CSS v4 |
+| 桌面框架 | Tauri 2 |
+| 后端 | Rust、SQLite |
+| AI | 内置 agent 进程，基于 [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)，由 Bun 编译为单个可执行文件 |
+
 ## 开始之前
 
 | 类型 | 方式 |
@@ -182,6 +199,7 @@ docs/           设计文档、发布流程、日志与命名规范、README 截
 
 ### 安全
 
+- 安全修复仅提供给 `main` 分支的最新代码。
 - API Key 不得出现在返回前端的列表类型或日志中。
 - 不得提交 `.env`、数据库文件或任何密钥。
 
