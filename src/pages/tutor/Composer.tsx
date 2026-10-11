@@ -48,6 +48,14 @@ export const Composer: React.FC<{
     el.setSelectionRange(el.value.length, el.value.length);
   }, [focusKey]);
 
+  // 输入框随内容长高（最多 max-h-60，超过后在框内滚动）
+  useEffect(() => {
+    const el = textarea.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
+
   useEffect(() => {
     if (!pickerRef) return;
     pickerRef.current = () => picker.current?.click();
@@ -107,7 +115,7 @@ export const Composer: React.FC<{
           e.preventDefault();
           add(Array.from(e.dataTransfer.files));
         }}
-        className="mx-auto max-w-3xl rounded-xl border bg-background p-2 shadow-sm focus-within:ring-1 focus-within:ring-ring"
+        className="mx-auto max-w-3xl rounded-xl border bg-background p-1.5 shadow-sm focus-within:ring-1 focus-within:ring-ring"
       >
         {queue.length > 0 && (
           <ol className="mb-2 flex flex-col gap-1 border-b px-1 pb-2" aria-label="排队的消息">
@@ -140,14 +148,14 @@ export const Composer: React.FC<{
           </ol>
         )}
         {attachments.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 px-1 pt-1 pb-2">
+          <div className="flex flex-wrap items-center gap-1.5 px-1 pt-1 pb-1.5">
             {attachments.map((a, i) => (
               <span key={a.preview ?? `${a.file.name}-${i}`} className="group relative inline-block">
                 {a.preview ? (
-                  <img src={a.preview} alt={a.file.name} title={a.file.name} className="size-14 rounded-md border object-cover" />
+                  <img src={a.preview} alt={a.file.name} title={a.file.name} className="size-10 rounded-md border object-cover" />
                 ) : (
-                  <span className="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-md border bg-muted/40 px-2 text-xs" title={a.file.name}>
-                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="inline-flex h-7 max-w-56 items-center gap-1 rounded-md border bg-muted/40 px-2 text-xs" title={a.file.name}>
+                    <FileText className="size-3.5 shrink-0 text-muted-foreground" />
                     <span className="truncate">{a.file.name}</span>
                   </span>
                 )}
@@ -164,46 +172,46 @@ export const Composer: React.FC<{
             ))}
           </div>
         )}
-        <Textarea
-          ref={textarea}
-          value={draft}
-          onChange={(e) => onDraft(e.target.value)}
-          onPaste={(e) => {
-            // 粘贴截图：作为图片附件（文字照常粘贴）
-            const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/') || isImage(f));
-            if (images.length > 0) {
-              e.preventDefault();
-              add(images);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              if (canSend) onSend();
-            }
-          }}
-          placeholder={running ? '补充一句（排队，AI 老师做完这一步就会看到）' : '问问题，或者让 AI 老师帮你做点什么…（可以直接粘贴截图）'}
-          rows={2}
-          className="max-h-60 min-h-0 resize-none border-0 shadow-none focus-visible:ring-0"
-        />
-        <div className="flex items-center gap-1 pt-1">
+        {/* 一行：添加文件 · 输入框（随内容长高） · 发送 / 停止 */}
+        <div className="flex items-end gap-1">
           <Button
             size="icon"
             variant="ghost"
-            className="size-8"
+            className="size-8 shrink-0"
             onClick={() => picker.current?.click()}
             aria-label="添加文件"
             title="添加文件（PDF、Word、图片、文本）"
           >
             <Paperclip />
           </Button>
-          <div className="flex-1" />
+          <Textarea
+            ref={textarea}
+            value={draft}
+            onChange={(e) => onDraft(e.target.value)}
+            onPaste={(e) => {
+              // 粘贴截图：作为图片附件（文字照常粘贴）
+              const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/') || isImage(f));
+              if (images.length > 0) {
+                e.preventDefault();
+                add(images);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                if (canSend) onSend();
+              }
+            }}
+            placeholder={running ? '补充一句（排队，AI 老师做完这一步就会看到）' : '问问题，或者让 AI 老师帮你做点什么…（可以直接粘贴截图）'}
+            rows={1}
+            className="max-h-60 min-h-8 flex-1 resize-none border-0 px-1 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
+          />
           {running && !canSend ? (
-            <Button size="icon" className="size-8" onClick={onStop} aria-label="停止" title="停止">
+            <Button size="icon" className="size-8 shrink-0" onClick={onStop} aria-label="停止" title="停止">
               <Square className="size-3.5 fill-current" />
             </Button>
           ) : (
-            <Button size="icon" className="size-8" onClick={onSend} disabled={!canSend} aria-label="发送" title="发送">
+            <Button size="icon" className="size-8 shrink-0" onClick={onSend} disabled={!canSend} aria-label="发送" title="发送">
               <ArrowUp />
             </Button>
           )}
