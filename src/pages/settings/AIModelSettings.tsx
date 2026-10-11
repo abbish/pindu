@@ -1,3 +1,4 @@
+import { ModelCapabilities, capabilitiesOf } from '@/components/ModelCapabilities';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Loader2, MoreHorizontal, Plus, Search, XCircle } from 'lucide-react';
 import {
@@ -100,7 +101,7 @@ export const AIModelSettings: React.FC = () => {
   const [formError, setFormError] = useState<{ title: string; message: string } | null>(null);
 
   const loadData = async (preferKey?: string) => {
-    const [providersResult, modelsResult] = await Promise.all([aiModelService.getAllAIProviders(), aiModelService.getAllAIModels()]);
+    const [providersResult, modelsResult] = await Promise.all([aiModelService.getAllAIProviders(), aiModelService.getAllAIModels({ withCatalog: true })]);
     setLoading(false);
     if (!providersResult.success || !modelsResult.success) {
       setLoadError(!providersResult.success ? providersResult.error : !modelsResult.success ? modelsResult.error : null);
@@ -569,6 +570,7 @@ export const AIModelSettings: React.FC = () => {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 text-sm font-medium">
                           {m.displayName}
+                          <ModelCapabilities {...capabilitiesOf(m)} />
                           {m.isDefault && <Badge className="h-5">默认</Badge>}
                           {!m.isActive && (
                             <Badge variant="secondary" className="h-5">

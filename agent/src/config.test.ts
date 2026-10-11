@@ -62,3 +62,14 @@ test('映射的内置 provider 不存在于目录时按自定义处理', () => {
   assert.equal(json.providers['gone-provider'].baseUrl, 'https://api.moonshot.cn/v1');
   assert.equal(json.providers['gone-provider'].api, 'openai-completions');
 });
+
+test('能否看图：设置了才写 input，未设置交给 pi 目录 / 默认', () => {
+  const custom = (supportsImages: boolean | null) =>
+    toPiModelsJson({
+      provider: provider({ key: 'redlark-p7', piProvider: null, name: 'My Proxy', baseUrl: 'https://proxy.example/v1',
+        apiKeyEnv: 'REDLARK_KEY_7', model: model({ modelId: 'vl-model', name: 'VL', supportsImages }) }),
+    }, catalog).providers['redlark-p7'].models?.[0];
+  assert.deepEqual(custom(true)?.input, ['text', 'image']);
+  assert.deepEqual(custom(false)?.input, ['text']);
+  assert.equal(custom(null)?.input, undefined);
+});

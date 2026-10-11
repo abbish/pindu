@@ -23,6 +23,8 @@ export interface GenerationForm {
   contextWindow: string;
   /** '' = 未设置，'true' / 'false' */
   reasoning: string;
+  /** 能否看图：'' = 未设置，'true' / 'false' */
+  supportsImages: string;
 }
 
 export const emptyGenerationForm = (): GenerationForm => ({
@@ -32,6 +34,7 @@ export const emptyGenerationForm = (): GenerationForm => ({
   extraParams: '',
   contextWindow: '',
   reasoning: '',
+  supportsImages: '',
 });
 
 export function generationFormFromModel(model: AIModelConfig): GenerationForm {
@@ -43,6 +46,7 @@ export function generationFormFromModel(model: AIModelConfig): GenerationForm {
     extraParams: model.extraParams ? JSON.stringify(model.extraParams, null, 2) : '',
     contextWindow: str(model.contextWindow),
     reasoning: model.reasoning == null ? '' : String(model.reasoning),
+    supportsImages: model.supportsImages == null ? '' : String(model.supportsImages),
   };
 }
 
@@ -89,6 +93,7 @@ export function parseGenerationForm(form: GenerationForm): ParseResult {
       extraParams,
       contextWindow,
       reasoning: form.reasoning === '' ? null : form.reasoning === 'true',
+      supportsImages: form.supportsImages === '' ? null : form.supportsImages === 'true',
     },
   };
 }

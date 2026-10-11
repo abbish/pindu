@@ -9,8 +9,8 @@ use crate::logger::Logger;
 use crate::repositories::ai_model_repository::AIModelRepository;
 use crate::types::ai_model::{
     AIModelConfig, AIModelConfigSafe, AIModelQuery, AIModelUpdate, AIProviderSafe,
-    AIProviderUpdate, ModelGenerationSettings, NewAIModel, NewAIProvider, RemoteModelInfo,
-    TestAIModelResult,
+    AIProviderUpdate, CatalogCapabilities, ModelGenerationSettings, NewAIModel, NewAIProvider,
+    RemoteModelInfo, TestAIModelResult,
 };
 use crate::types::common::Id;
 use sqlx::SqlitePool;
@@ -292,6 +292,7 @@ impl AIModelService {
                     provider_id: Some(provider_id),
                     is_active: None,
                     is_default: None,
+                    with_catalog: None,
                 }),
                 true,
             )
@@ -335,10 +336,19 @@ impl AIModelService {
         if provider.has_api_key() {
             request = request.bearer_auth(&provider.api_key);
         }
-        let response = request
-            .send()
-            .await
-            .map_err(|e| AppError::ExternalServiceError(format!("请求 {} 失败: {}", url, e)))?;
+        let response = request.send().await.map_err(|e| {
+            let hint = if e.is_timeout() {
+                "连接超时，请检查网络后重试"
+            } else if e.is_connect() {
+                "连不上这个地址，请检查网络或 API 地址"
+            } else {
+                "请稍后重试"
+            };
+            AppError::ExternalServiceError(format!(
+                "读取模型列表失败：{}。（{}: {}）",
+                hint, url, e
+            ))
+        })?;
         let status = response.status();
         let body = response
             .text()
@@ -425,6 +435,31 @@ fn validate_provider_api(api: Option<&str>, pi_provider: Option<&str>) -> AppRes
     Ok(())
 }
 
+/// 给模型列表带上 pi 内置目录里的能力（按提供商映射的 pi provider + model_id 查找；不在目录中的不填）
+pub fn attach_catalog(models: &mut [AIModelConfigSafe], catalog: &[CatalogProvider]) {
+    for m in models.iter_mut() {
+        let Some(pi) = m
+            .provider
+            .pi_provider
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        m.catalog = provider_models(catalog, pi)
+            .iter()
+            .find(|c| c.id == m.model_id)
+            .map(|c| CatalogCapabilities {
+                supports_images: c.input.iter().any(|i| i == "image"),
+                reasoning: c.reasoning,
+                context_window: c.context_window,
+                cost_input: c.cost_input,
+                cost_output: c.cost_output,
+            });
+    }
+}
+
 /// 合并 pi 目录与远端列表：目录模型带完整能力信息；远端独有的模型追加（`in_catalog = false`），按 id 排序
 fn merge_catalog_models(
     catalog: &[CatalogModel],
@@ -443,6 +478,7 @@ fn merge_catalog_models(
             reasoning: Some(m.reasoning),
             cost_input: Some(m.cost_input),
             cost_output: Some(m.cost_output),
+            supports_images: Some(m.input.iter().any(|i| i == "image")),
         })
         .collect();
     let known: HashSet<String> = merged.iter().map(|m| m.id.clone()).collect();
@@ -484,6 +520,11 @@ fn parse_remote_models(body: &str, existing: &HashSet<String>) -> AppResult<Vec<
                     .map(str::to_string),
                 context_length: item.get("context_length").and_then(|c| c.as_i64()),
                 already_added: existing.contains(id),
+                // OpenRouter 等在 architecture.input_modalities 里给出输入类型
+                supports_images: item
+                    .pointer("/architecture/input_modalities")
+                    .and_then(|v| v.as_array())
+                    .map(|m| m.iter().any(|x| x.as_str() == Some("image"))),
                 ..Default::default()
             })
         })
@@ -684,7 +725,8 @@ mod tests {
     fn parses_openai_compatible_model_list() {
         let body = r#"{"data":[
             {"id":"qwen/qwen3.8-flash","name":"Qwen 3.8 Flash","context_length":1000000},
-            {"id":"google/gemini-3.8-flash","name":"Gemini 3.8 Flash","context_length":1048576},
+            {"id":"google/gemini-3.8-flash","name":"Gemini 3.8 Flash","context_length":1048576,
+             "architecture":{"input_modalities":["text","image"]}},
             {"id":"google/gemini-3.8-flash"},
             {"id":"  "},
             {"object":"model"}
@@ -694,6 +736,8 @@ mod tests {
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, vec!["google/gemini-3.8-flash", "qwen/qwen3.8-flash"]);
         assert_eq!(models[0].context_length, Some(1048576));
+        assert_eq!(models[0].supports_images, Some(true));
+        assert_eq!(models[1].supports_images, None);
         assert!(!models[0].already_added);
         assert!(models[1].already_added);
     }
@@ -930,6 +974,7 @@ mod tests {
                 provider_id: Some(provider_id),
                 is_active: None,
                 is_default: None,
+                with_catalog: None,
             })
         };
 

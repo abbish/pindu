@@ -20,7 +20,7 @@ const MODEL_SELECT: &str = r#"
     SELECT
         m.id, m.name, m.display_name, m.model_id, m.description,
         m.max_tokens, m.temperature, m.thinking_level, m.extra_params, m.context_window, m.reasoning,
-        m.is_active, m.is_default,
+        m.supports_images, m.is_active, m.is_default,
         m.created_at, m.updated_at,
         p.id as provider_id, p.name as provider_name, p.display_name as provider_display_name,
         p.base_url, p.api_key, p.description as provider_description,
@@ -63,6 +63,7 @@ fn model_from_row(row: &SqliteRow) -> AIModelConfig {
             .and_then(|s| serde_json::from_str(&s).ok()),
         context_window: row.get("context_window"),
         reasoning: row.get("reasoning"),
+        supports_images: row.get("supports_images"),
         is_active: row.get("is_active"),
         is_default: row.get("is_default"),
         created_at: row.get("created_at"),
@@ -312,8 +313,8 @@ impl AIModelRepository {
             INSERT INTO ai_models (
                 provider_id, name, display_name, model_id, description,
                 max_tokens, temperature, thinking_level, extra_params, context_window, reasoning,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                supports_images, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         "#,
         )
         .bind(model.provider_id)
@@ -333,6 +334,7 @@ impl AIModelRepository {
         )
         .bind(model.generation.context_window)
         .bind(model.generation.reasoning)
+        .bind(model.generation.supports_images)
         .execute(self.pool.as_ref())
         .await?;
         Ok(result.last_insert_rowid())
@@ -363,6 +365,8 @@ impl AIModelRepository {
             set.push("context_window = ")
                 .push_bind_unseparated(g.context_window);
             set.push("reasoning = ").push_bind_unseparated(g.reasoning);
+            set.push("supports_images = ")
+                .push_bind_unseparated(g.supports_images);
         }
         if let Some(v) = update.is_active {
             set.push("is_active = ").push_bind_unseparated(v);

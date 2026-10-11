@@ -29,6 +29,8 @@ export interface RedLarkModel {
   extraParams: Record<string, unknown> | null;
   contextWindow: number | null;
   reasoning: boolean | null;
+  /** 能否看图；null = 未设置（内置目录模型沿用目录，自定义模型 pi 默认只收文字） */
+  supportsImages?: boolean | null;
 }
 
 /** pi models.json 中单个模型的（子集）结构 */
@@ -38,6 +40,7 @@ export interface PiModelEntry {
   maxTokens?: number;
   contextWindow?: number;
   reasoning?: boolean;
+  input?: Array<'text' | 'image'>;
   samplingParams?: Record<string, unknown>;
 }
 
@@ -72,6 +75,7 @@ function modelFields(model: RedLarkModel): Omit<PiModelEntry, 'id'> {
   if (model.maxTokens !== null && model.maxTokens > 0) fields.maxTokens = model.maxTokens;
   if (model.contextWindow !== null && model.contextWindow > 0) fields.contextWindow = model.contextWindow;
   if (model.reasoning !== null) fields.reasoning = model.reasoning;
+  if (model.supportsImages != null) fields.input = model.supportsImages ? ['text', 'image'] : ['text'];
   const sampling = samplingParams(model);
   if (sampling) fields.samplingParams = sampling;
   return fields;

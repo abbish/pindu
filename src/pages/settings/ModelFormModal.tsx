@@ -250,6 +250,19 @@ export const ModelFormModal: React.FC<ModelFormModalProps> = ({ isOpen, model, p
                   </div>
                 </>
               )}
+              <div className="space-y-1.5">
+                <Label htmlFor="mf-images">能看图片</Label>
+                <Select value={generation.supportsImages || DEFAULT} onValueChange={(v) => set({ supportsImages: v === DEFAULT ? '' : v })}>
+                  <SelectTrigger id="mf-images" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={DEFAULT}>{catalogModel ? `未设置（${catalogModel.input.includes('image') ? '能' : '不能'}）` : '未设置（不能）'}</SelectItem>
+                    <SelectItem value="true">能</SelectItem>
+                    <SelectItem value="false">不能</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </section>
 

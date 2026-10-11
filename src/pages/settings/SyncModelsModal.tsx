@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Search } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { ModelCapabilities } from '@/components/ModelCapabilities';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -85,7 +85,10 @@ export const SyncModelsModal: React.FC<SyncModelsModalProps> = ({ provider, onCl
         modelId: model.id,
         description: model.contextLength ? `上下文 ${model.contextLength.toLocaleString()} tokens` : undefined,
         // 目录中的模型由 pi 提供上限与能力；目录外的模型给一个保守的输出上限
-        generation: model.inCatalog ? {} : { maxTokens: DEFAULT_MAX_TOKENS, contextWindow: model.contextLength ?? null },
+        // 能否看图：目录模型交给 pi 目录；提供商列表给出时记下
+        generation: model.inCatalog
+          ? {}
+          : { maxTokens: DEFAULT_MAX_TOKENS, contextWindow: model.contextLength ?? null, supportsImages: model.supportsImages ?? null },
       });
       if (result.success) {
         added += 1;
@@ -147,15 +150,15 @@ export const SyncModelsModal: React.FC<SyncModelsModalProps> = ({ provider, onCl
                         <span className="font-mono select-text">{model.id}</span>
                         {model.name && model.name !== model.id && <span className="ml-2 text-muted-foreground">{model.name}</span>}
                       </span>
-                      <span className="flex shrink-0 flex-wrap justify-end gap-1">
-                        {model.inCatalog && <Badge variant="secondary">内置</Badge>}
-                        {model.thinkingLevels && model.thinkingLevels.length > 0 && <Badge variant="outline">思考 {model.thinkingLevels.join('/')}</Badge>}
-                        {model.contextLength && <Badge variant="outline">{Math.round(model.contextLength / 1000)}K</Badge>}
-                        {model.costInput != null && model.costOutput != null && (
-                          <Badge variant="outline">${model.costInput}/${model.costOutput}</Badge>
-                        )}
-                        {model.alreadyAdded && <Badge>已添加</Badge>}
-                      </span>
+                      <ModelCapabilities
+                        images={model.supportsImages}
+                        reasoning={model.reasoning ?? (model.thinkingLevels?.length ?? 0) > 0}
+                        thinkingLevels={model.thinkingLevels}
+                        contextWindow={model.contextLength}
+                        costInput={model.costInput}
+                        costOutput={model.costOutput}
+                      />
+                      {model.alreadyAdded && <span className="shrink-0 text-xs text-muted-foreground">已添加</span>}
                     </label>
                   </li>
                 ))}

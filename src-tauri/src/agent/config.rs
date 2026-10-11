@@ -160,6 +160,7 @@ pub fn agent_config_json(model: &AIModelConfig) -> Value {
                 "extraParams": model.extra_params.clone().filter(Value::is_object),
                 "contextWindow": model.context_window.filter(|c| *c > 0),
                 "reasoning": model.reasoning,
+                "supportsImages": model.supports_images,
             }
         }
     })

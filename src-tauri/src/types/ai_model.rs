@@ -54,6 +54,9 @@ pub struct AIModelConfig {
     /// 是否推理模型（仅自定义模型需要）
     #[serde(default)]
     pub reasoning: Option<bool>,
+    /// 能否看图（多模态输入）；None = 未设置（内置目录模型按目录，自定义模型按只收文字）
+    #[serde(default)]
+    pub supports_images: Option<bool>,
     pub is_active: bool,
     pub is_default: bool,
     pub created_at: Timestamp,
@@ -68,6 +71,9 @@ pub struct AIModelQuery {
     pub provider_id: Option<Id>,
     pub is_active: Option<bool>,
     pub is_default: Option<bool>,
+    /// 同时返回 pi 内置目录里的模型能力（设置页用；首次会启动一次 AI 助手读取目录）
+    #[serde(default)]
+    pub with_catalog: Option<bool>,
 }
 
 /// AI模型测试结果
@@ -168,11 +174,28 @@ pub struct AIModelConfigSafe {
     pub context_window: Option<i64>,
     /// 是否推理模型（仅自定义模型需要）
     pub reasoning: Option<bool>,
+    /// 能否看图（用户设置；None = 未设置）
+    pub supports_images: Option<bool>,
     pub is_active: bool,
     pub is_default: bool,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     pub provider: AIProviderSafe,
+    /// pi 内置目录里这个模型的能力（查询时 `with_catalog` 才填；不在目录中为 None）
+    #[serde(default)]
+    pub catalog: Option<CatalogCapabilities>,
+}
+
+/// pi 内置目录给出的模型能力（设置页显示能力图标；用户设置优先）
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogCapabilities {
+    pub supports_images: bool,
+    pub reasoning: bool,
+    pub context_window: i64,
+    /// 美元 / 百万 token
+    pub cost_input: f64,
+    pub cost_output: f64,
 }
 
 impl From<AIModelConfig> for AIModelConfigSafe {
@@ -189,11 +212,13 @@ impl From<AIModelConfig> for AIModelConfigSafe {
             extra_params: config.extra_params,
             context_window: config.context_window,
             reasoning: config.reasoning,
+            supports_images: config.supports_images,
             is_active: config.is_active,
             is_default: config.is_default,
             created_at: config.created_at,
             updated_at: config.updated_at,
             provider: AIProviderSafe::from(config.provider),
+            catalog: None,
         }
     }
 }
@@ -226,6 +251,9 @@ pub struct RemoteModelInfo {
     pub cost_input: Option<f64>,
     #[serde(default)]
     pub cost_output: Option<f64>,
+    /// 能否看图：pi 目录或提供商的模型列表给出；都没有为 None
+    #[serde(default)]
+    pub supports_images: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -265,8 +293,8 @@ pub struct NewAIModel {
     pub generation: ModelGenerationSettings,
 }
 
-/// 模型的生成参数（对应 pi 的 maxTokens / samplingParams / thinking / contextWindow / reasoning）。
-/// 保存时六项整体替换；None 表示不设置（请求中不发送，使用 pi 目录或服务端默认）。
+/// 模型的生成参数（对应 pi 的 maxTokens / samplingParams / thinking / contextWindow / reasoning / input）。
+/// 保存时整体替换；None 表示不设置（请求中不发送，使用 pi 目录或服务端默认）。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelGenerationSettings {
@@ -278,6 +306,9 @@ pub struct ModelGenerationSettings {
     pub extra_params: Option<serde_json::Value>,
     pub context_window: Option<i64>,
     pub reasoning: Option<bool>,
+    /// 能否看图（多模态输入）
+    #[serde(default)]
+    pub supports_images: Option<bool>,
 }
 
 /// AI 模型的部分更新；`None` 表示不修改该列

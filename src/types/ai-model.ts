@@ -38,11 +38,25 @@ export interface AIModelConfig {
   contextWindow?: number | null;
   /** 是否推理模型（仅自定义模型需要） */
   reasoning?: boolean | null;
+  /** 能否看图（用户设置；空 = 未设置，按内置目录或只收文字） */
+  supportsImages?: boolean | null;
   isActive: boolean;
   isDefault: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   provider: AIProvider;
+  /** pi 内置目录里这个模型的能力（查询时 withCatalog 才有） */
+  catalog?: CatalogCapabilities | null;
+}
+
+/// pi 内置目录给出的模型能力（对应 Rust `CatalogCapabilities`）
+export interface CatalogCapabilities {
+  supportsImages: boolean;
+  reasoning: boolean;
+  contextWindow: number;
+  /** 美元 / 百万 token */
+  costInput: number;
+  costOutput: number;
 }
 
 /// 提供商 `/models` 接口返回的远端模型（对应 Rust `RemoteModelInfo`）
@@ -63,6 +77,8 @@ export interface RemoteModelInfo {
   /** 价格：美元 / 百万 token */
   costInput?: number | null;
   costOutput?: number | null;
+  /** 能否看图（pi 目录或提供商列表给出） */
+  supportsImages?: boolean | null;
 }
 
 /// 模型生成参数（对应 Rust `ModelGenerationSettings`；保存时整体替换，空 = 不发送 / 使用默认）
@@ -73,6 +89,8 @@ export interface ModelGenerationSettings {
   extraParams?: Record<string, unknown> | null;
   contextWindow?: number | null;
   reasoning?: boolean | null;
+  /** 能否看图 */
+  supportsImages?: boolean | null;
 }
 
 /// pi 内置提供商摘要（对应 Rust `CatalogProviderSummary`）
@@ -155,6 +173,8 @@ export interface AIModelQuery {
   providerId?: Id;
   isActive?: boolean;
   isDefault?: boolean;
+  /** 同时返回 pi 内置目录里的模型能力（设置页显示能力图标用） */
+  withCatalog?: boolean;
 }
 
 /// 单词的自然拼读分析（对应 Rust `types::word_analysis::PhonicsWord`，无 rename_all，字段为 snake_case）

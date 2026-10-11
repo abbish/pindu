@@ -6,18 +6,18 @@ import type { AIModelConfig } from '../types';
 test('空表单 = 全部不设置', () => {
   assert.deepEqual(parseGenerationForm(emptyGenerationForm()), {
     ok: true,
-    generation: { maxTokens: null, temperature: null, thinkingLevel: null, extraParams: null, contextWindow: null, reasoning: null },
+    generation: { maxTokens: null, temperature: null, thinkingLevel: null, extraParams: null, contextWindow: null, reasoning: null, supportsImages: null },
   });
 });
 
 test('填写的字段按类型转换', () => {
   const result = parseGenerationForm({
     maxTokens: '32000', temperature: '1', thinkingLevel: 'low',
-    extraParams: '{"top_p": 0.95}', contextWindow: ' 128000 ', reasoning: 'false',
+    extraParams: '{"top_p": 0.95}', contextWindow: ' 128000 ', reasoning: 'false', supportsImages: 'true',
   });
   assert.deepEqual(result, {
     ok: true,
-    generation: { maxTokens: 32000, temperature: 1, thinkingLevel: 'low', extraParams: { top_p: 0.95 }, contextWindow: 128000, reasoning: false },
+    generation: { maxTokens: 32000, temperature: 1, thinkingLevel: 'low', extraParams: { top_p: 0.95 }, contextWindow: 128000, reasoning: false, supportsImages: true },
   });
 });
 

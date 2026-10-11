@@ -66,8 +66,27 @@ pub async fn get_all_ai_models(
         Arc::new(logger.inner().clone()),
     );
 
+    let with_catalog = query.as_ref().and_then(|q| q.with_catalog).unwrap_or(false);
     match service.get_all_models(query).await {
-        Ok(v) => {
+        Ok(mut v) => {
+            // 设置页要显示能力图标：带上 pi 目录里的能力；读取失败不阻断（只是没有图标）
+            if with_catalog {
+                match agent_paths(&app) {
+                    Ok(paths) => match catalog::load_catalog(&paths).await {
+                        Ok(c) => crate::services::ai_model::attach_catalog(&mut v, &c),
+                        Err(e) => logger.warn(
+                            "AI_MODELS",
+                            "读取模型目录失败，不显示能力图标",
+                            Some(&e.to_string()),
+                        ),
+                    },
+                    Err(e) => logger.warn(
+                        "AI_MODELS",
+                        "找不到 AI 助手，不显示能力图标",
+                        Some(&e.to_string()),
+                    ),
+                }
+            }
             logger.api_response(
                 "get_all_ai_models",
                 true,
