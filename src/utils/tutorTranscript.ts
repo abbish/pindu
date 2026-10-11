@@ -263,6 +263,8 @@ export type ViewTurn =
       suggestions: string[];
       /** 用时（秒）：学习者发出消息到最后一条回答；还没有时间时为空 */
       seconds?: number;
+      /** 这一轮从什么时候开始（学习者发出消息的时刻，ms）：进行中显示已用时间；还没确认的消息为空 */
+      startedAt?: number;
       error?: string;
       stopped?: boolean;
       running: boolean;
@@ -358,7 +360,7 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
   let askedAt: number | undefined;
   const agentTurn = (key: string) => {
     if (!agent) {
-      agent = { role: 'agent', key, items: [], steps: [], suggestions: [], running: false };
+      agent = { role: 'agent', key, items: [], steps: [], suggestions: [], running: false, startedAt: askedAt };
       turns.push(agent);
     }
     return agent;

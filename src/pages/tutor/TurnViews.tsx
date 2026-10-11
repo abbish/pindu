@@ -101,12 +101,6 @@ export const AgentTurnView: React.FC<{
       {/* pt-1：第一行文字（约 20px 高）与 28px 的头像居中对齐 */}
       <div className="flex min-w-0 flex-1 flex-col gap-3 pt-1">
         <TurnItems turn={turn} />
-        {thinking(turn) && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            {notice ?? '正在思考…'}
-          </div>
-        )}
 
         {ask && <AskCard key={ask.id} ask={ask} total={askCount} onAnswer={onAnswer} onExpire={onExpireAsk ?? (() => {})} />}
 
@@ -117,6 +111,9 @@ export const AgentTurnView: React.FC<{
             ))}
           </div>
         )}
+
+        {/* 最下面：还在做（等学习者回答时由提问卡片接手） */}
+        {turn.running && !ask && <WorkingIndicator label={notice ?? workingLabel(turn)} />}
 
         {turn.error !== undefined && <TurnError raw={turn.error} />}
         {turn.stopped && <div className="text-xs text-muted-foreground">已停止</div>}
@@ -143,15 +140,18 @@ const Markdown = React.memo<{ text: string }>(({ text }) => <ReactMarkdown remar
 const StreamingMarkdown: React.FC<{ text: string }> = ({ text }) => <Markdown text={useSmoothText(text, true)} />;
 
 /**
- * 一轮的内容。运行中按顺序全部显示；结束后，最后一段回答之前的过程（工具调用与中途说的话）
- * 收成一行「处理了 N 步 · 用时 X 秒」，点开再看，只把最后的回答留在外面。
+ * 一轮的内容：最上面一行标题，下面是工作过程（工具调用与中途说的话），最后的回答在外面。
+ * - 进行中：「处理中 · 已用 X」，过程默认展开、按顺序往下长；
+ * - 结束后：「处理了 N 步 · 用时 X」，过程默认收起，只留最后的回答。没调用工具的一轮不显示标题。
+ * 学习者点标题展开 / 收起后按他的来。
  */
 const TurnItems: React.FC<{ turn: Extract<ViewTurn, { role: 'agent' }> }> = ({ turn }) => {
-  const [open, setOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const open = userOpen ?? turn.running;
   const lastSteps = turn.items.map((i) => i.kind).lastIndexOf('steps');
-  const collapsible = !turn.running && lastSteps >= 0;
-  const process = collapsible ? turn.items.slice(0, lastSteps + 1) : [];
-  const shown = collapsible ? turn.items.slice(lastSteps + 1) : turn.items;
+  const hasProcess = lastSteps >= 0;
+  const process = hasProcess ? turn.items.slice(0, lastSteps + 1) : [];
+  const shown = hasProcess ? turn.items.slice(lastSteps + 1) : turn.items;
   const failed = process.some((i) => i.kind === 'steps' && i.steps.some((s) => s.status === 'error'));
   const render = (item: ViewItem, last: boolean) =>
     item.kind === 'text' ? (
@@ -161,29 +161,70 @@ const TurnItems: React.FC<{ turn: Extract<ViewTurn, { role: 'agent' }> }> = ({ t
     ) : (
       <StepList key={item.key} steps={item.steps} />
     );
+  const title = turn.running ? (
+    <RunningTitle startedAt={turn.startedAt} />
+  ) : (
+    <span>
+      处理了 {turn.steps.length} 步{turn.seconds ? ` · 用时 ${formatSeconds(turn.seconds)}` : ''}
+    </span>
+  );
   return (
     <>
-      {collapsible && (
+      {(hasProcess || turn.running) && (
         <div className="flex flex-col gap-3">
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            aria-expanded={open}
-          >
-            {failed && <CircleAlert className="size-3.5 text-destructive" />}
-            <span>
-              处理了 {turn.steps.length} 步{turn.seconds ? ` · 用时 ${formatSeconds(turn.seconds)}` : ''}
-            </span>
-            <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
-          </button>
-          {open && <div className="flex flex-col gap-3">{process.map((item) => render(item, false))}</div>}
+          {hasProcess ? (
+            <button
+              type="button"
+              onClick={() => setUserOpen(!open)}
+              className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              aria-expanded={open}
+            >
+              {failed && <CircleAlert className="size-3.5 text-destructive" />}
+              {title}
+              <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
+            </button>
+          ) : (
+            <div className="text-sm text-muted-foreground">{title}</div>
+          )}
+          {open && process.length > 0 && <div className="flex flex-col gap-3">{process.map((item) => render(item, false))}</div>}
         </div>
       )}
       {shown.map((item, i) => render(item, i === shown.length - 1))}
     </>
   );
 };
+
+/** 进行中的标题：「处理中 · 已用 X」，每秒更新；开始时刻未知（消息还没确认）时从显示出来算起 */
+const RunningTitle: React.FC<{ startedAt?: number }> = ({ startedAt }) => {
+  const [since] = useState(() => startedAt ?? Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.round((now - (startedAt ?? since)) / 1000));
+  return <span className="tabular-nums">处理中 · 已用 {formatSeconds(seconds)}</span>;
+};
+
+/** 最下面的「正在做」：三个依次闪动的点 + 扫过一道光的说明 */
+const WorkingIndicator: React.FC<{ label: string }> = ({ label }) => (
+  <div className="flex items-center gap-2 text-sm" role="status">
+    <span className="typing-dots flex items-center gap-0.5" aria-hidden>
+      <span />
+      <span />
+      <span />
+    </span>
+    <span className="text-shimmer">{label}</span>
+  </div>
+);
+
+/** 正在做什么：在调用工具 / 在写回答 / 在想下一步 */
+function workingLabel(turn: Extract<ViewTurn, { role: 'agent' }>): string {
+  const last = turn.items[turn.items.length - 1];
+  if (last?.kind === 'text') return '正在回答';
+  if (last?.kind === 'steps' && last.steps.some((s) => s.status === 'running')) return '正在处理';
+  return '正在思考';
+}
 
 /** 用时：不到 1 分钟写秒，否则写几分几秒 */
 function formatSeconds(seconds: number): string {
@@ -220,13 +261,6 @@ const TurnError: React.FC<{ raw: string }> = ({ raw }) => {
     </div>
   );
 };
-
-/** 正在等模型想下一步：还没有内容，或者最后一组工具都做完了（说话时正文在流式显示，不用另外提示） */
-function thinking(turn: Extract<ViewTurn, { role: 'agent' }>): boolean {
-  if (!turn.running) return false;
-  const last = turn.items[turn.items.length - 1];
-  return !last || (last.kind === 'steps' && last.steps.every((s) => s.status !== 'running'));
-}
 
 /** 连着的几步工具调用：按顺序一行一条，进行中转圈，做完打勾 */
 const StepList: React.FC<{ steps: ViewStep[] }> = ({ steps }) => (

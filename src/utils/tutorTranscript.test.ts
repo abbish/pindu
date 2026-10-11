@@ -25,6 +25,7 @@ test('流式回答：增量拼成正文，message_end 以完整消息为准', ()
     steps: [],
     suggestions: [],
     running: true,
+    startedAt: 1,
   });
 
   const done = run(
@@ -348,4 +349,15 @@ test('工具刚结束、结果消息还没到：按执行事件里的说明同�
   ]);
   const agent = toTurns(state)[1];
   assert.deepEqual(agent.role === 'agent' && agent.steps.map((s) => s.status), ['skipped']);
+});
+
+test('一轮的开始时刻：学习者发出消息的时刻（进行中显示已用时间）', () => {
+  const state = run([
+    { type: 'agent_start' },
+    { type: 'message_end', message: user },
+    { type: 'message_start', message: { role: 'assistant', content: [], timestamp: 2 } },
+  ]);
+  const agent = toTurns(state)[1];
+  assert.equal(agent.role === 'agent' && agent.startedAt, user.timestamp);
+  assert.equal(agent.role === 'agent' && agent.running, true);
 });
