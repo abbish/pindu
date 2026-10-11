@@ -2058,6 +2058,19 @@ pub(crate) mod tests {
         assert!((stats.reading.objective_accuracy.unwrap() - 50.0).abs() < 1e-9);
         let p = service.get(passage_id).await.unwrap();
         assert_eq!(p.question_sets[0].completed_attempts, 2);
+        // 阅读、听力分开统计：各 1 次，最近一次的成绩各是各的
+        let set = &p.question_sets[0];
+        assert_eq!(
+            (
+                set.reading.completed_attempts,
+                set.listening.completed_attempts
+            ),
+            (1, 1)
+        );
+        let r = set.reading.last_attempt.as_ref().unwrap();
+        let l = set.listening.last_attempt.as_ref().unwrap();
+        assert_eq!((r.mode.as_str(), r.objective_correct), ("reading", 2));
+        assert_eq!((l.mode.as_str(), l.objective_correct), ("listening", 3));
         crate::time::assert_instants_canonical(&pool).await;
     }
 }

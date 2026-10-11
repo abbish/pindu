@@ -17,7 +17,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioG
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EmptyState } from '@/components/EmptyState/EmptyState';
 import { PageError } from '@/components/PageError';
 import { QuestionSetDialog } from '@/components/QuestionSetDialog';
@@ -69,11 +68,13 @@ const TargetChip: React.FC<{ word: string; meaning?: string | null; className?: 
   </span>
 );
 
-/** 题组行：名称、题型与难度、最近成绩；阅读 / 听力练习入口；⋯ 删除 */
-const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: (mode: PassageMode) => void; onDelete: () => void }> = ({ set, onStart, onDelete }) => (
+/** 题组行（「阅读理解」「听力练习」页签各一份）：名称、题型与难度、这种练习方式的最近成绩；开始练习；⋯ 删除 */
+const QuestionSetRow: React.FC<{ set: QuestionSetSummary; mode: PassageMode; onStart: () => void; onDelete: () => void }> = ({ set, mode, onStart, onDelete }) => {
+  const done = set[mode];
+  return (
   <Card className="flex-row items-center gap-4 px-5 py-4">
     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-      <FileQuestion className="size-5" />
+      {mode === 'listening' ? <Headphones className="size-5" /> : <FileQuestion className="size-5" />}
     </div>
     <div className="min-w-0 flex-1">
       <div className="flex items-center gap-2">
@@ -82,23 +83,12 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: (mode: Passag
       </div>
       <div className="mt-0.5 truncate text-sm text-muted-foreground">{specSummary(set.spec)}</div>
       <div className="mt-0.5 text-xs text-muted-foreground">
-        {set.lastAttempt
-          ? `最近一次${set.lastAttempt.mode === 'listening' ? '听力' : '阅读'}：${scoreSummary(set.lastAttempt)}${set.completedAttempts > 1 ? ` · 共练 ${set.completedAttempts} 次` : ''}`
-          : '未练习'}
+        {done.lastAttempt ? `最近一次：${scoreSummary(done.lastAttempt)}${done.completedAttempts > 1 ? ` · 共练 ${done.completedAttempts} 次` : ''}` : '未练习'}
       </div>
     </div>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="outline" onClick={() => onStart('listening')}>
-          <Headphones />
-          听力练习
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>不显示原文</TooltipContent>
-    </Tooltip>
-    <Button variant="outline" onClick={() => onStart('reading')}>
-      <BookOpen />
-      阅读练习
+    <Button variant="outline" onClick={onStart}>
+      {mode === 'listening' ? <Headphones /> : <BookOpen />}
+      {done.completedAttempts > 0 ? '再练一次' : '开始练习'}
     </Button>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -114,7 +104,8 @@ const QuestionSetRow: React.FC<{ set: QuestionSetSummary; onStart: (mode: Passag
       </DropdownMenuContent>
     </DropdownMenu>
   </Card>
-);
+  );
+};
 
 /**
  * 短文详情：「原文」页签自由阅读（显示翻译、标出目标词、全文 / 逐句朗读）+ 侧栏（目标词、来源、场景）；
@@ -447,6 +438,9 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           <TabsTrigger value="sets" className="gap-1.5 px-3">
             阅读理解<span className="text-xs text-muted-foreground tabular-nums">{passage.questionSets.length}</span>
           </TabsTrigger>
+          <TabsTrigger value="listening" className="gap-1.5 px-3">
+            听力练习<span className="text-xs text-muted-foreground tabular-nums">{passage.questionSets.length}</span>
+          </TabsTrigger>
         </TabsList>
 
         {clip && (
@@ -499,27 +493,29 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
           />
         </TabsContent>
 
-        <TabsContent value="sets">
-          {qsJob && isJobActive(qsJob) && (
-            <div className="mb-3">
-              <JobPanel job={qsJob} title="正在生成题组" actions={{ stop: true }} />
-            </div>
-          )}
-          {passage.questionSets.length === 0 ? (
-            <EmptyState icon={<FileQuestion />} title="还没有题组">
-              <Button onClick={() => setShowGenerate(true)}>
-                <Sparkles />
-                生成题组
-              </Button>
-            </EmptyState>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {passage.questionSets.map((s) => (
-                <QuestionSetRow key={s.id} set={s} onStart={(mode) => startPractice(s.id, mode)} onDelete={() => setSetToDelete(s)} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
+        {(['reading', 'listening'] as const).map((mode) => (
+          <TabsContent key={mode} value={mode === 'reading' ? 'sets' : 'listening'}>
+            {qsJob && isJobActive(qsJob) && (
+              <div className="mb-3">
+                <JobPanel job={qsJob} title="正在生成题组" actions={{ stop: true }} />
+              </div>
+            )}
+            {passage.questionSets.length === 0 ? (
+              <EmptyState icon={mode === 'listening' ? <Headphones /> : <FileQuestion />} title="还没有题组">
+                <Button onClick={() => setShowGenerate(true)}>
+                  <Sparkles />
+                  生成题组
+                </Button>
+              </EmptyState>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {passage.questionSets.map((s) => (
+                  <QuestionSetRow key={s.id} set={s} mode={mode} onStart={() => startPractice(s.id, mode)} onDelete={() => setSetToDelete(s)} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        ))}
       </Tabs>
 
       <QuestionSetDialog
@@ -530,7 +526,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
         existingSets={passage.questionSets.length}
         onStarted={(jobId) => {
           setQsJobId(jobId);
-          setTab('sets');
+          // 在「听力练习」里生成的留在听力，其他回到「阅读理解」
+          setTab((t) => (t === 'listening' ? t : 'sets'));
         }}
       />
 

@@ -142,6 +142,16 @@ export interface QuestionSetSummary {
   /** 完成的作答次数 */
   completedAttempts: number;
   lastAttempt: PassageAttemptBrief | null;
+  /** 阅读练习的完成次数与最近一次 */
+  reading: ModeAttempts;
+  /** 听力练习的完成次数与最近一次 */
+  listening: ModeAttempts;
+}
+
+/** 一个题组按一种练习方式（阅读 / 听力）的完成情况 */
+export interface ModeAttempts {
+  completedAttempts: number;
+  lastAttempt: PassageAttemptBrief | null;
 }
 
 /** 题组（练习用） */

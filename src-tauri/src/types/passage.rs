@@ -180,6 +180,18 @@ pub struct QuestionSetSummary {
     /// 完成的作答次数
     pub completed_attempts: i64,
     pub last_attempt: Option<PassageAttemptBrief>,
+    /// 阅读练习的完成次数与最近一次
+    pub reading: ModeAttempts,
+    /// 听力练习的完成次数与最近一次
+    pub listening: ModeAttempts,
+}
+
+/// 一个题组按一种练习方式（阅读 / 听力）的完成情况
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModeAttempts {
+    pub completed_attempts: i64,
+    pub last_attempt: Option<PassageAttemptBrief>,
 }
 
 /// 题组（练习用：含题目与选词填空词库）
