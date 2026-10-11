@@ -914,6 +914,16 @@ pub fn word_tutor_task(profile: &PromptProfile) -> AgentTask {
     }
 }
 
+/// AI 老师独立对话（常驻会话，pi 保存对话；工具与 skills 随批次加入）
+pub fn tutor_chat_task(profile: &PromptProfile) -> AgentTask {
+    AgentTask {
+        name: "tutor-chat",
+        system_prompt: prompts::system_prompt(PromptTask::Chat, profile, &[]),
+        tools: &[],
+        default_thinking: "low",
+    }
+}
+
 /// 答疑请求：单词资料 + 已有讲解 + 最近对话 + 本次问题
 /// 最近的对话（学生 / 老师）按行排列
 fn tutor_history(history: &[ChatTurn]) -> String {

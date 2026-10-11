@@ -334,10 +334,11 @@ pub enum PromptTask {
     PassageSceneSuggest,
     PassageTargetWords,
     MaterialRead,
+    Chat,
 }
 
 impl PromptTask {
-    pub const ALL: [PromptTask; 20] = [
+    pub const ALL: [PromptTask; 21] = [
         PromptTask::Extract,
         PromptTask::Generate,
         PromptTask::Phonics,
@@ -358,6 +359,7 @@ impl PromptTask {
         PromptTask::PassageSceneSuggest,
         PromptTask::PassageTargetWords,
         PromptTask::MaterialRead,
+        PromptTask::Chat,
     ];
 
     pub fn key(self) -> &'static str {
@@ -382,6 +384,7 @@ impl PromptTask {
             PromptTask::PassageSceneSuggest => "passage_scene_suggest",
             PromptTask::PassageTargetWords => "passage_target_words",
             PromptTask::MaterialRead => "material_read",
+            PromptTask::Chat => "chat",
         }
     }
 
@@ -407,6 +410,7 @@ impl PromptTask {
             PromptTask::PassageSceneSuggest => "短文：场景的建议",
             PromptTask::PassageTargetWords => "短文：重新挑选目标词",
             PromptTask::MaterialRead => "素材：阅读与整理",
+            PromptTask::Chat => "AI 老师对话",
         }
     }
 
@@ -434,6 +438,7 @@ impl PromptTask {
             }
             PromptTask::PassageTargetWords => include_str!("prompts/agent/passage_target_words.md"),
             PromptTask::MaterialRead => include_str!("prompts/agent/material_read.md"),
+            PromptTask::Chat => include_str!("prompts/agent/tutor_chat.md"),
         }
     }
 }
@@ -744,6 +749,7 @@ mod tests {
             (PromptTask::PassageSceneSuggest, "passage_scene_suggest.md"),
             (PromptTask::PassageTargetWords, "passage_target_words.md"),
             (PromptTask::MaterialRead, "material_read.md"),
+            (PromptTask::Chat, "tutor_chat.md"),
         ];
         let stopwords = crate::agent::tasks::FOCUS_STOPWORDS;
         for preset in ["primary", "secondary", "adult"] {

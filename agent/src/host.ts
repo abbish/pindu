@@ -2,7 +2,7 @@
 // 契约见 docs/agent-harness/DESIGN.md §3。
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { main } from "@earendil-works/pi-coding-agent";
+import { main, SessionManager } from "@earendil-works/pi-coding-agent";
 import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { type BuiltinCatalog, type RedLarkAgentConfig, toPiModelsJson } from "./config.ts";
 import { buildCatalog } from "./catalog.ts";
@@ -23,6 +23,24 @@ const catalog: BuiltinCatalog = {
 if (process.argv.includes("--redlark-catalog")) {
   // 等管道写完再退出（目录约数百 KB，直接 exit 会截断）
   await new Promise<void>(resolve => process.stdout.write(JSON.stringify(buildCatalog()), () => resolve()));
+  process.exit(0);
+}
+
+// 会话列表模式：`--redlark-sessions <会话目录> <工作目录>`，用 pi 的 SessionManager 列出 AI 老师的对话后退出
+const sessionsAt = process.argv.indexOf("--redlark-sessions");
+if (sessionsAt >= 0) {
+  const [sessionDir, cwd] = process.argv.slice(sessionsAt + 1, sessionsAt + 3);
+  const sessions = await SessionManager.list(cwd, sessionDir);
+  const list = sessions.map(s => ({
+    id: s.id,
+    path: s.path,
+    name: s.name ?? null,
+    firstMessage: s.firstMessage,
+    created: s.created.toISOString(),
+    modified: s.modified.toISOString(),
+    messageCount: s.messageCount,
+  }));
+  await new Promise<void>(resolve => process.stdout.write(JSON.stringify(list), () => resolve()));
   process.exit(0);
 }
 

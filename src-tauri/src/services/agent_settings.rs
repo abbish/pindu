@@ -60,7 +60,7 @@ impl AgentTaskKind {
             AgentTaskKind::Phonics => "拼读分析",
             AgentTaskKind::Plan => "学习计划排序",
             AgentTaskKind::Explain => "AI 讲解",
-            AgentTaskKind::Tutor => "AI 老师答疑",
+            AgentTaskKind::Tutor => "AI 老师",
             AgentTaskKind::Examples => "例句补充",
             AgentTaskKind::Passage => "短文库",
             AgentTaskKind::Video => "视频库",
@@ -76,7 +76,7 @@ impl AgentTaskKind {
             AgentTaskKind::Examples => "在练习里补充或重新生成例句",
             AgentTaskKind::Plan => "新建计划时评估难度、安排学习顺序",
             AgentTaskKind::Explain => "练习时的单词深度讲解；建议用能力强的模型",
-            AgentTaskKind::Tutor => "练习时向 AI 老师提问；回答要快，可用速度快、价格低的模型",
+            AgentTaskKind::Tutor => "「AI 老师」对话与练习时的提问；对话里会看截图、查资料，建议选能看图片的模型",
             AgentTaskKind::Passage => "写阅读短文、出阅读理解题、给开放题评分、读取导入的讲义和照片；建议用能力强、能看图片的模型",
             AgentTaskKind::Video => "整理字幕、规划切分视频；没有单独设置时用「短文库」的模型",
         }

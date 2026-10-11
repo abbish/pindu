@@ -34,6 +34,7 @@ pub mod study_planning;
 pub mod subtitle;
 pub mod tag;
 pub mod tts;
+pub mod tutor_chat;
 pub mod video;
 pub mod video_plan;
 pub mod video_processing;

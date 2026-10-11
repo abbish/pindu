@@ -14,6 +14,7 @@ import { WordBookDetailPage } from './pages/WordBookDetailPage';
 import { WordPracticePage } from './pages/WordPracticePage';
 import { PracticeResultPage } from './pages/PracticeResultPage';
 import { CalendarPage } from './pages/CalendarPage';
+import { TutorPage } from './pages/TutorPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PassagePracticePage } from './pages/PassagePracticePage';
 import { PassageLibraryPage } from './pages/PassageLibraryPage';
@@ -129,6 +130,8 @@ function App() {
         return <TagPage key={route.params?.tagId} tagId={route.params?.tagId} onNavigate={navigate} />;
       case 'calendar':
         return <CalendarPage onNavigate={navigate} />;
+      case 'tutor':
+        return <TutorPage key={route.params?.at} initialPrompt={route.params?.prompt} onNavigate={navigate} />;
       case 'settings':
         return <SettingsPage onNavigate={navigate} />;
       default: {

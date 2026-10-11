@@ -86,6 +86,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(handlers::PendingUpdate::default())
+        .manage(agent::chat::ChatHub::new())
         .plugin(tauri_plugin_process::init())
         // 有后台任务在跑时，关窗先请用户确认（前端确认后调用 quit_app）
         .on_window_event(|window, event| {
@@ -207,6 +208,14 @@ pub fn run() {
             let commands: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
                 generate_word_explanation,
                 ask_word_tutor,
+                get_tutor_conversations,
+                open_tutor_conversation,
+                send_tutor_message,
+                stop_tutor_conversation,
+                answer_tutor_question,
+                rename_tutor_conversation,
+                set_tutor_conversation_flags,
+                delete_tutor_conversation,
                 generate_word_examples,
                 get_word_books,
                 get_word_book_detail,

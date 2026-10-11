@@ -11,6 +11,7 @@ pub mod material;
 pub mod passage;
 pub mod study;
 pub mod tts;
+pub mod tutor;
 pub mod video;
 pub mod word_analysis;
 pub mod wordbook;

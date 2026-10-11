@@ -23,11 +23,16 @@ pub struct AgentTask {
     pub default_thinking: &'static str,
 }
 
-/// 会话持久化方式（H5 场景对话会增加持久化会话）
+/// 会话持久化方式
 #[derive(Debug, Clone)]
 pub enum SessionMode {
     /// 一次性任务：不落盘
     Ephemeral,
+    /// AI 老师的对话：pi 把会话存在 `dir`；`session` 为要接着聊的会话 id（空 = 新对话）
+    Persistent {
+        dir: PathBuf,
+        session: Option<String>,
+    },
 }
 
 /// 需要读写文件的任务（如素材阅读）的运行环境：工作目录（工具只能访问这里）、显式加载的 skills、额外环境变量
@@ -186,6 +191,14 @@ pub fn launch_args(
     let mut args: Vec<String> = Vec::new();
     match session {
         SessionMode::Ephemeral => args.push("--no-session".into()),
+        SessionMode::Persistent { dir, session } => {
+            args.push("--session-dir".into());
+            args.push(dir.to_string_lossy().into_owned());
+            if let Some(session) = session {
+                args.push("--session".into());
+                args.push(session.clone());
+            }
+        }
     }
     // 不加载任何外部资源：扩展 / MCP / 技能 / 提示模板 / AGENTS.md / 主题 / 项目 .pi
     for flag in [

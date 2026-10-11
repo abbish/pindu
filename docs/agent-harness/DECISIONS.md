@@ -497,3 +497,15 @@
 - **背景**：新建计划时「从易到难」要等 AI 排完才能保存，页面卡在进度条上，和其他素材「提交即返回、卡片上看进度」的体验不一致；排序失败还要用户在新建页里二选一。
 - **决定**：创建时一律按词汇本顺序确定性排好日程并保存（马上能用）；选了从易到难时再提交后台任务 `plan_ordering`（detached，link 到计划详情），agent 只评估「还没练过的新词」，结果经 `PlanPaceService::reorder_open` 重排还没练过的日程（与改节奏 / 追加词汇本同一套 relayout，已练日程、复习与记忆等级不动）。计划卡与详情页显示进度，排好前不开始练习；停止或失败时保持词汇本顺序，计划设置里可「从易到难重新排」。
 - **影响**：`start_study_plan_ordering` 改为接收 planId；新建页不再有排序进度、失败分支与前台任务；`PlanningProgress` 组件删除。
+
+## D55 · 2026-10-11 · AI 老师独立对话：智能体能力用 pi 自己的机制
+
+- **背景**：侧边栏新增「AI 老师」，像 Codex / WorkBuddy 一样的智能体对话：用户说要做什么，AI 自己查、读、做，过程按步骤列出，在对话里顺手把素材收进素材库。用户要求充分利用 pi 的机制与扩展架构，不自己手写智能体相关的功能。
+- **决定**：
+  1. 一个对话 = 一个 pi 持久会话（`--session-dir <数据目录>/agent/tutor/sessions`，`--session <id>` 接着聊），对话内容只在 pi 的会话文件里；列表用 pi 的 `SessionManager.list`（sidecar `--redlark-sessions` 输出模式），标题用 pi 的会话名，删除即删会话文件（pi 文档的做法）。pi 没有的置顶 / 归档存 `app_settings`（`tutor.conversations`）。
+  2. 一个对话一个常驻 sidecar（`agent::chat::ChatHub`），闲置 10 分钟或应用内更新前关闭，再打开由 pi 从会话文件恢复。发送：空闲 `prompt`、运行中 `steer`；停止 `clear_queue` + `abort`；长对话靠 pi 自动压缩，失败靠 pi 自动重试。
+  3. 事件不另造格式：pi 的原始事件经 `tutor-event` 原样给前端，前端按 pi 文档的「Reconstruct streaming messages」重建（`utils/tutorTranscript.ts`）；步骤 = 工具调用，步骤说明与产物写在工具结果 `details.redlark`。
+  4. 工具向用户提问用 pi 的 RPC Extension UI（`extension_ui_request` / `_response`），界面显示成选项按钮。
+  5. 查 / 建拼读的素材走 **MCP**：拼读在本机开 MCP 服务，sidecar 经 `pi.registerMcpServer` 接入，工具带只读 / 写入注解；各功能域的用法写成 pi skills。耗时的写入沿用现有后台任务。
+- **影响**：`SessionMode::Persistent`；`AgentConnection` 的事件带上原始 JSON（`take_events` / `send_value`）；提示词 `tutor_chat.md`（`PromptTask::Chat`，用「AI 老师」的任务模型）。
+- **验证**：`services::tutor_chat::tests::real_tutor_chat_round_trip`（Kimi K3，真实调用）：新对话流式回答 → 接着聊 → 列表 → 关掉进程后从会话文件恢复 → 改名 → 删除。注意 pi 按工作目录的真实路径归类会话（macOS 临时目录 /var → /private/var），列表前先解析符号链接。

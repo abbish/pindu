@@ -95,6 +95,10 @@ pub async fn install_update(app: AppHandle, on_progress: Channel<UpdateProgress>
                 active.len()
             )));
         }
+        // AI 老师闲置的对话进程先关掉（再打开时 pi 从会话文件恢复）
+        app.state::<crate::agent::chat::ChatHub>()
+            .close_idle(std::time::Duration::ZERO)
+            .await;
         if let Err(n) = begin_update_install() {
             return Err(AppError::ValidationError(format!(
                 "有 {n} 项任务正在进行，等它们完成后再更新"

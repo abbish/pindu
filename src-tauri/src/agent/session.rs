@@ -19,6 +19,9 @@ use tokio::task::JoinHandle;
 
 type PendingMap = Arc<Mutex<HashMap<String, oneshot::Sender<RpcResponse>>>>;
 
+/// 一条事件：解析后的类型 + pi 原始 JSON（常驻对话把原始事件转给前端，按 pi 的格式重建消息）
+pub type EventItem = (AgentEvent, Value);
+
 /// sidecar 无法启动时错误信息的前缀（便于在日志里区分启动失败与调用失败）
 pub const SPAWN_FAILURE: &str = "无法启动 agent";
 
@@ -39,7 +42,7 @@ fn agent_error(message: impl Into<String>) -> AppError {
 pub struct AgentConnection {
     writer: Box<dyn AsyncWrite + Unpin + Send>,
     pending: PendingMap,
-    events: mpsc::UnboundedReceiver<AgentEvent>,
+    events: mpsc::UnboundedReceiver<EventItem>,
     next_id: u64,
     reader: JoinHandle<()>,
 }
@@ -138,7 +141,7 @@ impl AgentConnection {
                 )));
             }
             match tokio::time::timeout(CANCEL_POLL, self.events.recv()).await {
-                Ok(Some(event)) => {
+                Ok(Some((event, _))) => {
                     on_event(&event);
                     if outcome.absorb(&event) {
                         return Ok(outcome);
@@ -148,6 +151,26 @@ impl AgentConnection {
                 Err(_) => {} // 轮询间隔：回到循环检查取消 / 超时
             }
         }
+    }
+
+    /// 取走事件通道（常驻对话由自己的转发任务读取全部事件；之后不能再用 `prompt_cancellable`）
+    pub fn take_events(&mut self) -> mpsc::UnboundedReceiver<EventItem> {
+        let (_, empty) = mpsc::unbounded_channel();
+        std::mem::replace(&mut self.events, empty)
+    }
+
+    /// 发送一行不带 id、不等响应的消息（如 `extension_ui_response`，按请求方给的 id 回复）
+    pub async fn send_value(&mut self, value: Value) -> AppResult<()> {
+        let mut line = value.to_string();
+        line.push('\n');
+        self.writer
+            .write_all(line.as_bytes())
+            .await
+            .map_err(|e| agent_error(format!("向 agent 发送消息失败：{}", e)))?;
+        self.writer
+            .flush()
+            .await
+            .map_err(|e| agent_error(format!("向 agent 发送消息失败：{}", e)))
     }
 
     /// 发送命令但不等待响应（尽力而为，如超时后的 abort）
@@ -174,7 +197,7 @@ impl Drop for AgentConnection {
 async fn read_loop<R: AsyncRead + Unpin>(
     reader: R,
     pending: PendingMap,
-    events: mpsc::UnboundedSender<AgentEvent>,
+    events: mpsc::UnboundedSender<EventItem>,
 ) {
     let mut reader = BufReader::new(reader);
     let mut buf = Vec::new();
@@ -200,7 +223,8 @@ async fn read_loop<R: AsyncRead + Unpin>(
                 }
             }
             Ok(Incoming::Event(event)) => {
-                if events.send(event).is_err() {
+                let raw = serde_json::from_str(line).unwrap_or(Value::Null);
+                if events.send((event, raw)).is_err() {
                     break;
                 }
             }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clapperboard, FileText, Hash, Home, ListChecks, Moon, Settings, Sun } from 'lucide-react';
+import { BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clapperboard, FileText, GraduationCap, Hash, Home, ListChecks, Moon, Settings, Sun } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/useTheme';
 import { PAGE_TITLE, TOP_LEVEL_OF, type NavigateFn, type PageKey, type TopLevelPage } from '@/navigation';
 import { JobIndicator } from '@/components/Jobs';
+import { QuickAsk } from '@/components/QuickAsk';
 import { UpdateBanner } from '../UpdateBanner';
 import { useOnJobFinished } from '@/hooks/useJobs';
 import { refreshTagUsage, tagTotal, useTagUsage } from '@/hooks/useTagUsage';
@@ -62,6 +63,7 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
       { key: 'home', label: '首页', icon: Home },
       { key: 'plans', label: '计划', icon: ListChecks },
       { key: 'calendar', label: '日历', icon: CalendarDays },
+      { key: 'tutor', label: 'AI 老师', icon: GraduationCap },
     ],
   },
   {
@@ -207,6 +209,7 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
 
           <SidebarFooter>
             <SidebarMenu>
+              <JobIndicator onNavigate={onNavigate} />
               <SidebarMenuItem>
                 <SidebarMenuButton tooltip={theme === 'dark' ? '浅色模式' : '深色模式'} onClick={toggleTheme}>
                   {theme === 'dark' ? <Sun /> : <Moon />}
@@ -278,9 +281,12 @@ export const AppShell: React.FC<AppShellProps> = ({ page, onNavigate, parent, ac
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
-            <div className="ml-auto">
-              <JobIndicator onNavigate={onNavigate} />
-            </div>
+            {/* 快速对话：AI 老师页自己有输入框 */}
+            {page !== 'tutor' && (
+              <div className="ml-auto">
+                <QuickAsk onNavigate={onNavigate} />
+              </div>
+            )}
           </header>
           <UpdateBanner />
           <div className="min-h-0 flex-1 overflow-y-auto">
