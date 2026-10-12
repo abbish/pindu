@@ -4,109 +4,69 @@
 
 **Turn the English around you into resources you can study, practise and review every day.**
 
-Course readings, documents you need at work and videos you want to understand can all be starting points for learning English.
+Pindu is a desktop English learning tool that turns text, documents, local videos and subtitles into study materials for vocabulary, reading, listening, spelling, shadowing and review.
 
-Pindu is a desktop English learning tool that helps you turn these materials into vocabulary, passages and scene clips. Practise reading, listening, spelling and shadowing, then keep learning each day with study plans and review.
-
-- **Learn English that matters to you**: start with content you want to read, understand or use, and choose the words and phrases worth learning.
-- **Turn materials into learning resources**: import text, documents or local videos with subtitles, and add translations, vocabulary notes and exercises.
-- **Keep learning over time**: add vocabulary, passages and scene clips to a plan with daily tasks and vocabulary review.
-
-Available for macOS, Windows and Linux. No account is required. See [usage costs](#usage-costs) for fees and the [installation guide](./INSTALL.md) (Chinese) for setup and service configuration.
+Available for macOS, Windows and Linux. No account is required. See [usage costs](#usage-costs) for fees and the [installation guide](./INSTALL.md) (Chinese) for setup.
 
 > The user interface is currently available in Simplified Chinese only.
+
+The home page brings together daily tasks, study plans and learning progress, with a shortcut to resume unfinished practice.
 
 ![Home](docs/screenshots/home.png)
 
 ## Features
 
-### Vocabulary books
+### Vocabulary and phonics
 
-Build vocabulary books from words and phrases you encounter in your own materials and want to learn or use.
+Manage words and phrases, extract vocabulary from text, documents and images, or generate it for your learning needs. Word cards provide IPA, syllables, phonics, meanings and graded example sentences.
 
-- Entries can be single words or phrases (phrasal verbs, collocations, idioms, fixed expressions). Phrases are marked as separable or not.
-- Ways to add entries:
-  - Extract new words and phrases from text, subtitles or documents (txt, md, srt, vtt, docx, pdf).
-  - Collect words and meanings as printed from images or PDFs of word lists and vocabulary posters.
-  - Type them in by hand and auto-fill the details with AI.
-  - Generate additional vocabulary from the book's scene description, with vocabulary topic suggestions to choose from.
-- Entry details include IPA, syllables, phonics chunks, meanings and graded example sentences.
-- Vocabulary books, passages and videos share tags. The sidebar groups related material by tag.
+![Vocabulary book and word card](docs/screenshots/wordbook.png)
 
-![Vocabulary book](docs/screenshots/wordbook.png)
+### Document import and reading
 
-### Passages
+Import text, PDFs, Word files or images. Keep the original text and existing translations while adding sentence translations and vocabulary. Preview and edit the content before importing.
 
-Import articles, course readings or work documents and study words and phrases in the original text.
+![Document import](docs/screenshots/import.png)
 
-- When you import English material, the original text is kept unchanged. Only translations, a title, a level and vocabulary are added.
-- You can also import a PDF, Word file or image directly (such as a bilingual handout or a photo of a textbook page). Chinese translations printed in the material are kept, and underlined phrases and word lists become the passage's vocabulary.
-- While reading:
-  - Vocabulary words are highlighted, and clicking one opens its word card.
-  - Passages can be played sentence by sentence or listened to with the text hidden.
-  - Any word or phrase you select in the text can be added to the vocabulary. Words can be removed, or re-picked by AI with conditions you set.
-- The title, level, scene description and tags can be edited. Each sentence's translation is edited in sentence analysis.
-- Sentence analysis: sentence pattern, constituents, grammar points, communicative function, useful phrases and pronunciation notes.
-- Reading and listening exercises are separate, each with its own question sets:
-  - Cloze, multiple-choice and true/false questions are graded automatically.
-  - Open questions receive scores and suggestions for improvement.
-- Passages can be added to study plans at a fixed interval. The detail page shows which plans use a passage.
-- When you need more practice material, generate passages from vocabulary books, words in study plans or a topic description, with sentence-by-sentence translations.
+The reader supports sentence playback, vocabulary lookup and adding selected words. Generate practice passages from vocabulary or topics, and adjust the reading voice, style and speed.
 
 ![Passage reader](docs/screenshots/passage.png)
 
+Sentence analysis explains sentence patterns, constituents, grammar, phrases and pronunciation, with an option to ask the AI tutor follow-up questions.
+
 ![Sentence analysis](docs/screenshots/sentence.png)
 
-### Video library
+### Reading and listening exercises
 
-Cut videos you want to understand into scene clips you can study repeatedly, using their dialogue for listening and shadowing practice.
+Create separate reading and listening question sets for each passage, with cloze, multiple-choice, true/false and open questions, scores and feedback. Listening practice supports sentence replay and slower playback.
 
-- Import a local video with its subtitles to organize and translate the subtitles and get a proposed plan for cutting the video into scenes.
-- In the clip editor you can preview clips, adjust in and out points and correct the subtitle timing. Clips are cut precisely once you confirm the plan.
-- Each scene clip can be studied in three ways: line-by-line study, shadowing with recording, and listen-and-spell. Scene clips can be added to study plans.
-- Searching for an English word finds every scene clip in which it is spoken.
-- Video processing needs no additional software installation.
+![Listening practice](docs/screenshots/listening.png)
 
-![Scene clips](docs/screenshots/clips.png)
+### Video learning
 
-![Clip editor](docs/screenshots/editor.png)
+Import local videos and subtitles to create bilingual dialogue and scene-cutting plans. The clip editor supports previews, clip range adjustments and subtitle timing corrections.
 
-### Study plans and practice
+![Video clip editor](docs/screenshots/editor.png)
 
-Add vocabulary books, passages and scene clips to a study plan so each day has specific material to learn.
+Scene clips support line-by-line study, shadowing with recording, and listen-and-spell practice using the video, dialogue, translations and vocabulary.
 
-- Choose vocabulary books and a daily number of new words, and the schedule is arranged automatically. Words can be learned from easy to hard or in the book's own order. Plans can be paused; the schedule shifts when you resume.
-- New words are practised in three steps:
-  1. Full information.
-  2. English hidden; spell from memory.
-  3. Chinese meaning, syllables and pronunciation only.
-- Vocabulary reviews follow a memory level with intervals of 1, 3, 7, 14 and 30 days. A correct answer moves the word up a level and a mistake sends it back to the first. Reviews that are due are added to the day's tasks automatically.
-- Passages and scene clips can also be scheduled as reading or listening tasks.
+![Scene clip study](docs/screenshots/clip-study.png)
 
-![Word practice](docs/screenshots/practice.png)
+### Study plans and review
 
-![Plan detail](docs/screenshots/plan.png)
+Add vocabulary books, passages and scene clips to study plans. Set your daily workload and learning order, with daily tasks and spaced vocabulary review scheduled automatically.
+
+![Study plan](docs/screenshots/plan.png)
+
+Vocabulary practice combines speaking, spelling and recall, followed by a short quiz. Progress is saved so you can resume unfinished practice.
+
+![Vocabulary practice](docs/screenshots/practice.png)
 
 ### AI tutor
 
-Ask about words, usage or sentences whenever you need to, or have the AI tutor organise materials and plan your study for you.
+Get explanations of words, usage and sentences based on your materials and progress. The tutor can also create vocabulary books, passages, question sets and study plans on request. Conversations are saved for follow-up questions.
 
-- **AI 老师** (AI tutor) in the sidebar is a standalone chat page: look up words, translate, and get sentences and grammar explained. You can paste screenshots or send PDFs, Word files and images. Conversations are saved so you can pick them up later, and the quick-ask box in the top bar (⌘K) starts a new conversation from any page.
-- The tutor draws on your vocabulary books and learning progress, and can create vocabulary books, add words, save or write passages, make question sets, and create or adjust study plans when you ask. Each step it takes is listed, and it asks for confirmation before deleting anything or ending a plan.
-- While studying, word cards offer explanations of meanings, spelling patterns, related words, usage, commonly confused words and memory aids. Sentences in passages and scene clips can also be discussed with the tutor.
-- The depth of explanations follows the learner profile (primary school, secondary school or adult) in Settings → 学习者 (Learner). The tutor's name, speaking style and whether it asks before changing your content are set in Settings → AI 老师 (AI tutor).
-
-![AI tutor](docs/screenshots/tutor.png)
-
-### Background work
-
-Slower work such as writing passages, making question sets, importing materials and processing videos runs in the background, so you can leave the page and do something else. Vocabulary books, the passage library, the video library and plans show how many tasks are in progress, and **后台任务** (Background tasks) in the sidebar lists them all.
-
-### Speech
-
-- 15 English voices are built in. Words and sentences are always read in English, including numbers and dates.
-- Sentence reading styles: teacher, natural, storytelling, news or a custom instruction. Speed, pitch and volume are adjustable.
-- Previously generated audio can be reused when you play the same content again, reducing repeated generation.
+![AI tutor creates study materials and plans](docs/screenshots/tutor-materials.png)
 
 ## Usage costs
 
@@ -155,5 +115,3 @@ For setup, service configuration, updates and backups, see the [installation and
 [MIT](./LICENSE) © 2023-2026 abbish and RedLark contributors
 
 See the [third-party license notices](./src-tauri/licenses/THIRD_PARTY_NOTICES.md).
-
-<sub>Screenshots use demo data. Video frames are from *Tears of Steel* (© Blender Foundation, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), [mango.blender.org](https://mango.blender.org)).</sub>
