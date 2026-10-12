@@ -40,6 +40,8 @@ fn lan_events(app: &tauri::AppHandle) -> lan::EventSink {
             lan::LanEvent::PairRequest(r) => app.emit("lan-pair-request", r),
             lan::LanEvent::PairRequestClosed(c) => app.emit("lan-pair-request-closed", c),
             lan::LanEvent::PairingResult(r) => app.emit("lan-pairing-result", r),
+            lan::LanEvent::TransferOffer(o) => app.emit("lan-transfer-offer", o),
+            lan::LanEvent::TransferClosed(c) => app.emit("lan-transfer-closed", c),
         };
     })
 }
@@ -221,6 +223,7 @@ pub fn run() {
                             dirs.data.clone(),
                             handle.package_info().version.to_string(),
                             lan_events(&handle),
+                            handle.state::<jobs::Jobs>().inner().clone(),
                         );
                         handle.manage(lan.clone());
                         handle.manage(pool);
@@ -322,6 +325,9 @@ pub fn run() {
                 get_pending_pair_requests,
                 get_paired_devices,
                 unpair_device,
+                start_lan_transfer,
+                respond_transfer_offer,
+                get_pending_transfer,
                 write_client_log,
                 open_log_folder,
                 open_data_folder,

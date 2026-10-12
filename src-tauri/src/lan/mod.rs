@@ -10,17 +10,20 @@
 pub mod client;
 pub mod discovery;
 pub mod identity;
+pub mod package;
 pub mod protocol;
 mod server;
 mod tls;
+pub mod transfer;
 
 use crate::error::{AppError, AppResult};
+use crate::jobs::Jobs;
 use crate::logger::Logger;
 use crate::repositories::lan_repository::{LanDeviceRow, LanRepository};
 use crate::services::lan_settings::{LanSettings, LanSettingsService};
 use crate::types::lan::{
     LanStatus, NearbyDevice, PairRequest, PairRequestClosed, PairedDevice, PairingResult,
-    PairingStarted,
+    PairingStarted, TransferClosed, TransferOffer,
 };
 use client::{ClientError, Target};
 use hyper::StatusCode;
@@ -55,6 +58,10 @@ pub enum LanEvent {
     PairRequest(PairRequest),
     PairRequestClosed(PairRequestClosed),
     PairingResult(PairingResult),
+    /// 别的设备想发送内容（等本机确认）
+    TransferOffer(TransferOffer),
+    /// 接收结束（弹窗关闭）
+    TransferClosed(TransferClosed),
 }
 
 pub type EventSink = Arc<dyn Fn(LanEvent) + Send + Sync>;
@@ -83,7 +90,11 @@ pub struct LanNode {
 pub(crate) struct Shared {
     pool: SqlitePool,
     logger: Logger,
+    /// 数据目录（视频与收到的文件放这里）
+    data_dir: PathBuf,
+    /// `<数据目录>/lan`：本机证书与收文件的临时目录
     dir: PathBuf,
+    jobs: Jobs,
     app_version: String,
     options: LanOptions,
     emit: EventSink,
@@ -102,6 +113,8 @@ struct State {
     outgoing: HashMap<String, Outgoing>,
     /// 对 announce 的回应节流（每台设备几秒一次）
     replied: HashMap<String, Instant>,
+    /// 正在接收的传送（同时只接收一个）
+    inbound: Option<transfer::Inbound>,
 }
 
 struct Running {
@@ -147,6 +160,7 @@ impl LanNode {
         data_dir: PathBuf,
         app_version: String,
         emit: EventSink,
+        jobs: Jobs,
     ) -> Self {
         Self::with_options(
             pool,
@@ -154,6 +168,7 @@ impl LanNode {
             data_dir,
             app_version,
             emit,
+            jobs,
             LanOptions::default(),
         )
     }
@@ -164,6 +179,7 @@ impl LanNode {
         data_dir: PathBuf,
         app_version: String,
         emit: EventSink,
+        jobs: Jobs,
         options: LanOptions,
     ) -> Self {
         Self {
@@ -171,6 +187,8 @@ impl LanNode {
                 pool,
                 logger,
                 dir: data_dir.join("lan"),
+                data_dir,
+                jobs,
                 app_version,
                 options,
                 emit,
@@ -541,7 +559,10 @@ fn user_error(e: &ClientError, who: &str) -> AppError {
             format!("「{who}」正在处理别的配对请求，请稍后再试")
         }
         ClientError::Status(s, _) if *s == StatusCode::FORBIDDEN => {
-            format!("「{who}」拒绝了这次请求")
+            format!("「{who}」拒绝了这次请求（可能已经取消了配对）")
+        }
+        ClientError::Status(s, _) if *s == StatusCode::GONE => {
+            format!("「{who}」停止了接收")
         }
         _ => format!("和「{who}」通信失败"),
     };
@@ -707,6 +728,17 @@ impl Shared {
                 std::mem::take(&mut st.outgoing),
             )
         };
+        let inbound = self
+            .lock()
+            .inbound
+            .as_ref()
+            .map(|i| (i.transfer_id.clone(), i.job_id.clone()));
+        if let Some((transfer_id, job)) = inbound {
+            self.end_inbound(&transfer_id, "canceled");
+            if let Some(job) = job {
+                self.jobs.cancel(&job);
+            }
+        }
         let Some(running) = running else {
             return;
         };

@@ -48,6 +48,7 @@ import { LEVEL_LABEL, specSummary } from '@/utils/passage';
 import type { Passage, PassageMode, PlanPassage, QuestionSetSummary, QuestionSetSpec } from '@/types/passage';
 import type { NavigateFn, PassageDetailTab, PassagePracticeReturn, PlanContext } from '../navigation';
 import { PASSAGE_STATUS, taskLabel } from '@/components/PlanPassagePicker';
+import { SEND_LABEL, SendIcon, sendToDevice } from '@/components/SendToDevice';
 
 export interface PassageDetailPageProps {
   passageId?: number;
@@ -410,6 +411,10 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
               <DropdownMenuItem onSelect={() => setRepicking(true)}>
                 <WandSparkles />
                 重新挑选词汇…
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => sendToDevice({ items: [{ kind: isClip ? 'clip' : 'passage', id: passage.id }], title: passage.title })}>
+                <SendIcon />
+                {SEND_LABEL}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>

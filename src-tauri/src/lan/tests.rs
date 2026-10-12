@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::test_support::memory_pool;
+use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 struct TestNode {
@@ -11,16 +12,21 @@ struct TestNode {
 
 async fn node(name: &str) -> TestNode {
     let dir = std::env::temp_dir().join(format!("pindu-lan-{name}-{}", uuid::Uuid::new_v4()));
+    node_with(name, (*memory_pool().await).clone(), dir).await
+}
+
+async fn node_with(name: &str, pool: SqlitePool, dir: PathBuf) -> TestNode {
     let logger = Logger::new(&dir.join("logs")).unwrap();
     let (tx, rx) = mpsc::unbounded_channel();
     let node = LanNode::with_options(
-        (*memory_pool().await).clone(),
+        pool,
         logger,
         dir,
         "0.0.0-test".into(),
         Arc::new(move |e| {
             let _ = tx.send(e);
         }),
+        crate::jobs::Jobs::new(|_| {}),
         LanOptions {
             preferred_port: 0,
             discovery: false,
@@ -214,4 +220,415 @@ async fn refuses_a_server_with_another_identity() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("连不上"), "{err}");
+}
+
+/// 配对两个节点（A 发起，B 同意）
+async fn pair(a: &mut TestNode, b: &mut TestNode) {
+    a.node.add_by_address(&b.address()).await.unwrap();
+    a.node.start_pairing(&b.fingerprint()).await.unwrap();
+    let request = b
+        .wait(|e| match e {
+            LanEvent::PairRequest(r) => Some(r.clone()),
+            _ => None,
+        })
+        .await;
+    b.node.respond(&request.request_id, true).unwrap();
+    a.wait(|e| matches!(e, LanEvent::PairingResult(r) if r.outcome == "accepted").then_some(()))
+        .await;
+}
+
+/// 在 A 的任务队列里发送，等任务结束，返回（状态, 结果, 错误）
+async fn send_and_wait(
+    a: &TestNode,
+    to: &str,
+    items: Vec<crate::services::lan_export::ExportItem>,
+    options: crate::services::lan_export::ExportOptions,
+) -> crate::jobs::Job {
+    let node = a.node.clone();
+    let to = to.to_string();
+    let jobs = a.node.shared.jobs.clone();
+    let id = jobs.spawn(
+        crate::jobs::JobSpec {
+            kind: "lan_send",
+            module: None,
+            title: "发送".into(),
+            lane: crate::jobs::Lane::Transfer,
+            detached: true,
+            link: None,
+        },
+        move |ctx| async move {
+            let r = node.send(&ctx, &to, &items, &options).await?;
+            Ok(serde_json::to_value(r).unwrap())
+        },
+    );
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let job = jobs.get(&id).unwrap();
+            if !job.status.is_active() {
+                return job;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("发送任务超时")
+}
+
+#[tokio::test]
+async fn send_plan_and_video_to_a_paired_device() {
+    use crate::services::lan_export::{ExportItem, ExportOptions};
+    let src = crate::services::lan_import::tests::seed().await;
+    let mut a = node_with("书房", (*src.pool).clone(), src.dir.clone()).await;
+    let mut b = node("客厅").await;
+    pair(&mut a, &mut b).await;
+
+    // B 拒绝：A 的任务失败，B 什么都没有
+    let items = vec![
+        ExportItem {
+            kind: "plan".into(),
+            id: src.plan_id,
+        },
+        ExportItem {
+            kind: "video".into(),
+            id: src.video_id,
+        },
+    ];
+    let b_fp = b.fingerprint();
+    let a2 = a.node.clone();
+    let send = tokio::spawn({
+        let items = items.clone();
+        let a = TestNode {
+            node: a2,
+            events: mpsc::unbounded_channel().1,
+        };
+        let to = b_fp.clone();
+        async move { send_and_wait(&a, &to, items, ExportOptions::default()).await }
+    });
+    let offer = b
+        .wait(|e| match e {
+            LanEvent::TransferOffer(o) => Some(o.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(
+        (
+            offer.summary.plans,
+            offer.summary.videos,
+            offer.summary.clips
+        ),
+        (1, 1, 2)
+    );
+    assert_eq!(
+        b.node.pending_transfer().unwrap().transfer_id,
+        offer.transfer_id
+    );
+    b.node.respond_transfer(&offer.transfer_id, false).unwrap();
+    let job = send.await.unwrap();
+    assert_eq!(job.status, crate::jobs::JobStatus::Failed);
+    assert!(job.error.unwrap().to_string().contains("没有接收"));
+    let plans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM study_plans")
+        .fetch_one(&b.node.shared.pool)
+        .await
+        .unwrap();
+    assert_eq!(plans, 0);
+
+    // B 接收：A 的任务成功，结果里是 B 新建的对象；B 的临时目录已删除
+    let a2 = a.node.clone();
+    let send = tokio::spawn({
+        let a = TestNode {
+            node: a2,
+            events: mpsc::unbounded_channel().1,
+        };
+        let to = b_fp.clone();
+        async move { send_and_wait(&a, &to, items, ExportOptions::default()).await }
+    });
+    let offer = b
+        .wait(|e| match e {
+            LanEvent::TransferOffer(o) => Some(o.clone()),
+            _ => None,
+        })
+        .await;
+    b.node.respond_transfer(&offer.transfer_id, true).unwrap();
+    let job = send.await.unwrap();
+    assert_eq!(
+        job.status,
+        crate::jobs::JobStatus::Succeeded,
+        "{:?}",
+        job.error
+    );
+    let result: crate::services::lan_import::ImportResult =
+        serde_json::from_value(job.result.unwrap()).unwrap();
+    assert_eq!(result.plans[0].title, "出国前");
+    assert_eq!(result.videos[0].title, "机场对话");
+    let clip_file = crate::services::video::video_dir(&b.node.shared.data_dir, result.videos[0].id)
+        .join("clips/1-a.mp4");
+    assert_eq!(std::fs::read_to_string(clip_file).unwrap(), "clip-a");
+    let closed = b
+        .wait(|e| match e {
+            LanEvent::TransferClosed(c) if c.transfer_id == offer.transfer_id => {
+                Some(c.reason.clone())
+            }
+            _ => None,
+        })
+        .await;
+    assert_eq!(closed, "done");
+    assert!(!b
+        .node
+        .shared
+        .dir
+        .join("incoming")
+        .join(&offer.transfer_id)
+        .exists());
+    // B 那边的接收任务也成功了
+    let recv = b
+        .node
+        .shared
+        .jobs
+        .list()
+        .into_iter()
+        .find(|j| j.kind == "lan_receive")
+        .unwrap();
+    for _ in 0..50 {
+        if !b.node.shared.jobs.get(&recv.id).unwrap().status.is_active() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        b.node.shared.jobs.get(&recv.id).unwrap().status,
+        crate::jobs::JobStatus::Succeeded
+    );
+}
+
+#[tokio::test]
+async fn transfer_requires_pairing_and_token() {
+    let a = node("A").await;
+    let b = node("B").await;
+    a.node.add_by_address(&b.address()).await.unwrap();
+    let id = a.node.shared.identity().unwrap();
+    let target = Target {
+        address: "127.0.0.1".parse().unwrap(),
+        port: b.node.status().port.unwrap(),
+        fingerprint: Some(b.fingerprint()),
+    };
+    // 没配对：提议被拒绝
+    let offer = transfer::OfferRequest {
+        transfer_id: "t1".into(),
+        package_version: 1,
+        summary: Default::default(),
+    };
+    let err = client::post_json::<_, transfer::OfferResponse>(
+        &id,
+        &target,
+        "/transfer/offer",
+        &offer,
+        REQUEST_WAIT,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ClientError::Status(s, _) if s == StatusCode::FORBIDDEN),
+        "{err}"
+    );
+    // 没有进行中的传送：上传被拒绝
+    let err = client::send(
+        &id,
+        &target,
+        hyper::Method::PUT,
+        "/transfer/t1/files/f1",
+        &[
+            (transfer::TOKEN_HEADER, "x".into()),
+            (transfer::OFFSET_HEADER, "0".into()),
+        ],
+        client::bytes_body("data"),
+        REQUEST_WAIT,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ClientError::Status(s, _) if s == StatusCode::GONE),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn upload_resumes_from_where_it_stopped() {
+    use crate::services::lan_export::{export, ExportItem, ExportOptions};
+    let src = crate::services::lan_import::tests::seed().await;
+    let mut a = node_with("A", (*src.pool).clone(), src.dir.clone()).await;
+    let mut b = node("B").await;
+    pair(&mut a, &mut b).await;
+    let exported = export(
+        src.pool.clone(),
+        &src.dir,
+        &[ExportItem {
+            kind: "video".into(),
+            id: src.video_id,
+        }],
+        &ExportOptions {
+            include_source_video: true,
+            ..Default::default()
+        },
+        "0",
+    )
+    .await
+    .unwrap();
+    let id = a.node.shared.identity().unwrap();
+    let target = Target {
+        address: "127.0.0.1".parse().unwrap(),
+        port: b.node.status().port.unwrap(),
+        fingerprint: Some(b.fingerprint()),
+    };
+    let offer = transfer::OfferRequest {
+        transfer_id: "resume-1".into(),
+        package_version: 1,
+        summary: exported.package.summary(),
+    };
+    let ask = {
+        let id = id.clone();
+        let target = target.clone();
+        tokio::spawn(async move {
+            client::post_json::<_, transfer::OfferResponse>(
+                &id,
+                &target,
+                "/transfer/offer",
+                &offer,
+                REQUEST_WAIT,
+            )
+            .await
+            .unwrap()
+            .1
+        })
+    };
+    b.wait(|e| matches!(e, LanEvent::TransferOffer(_)).then_some(()))
+        .await;
+    b.node.respond_transfer("resume-1", true).unwrap();
+    let token = ask.await.unwrap().token.unwrap();
+    let auth = |offset: Option<u64>| {
+        let mut h = vec![(transfer::TOKEN_HEADER, token.clone())];
+        if let Some(o) = offset {
+            h.push((transfer::OFFSET_HEADER, o.to_string()));
+        }
+        h
+    };
+    let manifest = serde_json::to_vec(&exported.package).unwrap();
+    client::send(
+        &id,
+        &target,
+        hyper::Method::PUT,
+        "/transfer/resume-1/manifest",
+        &auth(None),
+        client::bytes_body(manifest.clone()),
+        REQUEST_WAIT,
+    )
+    .await
+    .unwrap();
+
+    // 原始视频先传前一半，再从断点传完
+    let source = exported.package.videos[0]
+        .files
+        .iter()
+        .find(|f| f.path == "source.mp4")
+        .unwrap()
+        .file
+        .clone();
+    let data = std::fs::read(&exported.files[&source]).unwrap();
+    let half = data.len() / 2;
+    let put = |offset: u64, body: Vec<u8>| {
+        let id = id.clone();
+        let target = target.clone();
+        let headers = auth(Some(offset));
+        let path = format!("/transfer/resume-1/files/{source}");
+        async move {
+            client::send(
+                &id,
+                &target,
+                hyper::Method::PUT,
+                &path,
+                &headers,
+                client::bytes_body(body),
+                REQUEST_WAIT,
+            )
+            .await
+        }
+    };
+    put(0, data[..half].to_vec()).await.unwrap();
+    // 断点不对：拒绝，并告诉已经收到多少
+    let err = put(0, data.to_vec()).await.unwrap_err();
+    assert!(
+        matches!(&err, ClientError::Status(s, body) if *s == StatusCode::CONFLICT && body == &half.to_string()),
+        "{err}"
+    );
+    let (_, bytes) = client::send(
+        &id,
+        &target,
+        hyper::Method::PUT,
+        "/transfer/resume-1/manifest",
+        &auth(None),
+        client::bytes_body(manifest),
+        REQUEST_WAIT,
+    )
+    .await
+    .unwrap();
+    let received: transfer::ReceivedFiles = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(received.received[&source], half as u64);
+    put(half as u64, data[half..].to_vec()).await.unwrap();
+    let dir = b.node.shared.dir.join("incoming").join("resume-1");
+    assert_eq!(std::fs::read(dir.join(&source)).unwrap(), data);
+
+    // 内容被改过：校验不通过，丢掉重传
+    let poster = exported
+        .package
+        .files
+        .iter()
+        .find(|f| f.kind == "image")
+        .unwrap()
+        .id
+        .clone();
+    let err = client::send(
+        &id,
+        &target,
+        hyper::Method::PUT,
+        &format!("/transfer/resume-1/files/{poster}"),
+        &auth(Some(0)),
+        client::bytes_body(vec![
+            b'x';
+            exported
+                .package
+                .files
+                .iter()
+                .find(|f| f.id == poster)
+                .unwrap()
+                .size as usize
+        ]),
+        REQUEST_WAIT,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ClientError::Status(s, _) if s == StatusCode::UNPROCESSABLE_ENTITY),
+        "{err}"
+    );
+    assert!(!dir.join(format!("{poster}.part")).exists());
+
+    // 发送方取消：接收方结束并删掉临时文件
+    client::send(
+        &id,
+        &target,
+        hyper::Method::POST,
+        "/transfer/resume-1/cancel",
+        &auth(None),
+        client::bytes_body(""),
+        REQUEST_WAIT,
+    )
+    .await
+    .unwrap();
+    let reason = b
+        .wait(|e| match e {
+            LanEvent::TransferClosed(c) => Some(c.reason.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(reason, "canceled");
+    assert!(!dir.exists());
 }

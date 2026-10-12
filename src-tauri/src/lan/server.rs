@@ -2,11 +2,16 @@
 //! 每个连接把对方编号与地址交给接口（`Peer`）。业务在 `Shared` 的 `on_*` 方法里。
 
 use super::identity::fingerprint_of;
+use super::package::MAX_MANIFEST_BYTES;
 use super::protocol::*;
+use super::transfer::{
+    FinishResponse, OfferRequest, OfferResponse, ReceivedFiles, OFFSET_HEADER, TOKEN_HEADER,
+};
 use super::Shared;
-use axum::extract::{Extension, Json, State};
-use axum::http::StatusCode;
-use axum::routing::post;
+use axum::body::{Body, Bytes};
+use axum::extract::{DefaultBodyLimit, Extension, Json, Path, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{post, put};
 use axum::Router;
 use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
@@ -38,6 +43,23 @@ pub(super) async fn serve(
         .route(&format!("{API}/pair/confirm"), post(pair_confirm))
         .route(&format!("{API}/pair/cancel"), post(pair_cancel))
         .route(&format!("{API}/unpair"), post(unpair))
+        .route(&format!("{API}/transfer/offer"), post(transfer_offer))
+        .route(
+            &format!("{API}/transfer/{{id}}/manifest"),
+            put(transfer_manifest).layer(DefaultBodyLimit::max(MAX_MANIFEST_BYTES)),
+        )
+        .route(
+            &format!("{API}/transfer/{{id}}/files/{{file}}"),
+            put(transfer_file),
+        )
+        .route(
+            &format!("{API}/transfer/{{id}}/finish"),
+            post(transfer_finish),
+        )
+        .route(
+            &format!("{API}/transfer/{{id}}/cancel"),
+            post(transfer_cancel),
+        )
         .with_state(shared);
     loop {
         tokio::select! {
@@ -118,4 +140,71 @@ async fn unpair(
     s.on_unpair(&peer.fingerprint)
         .await
         .map(|_| Json(serde_json::json!({})))
+}
+
+fn header<'a>(headers: &'a HeaderMap, name: &str) -> &'a str {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+}
+
+async fn transfer_offer(
+    State(s): State<Arc<Shared>>,
+    Extension(peer): Extension<Peer>,
+    Json(req): Json<OfferRequest>,
+) -> Reply<OfferResponse> {
+    s.on_offer(&peer.fingerprint, req).await.map(Json)
+}
+
+async fn transfer_manifest(
+    State(s): State<Arc<Shared>>,
+    Extension(peer): Extension<Peer>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Reply<ReceivedFiles> {
+    s.on_manifest(&peer.fingerprint, &id, header(&headers, TOKEN_HEADER), body)
+        .await
+        .map(Json)
+}
+
+async fn transfer_file(
+    State(s): State<Arc<Shared>>,
+    Extension(peer): Extension<Peer>,
+    Path((id, file)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: Body,
+) -> Reply<ReceivedFiles> {
+    let offset = header(&headers, OFFSET_HEADER).parse::<u64>().unwrap_or(0);
+    s.on_file(
+        &peer.fingerprint,
+        &id,
+        &file,
+        header(&headers, TOKEN_HEADER),
+        offset,
+        body,
+    )
+    .await
+    .map(Json)
+}
+
+async fn transfer_finish(
+    State(s): State<Arc<Shared>>,
+    Extension(peer): Extension<Peer>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Reply<FinishResponse> {
+    s.on_finish(&peer.fingerprint, &id, header(&headers, TOKEN_HEADER))
+        .await
+        .map(Json)
+}
+
+async fn transfer_cancel(
+    State(s): State<Arc<Shared>>,
+    Extension(peer): Extension<Peer>,
+    Path(id): Path<String>,
+) -> Json<serde_json::Value> {
+    s.on_transfer_cancel(&peer.fingerprint, &id);
+    Json(serde_json::json!({}))
 }

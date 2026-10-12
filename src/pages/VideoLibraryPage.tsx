@@ -37,6 +37,7 @@ import { formatDuration, formatRelative } from '@/utils/datetime';
 import { isJobActive, type Job } from '@/types/job';
 import type { ClipSummary, Video } from '@/types/video';
 import type { NavigateFn } from '../navigation';
+import { BatchSendButton, SEND_LABEL, SendIcon, sendToDevice } from '@/components/SendToDevice';
 
 export interface VideoLibraryPageProps {
   /** clips 片段（默认）/ sources 原始视频 */
@@ -197,6 +198,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
         {selection.selecting ? (
           <SelectionBar selection={selection} unit="个视频">
             <BatchTagButton kind="video" ids={selection.ids} onDone={load} />
+            <BatchSendButton items={selection.ids.map((id) => ({ kind: 'video', id }))} title={`${selection.selected.size} 个视频`} />
             <BatchDeleteButton count={selection.selected.size} onClick={() => setToDelete(shownVideos.filter((v) => selection.selected.has(v.id)))} />
           </SelectionBar>
         ) : (
@@ -227,6 +229,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
               { label: '在剪辑编辑器里打开', icon: <Scissors />, onSelect: () => open(video), disabled: !clickable },
               ...(video.clipCount > 0 ? [{ label: '查看场景片段', icon: <Clapperboard />, onSelect: () => onNavigate?.('videos', { tab: 'clips', videoId: video.id }) }] : []),
               { label: '编辑…', icon: <Pencil />, onSelect: () => setEditing({ kind: 'video', id: video.id, title: video.title, tags: video.tags }) },
+              { label: SEND_LABEL, icon: <SendIcon />, onSelect: () => sendToDevice({ items: [{ kind: 'video', id: video.id }], title: video.title }), disabled: Boolean(job) },
               { label: '删除…', icon: <Trash2 />, onSelect: () => setToDelete([video]), destructive: true, separator: true, disabled: Boolean(job) },
             ];
             return (

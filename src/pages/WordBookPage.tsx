@@ -23,6 +23,7 @@ import type { NavigateFn } from '@/navigation';
 import { PageError } from '@/components/PageError';
 import { messageOf } from '@/utils/errorHandler';
 import { addWordsAfterCreate } from './wordbook-detail/pendingAddWords';
+import { BatchSendButton, SEND_LABEL, SendIcon, sendToDevice } from '@/components/SendToDevice';
 
 export interface WordBookPageProps {
   /** Navigation handler */
@@ -203,6 +204,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
       {selection.selecting ? (
         <SelectionBar selection={selection} unit="本">
           <BatchTagButton kind="word_book" ids={selection.ids} onDone={() => loadWordBookData(filters.status)} />
+          <BatchSendButton items={selection.ids.map((id) => ({ kind: 'word_book', id }))} title={`${selection.selected.size} 个词汇本`} />
           <BatchDeleteButton count={selection.selected.size} onClick={() => setToDelete(filteredBooks.filter((b) => selection.selected.has(b.id)))} />
         </SelectionBar>
       ) : (
@@ -273,6 +275,7 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
                   : [
                       { label: '打开', icon: <BookOpen />, onSelect: () => onNavigate?.('wordbook-detail', { id: book.id }) },
                       { label: '编辑…', icon: <Pencil />, onSelect: () => setEditingBook(book) },
+                      { label: SEND_LABEL, icon: <SendIcon />, onSelect: () => sendToDevice({ items: [{ kind: 'word_book', id: book.id }], title: book.title }) },
                       { label: '删除…', icon: <Trash2 />, onSelect: () => setToDelete([book]), destructive: true, separator: true },
                     ]
               }

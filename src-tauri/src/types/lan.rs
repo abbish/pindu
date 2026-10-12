@@ -95,3 +95,35 @@ pub struct PairingResult {
     /// 失败原因（给用户看的话）
     pub message: Option<String>,
 }
+
+/// 别的设备想发送的内容（等本机确认）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferOffer {
+    pub transfer_id: String,
+    pub fingerprint: String,
+    pub alias: String,
+    pub summary: crate::lan::package::PackageSummary,
+}
+
+/// 接收结束：rejected / timeout / canceled / done / failed
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferClosed {
+    pub transfer_id: String,
+    pub reason: String,
+}
+
+/// 发送到已配对的设备
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartTransferRequest {
+    pub fingerprint: String,
+    pub items: Vec<crate::services::lan_export::ExportItem>,
+    /// 计划连同学习进度
+    #[serde(default)]
+    pub include_progress: bool,
+    /// 视频带上原始视频
+    #[serde(default)]
+    pub include_source_video: bool,
+}

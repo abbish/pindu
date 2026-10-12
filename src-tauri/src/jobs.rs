@@ -27,6 +27,8 @@ const EMIT_INTERVAL: Duration = Duration::from_millis(200);
 const AGENT_SLOTS: usize = 2;
 /// 同时运行的媒体任务数（ffmpeg 吃满 CPU）
 const MEDIA_SLOTS: usize = 1;
+/// 设备互传同时进行的发送 / 接收数（不占 AI 与视频处理的空位）
+const TRANSFER_SLOTS: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -50,6 +52,8 @@ pub enum Lane {
     Agent,
     /// ffmpeg 处理视频
     Media,
+    /// 设备互传（发送 / 接收，lan/transfer.rs）
+    Transfer,
 }
 
 /// 任务属于哪个模块：序列化为侧边栏一级页面键，菜单上显示这个模块进行中的任务
@@ -134,6 +138,7 @@ pub struct Jobs {
     /// AI 队列当前的总空位数（含正在用的）
     agent_slots: Arc<AtomicUsize>,
     media: Arc<Semaphore>,
+    transfer: Arc<Semaphore>,
     seq: Arc<AtomicU64>,
 }
 
@@ -146,6 +151,7 @@ impl Jobs {
             agent: Arc::new(Semaphore::new(AGENT_SLOTS)),
             agent_slots: Arc::new(AtomicUsize::new(AGENT_SLOTS)),
             media: Arc::new(Semaphore::new(MEDIA_SLOTS)),
+            transfer: Arc::new(Semaphore::new(TRANSFER_SLOTS)),
             seq: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -208,6 +214,7 @@ impl Jobs {
         let semaphore = match spec.lane {
             Lane::Agent => self.agent.clone(),
             Lane::Media => self.media.clone(),
+            Lane::Transfer => self.transfer.clone(),
         };
         let job_id = id.clone();
         tauri::async_runtime::spawn(async move {

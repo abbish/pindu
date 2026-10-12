@@ -30,6 +30,7 @@ import { studyService } from '@/services/studyService';
 import { intervalLabel } from '@/components/PlanPassagePicker';
 import { JobProgress, activeJobFor } from '@/components/Jobs';
 import { useJobs } from '@/hooks/useJobs';
+import { SEND_LABEL, sendToDevice } from '@/components/SendToDevice';
 
 export interface PlanSummaryCardProps {
   /** 学习计划 */
@@ -126,6 +127,7 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
     <>
       {action && !ordering && <Item onSelect={() => onAction(plan.id)}>{action}</Item>}
       <Item onSelect={() => onOpen(plan.id)}>查看详情</Item>
+      <Item onSelect={() => sendToDevice({ items: [{ kind: 'plan', id: plan.id }], title: plan.name })}>{SEND_LABEL}</Item>
     </>
   );
 

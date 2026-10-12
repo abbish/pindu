@@ -54,6 +54,7 @@ import { PageError } from '@/components/PageError';
 import { InlineError } from '@/components/InlineError';
 import { JobPanel, activeJobFor } from '@/components/Jobs';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { SEND_LABEL, SendIcon, sendToDevice } from '@/components/SendToDevice';
 
 type ViewMode = 'schedule' | 'words' | 'passages' | 'statistics' | 'settings';
 
@@ -436,7 +437,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
               {getActionConfig(action, status).label}
             </Button>
           ))}
-          {menu.length + danger.length > 0 && (
+          {(
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon" aria-label="更多操作">
@@ -444,6 +445,11 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => sendToDevice({ items: [{ kind: 'plan', id: plan.id }], title: plan.name })}>
+                  <SendIcon />
+                  {SEND_LABEL}
+                </DropdownMenuItem>
+                {(menu.length > 0 || danger.length > 0) && <DropdownMenuSeparator />}
                 {menu.map((action) => (
                   <DropdownMenuItem key={action} onSelect={() => handleAction(action)}>
                     {action === 'pause' ? <Pause /> : <CircleCheckBig />}

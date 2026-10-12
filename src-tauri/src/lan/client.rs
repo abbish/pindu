@@ -1,11 +1,13 @@
-//! 调用别的设备的接口：TLS（按编号核对对方）+ HTTP/1.1 + JSON。
+//! 调用别的设备的接口：TLS（按编号核对对方）+ HTTP/1.1。JSON 请求用 [`post_json`]，
+//! 传文件等需要自定义方法、头与流式请求体的用 [`send`]。
 
 use super::identity::Identity;
 use super::protocol::API;
 use super::tls;
+use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
-use hyper::{Request, StatusCode};
+use hyper::{Method, Request, StatusCode};
 use hyper_util::rt::TokioIo;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -15,6 +17,15 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// 请求体（流式文件或一段字节）
+pub type Body = BoxBody<Bytes, std::io::Error>;
+
+pub fn bytes_body(data: impl Into<Bytes>) -> Body {
+    Full::new(data.into())
+        .map_err(|never| match never {})
+        .boxed()
+}
 
 /// 要连接的设备
 #[derive(Debug, Clone)]
@@ -59,6 +70,32 @@ pub async fn post_json<Req: Serialize, Resp: DeserializeOwned>(
     body: &Req,
     wait: Duration,
 ) -> Result<(String, Resp), ClientError> {
+    let payload = serde_json::to_vec(body).map_err(|e| ClientError::Other(e.to_string()))?;
+    let (fingerprint, bytes) = send(
+        id,
+        target,
+        Method::POST,
+        path,
+        &[("content-type", "application/json".into())],
+        bytes_body(payload),
+        wait,
+    )
+    .await?;
+    let parsed = serde_json::from_slice(&bytes)
+        .map_err(|e| ClientError::Other(format!("对方的回应格式不对：{e}")))?;
+    Ok((fingerprint, parsed))
+}
+
+/// 发一个请求，成功（2xx）返回（对方实际的编号，响应体）；`wait` 是发出请求到收完响应的上限
+pub async fn send(
+    id: &Identity,
+    target: &Target,
+    method: Method,
+    path: &str,
+    headers: &[(&str, String)],
+    body: Body,
+    wait: Duration,
+) -> Result<(String, Bytes), ClientError> {
     let (config, seen) = tls::client_config(id, target.fingerprint.clone())
         .map_err(|e| ClientError::Other(e.to_string()))?;
     let addr = SocketAddr::new(target.address, target.port);
@@ -96,14 +133,18 @@ pub async fn post_json<Req: Serialize, Resp: DeserializeOwned>(
     tokio::spawn(async move {
         let _ = conn.await;
     });
-    let payload = serde_json::to_vec(body).map_err(|e| ClientError::Other(e.to_string()))?;
-    let request = Request::post(format!("{API}{path}"))
-        .header(hyper::header::HOST, addr.to_string())
-        .header(hyper::header::CONTENT_TYPE, "application/json")
-        .body(Full::new(Bytes::from(payload)))
+    let mut request = Request::builder()
+        .method(method)
+        .uri(format!("{API}{path}"))
+        .header(hyper::header::HOST, addr.to_string());
+    for (k, v) in headers {
+        request = request.header(*k, v);
+    }
+    let request = request
+        .body(body)
         .map_err(|e| ClientError::Other(e.to_string()))?;
 
-    let response = timeout(wait, async {
+    let (status, bytes) = timeout(wait, async {
         let response = sender
             .send_request(request)
             .await
@@ -120,12 +161,9 @@ pub async fn post_json<Req: Serialize, Resp: DeserializeOwned>(
     .await
     .map_err(|_| ClientError::Timeout)??;
 
-    let (status, bytes) = response;
     if !status.is_success() {
         let text = String::from_utf8_lossy(&bytes).chars().take(300).collect();
         return Err(ClientError::Status(status, text));
     }
-    let parsed = serde_json::from_slice(&bytes)
-        .map_err(|e| ClientError::Other(format!("对方的回应格式不对：{e}")))?;
-    Ok((peer_fingerprint, parsed))
+    Ok((peer_fingerprint, bytes))
 }

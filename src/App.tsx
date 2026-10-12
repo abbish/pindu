@@ -4,7 +4,8 @@ import { AppShell } from './components/AppShell/AppShell';
 import { DevTools } from './components/DevTools';
 import { JobCenter } from './components/Jobs';
 import { TutorBridge } from './components/TutorBridge';
-import { LanPairRequest } from './components/LanPairRequest';
+import { LanPairRequest, LanTransferOffer } from './components/LanPairRequest';
+import { SendToDeviceHost } from './components/SendToDevice';
 import { StartupGate } from './components/StartupGate';
 import { UpdateWatcher } from './components/UpdateBanner';
 import { HomePage } from './pages/HomePage';
@@ -181,6 +182,9 @@ function App() {
           <TutorBridge onNavigate={navigate} />
           {/* 局域网里别的设备发来的配对请求（设置 → 附近的设备） */}
           <LanPairRequest />
+          {/* 设备互传：发送弹窗（各页面「发送到其他电脑…」）与收到发送时的确认 */}
+          <SendToDeviceHost />
+          <LanTransferOffer />
           <DevTools />
         </StartupGate>
       </ToastProvider>

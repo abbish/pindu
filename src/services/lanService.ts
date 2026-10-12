@@ -1,6 +1,6 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '../types';
-import type { LanStatus, NearbyDevice, PairedDevice, PairingStarted, PairRequest, UpdateLanSettingsRequest } from '../types/lan';
+import type { LanStatus, NearbyDevice, PairedDevice, PairingStarted, PairRequest, StartTransferRequest, TransferOffer, UpdateLanSettingsRequest } from '../types/lan';
 
 /** 局域网设备互传：开关与名字、附近的设备、配对 */
 class LanService extends BaseService {
@@ -46,6 +46,19 @@ class LanService extends BaseService {
 
   async unpairDevice(fingerprint: string): Promise<ApiResult<void>> {
     return this.executeWithLoading(async () => this.client.invoke<void>('unpair_device', { fingerprint }));
+  }
+
+  /** 发送到已配对的设备：返回后台任务编号 */
+  async startTransfer(request: StartTransferRequest): Promise<ApiResult<string>> {
+    return this.executeWithLoading(async () => this.client.invoke<string>('start_lan_transfer', { request }));
+  }
+
+  async respondTransferOffer(transferId: string, accept: boolean): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => this.client.invoke<void>('respond_transfer_offer', { transferId, accept }));
+  }
+
+  async getPendingTransfer(): Promise<ApiResult<TransferOffer | null>> {
+    return this.executeWithLoading(async () => this.client.invoke<TransferOffer | null>('get_pending_transfer'));
   }
 }
 

@@ -3,10 +3,13 @@
 
 use super::finish;
 use crate::error::{AppError, AppResult};
+use crate::jobs::{JobSpec, Jobs, Lane};
 use crate::lan::LanNode;
 use crate::logger::Logger;
+use crate::services::lan_export::ExportOptions;
 use crate::types::lan::{
-    LanStatus, NearbyDevice, PairRequest, PairedDevice, PairingStarted, UpdateLanSettingsRequest,
+    LanStatus, NearbyDevice, PairRequest, PairedDevice, PairingStarted, StartTransferRequest,
+    TransferOffer, UpdateLanSettingsRequest,
 };
 use tauri::{AppHandle, Manager};
 
@@ -120,4 +123,75 @@ pub async fn unpair_device(app: AppHandle, fingerprint: String) -> AppResult<()>
         Err(e) => Err(e),
     };
     finish(&logger, cmd, result)
+}
+
+/// 发送素材 / 计划到已配对的设备：提交后台任务，立即返回任务编号（进度、结果在任务里）
+#[tauri::command]
+pub async fn start_lan_transfer(
+    app: AppHandle,
+    request: StartTransferRequest,
+) -> AppResult<String> {
+    let logger = app.state::<Logger>();
+    let cmd = "start_lan_transfer";
+    logger.api_request(
+        cmd,
+        Some(&format!(
+            "to={} items={} progress={} source_video={}",
+            short(&request.fingerprint),
+            request.items.len(),
+            request.include_progress,
+            request.include_source_video
+        )),
+    );
+    let result = async {
+        let node = node(&app)?;
+        if request.items.is_empty() {
+            return Err(AppError::ValidationError("请选择要发送的内容".into()));
+        }
+        let alias = node
+            .paired()
+            .await?
+            .into_iter()
+            .find(|d| d.fingerprint == request.fingerprint)
+            .map(|d| d.alias)
+            .ok_or_else(|| AppError::ValidationError("请先和这台设备配对".into()))?;
+        let spec = JobSpec {
+            kind: "lan_send",
+            module: None,
+            title: format!("发送到「{alias}」"),
+            lane: Lane::Transfer,
+            detached: true,
+            link: None,
+        };
+        let options = ExportOptions {
+            include_source_video: request.include_source_video,
+            include_progress: request.include_progress,
+        };
+        Ok(app.state::<Jobs>().spawn(spec, move |ctx| async move {
+            let result = node
+                .send(&ctx, &request.fingerprint, &request.items, &options)
+                .await?;
+            Ok(serde_json::to_value(result).unwrap_or_default())
+        }))
+    }
+    .await;
+    finish(&logger, cmd, result)
+}
+
+#[tauri::command]
+pub async fn respond_transfer_offer(
+    app: AppHandle,
+    transfer_id: String,
+    accept: bool,
+) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    let cmd = "respond_transfer_offer";
+    logger.api_request(cmd, Some(&format!("{transfer_id} accept={accept}")));
+    let result = node(&app).and_then(|n| n.respond_transfer(&transfer_id, accept));
+    finish(&logger, cmd, result)
+}
+
+#[tauri::command]
+pub async fn get_pending_transfer(app: AppHandle) -> AppResult<Option<TransferOffer>> {
+    Ok(node(&app)?.pending_transfer())
 }

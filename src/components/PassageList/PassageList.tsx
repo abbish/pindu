@@ -31,6 +31,7 @@ import { passageService } from '@/services/passageService';
 import { formatRelative } from '@/utils/datetime';
 import { LEVEL_LABEL, scopeDetailLabel } from '@/utils/passage';
 import type { PassageOrigin, PassageSource, PassageSummary } from '@/types/passage';
+import { BatchSendButton, SEND_LABEL, SendIcon, sendToDevice } from '@/components/SendToDevice';
 
 export interface PassageListProps {
   /** 只看引用了这个词汇本的短文 */
@@ -72,6 +73,7 @@ const PassageCard: React.FC<{ passage: PassageSummary; selection: Selection; onO
   const actions: CardAction[] = [
     { label: '打开', icon: <FileText />, onSelect: onOpen },
     { label: '编辑…', icon: <Pencil />, onSelect: onEdit },
+    { label: SEND_LABEL, icon: <SendIcon />, onSelect: () => sendToDevice({ items: [{ kind: 'passage', id: p.id }], title: p.title }) },
     { label: '删除短文…', icon: <Trash2 />, onSelect: onDelete, destructive: true, separator: true },
   ];
   return (
@@ -210,6 +212,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
   const bar = selection.selecting ? (
     <SelectionBar selection={selection} unit="篇短文">
       <BatchTagButton kind="passage" ids={selection.ids} onDone={load} />
+      <BatchSendButton items={selection.ids.map((id) => ({ kind: 'passage', id }))} title={`${selection.selected.size} 篇短文`} />
       <BatchDeleteButton count={selection.selected.size} onClick={() => setToDelete((visible ?? []).filter((p) => selection.selected.has(p.id)))} />
     </SelectionBar>
   ) : (

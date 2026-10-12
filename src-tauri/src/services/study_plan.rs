@@ -370,6 +370,39 @@ impl StudyPlanService {
         &self,
         request: CreateStudyPlanWithScheduleRequest,
     ) -> AppResult<Id> {
+        let mut tx = self.repository.begin_transaction().await?;
+        let plan_id = self.create_with_schedule_conn(&mut tx, request).await?;
+
+        // 提交事务
+        tx.commit().await.map_err(|e| {
+            self.logger
+                .database_operation("COMMIT", "transaction", false, Some(&e.to_string()));
+            AppError::DatabaseError(format!("保存失败：{}", e))
+        })?;
+        self.refresh_wordbook_counts().await;
+        Ok(plan_id)
+    }
+
+    /// 更新词汇本的关联计划数量（在事务外执行，失败不影响主流程）
+    pub async fn refresh_wordbook_counts(&self) {
+        let wordbook_service =
+            crate::services::wordbook::WordBookService::new(self.pool.clone(), self.logger.clone());
+        if let Err(e) = wordbook_service.update_all_counts().await {
+            // 计划本身已创建成功，计数下次刷新会补上：记为警告
+            self.logger.warn(
+                "STUDY_PLAN_SERVICE",
+                &format!("Failed to update wordbook linked_plans: {}", e),
+                Some(&e.to_string()),
+            );
+        }
+    }
+
+    /// 新建带日程的计划（在调用方事务内；设备互传导入时与素材同一事务）
+    pub async fn create_with_schedule_conn(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        request: CreateStudyPlanWithScheduleRequest,
+    ) -> AppResult<Id> {
         use crate::repositories::study_schedule_repository::StudyScheduleRepository;
         use crate::types::study::StudyPlanAIResult;
 
@@ -411,9 +444,6 @@ impl StudyPlanService {
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect();
-
-        // 开始数据库事务
-        let mut tx = self.repository.begin_transaction().await?;
 
         // 确定状态
         let request_status_param = request.status.as_deref().unwrap_or("draft");
@@ -463,11 +493,11 @@ impl StudyPlanService {
 
         let plan_id = self
             .repository
-            .create_in_transaction(&mut tx, &plan)
+            .create_in_transaction(&mut *tx, &plan)
             .await?;
         if ai_result.plan_metadata.daily_new_words.is_some() {
             self.repository
-                .apply_plan_metadata_conn(&mut tx, plan_id, &ai_result.plan_metadata)
+                .apply_plan_metadata_conn(&mut *tx, plan_id, &ai_result.plan_metadata)
                 .await?;
         }
 
@@ -476,7 +506,7 @@ impl StudyPlanService {
             StudyScheduleRepository::new(self.repository.get_pool(), self.logger.clone());
 
         let schedule_ids = schedule_repo
-            .create_schedule_batch(&mut tx, plan_id, &ai_result.daily_plans)
+            .create_schedule_batch(&mut *tx, plan_id, &ai_result.daily_plans)
             .await?;
 
         // 创建日程单词
@@ -484,7 +514,7 @@ impl StudyPlanService {
             if schedule_idx < schedule_ids.len() {
                 schedule_repo
                     .create_schedule_words_batch(
-                        &mut tx,
+                        &mut *tx,
                         schedule_ids[schedule_idx],
                         &daily_plan.words,
                     )
@@ -494,13 +524,13 @@ impl StudyPlanService {
 
         // 创建学习计划单词关联
         self.repository
-            .create_plan_words_batch(&mut tx, plan_id, &word_ids)
+            .create_plan_words_batch(&mut *tx, plan_id, &word_ids)
             .await?;
 
         // 练习内容与短文任务（排期从开始日起）
-        plan_passages::check_inputs_exist_conn(&mut tx, &request.passages).await?;
+        plan_passages::check_inputs_exist_conn(&mut *tx, &request.passages).await?;
         plan_passages::init_conn(
-            &mut tx,
+            &mut *tx,
             plan_id,
             &content,
             interval_days,
@@ -508,25 +538,6 @@ impl StudyPlanService {
             crate::time::local_today(),
         )
         .await?;
-
-        // 提交事务
-        tx.commit().await.map_err(|e| {
-            self.logger
-                .database_operation("COMMIT", "transaction", false, Some(&e.to_string()));
-            AppError::DatabaseError(format!("保存失败：{}", e))
-        })?;
-
-        // 更新相关词汇本的关联计划数量（在事务外执行，失败不影响主流程）
-        let wordbook_service =
-            crate::services::wordbook::WordBookService::new(self.pool.clone(), self.logger.clone());
-        if let Err(e) = wordbook_service.update_all_counts().await {
-            // 计划本身已创建成功，计数下次刷新会补上：记为警告
-            self.logger.warn(
-                "STUDY_PLAN_SERVICE",
-                &format!("Failed to update wordbook linked_plans: {}", e),
-                Some(&e.to_string()),
-            );
-        }
 
         Ok(plan_id)
     }

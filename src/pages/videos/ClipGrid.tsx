@@ -30,6 +30,7 @@ import { PlanUsageBadge } from '@/components/LinkedPlans';
 import { tagService } from '@/services/tagService';
 import { formatDuration } from '@/utils/datetime';
 import type { ClipSummary, Video } from '@/types/video';
+import { BatchSendButton, SEND_LABEL, SendIcon, sendToDevice } from '@/components/SendToDevice';
 
 export interface ClipGridProps {
   clips: ClipSummary[] | null;
@@ -141,6 +142,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
             连续播放
           </Button>
           <BatchTagButton kind="passage" ids={selection.ids} onDone={() => onTagsChanged?.()} />
+          <BatchSendButton items={selection.ids.map((id) => ({ kind: 'clip', id }))} title={`${selection.selected.size} 段场景片段`} />
           <BatchDeleteButton count={selection.selected.size} onClick={() => setToDelete(pickedClips)} />
         </SelectionBar>
       ) : (
@@ -219,6 +221,7 @@ export const ClipGrid: React.FC<ClipGridProps> = ({ clips, videos, cutting, vide
                 { label: '编辑…', icon: <Pencil />, onSelect: () => setEditing({ kind: 'passage', id: c.id, title: c.title, level: c.level, tags: c.tags, isClip: true }) },
                 { label: '播放', icon: <ListVideo />, onSelect: () => setPlaylist([c]) },
                 ...(onOpenEditor ? [{ label: '在剪辑编辑器里查看', icon: <Scissors />, onSelect: () => onOpenEditor(c.videoId, c.id) }] : []),
+                { label: SEND_LABEL, icon: <SendIcon />, onSelect: () => sendToDevice({ items: [{ kind: 'clip', id: c.id }], title: c.title }) },
                 { label: '删除场景片段…', icon: <Trash2 />, onSelect: () => setToDelete([c]), destructive: true, separator: true },
               ]}
             />

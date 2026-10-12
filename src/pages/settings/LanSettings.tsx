@@ -115,7 +115,7 @@ export const LanSettings: React.FC = () => {
   const running = status?.running ?? false;
 
   return (
-    <SettingsPanel title="附近的设备" description="同一网络里的几台电脑打开后能互相找到，核对数字即可配对。">
+    <SettingsPanel title="附近的设备" description="同一网络里的电脑配对后，可以互相发送词汇本、短文、视频和学习计划。">
       <SettingsSection title="这台电脑">
         <SettingsRow label="让附近的设备找到这台电脑">
           <Switch

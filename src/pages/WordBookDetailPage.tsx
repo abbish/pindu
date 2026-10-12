@@ -57,6 +57,7 @@ import { PageError } from '@/components/PageError';
 import { LinkedPlanList, useLinkedPlans } from '@/components/LinkedPlans';
 import { InlineError } from '@/components/InlineError';
 import { takePendingAddWords } from './wordbook-detail/pendingAddWords';
+import { SEND_LABEL, SendIcon, sendToDevice } from '@/components/SendToDevice';
 
 
 /** 后端单词 → 表格行 */
@@ -441,6 +442,11 @@ export const WordBookDetailPage: React.FC<WordBookDetailPageProps> = ({ id, onNa
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => sendToDevice({ items: [{ kind: 'word_book', id: wordBook.id }], title: wordBook.title })}>
+                <SendIcon />
+                {SEND_LABEL}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
                 onSelect={() => {
