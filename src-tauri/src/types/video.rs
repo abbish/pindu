@@ -166,17 +166,33 @@ pub struct SetVideoSubtitlesRequest {
     pub video_id: i64,
     pub subtitle_path: String,
     pub second_subtitle_path: Option<String>,
+    /// 已经有字幕时换成这个（编辑器里的「更换字幕」）
+    #[serde(default)]
+    pub replace: bool,
 }
 
-/// 语音识别模型的状态（设置页）
+/// 一个语音识别模型（设置页）
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SpeechModelStatus {
+pub struct SpeechModelInfo {
+    /// base.en / small.en / medium.en
+    pub id: String,
+    /// 快速 / 推荐 / 更准确
+    pub label: String,
+    pub note: String,
     pub downloaded: bool,
     /// 已下载的大小（字节）
     pub size_bytes: i64,
     /// 需要下载的大小（字节）
     pub download_bytes: i64,
+}
+
+/// 语音识别模型：可选的几个与选用的那个
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechModels {
+    pub selected: String,
+    pub models: Vec<SpeechModelInfo>,
 }
 
 /// 导入已提交：视频 id 与任务 id

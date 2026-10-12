@@ -27,6 +27,17 @@ import {
   X,
   Pencil,
 } from 'lucide-react';
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { MaterialEditDialog } from '@/components/MaterialEditDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -50,7 +61,7 @@ import { PlanMenu } from './EditorMenus';
 import { NewPlanDialog, type NewPlanStart } from './NewPlanDialog';
 import { AutoSplitDialog } from './AutoSplitDialog';
 import { EditorBusyDialog } from './EditorBusyDialog';
-import { NoSubtitleBar } from './NoSubtitleBar';
+import { SubtitleStatusCard } from './SubtitleStatusCard';
 import { SegmentPanel } from './SegmentPanel';
 import { SubtitleOffsetControl } from './SubtitleOffsetControl';
 import { tagService } from '@/services/tagService';
@@ -219,6 +230,35 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
   const reloadCuesRef = useRef(reloadCues);
   reloadCuesRef.current = reloadCues;
 
+  /** 更换字幕（D61）：已经有字幕时先确认；选字幕文件，或重新识别英文语音 */
+  const [confirmReplace, setConfirmReplace] = useState<{ kind: 'file'; path: string } | { kind: 'recognize' } | null>(null);
+  const applySubtitleFile = async (path: string) => {
+    if (!videoId) return;
+    const replace = (detail?.cues.length ?? 0) > 0;
+    const result = await videoService.setSubtitles({ videoId, subtitlePath: path, replace });
+    if (!result.success) {
+      toast.showError('无法使用这个字幕', result.error);
+      return;
+    }
+    toast.showSuccess(replace ? '已换成新的字幕' : '已加上字幕');
+    await reloadCues();
+  };
+  const pickSubtitleFile = async () => {
+    const picked = await openFileDialog({ multiple: false, directory: false, filters: [{ name: '字幕', extensions: ['srt', 'vtt'] }] });
+    if (typeof picked !== 'string') return;
+    if ((detail?.cues.length ?? 0) > 0) setConfirmReplace({ kind: 'file', path: picked });
+    else await applySubtitleFile(picked);
+  };
+  const startRecognize = async (replace: boolean) => {
+    if (!videoId) return;
+    const result = await videoService.startRecognition(videoId, replace);
+    if (!result.success) toast.showError('无法识别字幕', result.error);
+  };
+  const requestRecognize = () => {
+    if ((detail?.cues.length ?? 0) > 0) setConfirmReplace({ kind: 'recognize' });
+    else void startRecognize(false);
+  };
+
   const changeOffset = async (offsetMs: number) => {
     if (!videoId) return;
     const result = await videoService.setSubtitleOffset(videoId, offsetMs);
@@ -234,6 +274,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
     if ((job.link?.params as { videoId?: number } | undefined)?.videoId !== videoId) return;
     if (job.kind === 'video_recognize') {
       if (job.status === 'failed') toast.showError('没有识别出字幕', jobErrorText(job));
+      else if (job.status === 'succeeded') toast.showSuccess(`已识别出 ${(job.result as { cues?: number } | null)?.cues ?? 0} 句字幕`);
       await reloadCues();
       return;
     }
@@ -690,8 +731,6 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
           </div>
         </header>
 
-        {cues.length === 0 && <NoSubtitleBar videoId={detail.video.id} job={recognizeJob} onSubtitles={() => void reloadCues()} />}
-
         {/* 主区：片段列表 · 播放器 · 片段属性 */}
         <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_360px]">
           <aside className="flex min-h-0 flex-col border-r">
@@ -793,6 +832,13 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
               {mediaError && (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">这个视频无法播放</div>
               )}
+              <SubtitleStatusCard
+                job={recognizeJob}
+                hasCues={cues.length > 0}
+                onRecognize={() => requestRecognize()}
+                onPickFile={() => void pickSubtitleFile()}
+                onStop={(job) => void jobService.cancel(job.id)}
+              />
               {currentCue && (
                 <div className="pointer-events-none absolute inset-x-6 bottom-5 text-center">
                   <span className="inline-block rounded bg-black/70 px-3 py-1 text-lg leading-snug text-white">
@@ -821,8 +867,11 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
                   cues={cues}
                   playheadMs={playhead}
                   hasClips={detail.clips.length > 0}
-                  disabled={locked}
+                  disabled={locked || recognizeJob !== undefined}
                   onChange={changeOffset}
+                  subtitleName={detail.video.subtitleName}
+                  onReplaceFile={() => void pickSubtitleFile()}
+                  onRecognize={() => requestRecognize()}
                 />
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -993,6 +1042,30 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
         canCopy={segments.length > 0}
         onConfirm={createPlan}
       />
+      <AlertDialog open={confirmReplace !== null} onOpenChange={(open) => !open && setConfirmReplace(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmReplace?.kind === 'recognize' ? '重新识别字幕？' : '换成这个字幕文件？'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmReplace?.kind === 'recognize' ? '识别完会换掉现在的字幕。' : '现在的字幕会被换掉。'}
+              已规划的片段保留时间范围，已切出的场景片段不受影响；新字幕会重新整理和翻译。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const target = confirmReplace;
+                setConfirmReplace(null);
+                if (target?.kind === 'file') void applySubtitleFile(target.path);
+                else if (target?.kind === 'recognize') void startRecognize(true);
+              }}
+            >
+              {confirmReplace?.kind === 'recognize' ? '重新识别' : '换字幕'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <EditorBusyDialog job={busyJob} onStop={(job) => jobService.cancel(job.id)} onBackground={back} />
       <AiPlanDialog
         open={aiPlanOpen}

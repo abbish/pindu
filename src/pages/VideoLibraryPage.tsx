@@ -220,7 +220,8 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
           {(pager.pageItems ?? []).map((video) => {
             const job = jobOf(jobs, video.id);
             const interrupted = !job && (video.status === 'importing' || video.status === 'processing');
-            const clickable = !job && video.mediaUrl !== null && (video.status === 'ready' || video.status === 'done' || video.status === 'processing');
+            // 只有导入还没完成时打不开；识别 / 整理字幕、规划、切分时可以进编辑器看进度
+            const clickable = job?.kind !== 'video_import' && video.mediaUrl !== null && (video.status === 'ready' || video.status === 'done' || video.status === 'processing');
             const checked = selection.selected.has(video.id);
             const actions: CardAction[] = [
               { label: '在剪辑编辑器里打开', icon: <Scissors />, onSelect: () => open(video), disabled: !clickable },

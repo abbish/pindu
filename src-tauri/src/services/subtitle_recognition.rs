@@ -8,56 +8,140 @@
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::media::MediaTools;
+use crate::repositories::settings_repository::SettingsRepository;
 use crate::repositories::video_repository::VideoRepository;
 use crate::services::subtitle::{self, Cue};
 use crate::services::video::video_dir;
-use crate::types::video::SpeechModelStatus;
+use crate::types::video::{SpeechModelInfo, SpeechModels};
 use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-/// 识别模型（英语，约 490MB；实测时间轴比 large-v3-turbo 准，见 D61）
-const MODEL_FILE: &str = "ggml-small.en.bin";
-const MODEL_BYTES: u64 = 487_614_201;
-const MODEL_SHA256: &str = "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d";
-const MODEL_URLS: [&str; 2] = [
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
-    "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
+/// 可选的识别模型（都只认英语）。small.en 是默认：实测时间轴最稳；large-v3-turbo 时间轴会漂，不提供（D61）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpeechModel {
+    pub id: &'static str,
+    pub label: &'static str,
+    /// 给用户的一句说明
+    pub note: &'static str,
+    bytes: u64,
+    sha256: &'static str,
+}
+
+pub const MODELS: [SpeechModel; 3] = [
+    SpeechModel {
+        id: "base.en",
+        label: "快速",
+        note: "体积小、识别快，准确度一般，适合配置较低的电脑",
+        bytes: 147_964_211,
+        sha256: "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+    },
+    SpeechModel {
+        id: "small.en",
+        label: "推荐",
+        note: "准确度和速度兼顾",
+        bytes: 487_614_201,
+        sha256: "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
+    },
+    SpeechModel {
+        id: "medium.en",
+        label: "更准确",
+        note: "准确度略高，识别要慢几倍，适合较新的电脑",
+        bytes: 1_533_774_781,
+        sha256: "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
+    },
 ];
+pub const DEFAULT_MODEL: &str = "small.en";
+/// 选用的模型（app_settings）
+const MODEL_SETTING: &str = "speech.model";
+
 /// 识别出的字幕记作这个名字（视频的「字幕」一栏显示）
 pub const RECOGNIZED_NAME: &str = "自动识别的字幕";
 const CANCEL_POLL: Duration = Duration::from_millis(300);
+
+pub fn find_model(id: &str) -> AppResult<&'static SpeechModel> {
+    MODELS
+        .iter()
+        .find(|m| m.id == id)
+        .ok_or_else(|| AppError::ValidationError("没有这个识别模型".to_string()))
+}
+
+impl SpeechModel {
+    fn file(&self) -> String {
+        format!("ggml-{}.bin", self.id)
+    }
+    fn urls(&self) -> [String; 2] {
+        [
+            format!(
+                "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
+                self.file()
+            ),
+            format!(
+                "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/{}",
+                self.file()
+            ),
+        ]
+    }
+    fn path(&self, data_dir: &Path) -> PathBuf {
+        models_dir(data_dir).join(self.file())
+    }
+    fn part_path(&self, data_dir: &Path) -> PathBuf {
+        models_dir(data_dir).join(format!("{}.part", self.file()))
+    }
+    fn ready(&self, data_dir: &Path) -> bool {
+        std::fs::metadata(self.path(data_dir)).is_ok_and(|m| m.len() == self.bytes)
+    }
+}
 
 fn models_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("models")
 }
 
-fn model_path(data_dir: &Path) -> PathBuf {
-    models_dir(data_dir).join(MODEL_FILE)
+/// 选用的模型（没设置或不认识时用默认的）
+pub async fn selected_model(pool: &SqlitePool) -> &'static SpeechModel {
+    let id = SettingsRepository::get(pool, MODEL_SETTING)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    find_model(&id).unwrap_or_else(|_| find_model(DEFAULT_MODEL).expect("默认模型"))
 }
 
-fn model_ready(data_dir: &Path) -> bool {
-    std::fs::metadata(model_path(data_dir)).is_ok_and(|m| m.len() == MODEL_BYTES)
+pub async fn select_model(pool: &SqlitePool, id: &str) -> AppResult<()> {
+    find_model(id)?;
+    let mut conn = pool.acquire().await?;
+    SettingsRepository::set(&mut conn, MODEL_SETTING, Some(id)).await
 }
 
-/// 设置页：模型下载了没有
-pub fn model_status(data_dir: &Path) -> SpeechModelStatus {
-    let size = std::fs::metadata(model_path(data_dir))
-        .map(|m| m.len())
-        .unwrap_or(0);
-    SpeechModelStatus {
-        downloaded: size == MODEL_BYTES,
-        size_bytes: size as i64,
-        download_bytes: MODEL_BYTES as i64,
+/// 设置页：各模型下载了没有、选用的是哪个
+pub fn models_status(data_dir: &Path, selected: &SpeechModel) -> SpeechModels {
+    SpeechModels {
+        selected: selected.id.to_string(),
+        models: MODELS
+            .iter()
+            .map(|m| {
+                let size = std::fs::metadata(m.path(data_dir))
+                    .map(|f| f.len())
+                    .unwrap_or(0);
+                SpeechModelInfo {
+                    id: m.id.to_string(),
+                    label: m.label.to_string(),
+                    note: m.note.to_string(),
+                    downloaded: size == m.bytes,
+                    size_bytes: size as i64,
+                    download_bytes: m.bytes as i64,
+                }
+            })
+            .collect(),
     }
 }
 
 /// 删除下载的模型（之后识别时再下载）
-pub fn delete_model(data_dir: &Path) -> AppResult<()> {
-    for path in [model_path(data_dir), part_path(data_dir)] {
+pub fn delete_model(data_dir: &Path, model: &SpeechModel) -> AppResult<()> {
+    for path in [model.path(data_dir), model.part_path(data_dir)] {
         if path.exists() {
             std::fs::remove_file(&path)
                 .map_err(|e| AppError::InternalError(format!("删除识别模型失败：{e}")))?;
@@ -66,23 +150,23 @@ pub fn delete_model(data_dir: &Path) -> AppResult<()> {
     Ok(())
 }
 
-fn part_path(data_dir: &Path) -> PathBuf {
-    models_dir(data_dir).join(format!("{MODEL_FILE}.part"))
-}
-
 fn cancelled_error() -> AppError {
     AppError::ValidationError(crate::agent::session::CANCELLED.to_string())
 }
 
-/// 没有模型时下载（进度 0–1），校验后放到位
-async fn ensure_model(
+/// 没有这个模型时下载（进度 0–1），校验后放到位；`force` 时先删掉已有的重新下载
+pub async fn ensure_model(
     data_dir: &Path,
+    model: &SpeechModel,
+    force: bool,
     logger: &Logger,
     mut on_progress: impl FnMut(f64),
     cancelled: impl Fn() -> bool,
 ) -> AppResult<PathBuf> {
-    let target = model_path(data_dir);
-    if model_ready(data_dir) {
+    let target = model.path(data_dir);
+    if force {
+        delete_model(data_dir, model)?;
+    } else if model.ready(data_dir) {
         return Ok(target);
     }
     std::fs::create_dir_all(models_dir(data_dir))
@@ -91,32 +175,34 @@ async fn ensure_model(
         .connect_timeout(Duration::from_secs(20))
         .build()
         .map_err(|e| AppError::ExternalServiceError(format!("无法下载识别模型：{e}")))?;
+    let part = model.part_path(data_dir);
     let mut last_error = String::new();
-    for url in MODEL_URLS {
+    for url in model.urls() {
         match download(
             &client,
-            url,
-            &part_path(data_dir),
+            &url,
+            &part,
+            model.bytes,
             &mut on_progress,
             &cancelled,
         )
         .await
         {
             Ok(()) => {
-                let hash = sha256_file(&part_path(data_dir))?;
-                if hash != MODEL_SHA256 {
-                    let _ = std::fs::remove_file(part_path(data_dir));
+                let hash = sha256_file(&part)?;
+                if hash != model.sha256 {
+                    let _ = std::fs::remove_file(&part);
                     last_error = "下载的模型文件不完整".to_string();
                     logger.warn("VIDEO", &format!("识别模型校验失败：{url}"), Some(&hash));
                     continue;
                 }
-                std::fs::rename(part_path(data_dir), &target)
+                std::fs::rename(&part, &target)
                     .map_err(|e| AppError::InternalError(format!("保存识别模型失败：{e}")))?;
                 logger.info("VIDEO", &format!("识别模型已下载：{url}"));
                 return Ok(target);
             }
             Err(e) if cancelled() => {
-                let _ = std::fs::remove_file(part_path(data_dir));
+                let _ = std::fs::remove_file(&part);
                 return Err(e);
             }
             Err(e) => {
@@ -129,7 +215,7 @@ async fn ensure_model(
             }
         }
     }
-    let _ = std::fs::remove_file(part_path(data_dir));
+    let _ = std::fs::remove_file(&part);
     Err(AppError::ExternalServiceError(format!(
         "没能下载语音识别模型，请检查网络后重试（{last_error}）"
     )))
@@ -139,6 +225,7 @@ async fn download(
     client: &reqwest::Client,
     url: &str,
     to: &Path,
+    expected_bytes: u64,
     on_progress: &mut impl FnMut(f64),
     cancelled: &impl Fn() -> bool,
 ) -> AppResult<()> {
@@ -153,7 +240,7 @@ async fn download(
             response.status()
         )));
     }
-    let total = response.content_length().unwrap_or(MODEL_BYTES).max(1);
+    let total = response.content_length().unwrap_or(expected_bytes).max(1);
     let mut file = tokio::fs::File::create(to)
         .await
         .map_err(|e| AppError::InternalError(format!("保存识别模型失败：{e}")))?;
@@ -240,12 +327,26 @@ fn threads() -> usize {
         .unwrap_or(4)
 }
 
-/// 运行 whisper-cli，输出 `<out_prefix>.srt`
+/// whisper-cli 识别出一句时的输出：`[00:00:06.000 --> 00:00:12.040]   A small cat was sleeping.`
+fn parse_line(line: &str) -> Option<&str> {
+    let rest = line.trim_start().strip_prefix('[')?;
+    let (timing, text) = rest.split_once(']')?;
+    timing.contains("-->").then(|| text.trim())
+}
+
+/// 识别到现在：识别出几句、最后一句（界面实时显示）
+#[derive(Debug, Default, Clone)]
+pub struct Heard {
+    pub lines: usize,
+    pub last: String,
+}
+
+/// 运行 whisper-cli，输出 `<out_prefix>.srt`；进度（0–1）与识别出的句子随时回报
 async fn run_whisper(
     model: &Path,
     wav: &Path,
     out_prefix: &Path,
-    mut on_progress: impl FnMut(f64),
+    mut on_progress: impl FnMut(f64, &Heard),
     cancelled: impl Fn() -> bool,
 ) -> AppResult<PathBuf> {
     let mut child = crate::process::command(whisper_cli()?)
@@ -258,28 +359,57 @@ async fn run_whisper(
         .arg("-of")
         .arg(out_prefix)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| AppError::ExternalServiceError(format!("无法运行语音识别：{e}")))?;
+    // 识别结果逐句写在 stdout（去掉音效标注后的才算一句）
+    let heard = Arc::new(Mutex::new(Heard::default()));
+    if let Some(stdout) = child.stdout.take() {
+        let heard = heard.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let Some(text) = parse_line(&line) else {
+                    continue;
+                };
+                let text = subtitle::strip_speaker_marks(
+                    &crate::services::passage_import::strip_brackets(text),
+                );
+                if text.chars().any(|c| c.is_ascii_alphabetic()) {
+                    if let Ok(mut h) = heard.lock() {
+                        h.lines += 1;
+                        h.last = text;
+                    }
+                }
+            }
+        });
+    }
     let mut tail: Vec<String> = Vec::new();
+    let mut progress = 0.0;
     if let Some(stderr) = child.stderr.take() {
         let mut lines = BufReader::new(stderr).lines();
         loop {
-            match tokio::time::timeout(CANCEL_POLL, lines.next_line()).await {
+            let done = match tokio::time::timeout(CANCEL_POLL, lines.next_line()).await {
                 Ok(Ok(Some(line))) => {
                     if let Some(p) = parse_progress(&line) {
-                        on_progress(p);
+                        progress = p;
                     } else if !line.trim().is_empty() {
                         tail.push(line);
                         if tail.len() > 5 {
                             tail.remove(0);
                         }
                     }
+                    false
                 }
-                Ok(_) => break,
-                Err(_) => {}
+                Ok(_) => true,
+                Err(_) => false,
+            };
+            let snapshot = heard.lock().map(|h| h.clone()).unwrap_or_default();
+            on_progress(progress, &snapshot);
+            if done {
+                break;
             }
             if cancelled() {
                 let _ = child.kill().await;
@@ -315,6 +445,8 @@ pub struct RecognizeJob {
     pub tools: MediaTools,
     pub data_dir: PathBuf,
     pub video_id: i64,
+    /// 已经有字幕时换成识别出的（用户在编辑器里选了「重新识别」）
+    pub replace: bool,
 }
 
 impl RecognizeJob {
@@ -328,7 +460,7 @@ impl RecognizeJob {
                 "视频没有导入成功，不能识别字幕".to_string(),
             ));
         }
-        if video.cue_count > 0 {
+        if video.cue_count > 0 && !self.replace {
             return Err(AppError::ValidationError(
                 "这个视频已经有字幕了".to_string(),
             ));
@@ -343,13 +475,16 @@ impl RecognizeJob {
             .ok_or_else(|| AppError::NotFound("找不到视频文件".to_string()))?;
 
         // 进度：下载模型（第一次）占 0–40，抽音频 40–50（不用下载时 0–10），识别其余
-        let downloading = !model_ready(&self.data_dir);
+        let chosen = selected_model(&self.pool).await;
+        let downloading = !chosen.ready(&self.data_dir);
         let (audio_from, recognize_from) = if downloading { (40, 50) } else { (0, 10) };
         if downloading {
             ctx.stage("下载语音识别模型（只需一次）");
         }
         let model = ensure_model(
             &self.data_dir,
+            chosen,
+            false,
             &self.logger,
             |f| ctx.progress((f * 40.0) as u64, 100),
             || ctx.is_cancelled(),
@@ -377,15 +512,20 @@ impl RecognizeJob {
                 )
                 .await?;
             ctx.stage("识别英文语音");
+            let mut reported = 0;
             let srt = run_whisper(
                 &model,
                 &wav,
                 &work.join("speech"),
-                |f| {
+                |f, heard| {
                     ctx.progress(
                         recognize_from + (f * (100 - recognize_from) as f64) as u64,
                         100,
-                    )
+                    );
+                    if heard.lines != reported {
+                        reported = heard.lines;
+                        ctx.detail(serde_json::json!({ "lines": heard.lines, "last": heard.last }));
+                    }
                 },
                 || ctx.is_cancelled(),
             )
@@ -421,6 +561,11 @@ mod tests {
             Some(1.0)
         );
         assert_eq!(parse_progress("read_audio_data: reading audio data"), None);
+        assert_eq!(
+            parse_line("[00:00:06.000 --> 00:00:12.040]   A small cat was sleeping."),
+            Some("A small cat was sleeping.")
+        );
+        assert_eq!(parse_line("whisper_init_from_file"), None);
 
         // 整条是音效标注的去掉，行内的标注去掉，说话人短横去掉
         let srt = "1\n00:00:01,000 --> 00:00:03,000\n(suspenseful music)\n\n2\n00:00:03,000 --> 00:00:05,000\n - That was Jacob back there, wasn't it?\n\n3\n00:00:05,000 --> 00:00:06,000\n[engine revs] Hold on!\n";
@@ -437,17 +582,24 @@ mod tests {
     fn model_status_and_delete() {
         let dir = std::env::temp_dir().join(format!("pindu-model-{}", std::process::id()));
         std::fs::create_dir_all(models_dir(&dir)).unwrap();
-        assert!(!model_status(&dir).downloaded);
-        std::fs::write(part_path(&dir), b"partial").unwrap();
-        std::fs::write(model_path(&dir), b"too small").unwrap();
-        let status = model_status(&dir);
+        let small = find_model(DEFAULT_MODEL).unwrap();
+        assert!(find_model("large").is_err());
+        assert!(models_status(&dir, small)
+            .models
+            .iter()
+            .all(|m| !m.downloaded));
+        std::fs::write(small.part_path(&dir), b"partial").unwrap();
+        std::fs::write(small.path(&dir), b"too small").unwrap();
+        let all = models_status(&dir, small);
+        assert_eq!(all.selected, "small.en");
+        let status = all.models.iter().find(|m| m.id == "small.en").unwrap();
         assert!(
             !status.downloaded
                 && status.size_bytes == 9
-                && status.download_bytes == MODEL_BYTES as i64
+                && status.download_bytes == small.bytes as i64
         );
-        delete_model(&dir).unwrap();
-        assert!(!model_path(&dir).exists() && !part_path(&dir).exists());
+        delete_model(&dir, small).unwrap();
+        assert!(!small.path(&dir).exists() && !small.part_path(&dir).exists());
         std::fs::remove_dir_all(&dir).ok();
     }
 }
@@ -458,7 +610,7 @@ mod tests {
 mod real {
     use super::*;
 
-    /// 真实下载模型（约 490MB）到临时目录并校验：`cargo test real_model_download -- --ignored --nocapture`
+    /// 真实下载模型（base.en，约 150MB）到临时目录并校验：`cargo test real_model_download -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
     async fn real_model_download() {
@@ -466,18 +618,26 @@ mod real {
         let logger = crate::test_support::test_logger();
         let mut last = 0.0;
         let started = std::time::Instant::now();
-        let path = ensure_model(&dir, &logger, |p| last = p, || false)
+        let base = find_model("base.en").unwrap();
+        let path = ensure_model(&dir, base, false, &logger, |p| last = p, || false)
             .await
             .unwrap();
         println!(
             "下载完成：{:.1}s，进度 {last}",
             started.elapsed().as_secs_f64()
         );
-        assert!(model_status(&dir).downloaded && last >= 0.99 && path.is_file());
+        assert!(base.ready(&dir) && last >= 0.99 && path.is_file());
         // 已有模型：不再下载
-        ensure_model(&dir, &logger, |_| panic!("不该再下载"), || false)
-            .await
-            .unwrap();
+        ensure_model(
+            &dir,
+            base,
+            false,
+            &logger,
+            |_| panic!("不该再下载"),
+            || false,
+        )
+        .await
+        .unwrap();
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -488,7 +648,8 @@ mod real {
             .await
             .expect("ffmpeg");
         let data = PathBuf::from(std::env::var("PINDU_TEST_DATA").unwrap());
-        assert!(model_ready(&data), "模型不在 {}", data.display());
+        let small = find_model(DEFAULT_MODEL).unwrap();
+        assert!(small.ready(&data), "模型不在 {}", data.display());
         let video = PathBuf::from(std::env::var("PINDU_TEST_VIDEO").unwrap());
         let work = std::env::temp_dir().join(format!("pindu-asr-{}", std::process::id()));
         std::fs::create_dir_all(&work).unwrap();
@@ -500,10 +661,10 @@ mod real {
             .unwrap();
         let mut last = 0.0;
         let srt = run_whisper(
-            &model_path(&data),
+            &small.path(&data),
             &wav,
             &work.join("speech"),
-            |p| last = p,
+            |p, _| last = p,
             || false,
         )
         .await

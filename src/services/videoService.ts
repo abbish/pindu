@@ -1,6 +1,6 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '../types';
-import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, SetVideoSubtitlesRequest, SpeechModelStatus, StartVideoImportRequest, StartVideoPlanRequest, SubtitleDiscovery, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
+import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, SetVideoSubtitlesRequest, SpeechModels, StartVideoImportRequest, StartVideoPlanRequest, SubtitleDiscovery, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
 import { notifyOnSuccess } from './tagService';
 
 /** 视频库（handlers/video.rs）：视频组件、导入（后台任务）、列表 / 详情 / 波形、改名、规划草稿、删除 */
@@ -24,23 +24,34 @@ export class VideoService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<SubtitleDiscovery>('find_video_subtitles', { videoPath }));
   }
 
-  /** 已导入、还没有字幕的视频：在本机识别字幕（后台任务，返回任务 id） */
-  async startRecognition(videoId: number): Promise<ApiResult<string>> {
-    return this.executeWithLoading(() => this.client.invoke<string>('start_video_recognition', { videoId }));
+  /** 在本机识别字幕（后台任务，返回任务 id）；replace：换掉已有的字幕 */
+  async startRecognition(videoId: number, replace = false): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_video_recognition', { videoId, replace }));
   }
 
-  /** 已导入、还没有字幕的视频：用字幕文件补上 */
+  /** 用字幕文件补上字幕；request.replace：换掉已有的字幕 */
   async setSubtitles(request: SetVideoSubtitlesRequest): Promise<ApiResult<void>> {
     return this.executeWithLoading(() => this.client.invoke<void>('set_video_subtitles', { request }));
   }
 
-  async getSpeechModelStatus(): Promise<ApiResult<SpeechModelStatus>> {
-    return this.executeWithLoading(() => this.client.invoke<SpeechModelStatus>('get_speech_model_status'));
+  /** 语音识别模型：可选的几个、下载了没有、选用的是哪个 */
+  async getSpeechModels(): Promise<ApiResult<SpeechModels>> {
+    return this.executeWithLoading(() => this.client.invoke<SpeechModels>('get_speech_models'));
   }
 
-  async deleteSpeechModel(): Promise<ApiResult<void>> {
-    return this.executeWithLoading(() => this.client.invoke<void>('delete_speech_model'));
+  async setSpeechModel(modelId: string): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('set_speech_model', { modelId }));
   }
+
+  /** 下载识别模型（后台任务，返回任务 id）；force：删掉已有的重新下载 */
+  async startSpeechModelDownload(modelId: string, force = false): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_speech_model_download', { modelId, force }));
+  }
+
+  async deleteSpeechModel(modelId: string): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('delete_speech_model', { modelId }));
+  }
+
 
   async getVideos(): Promise<ApiResult<Video[]>> {
     return this.executeWithLoading(() => this.client.invoke<Video[]>('get_videos'));

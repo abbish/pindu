@@ -8,7 +8,7 @@ use crate::repositories::settings_repository::SettingsRepository;
 use crate::repositories::video_repository::VideoRepository;
 use crate::services::{subtitle, video as video_service};
 use crate::types::video::{
-    SetVideoSubtitlesRequest, SpeechModelStatus, StartVideoImportRequest, StartVideoPlanRequest,
+    SetVideoSubtitlesRequest, SpeechModels, StartVideoImportRequest, StartVideoPlanRequest,
     SubtitleDiscovery, Video, VideoDetail, VideoImportStarted, VideoPlan,
 };
 use sqlx::SqlitePool;
@@ -162,7 +162,7 @@ pub async fn start_video_import(
             auto_translate(&app, video_id, &title).await;
         } else {
             // 识别排在导入之后（同一条 media 队列），识别完再整理
-            spawn_recognize(&app, video_id, &title).await?;
+            spawn_recognize(&app, video_id, &title, false).await?;
         }
         Ok(VideoImportStarted { video_id, job_id })
     }
@@ -205,13 +205,19 @@ fn read_cues(path: &str, second: Option<&str>) -> AppResult<Vec<subtitle::Cue>> 
 }
 
 /// 提交识别字幕的后台任务（media 队列：排在导入 / 转码之后）；识别完接着整理字幕
-async fn spawn_recognize(app: &AppHandle, video_id: i64, title: &str) -> AppResult<String> {
+async fn spawn_recognize(
+    app: &AppHandle,
+    video_id: i64,
+    title: &str,
+    replace: bool,
+) -> AppResult<String> {
     let job = crate::services::subtitle_recognition::RecognizeJob {
         pool: Arc::new(app.state::<SqlitePool>().inner().clone()),
         logger: Arc::new(app.state::<Logger>().inner().clone()),
         tools: require_tools(app).await?,
         data_dir: crate::app_paths::dirs(app).data,
         video_id,
+        replace,
     };
     let app = app.clone();
     let title = title.to_string();
@@ -261,27 +267,54 @@ pub async fn find_video_subtitles(
     super::finish(&logger, "find_video_subtitles", result)
 }
 
-/// 已导入、还没有字幕的视频：在本机识别字幕（导入时识别失败后重试）
+/// 在本机识别字幕：还没有字幕的视频（导入时识别失败后重试），或 `replace` 时换掉已有的字幕（编辑器里的「重新识别」）
 #[tauri::command]
-pub async fn start_video_recognition(app: AppHandle, video_id: i64) -> AppResult<String> {
+pub async fn start_video_recognition(
+    app: AppHandle,
+    video_id: i64,
+    replace: bool,
+) -> AppResult<String> {
     let logger = app.state::<Logger>();
-    logger.api_request("start_video_recognition", Some(&video_id.to_string()));
+    logger.api_request(
+        "start_video_recognition",
+        Some(&format!("{video_id} replace={replace}")),
+    );
     let result = async {
         let video = VideoRepository::get(app.state::<SqlitePool>().inner(), video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在".to_string()))?;
-        if video.cue_count > 0 {
+        if video.cue_count > 0 && !replace {
             return Err(AppError::ValidationError(
                 "这个视频已经有字幕了".to_string(),
             ));
         }
-        spawn_recognize(&app, video_id, &video.title).await
+        if subtitle_busy(&app, video_id) {
+            return Err(AppError::ValidationError(
+                "这个视频正在识别字幕或规划、切分，请稍后再试".to_string(),
+            ));
+        }
+        spawn_recognize(&app, video_id, &video.title, replace).await
     }
     .await;
     super::finish(&logger, "start_video_recognition", result)
 }
 
-/// 已导入、还没有字幕的视频：用字幕文件补上
+/// 这个视频有进行中的识别、整理字幕、规划或切分：这时不能换字幕
+fn subtitle_busy(app: &AppHandle, video_id: i64) -> bool {
+    app.state::<Jobs>().list().into_iter().any(|j| {
+        matches!(
+            j.kind.as_str(),
+            "video_recognize" | "video_translate" | "video_plan" | "video_process"
+        ) && j.status.is_active()
+            && j.link
+                .as_ref()
+                .and_then(|l| l.params.get("videoId"))
+                .and_then(|v| v.as_i64())
+                == Some(video_id)
+    })
+}
+
+/// 用字幕文件补上字幕（还没有字幕的视频），或 `replace` 时换掉已有的字幕；已规划的片段只记时间范围，不受影响
 #[tauri::command]
 pub async fn set_video_subtitles(
     app: AppHandle,
@@ -294,23 +327,14 @@ pub async fn set_video_subtitles(
         let video = VideoRepository::get(pool.inner(), request.video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在".to_string()))?;
-        if video.cue_count > 0 {
+        if video.cue_count > 0 && !request.replace {
             return Err(AppError::ValidationError(
                 "这个视频已经有字幕了".to_string(),
             ));
         }
-        let busy = app.state::<Jobs>().list().into_iter().any(|j| {
-            j.kind == "video_recognize"
-                && j.status.is_active()
-                && j.link
-                    .as_ref()
-                    .and_then(|l| l.params.get("videoId"))
-                    .and_then(|v| v.as_i64())
-                    == Some(request.video_id)
-        });
-        if busy {
+        if subtitle_busy(&app, request.video_id) {
             return Err(AppError::ValidationError(
-                "正在识别字幕，请先停止识别".to_string(),
+                "这个视频正在识别字幕或规划、切分，请稍后再试".to_string(),
             ));
         }
         let cues = read_cues(
@@ -331,34 +355,108 @@ pub async fn set_video_subtitles(
     super::finish(&logger, "set_video_subtitles", result)
 }
 
-/// 语音识别模型下载了没有（设置页）
+/// 语音识别模型：可选的几个、各自下载了没有、选用的是哪个（设置页）
 #[tauri::command]
-pub async fn get_speech_model_status(app: AppHandle) -> AppResult<SpeechModelStatus> {
+pub async fn get_speech_models(app: AppHandle) -> AppResult<SpeechModels> {
     let logger = app.state::<Logger>();
-    logger.api_request("get_speech_model_status", None);
-    let result = Ok(crate::services::subtitle_recognition::model_status(
+    logger.api_request("get_speech_models", None);
+    let selected =
+        crate::services::subtitle_recognition::selected_model(app.state::<SqlitePool>().inner())
+            .await;
+    let result = Ok(crate::services::subtitle_recognition::models_status(
         &crate::app_paths::dirs(&app).data,
+        selected,
     ));
-    super::finish(&logger, "get_speech_model_status", result)
+    super::finish(&logger, "get_speech_models", result)
 }
 
-/// 删除下载的语音识别模型（下次识别时再下载）
+/// 选用哪个识别模型（之后的识别用它；没下载的识别时再下载）
 #[tauri::command]
-pub async fn delete_speech_model(app: AppHandle) -> AppResult<()> {
+pub async fn set_speech_model(app: AppHandle, model_id: String) -> AppResult<()> {
     let logger = app.state::<Logger>();
-    logger.api_request("delete_speech_model", None);
+    logger.api_request("set_speech_model", Some(&model_id));
+    let result = crate::services::subtitle_recognition::select_model(
+        app.state::<SqlitePool>().inner(),
+        &model_id,
+    )
+    .await;
+    super::finish(&logger, "set_speech_model", result)
+}
+
+/// 下载识别模型（后台任务，可取消）；`force` 时删掉已有的重新下载
+#[tauri::command]
+pub async fn start_speech_model_download(
+    app: AppHandle,
+    model_id: String,
+    force: bool,
+) -> AppResult<String> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "start_speech_model_download",
+        Some(&format!("{model_id} force={force}")),
+    );
     let result = async {
-        let busy = app
-            .state::<Jobs>()
-            .list()
-            .into_iter()
-            .any(|j| j.kind == "video_recognize" && j.status.is_active());
-        if busy {
+        let model = crate::services::subtitle_recognition::find_model(&model_id)?;
+        if model_in_use(&app) {
             return Err(AppError::ValidationError(
-                "正在识别字幕，识别完再删除".to_string(),
+                "正在识别字幕或下载模型，完成后再试".to_string(),
             ));
         }
-        crate::services::subtitle_recognition::delete_model(&crate::app_paths::dirs(&app).data)
+        let data_dir = crate::app_paths::dirs(&app).data;
+        let task_logger = Arc::new(logger.inner().clone());
+        Ok(app.state::<Jobs>().spawn(
+            JobSpec {
+                kind: "speech_model_download",
+                module: Some(JobModule::Videos),
+                title: format!("下载识别模型 · {}", model.label),
+                lane: Lane::Media,
+                detached: true,
+                link: None,
+            },
+            move |ctx| async move {
+                ctx.stage(format!("下载识别模型（{}）", model.label));
+                ctx.detail(serde_json::json!({ "modelId": model.id }));
+                crate::services::subtitle_recognition::ensure_model(
+                    &data_dir,
+                    model,
+                    force,
+                    &task_logger,
+                    |f| ctx.progress((f * 100.0) as u64, 100),
+                    || ctx.is_cancelled(),
+                )
+                .await?;
+                Ok(serde_json::json!({ "modelId": model.id }))
+            },
+        ))
+    }
+    .await;
+    super::finish(&logger, "start_speech_model_download", result)
+}
+
+/// 正在识别字幕或下载模型（这时不能删、不能再下载）
+fn model_in_use(app: &AppHandle) -> bool {
+    app.state::<Jobs>().list().into_iter().any(|j| {
+        matches!(j.kind.as_str(), "video_recognize" | "speech_model_download")
+            && j.status.is_active()
+    })
+}
+
+/// 删除下载的识别模型（下次识别时再下载）
+#[tauri::command]
+pub async fn delete_speech_model(app: AppHandle, model_id: String) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    logger.api_request("delete_speech_model", Some(&model_id));
+    let result = async {
+        let model = crate::services::subtitle_recognition::find_model(&model_id)?;
+        if model_in_use(&app) {
+            return Err(AppError::ValidationError(
+                "正在识别字幕或下载模型，完成后再删除".to_string(),
+            ));
+        }
+        crate::services::subtitle_recognition::delete_model(
+            &crate::app_paths::dirs(&app).data,
+            model,
+        )
     }
     .await;
     super::finish(&logger, "delete_speech_model", result)

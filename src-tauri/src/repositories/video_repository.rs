@@ -35,7 +35,16 @@ pub struct VideoRow {
 impl VideoRow {
     /// 按纠偏换算后的字幕：显示、规划、切分一律用它（唯一换算点）
     pub fn cues(&self) -> Vec<Cue> {
-        shift_cues(self.raw_cues(), self.subtitle_offset_ms)
+        // 早先识别 / 导入时还没去掉「换人说话」的 >>：读出时去掉（只改文字，条数与下标不变）
+        let cues = self
+            .raw_cues()
+            .into_iter()
+            .map(|c| Cue {
+                en: crate::services::subtitle::strip_speaker_marks(&c.en),
+                ..c
+            })
+            .collect();
+        shift_cues(cues, self.subtitle_offset_ms)
     }
 
     /// 字幕文件里的原始时间（写回翻译时用，下标与 cues() 一一对应）

@@ -10,7 +10,7 @@ import { InlineError } from '@/components/InlineError';
 import { videoService } from '@/services/videoService';
 import { formatBytes } from '@/utils/fileSize';
 import { hasExtension, titleFromFileName } from '@/utils/videoTitle';
-import type { MediaToolsStatus, SpeechModelStatus, SubtitleDiscovery, VideoImportStarted } from '@/types/video';
+import type { MediaToolsStatus, SpeechModelInfo, SubtitleDiscovery, VideoImportStarted } from '@/types/video';
 
 const VIDEO_EXTENSIONS = ['mp4', 'm4v', 'mov', 'mkv', 'webm', 'avi', 'ts'];
 const SUBTITLE_EXTENSIONS = ['srt', 'vtt'];
@@ -78,7 +78,8 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
   const [discovery, setDiscovery] = useState<SubtitleDiscovery | 'loading' | null>(null);
   /** 没有英文字幕时：导入后自动识别语音 */
   const [recognize, setRecognize] = useState(false);
-  const [model, setModel] = useState<SpeechModelStatus | null>(null);
+  /** 选用的识别模型（没下载时提示第一次要下载多大） */
+  const [model, setModel] = useState<SpeechModelInfo | null>(null);
   const [title, setTitle] = useState('');
   /** 用户自己改过标题后，重新选视频不再覆盖 */
   const [titleEdited, setTitleEdited] = useState(false);
@@ -96,7 +97,7 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
     setTitleEdited(false);
     setError(null);
     videoService.getMediaToolsStatus().then((r) => setTools(r.success ? r.data : null));
-    videoService.getSpeechModelStatus().then((r) => setModel(r.success ? r.data : null));
+    videoService.getSpeechModels().then((r) => setModel(r.success ? (r.data.models.find((m) => m.id === r.data.selected) ?? null) : null));
   }, [open]);
 
   const pick = async (extensions: string[], name: string, wrongType: string) => {

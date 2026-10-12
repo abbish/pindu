@@ -2,7 +2,7 @@
 //!
 //! - 一条字幕里同时有英文行和中文行（双语字幕）时分别放进 en / zh；
 //! - 另给一个字幕文件时按时间重叠对齐：英文文件为主，中文按重叠最多的那条补进 zh（两个文件谁是英文自动判断）；
-//! - 去掉样式标签、[音效]、说话人前缀的短横，没有英文的字幕条（纯音效、纯中文）丢掉。
+//! - 去掉样式标签、[音效]、说话人前缀的短横与「换人说话」的 `>>`（电视字幕的惯例，语音识别也会写），没有英文的字幕条（纯音效、纯中文）丢掉。
 //!
 //! 文本清理复用短文导入的 `strip_tags` / `strip_brackets`（services/passage_import.rs）。
 
@@ -144,11 +144,12 @@ fn parse(text: &str) -> Vec<RawCue> {
         };
         let lines: Vec<String> = lines
             .map(|l| {
-                strip_brackets(&strip_tags(l))
-                    .trim()
-                    .trim_start_matches(['-', '–'])
-                    .trim()
-                    .to_string()
+                strip_speaker_marks(
+                    strip_brackets(&strip_tags(l))
+                        .trim()
+                        .trim_start_matches(['-', '–'])
+                        .trim(),
+                )
             })
             .filter(|l| !l.is_empty())
             .collect();
@@ -162,6 +163,27 @@ fn parse(text: &str) -> Vec<RawCue> {
     }
     cues.sort_by_key(|c| c.start_ms);
     cues
+}
+
+/// 去掉「换人说话」的 `>>` / `>>>`（句首、句中都有；也有贴着词写的 `>>Arnie`）
+pub fn strip_speaker_marks(text: &str) -> String {
+    if !text.contains(">>") {
+        return text.to_string();
+    }
+    text.split_whitespace()
+        .map(|t| {
+            if t.starts_with(">>") {
+                t.trim_start_matches('>')
+            } else {
+                t
+            }
+        })
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim_start_matches(['-', '–'])
+        .trim()
+        .to_string()
 }
 
 /// `00:01:02,345 --> 00:01:04.000 align:start` → 毫秒
@@ -192,6 +214,27 @@ fn parse_time(value: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn speaker_change_marks_are_removed() {
+        assert_eq!(
+            strip_speaker_marks(">> Arnie, you're gonna extend that"),
+            "Arnie, you're gonna extend that"
+        );
+        assert_eq!(
+            strip_speaker_marks("Roger. >> Copy that. >>>Go."),
+            "Roger. Copy that. Go."
+        );
+        assert_eq!(strip_speaker_marks(">>"), "");
+        assert_eq!(strip_speaker_marks("a > b"), "a > b");
+        let cues = build_cues(
+            "1\n00:00:01,000 --> 00:00:02,000\n>> Hello.\n\n2\n00:00:02,000 --> 00:00:03,000\n>>\n",
+            None,
+        )
+        .unwrap();
+        assert_eq!(cues.len(), 1);
+        assert_eq!(cues[0].en, "Hello.");
+    }
 
     const SRT: &str = "1\r\n00:00:01,000 --> 00:00:03,500\r\n<i>Hello, table for two?</i>\r\n\r\n2\r\n00:00:04,000 --> 00:00:06,000\r\n[Music]\r\n\r\n3\r\n00:00:06,200 --> 00:00:08,000\r\n- Right this way.\r\n- Thank you.\r\n";
 

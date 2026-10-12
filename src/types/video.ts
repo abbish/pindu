@@ -154,15 +154,28 @@ export interface SetVideoSubtitlesRequest {
   videoId: number;
   subtitlePath: string;
   secondSubtitlePath?: string;
+  /** 已经有字幕时换成这个 */
+  replace?: boolean;
 }
 
-/** 语音识别模型的状态 */
-export interface SpeechModelStatus {
+/** 一个语音识别模型 */
+export interface SpeechModelInfo {
+  /** base.en / small.en / medium.en */
+  id: string;
+  /** 快速 / 推荐 / 更准确 */
+  label: string;
+  note: string;
   downloaded: boolean;
   /** 已下载的大小（字节） */
   sizeBytes: number;
   /** 需要下载的大小（字节） */
   downloadBytes: number;
+}
+
+/** 语音识别模型：可选的几个与选用的那个 */
+export interface SpeechModels {
+  selected: string;
+  models: SpeechModelInfo[];
 }
 
 export interface VideoImportStarted {

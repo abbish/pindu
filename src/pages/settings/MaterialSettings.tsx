@@ -15,8 +15,8 @@ import { videoService } from '@/services/videoService';
 import { DAILY_NEW_WORDS_OPTIONS } from '@/utils/planParams';
 import { PICK_DIFFICULTY_OPTIONS, PICK_FREQUENCY_OPTIONS } from '@/utils/passage';
 import type { MaterialSettings as Settings } from '@/types/material';
-import { formatBytes } from '@/utils/fileSize';
-import type { MediaToolsStatus, SpeechModelStatus } from '@/types/video';
+import type { MediaToolsStatus } from '@/types/video';
+import { SpeechModelSection } from './SpeechModelSection';
 
 type Option<T extends string | number> = { value: T; label: string };
 
@@ -77,8 +77,6 @@ export const MaterialSettings: React.FC = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [media, setMedia] = useState<MediaToolsStatus | null>(null);
-  /** 识别字幕用的模型（第一次识别时下载） */
-  const [speech, setSpeech] = useState<SpeechModelStatus | null>(null);
   /** 每段时长的输入（离开输入框再保存） */
   const [seconds, setSeconds] = useState({ min: '', max: '' });
 
@@ -94,18 +92,8 @@ export const MaterialSettings: React.FC = () => {
   useEffect(() => {
     void load();
     videoService.getMediaToolsStatus().then((r) => r.success && setMedia(r.data));
-    videoService.getSpeechModelStatus().then((r) => r.success && setSpeech(r.data));
   }, []);
 
-  const deleteSpeechModel = async () => {
-    const result = await videoService.deleteSpeechModel();
-    if (!result.success) {
-      toast.showError('无法删除识别模型', result.error);
-      return;
-    }
-    const r = await videoService.getSpeechModelStatus();
-    if (r.success) setSpeech(r.data);
-  };
 
   const update = async (patch: Partial<Settings>) => {
     if (!settings) return;
@@ -209,18 +197,6 @@ export const MaterialSettings: React.FC = () => {
             />
           </div>
         </SettingsRow>
-        {speech && (
-          <SettingsRow
-            label="字幕识别模型"
-            description={speech.downloaded ? `已下载，占用 ${formatBytes(speech.sizeBytes)}` : `第一次识别字幕时下载（${formatBytes(speech.downloadBytes)}）`}
-          >
-            {speech.downloaded && (
-              <Button variant="outline" size="sm" onClick={() => void deleteSpeechModel()}>
-                删除
-              </Button>
-            )}
-          </SettingsRow>
-        )}
         {/* 自带的能用时不显示；不可用或改用了别的 ffmpeg 时才需要 */}
         {media && !(media.available && media.builtIn) && (
           <SettingsRow label="视频组件" description={media.available ? (media.dir ?? undefined) : '没有找到'}>
@@ -238,6 +214,8 @@ export const MaterialSettings: React.FC = () => {
           </SettingsRow>
         )}
       </SettingsSection>
+
+      <SpeechModelSection />
 
       <SettingsSection title="学习计划">
         <SettingsRow label="每天新词数">
