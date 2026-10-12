@@ -1,6 +1,6 @@
 ---
 name: sdd-release
-description: "发布新版本（仅显式调用 /sdd-release）：确定版本号、发布前门禁（main 的 CI 绿、发行不变量、迁移只增、升级路径）、把 docs/releases/UNRELEASED.md 定稿为 vX.Y.Z.md、改版本号、打标签触发 CI、检查 Release 草稿（三平台安装包 + 签名更新包 + latest.json）、交用户发布、发布后核对与出问题时的补救。不自动触发；不代替 sdd-verify 的功能验收；本地打包自测用 npm run package（见 CONTRIBUTING）。Keywords: release, publish, tag, version bump, 发版, 发布, 打标签, Release 草稿, latest.json."
+description: "发布新版本（仅显式调用 /sdd-release）：确定版本号、发布前整理（用户文档与截图和当前版本一致、正式包实测、依赖或更新链路变了时应用内更新端到端）、发布前门禁（main 的 CI 绿、发行不变量、迁移只增、升级路径）、把 docs/releases/UNRELEASED.md 定稿为 vX.Y.Z.md、改版本号、打标签触发 CI、检查 Release 草稿（三平台安装包 + 签名更新包 + latest.json）、交用户发布、发布后核对与出问题时的补救。不自动触发；不代替 sdd-verify 的功能验收；本地打包自测用 npm run package（见 CONTRIBUTING）。Keywords: release, publish, tag, version bump, 发版, 发布, 打标签, Release 草稿, latest.json."
 disable-model-invocation: true
 ---
 
@@ -14,7 +14,7 @@ disable-model-invocation: true
 
 - 发版步骤与私钥：`docs/RELEASING.md`。
 - 有新迁移：`../deliver-backend-rust/references/sqlx-migration-standards.md`（Verify 节）。
-- 这次改了更新、构建或发版链路（`tauri.conf.json`、`build.yml`、`package.mjs`、`release-assets.mjs`、`handlers/updater.rs`）：`../sdd-verify/references/release-and-update-verification.md`，发布前必须先按它实测一遍。
+- 这次改了更新、构建或发版链路（`tauri.conf.json`、`build.yml`、`package.mjs`、`release-assets.mjs`、`handlers/updater.rs`），或升级了 Tauri / 更新插件 / 签名校验依赖：`../sdd-verify/references/release-and-update-verification.md`，第 2 步按它实测一遍。
 
 ## 输入
 
@@ -25,32 +25,38 @@ disable-model-invocation: true
 ## 执行
 
 1. **定版本号**（问用户确认）：`0.x` 阶段新功能升次版本（0.1 → 0.2），只有修复升修订号（0.1.0 → 0.1.1）。版本号只能往上走，应用内更新只认更高的版本。
-2. **发布前门禁**，任一不满足就停下、回 `sdd-work`：
+2. **发布前整理**（门禁之前做：会产生提交，门禁要求工作树干净）。改动单独提交；需要用户配合的先说明再做：
+   - **用户文档与当前版本一致**：对照 UNRELEASED.md 与上个标签以来的用户可见改动，逐节核对 README、README.en、INSTALL.md、SECURITY.md——功能描述、界面用语（以当前界面为准）、操作路径（设置分组与菜单名）、系统要求与隐私说明；措辞按 `../sdd-work/references/user-facing-writing.md`。多个会话并行时先确认由谁来改，不同时改同一批文件。
+   - **重截截图**：界面变过的 `docs/screenshots/*.png` 重截（`npm run tauri:dev`，演示数据，不用学习者的真实数据），原路径原文件名覆盖，中英文 README 引用的同一张图都看一遍。
+   - **正式包实测**：`npm run package` 打本机安装包，`PINDU_DATA_DIR` 指向上一版真实库的副本启动：先备份再升级、数据都在；跑一个 AI 任务、导入一段视频、朗读一句、打开日志文件夹；第二次启动只会唤起已有窗口（单实例只在发布版生效）。开发版测不到的就靠这一步。
+   - **应用内更新端到端**：上个标签以来改了更新 / 构建链路，或升级了 Tauri、更新插件、签名校验相关依赖（`git diff <上个标签>..HEAD -- src-tauri/Cargo.lock package.json` 里有 `tauri` / `minisign` 相关变化）时，按 `../sdd-verify/references/release-and-update-verification.md` §3 走一遍：签名不对拒绝安装、签名正确装好并重启（需要用户点「立即更新」「立即重启」）。
+   - 本机测不了的平台写进未验证项。
+3. **发布前门禁**，任一不满足就停下、回 `sdd-work`：
    - `main` 最新提交的 CI 全绿，工作树干净（`git status --short`）。
    - `python3 scripts/check-release-invariants.py` 通过：identifier、库文件名、更新公钥与地址不变，迁移只增且都已登记。
    - `git diff <上个标签>..HEAD --stat src-tauri/migrations/` 只有新增；有新增时，`startup::tests` 的升级用例通过，并用上一版的真实库副本启动一次（`PINDU_DATA_DIR` 指向副本），确认先备份再升级、数据都在。
-   - 改动涉及更新或发版链路时，已按 `release-and-update-verification.md` 实测并留了证据。
-3. **定稿发布说明**：把 `docs/releases/UNRELEASED.md` 的内容整理成 `docs/releases/vX.Y.Z.md`，用作者口吻、面向普通用户写（改了什么、有什么要注意），措辞按 `../sdd-work/references/user-facing-writing.md`：不写路径、数据库、签名、组件名、构建与测试过程，发布前逐条自查；然后清空 UNRELEASED.md，只留标题。这份说明会出现在 Release 页面和应用的「更新内容」弹窗里。
-4. **改版本号并提交**：`npm version X.Y.Z --no-git-tag-version`（同时改 `package.json` 和 `package-lock.json`；`tauri.conf.json` 引用 `package.json`，`Cargo.toml` 的版本不影响应用），提交 `release: vX.Y.Z` 并推送 `main`，等这次推送的 CI 变绿。
-5. **打标签**（问用户确认后再执行）：`git tag -a vX.Y.Z -m "拼读 vX.Y.Z" && git push origin vX.Y.Z`。构建会在三个系统上各跑一次，大约 15–20 分钟，用后台任务等结果，不要轮询。
-6. **检查 Release 草稿**：
+   - 第 2 步的整理已提交；需要应用内更新端到端的，已实测并留了证据。
+4. **定稿发布说明**：把 `docs/releases/UNRELEASED.md` 的内容整理成 `docs/releases/vX.Y.Z.md`，用作者口吻、面向普通用户写（改了什么、有什么要注意），措辞按 `../sdd-work/references/user-facing-writing.md`：不写路径、数据库、签名、组件名、构建与测试过程，发布前逐条自查；然后清空 UNRELEASED.md，只留标题。这份说明会出现在 Release 页面和应用的「更新内容」弹窗里。
+5. **改版本号并提交**：`npm version X.Y.Z --no-git-tag-version`（同时改 `package.json` 和 `package-lock.json`；`tauri.conf.json` 引用 `package.json`，`Cargo.toml` 的版本不影响应用），提交 `release: vX.Y.Z` 并推送 `main`，等这次推送的 CI 变绿。
+6. **打标签**（问用户确认后再执行）：`git tag -a vX.Y.Z -m "拼读 vX.Y.Z" && git push origin vX.Y.Z`。构建会在三个系统上各跑一次，大约 15–20 分钟，用后台任务等结果，不要轮询。
+7. **检查 Release 草稿**：
    - 三个系统的构建都成功，`release` 任务也成功。有一路失败时不会生成草稿：查日志、修好，先在本机复现验证，再推送修复，最后请用户挪标签（删除远端标签属于破坏性操作，由用户亲自执行）。
    - `gh release view vX.Y.Z --json assets,isDraft`：确认是草稿，附件齐全（mac `universal.dmg`、`universal.app.tar.gz(.sig)`，win `x64-setup.exe(.sig)`，linux `amd64.AppImage(.sig)`、`.deb`、`.rpm`，以及 `latest.json`）。
    - 下载 `latest.json`：`version` 不带 v；`platforms` 包含 darwin-aarch64、darwin-x86_64、windows-x86_64、linux-x86_64，每项都有 `url` 和 `signature`；`url` 指向本标签下的附件。
-7. **交用户发布**：请用户在网页上检查草稿后点「Publish release」。公开发布由用户决定，agent 不代为发布。
-8. **发布后核对**：
+8. **交用户发布**：请用户在网页上检查草稿后点「Publish release」。公开发布由用户决定，agent 不代为发布。
+9. **发布后核对**：
    - `curl -sL https://github.com/abbish/pindu/releases/latest/download/latest.json` 能取到新版本。
    - 用上一版的已安装应用「检查更新」，能看到提示（条件不允许时在交付物里写明未验证）。
-9. **发布后清理**（本机留下的同 identifier 旧包会被访达 / 启动台选中，用户打开的就不是刚发布的版本）：
+10. **发布后清理**（本机留下的同 identifier 旧包会被访达 / 启动台选中，用户打开的就不是刚发布的版本）：
    - 删除本机打包产物 `release/` 和 `src-tauri/target/**/release/bundle/`（编译缓存保留），删除前用 `lsregister -u <app>` 从启动服务里注销。
    - 推出挂载的 dmg，结束测试实例和本地 http 服务；`mdfind "kMDItemCFBundleIdentifier == 'com.redlark.*'"` 只应剩 `/Applications/拼读.app`。
    - 不碰用户的数据目录、下载目录里的安装包和其他分支；更新端到端测试用的临时目录在 scratchpad 里，随会话清掉。
    - 通知其他会话：版本已发布，下一个迁移序号、`UNRELEASED.md` 从空开始。
-10. **出问题时**：应用内更新不会降级。补救办法是尽快发一个版本号更高的修复版；在那之前把有问题的 Release 改回草稿，阻止还没更新的用户继续升级（见 `docs/RELEASING.md`「发错了怎么办」）。
+11. **出问题时**：应用内更新不会降级。补救办法是尽快发一个版本号更高的修复版；在那之前把有问题的 Release 改回草稿，阻止还没更新的用户继续升级（见 `docs/RELEASING.md`「发错了怎么办」）。
 
 ## 规则
 
-- 不在发布流程里顺手改功能或修 bug；发现问题就停下回 `sdd-work`，修好后从第 2 步重来。
+- 不在发布流程里顺手改功能或修 bug；发现问题就停下回 `sdd-work`，修好后从第 3 步（门禁）重来；修复改了界面时回第 2 步补截图。
 - 打标签、公开发布前都先问用户；删除或挪动已推送的标签由用户亲自执行。
 - 私钥只存在于 GitHub Secrets 和维护者的离线备份里：不读取、不打印、不复制私钥文件内容。
 - 某个平台没有实际运行验证过时，交付物里写明「未验证」；发布说明里用用户的话提醒（如「Windows 和 Linux 版本这次测试得较少，遇到问题欢迎反馈」），不写「构建通过」「未实际运行验证」这类工程说法，也不笼统说「全平台可用」。
@@ -60,6 +66,7 @@ disable-model-invocation: true
 
 ```text
 版本：vX.Y.Z（上一版 vA.B.C；类型：功能 / 修复）
+发布前整理：文档 ✓ | 截图 重截 <n> 张 / 无变化 | 正式包实测 ✓ | 更新端到端 ✓ / 不涉及
 门禁：CI ✓ | 不变量 ✓ | 迁移 只增 <NNN..MMM> / 无 | 升级路径 ✓ / 不涉及 | 更新链路实测 ✓ / 不涉及
 发布说明：docs/releases/vX.Y.Z.md（来自 UNRELEASED.md，<n> 条）
 构建：mac ✓ win ✓ linux ✓ → Release 草稿 <url>
@@ -71,6 +78,7 @@ disable-model-invocation: true
 
 ## 完成条件
 
+- 用户文档与截图和这一版一致，正式包实测过
 - 草稿经检查无误，用户已发布（或明确等待用户发布）
 - 发布后的 `latest.json` 已核对；未验证项已写明
 - `UNRELEASED.md` 已清空，`vX.Y.Z.md` 已提交

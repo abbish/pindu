@@ -23,7 +23,7 @@
 - `sdd-analyze`：定位首个分歧点；区分因果 finding、设计 finding、待决假设。`references/redlark-diagnostic-map.md` 说明证据在哪里。
 - `sdd-implement`：执行一个批次并调度最小 `deliver-*`；实际 diff 对账 plan。
 - `sdd-verify`：三层证据（确定性 / AI 语义 / 桌面 UI），迁移和 IPC contract 变更必查。
-- `sdd-release`（仅显式 `/sdd-release`，`disable-model-invocation: true`）：发布新版本——版本号、发布前门禁、发布说明定稿、打标签、Release 草稿与 latest.json 检查、交用户发布、发布后核对。人看的发版说明在 `docs/RELEASING.md`。
+- `sdd-release`（仅显式 `/sdd-release`，`disable-model-invocation: true`）：发布新版本——版本号、发布前整理（用户文档与截图、正式包实测、应用内更新端到端）、发布前门禁、发布说明定稿、打标签、Release 草稿与 latest.json 检查、交用户发布、发布后核对。人看的发版说明在 `docs/RELEASING.md`。
 - `sdd-hotfix`（仅显式 `/sdd-hotfix`，`disable-model-invocation: true`）：已发布版本的小缺陷快速修复并发修订版（X.Y.Z+1）；有准入条件（无迁移、不碰更新与构建链路、不升级依赖、不加功能），只做回归测试、verify、针对性手测和发布检查，不跑完整回归。不满足准入时改走 `sdd-work` + `/sdd-release`。
 
 ### 从改动到发布

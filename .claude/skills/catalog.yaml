@@ -70,7 +70,7 @@ skills:
   - id: sdd-release
     group: workflow
     path: .claude/skills/sdd-release/SKILL.md
-    summary: 仅显式调用（/sdd-release）：定版本号、发布前门禁、定稿发布说明、打标签、检查 Release 草稿与 latest.json、交用户发布、发布后核对与补救
+    summary: 仅显式调用（/sdd-release）：定版本号、发布前整理（文档与截图、正式包实测、应用内更新端到端）、发布前门禁、定稿发布说明、打标签、检查 Release 草稿与 latest.json、交用户发布、发布后核对与补救
 
   - id: sdd-hotfix
     group: workflow

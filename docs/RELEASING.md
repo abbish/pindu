@@ -5,22 +5,28 @@
 ## 一次发版要做的事
 
 1. **确认 main 是绿的**：最新提交的 CI 全部通过。
-2. **改版本号**：只改 `package.json`（应用版本取自这里，`tauri.conf.json` 引用它）。
+2. **发布前整理**：
+   - 对照 `docs/releases/UNRELEASED.md`，把 README（中英文）、INSTALL.md、SECURITY.md 改成和这一版一致：功能、界面上的叫法、设置在哪里。
+   - 界面变过的截图重截（`docs/screenshots/`，用演示数据，原文件名覆盖）。
+   - 本机打一个正式安装包（`npm run package`），用旧版数据的副本打开，实际用一遍：数据都在、AI 任务能跑、视频能导入、能朗读；再打开一次只会回到已有窗口。
+   - 升级过 Tauri / 更新插件，或者改过更新、打包流程时，按 `.claude/skills/sdd-verify/references/release-and-update-verification.md` 第 3 节测一遍应用内更新（签名不对不装、签名正确能装好重启）。
+   这些改动先提交，下一步要求 main 是干净且绿的。
+3. **改版本号**：只改 `package.json`（应用版本取自这里，`tauri.conf.json` 引用它）。
    ```bash
    npm version 0.2.0 --no-git-tag-version   # 同时更新 package-lock.json
    ```
    版本号只能往上走：应用内更新只会提示比当前版本高的版本。
-3. **写更新说明**：平时每个用户能感知到的改动，都已经在 `docs/releases/UNRELEASED.md` 里记了一行。发版时把它整理成 `docs/releases/v0.2.0.md`，用用户看得懂的话写，然后清空 UNRELEASED.md、只留标题。它会同时出现在 Release 页面和应用里「更新内容」的弹窗中。没有这个文件时，Release 页面用 GitHub 自动生成的提交列表，应用里只显示一句链接。
-4. **提交并打标签**：
+4. **写更新说明**：平时每个用户能感知到的改动，都已经在 `docs/releases/UNRELEASED.md` 里记了一行。发版时把它整理成 `docs/releases/v0.2.0.md`，用用户看得懂的话写，然后清空 UNRELEASED.md、只留标题。它会同时出现在 Release 页面和应用里「更新内容」的弹窗中。没有这个文件时，Release 页面用 GitHub 自动生成的提交列表，应用里只显示一句链接。
+5. **提交并打标签**：
    ```bash
    git commit -am "release: v0.2.0"
    git tag -a v0.2.0 -m "拼读 v0.2.0"
    git push origin main v0.2.0
    ```
-5. **等构建**：标签会触发 `.github/workflows/build.yml`。它在 macOS（universal）、Windows、Linux 上各构建一次，用更新私钥给更新包签名，然后汇总成一个 **Release 草稿**，附件包括各系统的安装包、更新包、`.sig` 签名和 `latest.json`。标签和 `package.json` 版本不一致时这一步会失败。
-6. **检查草稿**：在 Releases 页面打开草稿，至少下载一个安装包装上试试。确认附件里有 `latest.json`，内容里三个平台都有 `url` 和 `signature`。
-7. **发布**：点「Publish release」。发布之后，`releases/latest/download/latest.json` 才会指向这个版本，已安装的应用在 24 小时内（或用户手动检查时）就会收到提示。草稿不会被发现。
-8. **清理本机**：删掉本机打包留下的 `release/` 和 `src-tauri/target/**/release/bundle/`，推出挂载的 dmg。它们和正式版用同一个 identifier、版本号也一样，macOS 可能从启动台打开的是这些旧包，看起来就像「新版本还是老界面」。
+6. **等构建**：标签会触发 `.github/workflows/build.yml`。它在 macOS（universal）、Windows、Linux 上各构建一次，用更新私钥给更新包签名，然后汇总成一个 **Release 草稿**，附件包括各系统的安装包、更新包、`.sig` 签名和 `latest.json`。标签和 `package.json` 版本不一致时这一步会失败。
+7. **检查草稿**：在 Releases 页面打开草稿，至少下载一个安装包装上试试。确认附件里有 `latest.json`，内容里三个平台都有 `url` 和 `signature`。
+8. **发布**：点「Publish release」。发布之后，`releases/latest/download/latest.json` 才会指向这个版本，已安装的应用在 24 小时内（或用户手动检查时）就会收到提示。草稿不会被发现。
+9. **清理本机**：删掉本机打包留下的 `release/` 和 `src-tauri/target/**/release/bundle/`，推出挂载的 dmg。它们和正式版用同一个 identifier、版本号也一样，macOS 可能从启动台打开的是这些旧包，看起来就像「新版本还是老界面」。
 
 ## 更新签名私钥
 
