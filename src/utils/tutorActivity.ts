@@ -42,8 +42,11 @@ export interface TutorActivitySummary {
   unseen: string[];
 }
 
-/** seenAt：上次看过 AI 老师的时刻（没看过时为打开应用的时刻）；current：正在看 AI 老师页面 */
-export function summarizeActivity(state: TutorActivityState, seenAt: number, current: boolean): TutorActivitySummary {
+/** 记「看过」的键：每个对话一个（对话列表与侧边栏共用，打开过这个对话才算看过） */
+export const tutorSeenKey = (id: string) => `tutor:${id}`;
+
+/** seenAt(id)：上次看这个对话的时刻（没看过时为打开应用的时刻）；current：正在看 AI 老师页面（列表上已经标着） */
+export function summarizeActivity(state: TutorActivityState, seenAt: (id: string) => number, current: boolean): TutorActivitySummary {
   const entries = Object.entries(state.live);
   return {
     asking: entries.filter(([, a]) => a.asking).map(([id]) => id),
@@ -51,7 +54,7 @@ export function summarizeActivity(state: TutorActivityState, seenAt: number, cur
     unseen: current
       ? []
       : Object.entries(state.finished)
-          .filter(([id, at]) => at > seenAt && !state.live[id])
+          .filter(([id, at]) => at > seenAt(id) && !state.live[id])
           .map(([id]) => id),
   };
 }

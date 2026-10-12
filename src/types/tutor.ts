@@ -12,8 +12,6 @@ export interface TutorConversation {
   messageCount: number;
   pinned: boolean;
   archived: boolean;
-  /** 正在回答 */
-  running: boolean;
 }
 
 /** 打开对话：pi 的消息（get_messages） */

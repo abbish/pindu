@@ -3,26 +3,24 @@ import { CheckCircle2, Loader2, MessageCircleQuestionMark } from 'lucide-react';
 import { SidebarMenuAction } from '@/components/ui/sidebar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { markNavSeen, NAV_SEEN_SINCE, useNavSeen } from '@/hooks/useNavSeen';
+import { NAV_SEEN_SINCE, useNavSeen } from '@/hooks/useNavSeen';
 import { useTutorActivity } from '@/hooks/useTutorActivity';
 import { tutorService } from '@/services/tutorService';
 import type { NavigateFn } from '@/navigation';
-import { summarizeActivity } from '@/utils/tutorActivity';
-
-/** 侧边栏「AI 老师」的页面键（进入页面时记为看过） */
-const TUTOR = 'tutor';
+import { summarizeActivity, tutorSeenKey } from '@/utils/tutorActivity';
 
 type RowState = 'asking' | 'running' | 'done';
 
 const ROW_META: Record<RowState, { label: string; icon: React.ComponentType<{ className?: string }>; className: string }> = {
   asking: { label: '等你回答', icon: MessageCircleQuestionMark, className: 'text-warning' },
   running: { label: '正在回答', icon: Loader2, className: 'text-primary motion-safe:animate-spin' },
-  done: { label: '答完了', icon: CheckCircle2, className: 'text-success' },
+  done: { label: '有新回答', icon: CheckCircle2, className: 'text-success' },
 };
 
 /**
  * 侧边栏「AI 老师」右侧：与后台任务同样的数量标记——对话在回答时主色、呼吸的数量（开着几个对话同时在做就是几）；
- * 有对话停下来等你回答（确认、选择）时换成醒目色的数量；不在 AI 老师页面时有对话答完了，是一个小点，进入 AI 老师或点开浮层后消失。
+ * 有对话停下来等你回答（确认、选择）时换成醒目色的数量；不在 AI 老师页面时有对话答完了还没打开看，是一个小点
+ * （与对话列表的「有新回答」同一口径：打开那个对话才算看过）。
  * 点开列出这些对话，点一个直接打开。侧栏收起成图标时只在图标角上显示。不是后台任务（D58）。
  */
 export const TutorActivityBadge: React.FC<{ current: boolean; onNavigate: NavigateFn }> = ({ current, onNavigate }) => {
@@ -31,13 +29,13 @@ export const TutorActivityBadge: React.FC<{ current: boolean; onNavigate: Naviga
   const [open, setOpen] = useState(false);
   const [titles, setTitles] = useState<Record<string, string>>({});
 
-  const { asking, running, unseen } = summarizeActivity(activity, Math.max(NAV_SEEN_SINCE, seen.get(TUTOR) ?? 0), current);
+  const { asking, running, unseen } = summarizeActivity(activity, (id) => Math.max(NAV_SEEN_SINCE, seen.get(tutorSeenKey(id)) ?? 0), current);
   if (asking.length === 0 && running.length === 0 && unseen.length === 0 && !open) return null;
 
   const title = [
     asking.length > 0 && `${asking.length} 个对话在等你回答`,
     running.length > 0 && `${running.length} 个对话正在回答`,
-    asking.length === 0 && running.length === 0 && '有对话答完了',
+    asking.length === 0 && running.length === 0 && '有新回答还没看',
   ]
     .filter(Boolean)
     .join('，');
@@ -49,10 +47,7 @@ export const TutorActivityBadge: React.FC<{ current: boolean; onNavigate: Naviga
 
   const handleOpenChange = (value: boolean) => {
     setOpen(value);
-    if (!value) {
-      markNavSeen(TUTOR);
-      return;
-    }
+    if (!value) return;
     // 对话标题：列表在后端有缓存
     void tutorService.list().then((result) => {
       if (result.success) setTitles(Object.fromEntries(result.data.map((c) => [c.id, c.title])));

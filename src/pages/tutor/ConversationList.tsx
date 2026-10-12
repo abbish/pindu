@@ -18,7 +18,12 @@ import { markNavSeen, NAV_SEEN_SINCE, useNavSeen } from '@/hooks/useNavSeen';
 import { useTutorActivity } from '@/hooks/useTutorActivity';
 import type { TutorConversation } from '@/types/tutor';
 import { formatRelativeDay } from '@/utils/datetime';
-import { conversationMark, type ConversationMark } from '@/utils/tutorActivity';
+import { conversationMark, tutorSeenKey, type ConversationMark } from '@/utils/tutorActivity';
+
+/** 列表的前 n 个；正在看的对话在后面时一直显示到它 */
+function firstPage<T extends { id: string }>(list: T[], n: number, activeId: string | null): T[] {
+  return list.slice(0, Math.max(n, list.findIndex((c) => c.id === activeId) + 1));
+}
 
 /** 按最后对话时间分组 */
 function groupOf(modified: string): string {
@@ -27,13 +32,16 @@ function groupOf(modified: string): string {
   return day.endsWith('天前') ? '最近 7 天' : '更早';
 }
 
+const PINNED = '置顶';
 const ARCHIVED = '已归档';
-/** 收起的分组（本机记住；已归档默认收起） */
+/** 一次显示的对话数，点「更多…」再显示一批 */
+const PAGE = 30;
+/** 收起的分组（只有置顶与已归档能收起；本机记住，已归档默认收起） */
 const COLLAPSED_KEY = 'tutor.collapsedGroups';
 function loadCollapsed(): Set<string> {
   try {
     const saved = localStorage.getItem(COLLAPSED_KEY);
-    if (saved) return new Set(JSON.parse(saved) as string[]);
+    if (saved) return new Set((JSON.parse(saved) as string[]).filter((g) => g === PINNED || g === ARCHIVED));
   } catch {
     // 读不到就用默认
   }
@@ -47,11 +55,8 @@ function saveCollapsed(groups: Set<string>) {
   }
 }
 
-/** 记「看过」的键：每个对话一个 */
-const seenKey = (id: string) => `tutor:${id}`;
-
 /**
- * 对话列表：置顶 → 按时间分组 → 已归档，分组可以收起。
+ * 对话列表：置顶 → 按时间分组 → 已归档；置顶与已归档可以收起，对话一次显示一批，「更多…」接着显示。
  * 每行右侧常驻状态（等你回答 / 正在回答 / 有新回答没看）；悬停时换成「⋯」（重命名、归档、删除）与置顶，右键是同样的菜单。
  */
 export const ConversationList: React.FC<{
@@ -65,6 +70,8 @@ export const ConversationList: React.FC<{
   onDelete: (id: string) => void;
 }> = ({ conversations, loading, activeId, onOpen, onFlags, onRename, onDelete }) => {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
+  const [limit, setLimit] = useState(PAGE);
+  const [archivedLimit, setArchivedLimit] = useState(PAGE);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<TutorConversation | null>(null);
   const activity = useTutorActivity();
@@ -73,8 +80,8 @@ export const ConversationList: React.FC<{
   // 正在看的对话：打开时与离开时都记为看过（期间答完的不再标「新回答」）
   useEffect(() => {
     if (!activeId) return;
-    markNavSeen(seenKey(activeId));
-    return () => markNavSeen(seenKey(activeId));
+    markNavSeen(tutorSeenKey(activeId));
+    return () => markNavSeen(tutorSeenKey(activeId));
   }, [activeId]);
 
   const toggle = (label: string) =>
@@ -87,17 +94,21 @@ export const ConversationList: React.FC<{
     });
 
   const live = conversations.filter((c) => !c.archived);
-  const groups: { label: string; items: TutorConversation[] }[] = [{ label: '置顶', items: live.filter((c) => c.pinned) }];
-  for (const c of live.filter((c) => !c.pinned)) {
+  const pinned = live.filter((c) => c.pinned);
+  const recent = live.filter((c) => !c.pinned);
+  const archived = conversations.filter((c) => c.archived);
+  const recentShown = firstPage(recent, limit, activeId);
+  const archivedShown = firstPage(archived, archivedLimit, activeId);
+  const dateGroups: { label: string; items: TutorConversation[] }[] = [];
+  for (const c of recentShown) {
     const label = groupOf(c.modified);
-    const group = groups.find((g) => g.label === label);
+    const group = dateGroups.find((g) => g.label === label);
     if (group) group.items.push(c);
-    else groups.push({ label, items: [c] });
+    else dateGroups.push({ label, items: [c] });
   }
-  groups.push({ label: ARCHIVED, items: conversations.filter((c) => c.archived) });
 
   const markOf = (c: TutorConversation) =>
-    conversationMark(activity, c.id, Math.max(NAV_SEEN_SINCE, seen.get(seenKey(c.id)) ?? 0), c.id === activeId);
+    conversationMark(activity, c.id, Math.max(NAV_SEEN_SINCE, seen.get(tutorSeenKey(c.id)) ?? 0), c.id === activeId);
   const row = (c: TutorConversation) => (
     <ConversationRow
       key={c.id}
@@ -117,6 +128,40 @@ export const ConversationList: React.FC<{
     />
   );
 
+  /** 能收起的分组（置顶、已归档）：收起时标出里面最要紧的状态，正在看的对话照样露出来（如刚归档的） */
+  const section = (label: string, items: TutorConversation[], shown: TutorConversation[], onMore?: () => void) => {
+    const closed = collapsed.has(label);
+    const marks = closed ? items.filter((c) => c.id !== activeId).map(markOf) : [];
+    const groupMark = MARK_ORDER.find((m) => marks.includes(m));
+    return (
+      <div className="mb-3">
+        <button
+          type="button"
+          onClick={() => toggle(label)}
+          aria-expanded={!closed}
+          className="group/head flex w-full items-center gap-1 px-2 pb-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {label}
+          {label === ARCHIVED && <span className="tabular-nums">{items.length}</span>}
+          {closed ? (
+            <>
+              <ChevronRight className="size-3" />
+              {groupMark && (
+                <span role="img" aria-label={MARK[groupMark].label} title={MARK[groupMark].label} className="ml-auto flex size-4 items-center justify-center">
+                  {MARK[groupMark].icon}
+                </span>
+              )}
+            </>
+          ) : (
+            <ChevronDown className="size-3 opacity-0 transition-opacity group-hover/head:opacity-100 group-focus-visible/head:opacity-100" />
+          )}
+        </button>
+        {(closed ? items.filter((c) => c.id === activeId) : shown).map(row)}
+        {!closed && onMore && shown.length < items.length && <MoreButton onClick={onMore} />}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       {loading && conversations.length === 0 && (
@@ -127,40 +172,15 @@ export const ConversationList: React.FC<{
         </div>
       )}
       {!loading && conversations.length === 0 && <div className="px-2 py-4 text-xs text-muted-foreground">还没有对话</div>}
-      {groups.map((g) => {
-        if (g.items.length === 0) return null;
-        const closed = collapsed.has(g.label);
-        // 收起的分组：标出里面最要紧的状态，等你回答的对话不会被藏起来
-        const marks = closed ? g.items.filter((c) => c.id !== activeId).map(markOf) : [];
-        const groupMark = MARK_ORDER.find((m) => marks.includes(m));
-        return (
-          <div key={g.label} className="mb-3">
-            <button
-              type="button"
-              onClick={() => toggle(g.label)}
-              aria-expanded={!closed}
-              className="group/head flex w-full items-center gap-1 px-2 pb-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              {g.label}
-              {g.label === ARCHIVED && <span className="tabular-nums">{g.items.length}</span>}
-              {closed ? (
-                <>
-                  <ChevronRight className="size-3" />
-                  {groupMark && (
-                    <span role="img" aria-label={MARK[groupMark].label} title={MARK[groupMark].label} className="ml-auto flex size-4 items-center justify-center">
-                      {MARK[groupMark].icon}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <ChevronDown className="size-3 opacity-0 transition-opacity group-hover/head:opacity-100 group-focus-visible/head:opacity-100" />
-              )}
-            </button>
-            {/* 收起的分组里正在看的对话照样露出来（如刚归档的） */}
-            {(closed ? g.items.filter((c) => c.id === activeId) : g.items).map(row)}
-          </div>
-        );
-      })}
+      {pinned.length > 0 && section(PINNED, pinned, pinned)}
+      {dateGroups.map((g) => (
+        <div key={g.label} className="mb-3">
+          <div className="px-2 pb-1 text-xs text-muted-foreground">{g.label}</div>
+          {g.items.map(row)}
+        </div>
+      ))}
+      {recentShown.length < recent.length && <MoreButton onClick={() => setLimit((n) => n + PAGE)} />}
+      {archived.length > 0 && section(ARCHIVED, archived, archivedShown, () => setArchivedLimit((n) => n + PAGE))}
 
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
@@ -188,13 +208,20 @@ export const ConversationList: React.FC<{
   );
 };
 
+/** 显示下一批对话 */
+const MoreButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+  <button type="button" onClick={onClick} className="mb-3 w-full rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground">
+    更多…
+  </button>
+);
+
 /** 收起的分组只显示一个：等你回答 > 正在回答 > 有新回答 */
 const MARK_ORDER: ConversationMark[] = ['asking', 'running', 'unread'];
 
 const MARK: Record<ConversationMark, { label: string; icon: React.ReactNode }> = {
   asking: { label: '等你回答', icon: <MessageCircleQuestionMark className="size-3.5 text-warning" /> },
-  running: { label: '正在回答', icon: <Loader2 className="size-3.5 animate-spin text-muted-foreground" /> },
-  unread: { label: '有新回答', icon: <span className="size-2 rounded-full bg-primary" /> },
+  running: { label: '正在回答', icon: <Loader2 className="size-3.5 text-primary motion-safe:animate-spin" /> },
+  unread: { label: '有新回答', icon: <span className="size-2 rounded-full bg-success" /> },
 };
 
 const ConversationRow: React.FC<{

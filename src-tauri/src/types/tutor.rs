@@ -15,8 +15,6 @@ pub struct TutorConversation {
     pub message_count: i64,
     pub pinned: bool,
     pub archived: bool,
-    /// 正在回答
-    pub running: bool,
 }
 
 /// 打开一个对话：pi 的消息（`get_messages`）

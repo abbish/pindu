@@ -390,17 +390,6 @@ impl ChatHub {
         self.sessions.lock().await.get(id).cloned()
     }
 
-    /// 正在运行的对话 id
-    pub async fn running_ids(&self) -> Vec<String> {
-        self.sessions
-            .lock()
-            .await
-            .values()
-            .filter(|s| s.is_running())
-            .map(|s| s.id.clone())
-            .collect()
-    }
-
     /// 全部常驻的对话进程
     pub async fn sessions(&self) -> Vec<Arc<ChatSession>> {
         self.sessions.lock().await.values().cloned().collect()

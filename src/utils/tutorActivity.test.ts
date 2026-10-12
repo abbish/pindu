@@ -5,18 +5,29 @@ import { applyActivity, conversationMark, EMPTY_ACTIVITY, forgetActivity, summar
 test('两个对话同时在回答：都算在回答；一个停下来问学习者，单独算等回答', () => {
   let s = applyActivity(EMPTY_ACTIVITY, 'a', true, false, 1);
   s = applyActivity(s, 'b', true, false, 2);
-  assert.deepEqual(summarizeActivity(s, 0, false), { asking: [], running: ['a', 'b'], unseen: [] });
+  assert.deepEqual(summarizeActivity(s, () => 0, false), { asking: [], running: ['a', 'b'], unseen: [] });
   s = applyActivity(s, 'b', true, true, 3);
-  assert.deepEqual(summarizeActivity(s, 0, false), { asking: ['b'], running: ['a'], unseen: [] });
+  assert.deepEqual(summarizeActivity(s, () => 0, false), { asking: ['b'], running: ['a'], unseen: [] });
 });
 
 test('答完：不在 AI 老师页面时记为没看过，看过之后、正在看时都不算', () => {
   let s = applyActivity(EMPTY_ACTIVITY, 'a', true, false, 1);
   s = applyActivity(s, 'a', false, false, 10);
-  assert.deepEqual(summarizeActivity(s, 5, false).unseen, ['a']);
-  assert.deepEqual(summarizeActivity(s, 20, false).unseen, []);
-  assert.deepEqual(summarizeActivity(s, 5, true).unseen, []);
-  assert.deepEqual(summarizeActivity(s, 5, false).running, []);
+  assert.deepEqual(summarizeActivity(s, () => 5, false).unseen, ['a']);
+  assert.deepEqual(summarizeActivity(s, () => 20, false).unseen, []);
+  assert.deepEqual(summarizeActivity(s, () => 5, true).unseen, []);
+  assert.deepEqual(summarizeActivity(s, () => 5, false).running, []);
+});
+
+test('侧边栏与对话列表同一口径：只有打开过的对话才算看过', () => {
+  let s = applyActivity(EMPTY_ACTIVITY, 'a', true, false, 1);
+  s = applyActivity(s, 'b', true, false, 1);
+  s = applyActivity(s, 'a', false, false, 10);
+  s = applyActivity(s, 'b', false, false, 10);
+  const seen: Record<string, number> = { a: 20 };
+  assert.deepEqual(summarizeActivity(s, (id) => seen[id] ?? 0, false).unseen, ['b']);
+  assert.equal(conversationMark(s, 'b', seen.b ?? 0, false), 'unread');
+  assert.equal(conversationMark(s, 'a', seen.a, false), null);
 });
 
 test('回答完问题后接着回答不算答完；又开始回答时去掉答完标记', () => {

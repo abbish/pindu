@@ -132,7 +132,6 @@ impl TutorChatService {
             }
         };
         let flags = self.flags().await;
-        let running = hub.running_ids().await;
         // 刚发出第一句话的新对话：pi 还没写进会话文件（或列表缓存早于写入），先按第一句话列出来
         let fresh: Vec<FreshConversation> = hub
             .sessions()
@@ -143,7 +142,6 @@ impl TutorChatService {
                     id: s.id.clone(),
                     title,
                     created,
-                    running: s.is_running(),
                 })
             })
             .collect();
@@ -157,7 +155,6 @@ impl TutorChatService {
                     .filter(|n| !n.trim().is_empty())
                     .unwrap_or(s.first_message);
                 TutorConversation {
-                    running: running.contains(&s.id),
                     title: title.trim().chars().take(MAX_TITLE_CHARS).collect(),
                     id: s.id,
                     created: s.created,
@@ -474,7 +471,6 @@ struct FreshConversation {
     id: String,
     title: String,
     created: String,
-    running: bool,
 }
 
 /// 把还没列出来的新对话补进列表（已经在列表里的以 pi 的为准）
@@ -495,7 +491,6 @@ fn add_fresh(
             message_count: 1,
             pinned: flag.pinned,
             archived: flag.archived,
-            running: f.running,
             id: f.id,
         });
     }
@@ -532,14 +527,12 @@ mod tests {
             message_count: 4,
             pinned: false,
             archived: false,
-            running: true,
         };
         let mut list = vec![listed];
         let fresh = |id: &str| FreshConversation {
             id: id.into(),
             title: format!("  帮我准备{id}  "),
             created: "2026-10-11T11:00:00.000Z".into(),
-            running: true,
         };
         let flags = HashMap::from([(
             "b".to_string(),
@@ -554,7 +547,7 @@ mod tests {
         assert_eq!(list[0].title, "起好的标题");
         assert_eq!(list[1].title, "帮我准备b");
         assert_eq!(list[1].modified, "2026-10-11T11:00:00.000Z");
-        assert!(list[1].pinned && list[1].running);
+        assert!(list[1].pinned);
     }
 
     use super::*;
