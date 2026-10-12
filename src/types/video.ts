@@ -115,10 +115,54 @@ export interface PassageVideo {
 
 export interface StartVideoImportRequest {
   videoPath: string;
+  /** 字幕文件（选的或自动找到的）；为空时必须 recognize */
   subtitlePath: string;
   /** 另一个语言的字幕（按时间对齐） */
   secondSubtitlePath?: string;
   title?: string;
+  /** 没有字幕：导入后在本机识别英文语音生成字幕 */
+  recognize?: boolean;
+}
+
+/** 自动找到的一个字幕（find_video_subtitles） */
+export interface SubtitleCandidate {
+  /** 字幕文件（视频自带的已导出到缓存） */
+  path: string;
+  /** file 视频旁边的字幕文件 / embedded 视频自带 */
+  source: 'file' | 'embedded';
+  /** 给用户看的名字 */
+  label: string;
+  /** en（英文或中英双语）/ zh / 空 */
+  language: string;
+  /** 开头几句 */
+  preview: string;
+}
+
+/** 给一个视频自动找字幕的结果 */
+export interface SubtitleDiscovery {
+  candidates: SubtitleCandidate[];
+  /** 建议做「字幕」的候选序号（英文） */
+  primary: number | null;
+  /** 建议做「第二字幕」的候选序号（中文） */
+  secondary: number | null;
+  /** 视频里的图片字幕轨道数（取不出文字） */
+  imageTracks: number;
+}
+
+/** 给已导入、还没有字幕的视频补上字幕文件 */
+export interface SetVideoSubtitlesRequest {
+  videoId: number;
+  subtitlePath: string;
+  secondSubtitlePath?: string;
+}
+
+/** 语音识别模型的状态 */
+export interface SpeechModelStatus {
+  downloaded: boolean;
+  /** 已下载的大小（字节） */
+  sizeBytes: number;
+  /** 需要下载的大小（字节） */
+  downloadBytes: number;
 }
 
 export interface VideoImportStarted {

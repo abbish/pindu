@@ -93,11 +93,14 @@ DECODERS=(
   aac aac_latm aac_fixed mp3 mp3float mp2 mp2float mp1 ac3 eac3 dca truehd mlp opus vorbis
   flac alac wmav1 wmav2 wmapro wmavoice amrnb amrwb cook atrac3 ra_144 ra_288
   pcm_s16le pcm_s16be pcm_s24le pcm_s24be pcm_s32le pcm_f32le pcm_u8 pcm_alaw pcm_mulaw adpcm_ima_wav adpcm_ms
+  # 文字字幕（视频里自带的字幕轨道导出成 srt）；图片字幕（PGS / DVD）不解码
+  subrip srt ass ssa webvtt movtext text
 )
 DEMUXERS=(mov matroska avi flv mpegts mpegps asf ogg mp3 aac ac3 eac3 wav h264 hevc m4v rm dv)
 PARSERS=(h264 hevc mpeg4video mpegvideo vp8 vp9 av1 vc1 h263 aac aac_latm ac3 mpegaudio opus vorbis flac dca mlp)
-MUXERS=(mp4 mov image2 pcm_s16le null)
-ENCODERS=(aac mjpeg pcm_s16le)
+# srt：导出内嵌字幕；wav：给语音识别的 16kHz 单声道音频
+MUXERS=(mp4 mov image2 pcm_s16le null srt wav)
+ENCODERS=(aac mjpeg pcm_s16le srt subrip)
 FILTERS=(scale fps format aformat aresample null anull setpts asetpts trim atrim copy)
 BSFS=(vp9_superframe_split av1_frame_split h264_mp4toannexb hevc_mp4toannexb aac_adtstoasc extract_extradata)
 

@@ -31,3 +31,14 @@ WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved. 只取�
 | PDFium（WebAssembly 版） | 随 @hyzyla/pdfium 3.0.0 | BSD-3-Clause 与 Apache-2.0（`pdfium-LICENSE.txt`） | https://pdfium.googlesource.com/pdfium/ |
 | @hyzyla/pdfium | 3.0.0 | MIT（`hyzyla-pdfium-MIT.txt`） | https://github.com/hyzyla/pdfium |
 | fast-png | 8.0.0 | MIT（`fast-png-MIT.txt`） | https://github.com/image-js/fast-png |
+
+## 字幕识别
+
+视频没有字幕时，在本机识别英文语音生成字幕，作为独立程序 `whisper-cli` 调用（与主程序同目录）；识别模型第一次使用时下载。
+
+| 组件 | 版本 | 许可证 | 来源 |
+|---|---|---|---|
+| whisper.cpp（含 ggml） | 1.9.4 | MIT（`whisper.cpp-MIT.txt`） | https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.9.4.tar.gz |
+| Whisper small.en 模型（ggml 格式） | — | MIT（OpenAI Whisper） | https://huggingface.co/ggerganov/whisper.cpp |
+
+编译方式见 https://github.com/abbish/pindu/tree/main/scripts/whisper （`prepare.mjs`、`sources.json`）。

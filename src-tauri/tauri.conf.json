@@ -54,7 +54,8 @@
     "externalBin": [
       "binaries/redlark-agent",
       "binaries/ffmpeg",
-      "binaries/ffprobe"
+      "binaries/ffprobe",
+      "binaries/whisper-cli"
     ],
     "icon": [
       "icons/32x32.png",

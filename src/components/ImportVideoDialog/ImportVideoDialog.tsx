@@ -1,19 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
-import { AlertTriangle, Captions, FileVideo, FolderOpen, Loader2 } from 'lucide-react';
+import { AlertTriangle, AudioLines, Captions, FileVideo, FolderOpen, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { InlineError } from '@/components/InlineError';
 import { videoService } from '@/services/videoService';
+import { formatBytes } from '@/utils/fileSize';
 import { hasExtension, titleFromFileName } from '@/utils/videoTitle';
-import type { MediaToolsStatus, VideoImportStarted } from '@/types/video';
+import type { MediaToolsStatus, SpeechModelStatus, SubtitleDiscovery, VideoImportStarted } from '@/types/video';
 
 const VIDEO_EXTENSIONS = ['mp4', 'm4v', 'mov', 'mkv', 'webm', 'avi', 'ts'];
 const SUBTITLE_EXTENSIONS = ['srt', 'vtt'];
 
 const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
+/** 选定的字幕：文件路径 + 显示名（视频自带的显示「视频自带 · 英文」，不是缓存里的文件名） */
+type Picked = { path: string; label: string; auto: boolean };
+const manual = (path: string): Picked => ({ path, label: baseName(path), auto: false });
 
 
 export interface ImportVideoDialogProps {
@@ -29,17 +35,22 @@ const FileRow: React.FC<{
   hint: string;
   icon: React.ReactNode;
   path: string;
+  /** 显示名（默认是文件名） */
+  display?: string;
+  /** 自动找到的：名字后面标出 */
+  auto?: boolean;
   onPick: () => void;
   onClear?: () => void;
-}> = ({ label, hint, icon, path, onPick, onClear }) => (
+}> = ({ label, hint, icon, path, display, auto, onPick, onClear }) => (
   <div className="min-w-0 space-y-1.5">
     <Label>{label}</Label>
     <div className="flex min-w-0 items-center gap-2">
       <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3 text-sm">
         <span className="shrink-0 text-muted-foreground">{icon}</span>
-        <span className={path ? 'min-w-0 truncate' : 'min-w-0 truncate text-muted-foreground'} title={path || undefined}>
-          {path ? baseName(path) : hint}
+        <span className={path ? 'min-w-0 truncate' : 'min-w-0 truncate text-muted-foreground'} title={path ? display ?? path : undefined}>
+          {path ? display ?? baseName(path) : hint}
         </span>
+        {path && auto && <span className="ml-auto shrink-0 text-xs text-muted-foreground">自动找到</span>}
       </div>
       {path && onClear && (
         <Button type="button" variant="ghost" size="sm" onClick={onClear}>
@@ -54,14 +65,20 @@ const FileRow: React.FC<{
 );
 
 /**
- * 导入视频：选视频 + 字幕（可再选另一个语言的字幕）+ 标题 → 提交后台任务（复制、转格式、生成时间轴），
- * 完成后在剪辑编辑器里规划切分。没有视频组件（ffmpeg）时先引导选择它所在的文件夹。
+ * 导入视频：选视频 → 自动找字幕（旁边的同名字幕文件、视频自带的字幕；英文做字幕、中文做第二字幕）→ 标题 → 提交后台任务
+ * （复制、转格式、生成时间轴），完成后在剪辑编辑器里规划切分。没找到英文字幕时可以选文件，或导入后在本机识别英文语音（D61）。
+ * 没有视频组件（ffmpeg）时先引导选择它所在的文件夹。
  */
 export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOpenChange, onStarted }) => {
   const [tools, setTools] = useState<MediaToolsStatus | null>(null);
   const [videoPath, setVideoPath] = useState('');
-  const [subtitlePath, setSubtitlePath] = useState('');
-  const [secondPath, setSecondPath] = useState('');
+  const [subtitle, setSubtitle] = useState<Picked | null>(null);
+  const [second, setSecond] = useState<Picked | null>(null);
+  /** 自动找字幕：null = 还没选视频；loading = 正在找 */
+  const [discovery, setDiscovery] = useState<SubtitleDiscovery | 'loading' | null>(null);
+  /** 没有英文字幕时：导入后自动识别语音 */
+  const [recognize, setRecognize] = useState(false);
+  const [model, setModel] = useState<SpeechModelStatus | null>(null);
   const [title, setTitle] = useState('');
   /** 用户自己改过标题后，重新选视频不再覆盖 */
   const [titleEdited, setTitleEdited] = useState(false);
@@ -71,12 +88,15 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
   useEffect(() => {
     if (!open) return;
     setVideoPath('');
-    setSubtitlePath('');
-    setSecondPath('');
+    setSubtitle(null);
+    setSecond(null);
+    setDiscovery(null);
+    setRecognize(false);
     setTitle('');
     setTitleEdited(false);
     setError(null);
     videoService.getMediaToolsStatus().then((r) => setTools(r.success ? r.data : null));
+    videoService.getSpeechModelStatus().then((r) => setModel(r.success ? r.data : null));
   }, [open]);
 
   const pick = async (extensions: string[], name: string, wrongType: string) => {
@@ -95,6 +115,22 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
     if (!path) return;
     setVideoPath(path);
     if (!titleEdited) setTitle(titleFromFileName(path));
+    // 换了视频：自动找到的字幕作废（自己选的保留），重新找
+    const keep = (p: Picked | null) => (p && !p.auto ? p : null);
+    setSubtitle(keep);
+    setSecond(keep);
+    setRecognize(false);
+    setDiscovery('loading');
+    const found = await videoService.findSubtitles(path);
+    if (!found.success) {
+      setDiscovery({ candidates: [], primary: null, secondary: null, imageTracks: 0 });
+      return;
+    }
+    const d = found.data;
+    setDiscovery(d);
+    const auto = (i: number | null): Picked | null => (i === null ? null : { path: d.candidates[i].path, label: d.candidates[i].label, auto: true });
+    setSubtitle((cur) => cur ?? auto(d.primary));
+    setSecond((cur) => cur ?? auto(d.secondary));
   };
 
   const pickToolsDir = async () => {
@@ -110,14 +146,15 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
   };
 
   const submit = async () => {
-    if (!videoPath || !subtitlePath) return;
+    if (!ready) return;
     setSubmitting(true);
     setError(null);
     const result = await videoService.startImport({
       videoPath,
-      subtitlePath,
-      secondSubtitlePath: secondPath || undefined,
+      subtitlePath: subtitle?.path ?? '',
+      secondSubtitlePath: subtitle ? second?.path : undefined,
       title: title.trim() || undefined,
+      recognize: !subtitle && recognize,
     });
     setSubmitting(false);
     if (!result.success) {
@@ -129,6 +166,14 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
   };
 
   const missingTools = tools !== null && !tools.available;
+  const searching = discovery === 'loading';
+  /** 选了视频、找完了，还是没有英文字幕：选文件或自动识别 */
+  const noSubtitle = videoPath !== '' && !searching && !subtitle;
+  const ready = videoPath !== '' && !searching && (subtitle !== null || recognize);
+  const pickSubtitle = async () => {
+    const path = await pick(SUBTITLE_EXTENSIONS, '字幕', '请选择 srt 或 vtt 字幕文件');
+    if (path) setSubtitle(manual(path));
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -155,27 +200,70 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
         ) : (
           <div className="min-w-0 space-y-4">
             <FileRow label="视频" hint="mp4、mov、mkv、webm 等" icon={<FileVideo className="size-4" />} path={videoPath} onPick={pickVideo} />
-            <FileRow
-              label="字幕"
-              hint="srt 或 vtt，英文或中英双语"
-              icon={<Captions className="size-4" />}
-              path={subtitlePath}
-              onPick={async () => {
-                const path = await pick(SUBTITLE_EXTENSIONS, '字幕', '请选择 srt 或 vtt 字幕文件');
-                if (path) setSubtitlePath(path);
-              }}
-            />
-            <FileRow
-              label="第二字幕"
-              hint="例如单独的中文字幕"
-              icon={<Captions className="size-4" />}
-              path={secondPath}
-              onPick={async () => {
-                const path = await pick(SUBTITLE_EXTENSIONS, '字幕', '请选择 srt 或 vtt 字幕文件');
-                if (path) setSecondPath(path);
-              }}
-              onClear={() => setSecondPath('')}
-            />
+            {searching ? (
+              <div className="space-y-1.5">
+                <Label>字幕</Label>
+                <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/30 px-3 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  正在查找字幕…
+                </div>
+              </div>
+            ) : noSubtitle ? (
+              <div className="space-y-2">
+                <Label>字幕</Label>
+                <div className="space-y-3 rounded-lg border p-3">
+                  <p className="text-sm">
+                    {second ? '只找到中文字幕，还需要英文字幕' : '没有找到字幕'}
+                    {discovery !== null && discovery.imageTracks > 0 && (
+                      <span className="text-muted-foreground">（视频里的字幕是图片，取不出文字）</span>
+                    )}
+                  </p>
+                  <RadioGroup value={recognize ? 'recognize' : ''} onValueChange={(v) => setRecognize(v === 'recognize')} className="gap-2">
+                    <Label htmlFor="sub-recognize" className="flex cursor-pointer items-start gap-2.5 font-normal">
+                      <RadioGroupItem id="sub-recognize" value="recognize" className="mt-0.5" />
+                      <span className="space-y-0.5">
+                        <span className="flex items-center gap-1.5 text-sm">
+                          <AudioLines className="size-4 text-muted-foreground" />
+                          导入后自动识别英文语音
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          在本机识别{model && !model.downloaded && `，第一次需要下载 ${formatBytes(model.downloadBytes)} 的识别模型`}。影视剧建议用正式字幕
+                        </span>
+                      </span>
+                    </Label>
+                  </RadioGroup>
+                  <Button type="button" variant="outline" size="sm" onClick={pickSubtitle}>
+                    <Captions />
+                    选择字幕文件…
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <FileRow
+                label="字幕"
+                hint="srt 或 vtt，英文或中英双语"
+                icon={<Captions className="size-4" />}
+                path={subtitle?.path ?? ''}
+                display={subtitle?.label}
+                auto={subtitle?.auto}
+                onPick={pickSubtitle}
+              />
+            )}
+            {!searching && (subtitle || second) && (
+              <FileRow
+                label="第二字幕"
+                hint="例如单独的中文字幕"
+                icon={<Captions className="size-4" />}
+                path={second?.path ?? ''}
+                display={second?.label}
+                auto={second?.auto}
+                onPick={async () => {
+                  const path = await pick(SUBTITLE_EXTENSIONS, '字幕', '请选择 srt 或 vtt 字幕文件');
+                  if (path) setSecond(manual(path));
+                }}
+                onClear={() => setSecond(null)}
+              />
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="video-title">标题</Label>
               <Input id="video-title" value={title} maxLength={100} placeholder="视频文件名" onChange={(e) => {
@@ -193,7 +281,7 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button onClick={submit} disabled={missingTools || !videoPath || !subtitlePath || submitting}>
+          <Button onClick={submit} disabled={missingTools || !ready || submitting}>
             {submitting && <Loader2 className="animate-spin" />}
             开始导入
           </Button>

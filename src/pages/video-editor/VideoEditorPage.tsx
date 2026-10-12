@@ -50,6 +50,7 @@ import { PlanMenu } from './EditorMenus';
 import { NewPlanDialog, type NewPlanStart } from './NewPlanDialog';
 import { AutoSplitDialog } from './AutoSplitDialog';
 import { EditorBusyDialog } from './EditorBusyDialog';
+import { NoSubtitleBar } from './NoSubtitleBar';
 import { SegmentPanel } from './SegmentPanel';
 import { SubtitleOffsetControl } from './SubtitleOffsetControl';
 import { tagService } from '@/services/tagService';
@@ -148,6 +149,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
     jobs.find((j) => j.kind === kind && isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId);
   const planJob = activeJob('video_plan');
   const processJob = activeJob('video_process');
+  /** 没有字幕的视频：正在本机识别字幕（D61） */
+  const recognizeJob = activeJob('video_recognize');
   // 导入时在后台整理字幕（断句、补中文）：进行中随进度刷新字幕
   const translateJobs = jobs.filter(
     (j) => j.kind === 'video_translate' && isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId
@@ -229,6 +232,11 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
   // AI 规划结束：读回规划，替换到时间轴（进撤销栈）；切分结束：刷新已切出的短片
   useOnJobFinished(async (job) => {
     if ((job.link?.params as { videoId?: number } | undefined)?.videoId !== videoId) return;
+    if (job.kind === 'video_recognize') {
+      if (job.status === 'failed') toast.showError('没有识别出字幕', jobErrorText(job));
+      await reloadCues();
+      return;
+    }
     // 整理字幕是内部步骤（D40）：只读回结果，没整理完的在 AI 规划 / 切分前自动补，不提示用户
     if (job.kind === 'video_translate') {
       await reloadCues();
@@ -682,6 +690,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
           </div>
         </header>
 
+        {cues.length === 0 && <NoSubtitleBar videoId={detail.video.id} job={recognizeJob} onSubtitles={() => void reloadCues()} />}
+
         {/* 主区：片段列表 · 播放器 · 片段属性 */}
         <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_360px]">
           <aside className="flex min-h-0 flex-col border-r">
@@ -690,10 +700,10 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
                 {detail.plans.length > 1 && <span className="font-medium text-foreground">{currentPlan?.name} · </span>}
                 {segments.length} 段 · 共 {formatClock(totalMs, false)}
               </span>
-              <ToolButton label="AI 规划" onClick={() => setAiPlanOpen(true)} disabled={locked}>
+              <ToolButton label="AI 规划" onClick={() => setAiPlanOpen(true)} disabled={locked || cues.length === 0}>
                 <Sparkles />
               </ToolButton>
-              <ToolButton label="按字幕自动切分" onClick={() => setAutoSplitOpen(true)} disabled={locked}>
+              <ToolButton label="按字幕自动切分" onClick={() => setAutoSplitOpen(true)} disabled={locked || cues.length === 0}>
                 <Wand2 />
               </ToolButton>
               {problemCount > 0 && (

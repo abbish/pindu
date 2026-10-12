@@ -1,5 +1,5 @@
 // 准备随应用分发的 ffmpeg / ffprobe（tauri externalBin）：src-tauri/binaries/{ffmpeg,ffprobe}-<target-triple>[.exe]
-// 已有就跳过；否则：
+// 已有、且编译配置（build.sh + sources.json）没变就跳过；否则：
 //   - 设了 FFMPEG_PREBUILT_DIR（CI 里由 ffmpeg 任务编好的产物，目录里是 ffmpeg / ffprobe）→ 直接复制；
 //   - 否则按 sources.json 下载源码（校验 sha256）→ build.sh 编译（macOS / Linux；Windows 版在 Linux 上交叉编译）。
 // 用法：node scripts/ffmpeg/prepare.mjs [target-triple ...]   （默认：rustc 的 host triple；universal-apple-darwin 编两个架构后 lipo 合并）
@@ -17,6 +17,11 @@ const WORK = join(ROOT, 'src-tauri', 'target', 'ffmpeg');
 const SOURCES = JSON.parse(readFileSync(join(HERE, 'sources.json'), 'utf8'));
 /** 小于这个大小的视为不完整（占位或下载中断） */
 const MIN_SIZE = 1024 * 1024;
+/** 编译配置的指纹：改了要编进去的格式（build.sh）或版本（sources.json）后，已有的 ffmpeg 要重编 */
+const RECIPE = createHash('sha256')
+  .update(readFileSync(join(HERE, 'build.sh')))
+  .update(readFileSync(join(HERE, 'sources.json')))
+  .digest('hex');
 
 /** Rust target triple → build.sh 目标 */
 const TARGETS = {
@@ -30,6 +35,10 @@ const TARGETS = {
 const ext = (triple) => (triple.includes('windows') ? '.exe' : '');
 const binPath = (name, triple) => join(BIN_DIR, `${name}-${triple}${ext(triple)}`);
 const ready = (p) => existsSync(p) && statSync(p).size > MIN_SIZE;
+/** 记着这个 triple 的 ffmpeg 是按哪份配置编的 */
+const stampPath = (triple) => join(BIN_DIR, `.ffmpeg-${triple}.recipe`);
+const current = (triple) =>
+  ready(binPath('ffmpeg', triple)) && ready(binPath('ffprobe', triple)) && existsSync(stampPath(triple)) && readFileSync(stampPath(triple), 'utf8').trim() === RECIPE;
 
 function hostTriple() {
   const out = execFileSync('rustc', ['-vV']).toString();
@@ -83,16 +92,19 @@ function install(fromDir, triple) {
     if (!ready(from)) throw new Error(`没有找到编好的 ${from}`);
     copyFileSync(from, binPath(name, triple));
   }
+  writeFileSync(stampPath(triple), RECIPE);
   console.log(`ffmpeg → ${binPath('ffmpeg', triple)}`);
 }
 
 async function prepare(triple, outOverride) {
   if (triple === 'universal-apple-darwin') {
+    if (current(triple)) return;
     const parts = ['aarch64-apple-darwin', 'x86_64-apple-darwin'];
     for (const t of parts) await prepare(t);
     for (const name of ['ffmpeg', 'ffprobe']) {
       execFileSync('lipo', ['-create', '-output', binPath(name, triple), ...parts.map((t) => binPath(name, t))], { stdio: 'inherit' });
     }
+    writeFileSync(stampPath(triple), RECIPE);
     console.log(`ffmpeg → ${binPath('ffmpeg', triple)}`);
     return;
   }
@@ -102,7 +114,7 @@ async function prepare(triple, outOverride) {
     await build(target, join(outOverride, target));
     return;
   }
-  if (ready(binPath('ffmpeg', triple)) && ready(binPath('ffprobe', triple))) return;
+  if (current(triple)) return;
   const prebuilt = process.env.FFMPEG_PREBUILT_DIR;
   install(prebuilt ? join(prebuilt, target) : await build(target, join(WORK, target)), triple);
 }

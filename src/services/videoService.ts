@@ -1,6 +1,6 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '../types';
-import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, StartVideoImportRequest, StartVideoPlanRequest, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
+import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, SetVideoSubtitlesRequest, SpeechModelStatus, StartVideoImportRequest, StartVideoPlanRequest, SubtitleDiscovery, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
 import { notifyOnSuccess } from './tagService';
 
 /** 视频库（handlers/video.rs）：视频组件、导入（后台任务）、列表 / 详情 / 波形、改名、规划草稿、删除 */
@@ -17,6 +17,29 @@ export class VideoService extends BaseService {
   /** 导入视频与字幕：字幕立即解析（格式不对直接报错），视频处理是后台任务 */
   async startImport(request: StartVideoImportRequest): Promise<ApiResult<VideoImportStarted>> {
     return this.executeWithLoading(() => this.client.invoke<VideoImportStarted>('start_video_import', { request }));
+  }
+
+  /** 选好视频后自动找字幕：旁边的同名字幕文件、视频自带的文字字幕 */
+  async findSubtitles(videoPath: string): Promise<ApiResult<SubtitleDiscovery>> {
+    return this.executeWithLoading(() => this.client.invoke<SubtitleDiscovery>('find_video_subtitles', { videoPath }));
+  }
+
+  /** 已导入、还没有字幕的视频：在本机识别字幕（后台任务，返回任务 id） */
+  async startRecognition(videoId: number): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_video_recognition', { videoId }));
+  }
+
+  /** 已导入、还没有字幕的视频：用字幕文件补上 */
+  async setSubtitles(request: SetVideoSubtitlesRequest): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('set_video_subtitles', { request }));
+  }
+
+  async getSpeechModelStatus(): Promise<ApiResult<SpeechModelStatus>> {
+    return this.executeWithLoading(() => this.client.invoke<SpeechModelStatus>('get_speech_model_status'));
+  }
+
+  async deleteSpeechModel(): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('delete_speech_model'));
   }
 
   async getVideos(): Promise<ApiResult<Video[]>> {

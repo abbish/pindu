@@ -16,7 +16,7 @@
 | 后端 | Rust 2021 · tokio · sqlx 0.8 (sqlite, migrate, WAL) · reqwest · thiserror |
 | AI | 内置 agent harness：pi（`@earendil-works/pi-coding-agent`，RPC sidecar `redlark-agent`，bun 单文件） |
 | 数据库 | SQLite，文件 `<数据目录>/vocabulary.db`（数据目录见 §4.3），启动时先备份再跑 `src-tauri/migrations/` |
-| 外部服务 | OpenAI 兼容接口（AI 分析/规划；种子提供商 OpenRouter / MiniMax / 月之暗面 / DeepSeek，均可「同步模型」读取 `/models`）· 火山引擎豆包语音合成（TTS，V3 HTTP 单向流式，带 SHA256 音频缓存）· ffmpeg / ffprobe（视频库：转码、精确切分、波形与缩略图；最小 LGPL 版随应用分发（externalBin，`scripts/ffmpeg/` 从固定版本源码编译），查找顺序见 `media.rs`） |
+| 外部服务 | OpenAI 兼容接口（AI 分析/规划；种子提供商 OpenRouter / MiniMax / 月之暗面 / DeepSeek，均可「同步模型」读取 `/models`）· 火山引擎豆包语音合成（TTS，V3 HTTP 单向流式，带 SHA256 音频缓存）· ffmpeg / ffprobe（视频库：转码、精确切分、波形与缩略图；最小 LGPL 版随应用分发（externalBin，`scripts/ffmpeg/` 从固定版本源码编译），查找顺序见 `media.rs`）· whisper.cpp（视频没有字幕时在本机识别英文语音，`whisper-cli` externalBin，`scripts/whisper/` 用 cmake 从固定版本源码编译；small.en 模型第一次识别时下载到 `<数据目录>/models/`，D61） |
 | 包管理 | npm（有 package-lock.json）+ Cargo；工具链版本本地与 CI 一致：Rust 见 `rust-toolchain.toml`，Node 见 `.nvmrc`，升级只改这两处 |
 
 **无路由库、无状态管理库**；UI 组件库唯一选择是 shadcn/ui（源码在 `src/components/ui/`，不引入其它 UI 库）。页面切换靠 `App.tsx` 里的 `currentPage` 字符串 + `pageParams`。
@@ -27,7 +27,8 @@
 npm install                 # 前端依赖
 npm run tauri:dev           # 开发（前端 :1420 + Rust 热编译）
 npm run agent:install       # agent sidecar 依赖（首次）；npm run agent:build 编译当前平台 sidecar（tauri:dev / package 会自动编译）
-npm run ffmpeg:prepare      # 随应用分发的 ffmpeg / ffprobe（缺失时下载固定版本源码并编译，需 meson / ninja / pkg-config，x86 需 nasm；tauri:dev / verify / package 会自动调用）
+npm run ffmpeg:prepare      # 随应用分发的 ffmpeg / ffprobe（缺失或 build.sh / sources.json 变了时下载固定版本源码并编译，需 meson / ninja / pkg-config，x86 需 nasm；tauri:dev / verify / package 会自动调用）
+npm run whisper:prepare     # 随应用分发的 whisper-cli（识别字幕；缺失或配置变了时编译，需 cmake + C/C++ 编译器；tauri:dev / verify / package 会自动调用）
 npm run agent:test          # agent sidecar 工具测试（node --test）
 npm run verify              # 一键验证（= bash scripts/verify.sh）：SQL/IPC/类型/CSS 变量静态检查 + tsc + lint 棘轮 + 前端测试 + cargo fmt/check/clippy/test
 npm run type-check          # tsc --noEmit
@@ -92,7 +93,8 @@ src-tauri/
 ├── migrations/001..068_*.sql
 └── src/test_support.rs       #[cfg(test)] 内存库与种子数据
 
-scripts/ffmpeg/                随应用分发的 ffmpeg：sources.json（版本 + sha256）、build.sh（LGPL 最小配置）、prepare.mjs（→ src-tauri/binaries/ffmpeg-<triple>）；许可证随包分发在 src-tauri/licenses/
+scripts/ffmpeg/                随应用分发的 ffmpeg：sources.json（版本 + sha256）、build.sh（LGPL 最小配置，含文字字幕解码 / srt、wav 输出）、prepare.mjs（→ src-tauri/binaries/ffmpeg-<triple>，`.ffmpeg-<triple>.recipe` 记编译配置指纹）；许可证随包分发在 src-tauri/licenses/
+scripts/whisper/               随应用分发的 whisper-cli：sources.json（whisper.cpp 版本 + sha256）、prepare.mjs（cmake；macOS Metal，其余 CPU → src-tauri/binaries/whisper-cli-<triple>）
 shared/lemma/                 词形库（前端与 sidecar 共用）：wordnet.json（scripts/lemma/build.mjs 从官方 WordNet 3.0 生成，入库；许可证随包分发在 src-tauri/licenses/）、morphy.ts（词形还原）、phrase.ts（词组位置）、cases.json（与 Rust 端共用的用例）
 agent/                        agent sidecar 的 TS 工程（pi RPC + RedLark 工具）；npm run agent:build → src-tauri/binaries/redlark-agent-<triple>（不入库）
 docs/agent-harness/           agent harness 设计（DESIGN.md）与决策记录（DECISIONS.md，追加式）
@@ -151,7 +153,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 | `handlers/prompt_profile.rs` | get_prompt_profile / update_prompt_profile / apply_prompt_preset / preview_prompts（学习者档案与各任务补充要求，见 §6） |
 | `handlers/system.rs` | get_system_logs, get_log_level / set_log_level（最低记录级别）, open_log_folder, open_data_folder, get_startup_status（启动失败原因，见 §4.3） |
 | `handlers/updater.rs` | check_for_update（读 GitHub Releases 的 latest.json；开发版可用 `PINDU_UPDATE_ENDPOINT` 覆盖地址）, install_update（`on_progress: Channel<UpdateProgress>`，内置公钥验签；有 agent 任务在跑时拒绝，开始安装后 `agent::session` 不再启动新 sidecar；失败可直接重试）, restart_app；Linux 非 AppImage 只提示不安装。前端 `UpdateWatcher`（App 级：自动检查 + 菜单）/ `UpdateBanner`（AppShell 顶栏下与启动错误页） |
-| `handlers/video.rs` | get_media_tools_status / set_ffmpeg_dir（视频组件）, start_video_import（后台任务：复制 → 读信息 → 不能直接播放时转 720p 代理 → 波形与缩略图；字幕在命令里先解析）, get_videos, get_video（含字幕条、规划草稿、缩略图、已切出的短片）, get_video_peaks, rename_video, save_video_plan（按 planId 自动保存；规划 / 切分进行中拒绝）, create_video_plan / rename_video_plan / delete_video_plan（一个视频多个规划，删规划保留已切片段）, set_video_subtitle_offset（字幕纠偏）, 整理字幕（AI 断句、补中文）不是用户操作：导入时自动对整部启动（kind video_translate，与转码并行），AI 规划与切分任务开始前对还没整理的再补一次（`video_translate::prepare_before`，失败不影响主流程）, get_clips（视频库「片段」）, suggest_video_requirements（AI 读字幕给切分要求建议）, start_video_plan（AI 规划写进 request.planId，后台任务）, start_video_processing（planId：按这个规划精确切分并逐段存成短文，后台任务，按段可续；起止与已有短片相同的不重切）, get_passage_video（短文详情播放短片）, delete_video（连同短片短文，计划还在用时拒绝）, delete_video_source |
+| `handlers/video.rs` | get_media_tools_status / set_ffmpeg_dir（视频组件）, find_video_subtitles（选好视频后自动找字幕：旁边的同名字幕文件（含 `.en` / `.chs` 后缀）、视频自带的文字字幕轨道（导出到缓存）；英文建议做字幕、中文做第二字幕，`services/subtitle_discovery.rs`）, start_video_import（后台任务：复制 → 读信息 → 不能直接播放时转 720p 代理 → 波形与缩略图；字幕在命令里先解析；没有字幕时 `recognize`：之后在 media 队列里识别字幕 kind video_recognize，识别完再整理，D61）, start_video_recognition / set_video_subtitles（还没有字幕的视频：重新识别 / 用字幕文件补上）, get_speech_model_status / delete_speech_model（识别模型，`services/subtitle_recognition.rs`）, get_videos, get_video（含字幕条、规划草稿、缩略图、已切出的短片）, get_video_peaks, rename_video, save_video_plan（按 planId 自动保存；规划 / 切分进行中拒绝）, create_video_plan / rename_video_plan / delete_video_plan（一个视频多个规划，删规划保留已切片段）, set_video_subtitle_offset（字幕纠偏）, 整理字幕（AI 断句、补中文）不是用户操作：导入时自动对整部启动（kind video_translate，与转码并行），AI 规划与切分任务开始前对还没整理的再补一次（`video_translate::prepare_before`，失败不影响主流程）, get_clips（视频库「片段」）, suggest_video_requirements（AI 读字幕给切分要求建议）, start_video_plan（AI 规划写进 request.planId，后台任务）, start_video_processing（planId：按这个规划精确切分并逐段存成短文，后台任务，按段可续；起止与已有短片相同的不重切）, get_passage_video（短文详情播放短片）, delete_video（连同短片短文，计划还在用时拒绝）, delete_video_source |
 | `handlers/tts.rs` | text_to_speech（`style`: word / sentence → 固定语音指令，参与缓存键）, get_tts_voices（预置英文音色）, get_default_tts_voice（默认音色经 update_tts_config 设置，允许自定义音色 ID）, clear_tts_cache, get_tts_cache_stats, get_tts_config（返回 `TtsConfigSafe`）, update_tts_config（`request: UpdateTtsConfigRequest`）, get_tts_preferences / update_tts_preferences（朗读偏好：句子风格预设 teacher / natural / story / news / custom、音调、音量，存 app_settings 的 `tts.preferences`）；单词与句子朗读都指定 `explicit_language: en`，风格变成英文语音指令（只对 2.0 音色生效），风格、音调、音量计入缓存键 |
 
 `handlers/mod.rs` 用 `pub use xxx::*` 全部重导出，所以 `lib.rs` 里可直接写命令名。**新增命令必须在 `lib.rs` 的 `generate_handler!` 里注册**，否则前端 invoke 报 "command not found"。

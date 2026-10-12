@@ -342,6 +342,25 @@ impl VideoRepository {
         Ok(done.rows_affected() > 0)
     }
 
+    /// 补上字幕（导入时没有字幕，之后识别出来或用户选了文件）：字幕名、字幕条，纠偏归零
+    pub async fn set_subtitles(
+        pool: &SqlitePool,
+        id: i64,
+        subtitle_name: &str,
+        cues: &[Cue],
+    ) -> AppResult<bool> {
+        let done = sqlx::query(
+            "UPDATE videos SET subtitle_name = ?, cues = ?, subtitle_offset_ms = 0, updated_at = ? WHERE id = ?",
+        )
+        .bind(subtitle_name)
+        .bind(serde_json::to_string(cues).unwrap_or_default())
+        .bind(crate::time::now_utc())
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(done.rows_affected() > 0)
+    }
+
     /// 删除原视频文件后：不再有 source_file；播放文件就是原视频时一起清空
     pub async fn clear_source(pool: &SqlitePool, id: i64) -> AppResult<()> {
         sqlx::query(

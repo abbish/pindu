@@ -1,4 +1,5 @@
-//! ffmpeg / ffprobe 调用（唯一 owner）：定位程序、读取视频信息、转码与精确切分（带进度与取消）、波形峰值、缩略图。
+//! ffmpeg / ffprobe 调用（唯一 owner）：定位程序、读取视频信息、转码与精确切分（带进度与取消）、波形峰值、缩略图、
+//! 视频自带的文字字幕（列出与导出成 srt）、给语音识别用的 16kHz 单声道 wav。
 //!
 //! - 程序位置：设置里指定的目录（`media.ffmpeg_dir`）> 随应用自带的（与主程序同目录，tauri externalBin；构建见 `scripts/ffmpeg/`）
 //!   > 开发版环境变量 `PINDU_FFMPEG_DIR` > PATH 与常见安装位置。
@@ -56,6 +57,28 @@ pub struct ProbeInfo {
     pub audio_codec: Option<String>,
 }
 
+/// 视频里的一条字幕轨道
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubtitleTrack {
+    /// 在文件里的流序号（`-map 0:<index>`）
+    pub index: i64,
+    pub codec: String,
+    /// 语言标签（如 eng / chi），没有时为空
+    pub language: String,
+    /// 轨道名（如 English SDH / 简体中文），没有时为空
+    pub title: String,
+}
+
+impl SubtitleTrack {
+    /// 文字字幕才能导出成 srt；PGS / DVD 这类图片字幕不行
+    pub fn is_text(&self) -> bool {
+        matches!(
+            self.codec.as_str(),
+            "subrip" | "srt" | "ass" | "ssa" | "webvtt" | "mov_text" | "text"
+        )
+    }
+}
+
 impl ProbeInfo {
     /// 编辑器（WebView）能直接播放：mp4 / mov 容器里的 H.264 + AAC / MP3（或没有声音）
     pub fn browser_playable(&self) -> bool {
@@ -78,7 +101,7 @@ fn exe(name: &str) -> String {
 }
 
 /// 随应用自带的 ffmpeg 所在目录：tauri 把 externalBin 放在主程序旁边（macOS 为 Contents/MacOS）
-fn built_in_dir() -> Option<PathBuf> {
+pub(crate) fn built_in_dir() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()?
         .parent()
@@ -214,6 +237,80 @@ impl MediaTools {
             )));
         }
         parse_probe(&String::from_utf8_lossy(&output.stdout))
+    }
+
+    /// 视频里的字幕轨道（只读文件头，很快）
+    pub async fn subtitle_tracks(&self, path: &Path) -> AppResult<Vec<SubtitleTrack>> {
+        let output = crate::process::command(&self.ffprobe)
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "s",
+                "-print_format",
+                "json",
+                "-show_streams",
+            ])
+            .arg(path)
+            .stdin(Stdio::null())
+            .output()
+            .await
+            .map_err(|e| media_error(format!("无法运行 ffprobe：{e}")))?;
+        if !output.status.success() {
+            return Err(AppError::ValidationError(format!(
+                "读不出这个视频：{}",
+                last_line(&String::from_utf8_lossy(&output.stderr))
+            )));
+        }
+        Ok(parse_subtitle_tracks(&String::from_utf8_lossy(
+            &output.stdout,
+        )))
+    }
+
+    /// 把几条文字字幕轨道导出成 srt（一次读完整个文件）：`(流序号, 输出文件)`
+    pub async fn extract_subtitles(&self, src: &Path, tracks: &[(i64, PathBuf)]) -> AppResult<()> {
+        if tracks.is_empty() {
+            return Ok(());
+        }
+        let mut args = vec!["-i".to_string(), path_arg(src)];
+        for (index, out) in tracks {
+            args.extend([
+                "-map".into(),
+                format!("0:{index}"),
+                "-c:s".into(),
+                "srt".into(),
+                "-f".into(),
+                "srt".into(),
+                path_arg(out),
+            ]);
+        }
+        self.run(args, 0, |_| {}, || false).await
+    }
+
+    /// 给语音识别用的音频：16kHz 单声道 16 位 wav
+    pub async fn speech_audio(
+        &self,
+        src: &Path,
+        out: &Path,
+        duration_ms: i64,
+        on_progress: impl FnMut(f64),
+        cancelled: impl Fn() -> bool,
+    ) -> AppResult<()> {
+        let args = vec![
+            "-i".into(),
+            path_arg(src),
+            "-vn".into(),
+            "-ac".into(),
+            "1".into(),
+            "-ar".into(),
+            "16000".into(),
+            "-c:a".into(),
+            "pcm_s16le".into(),
+            "-f".into(),
+            "wav".into(),
+            path_arg(out),
+        ];
+        self.run(args, duration_ms, on_progress, cancelled).await
     }
 
     /// 转成编辑器能播放的 mp4（不改时长）
@@ -479,6 +576,31 @@ fn parse_probe(json: &str) -> AppResult<ProbeInfo> {
     })
 }
 
+/// 解析 ffprobe 列出的字幕轨道
+fn parse_subtitle_tracks(json: &str) -> Vec<SubtitleTrack> {
+    let value: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+    value["streams"]
+        .as_array()
+        .map(|streams| {
+            streams
+                .iter()
+                .filter(|s| s["codec_type"] == "subtitle")
+                .filter_map(|s| {
+                    Some(SubtitleTrack {
+                        index: s["index"].as_i64()?,
+                        codec: s["codec_name"].as_str().unwrap_or_default().to_string(),
+                        language: s["tags"]["language"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                        title: s["tags"]["title"].as_str().unwrap_or_default().to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// 16 位单声道 PCM → 每 `window` 个采样取一个最大振幅（0–1，保留两位小数）
 fn peaks_from_pcm(raw: &[u8], window: usize) -> Vec<f32> {
     raw.chunks(window.max(1) * 2)
@@ -523,6 +645,23 @@ fn io_error(e: std::io::Error) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subtitle_tracks_keep_language_title_and_text_kind() {
+        let json = r#"{"streams":[
+            {"index":2,"codec_name":"subrip","codec_type":"subtitle","tags":{"language":"eng","title":"English SDH"}},
+            {"index":3,"codec_name":"hdmv_pgs_subtitle","codec_type":"subtitle","tags":{"language":"chi"}},
+            {"index":4,"codec_name":"mov_text","codec_type":"subtitle"}]}"#;
+        let tracks = parse_subtitle_tracks(json);
+        assert_eq!(tracks.len(), 3);
+        assert_eq!(
+            (tracks[0].language.as_str(), tracks[0].title.as_str()),
+            ("eng", "English SDH")
+        );
+        assert!(tracks[0].is_text() && !tracks[1].is_text() && tracks[2].is_text());
+        assert_eq!(tracks[2].language, "");
+        assert!(parse_subtitle_tracks("not json").is_empty());
+    }
 
     const PROBE: &str = r#"{
       "streams": [

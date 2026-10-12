@@ -32,6 +32,8 @@ pub mod study_plan;
 pub mod study_plan_generation;
 pub mod study_planning;
 pub mod subtitle;
+pub mod subtitle_discovery;
+pub mod subtitle_recognition;
 pub mod tag;
 pub mod tts;
 pub mod tutor_chat;

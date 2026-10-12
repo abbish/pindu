@@ -75,6 +75,10 @@ if [[ -d agent/node_modules ]]; then
   if ! ls src-tauri/binaries/ffmpeg-* >/dev/null 2>&1; then
     run "ffmpeg 编译（缺失时）" node scripts/ffmpeg/prepare.mjs
   fi
+  # 识别字幕的 whisper-cli 也是 externalBin（scripts/whisper/，需要 cmake）
+  if ! ls src-tauri/binaries/whisper-cli-* >/dev/null 2>&1; then
+    run "whisper-cli 编译（缺失时）" node scripts/whisper/prepare.mjs
+  fi
 else
   skip "agent 检查" "agent/node_modules 未安装（npm run agent:install）"
 fi

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 一键构建安装包（跨平台，零依赖，只用 Node 内置模块）。
-// 应用不签名发布，用户在自己的机器上构建：检查环境 → 安装依赖 → 编译 agent sidecar → 准备 ffmpeg → tauri build → 收集产物到 release/。
+// 应用不签名发布，用户在自己的机器上构建：检查环境 → 安装依赖 → 编译 agent sidecar → 准备 ffmpeg 与 whisper-cli → tauri build → 收集产物到 release/。
 // 开发者本地打包工具，用法见 CONTRIBUTING.md「本地打包」，或 node scripts/package.mjs --help
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
@@ -276,6 +276,7 @@ function checkEnvironment(triple, rustTargets, bundles) {
   }
 
   checkFfmpeg(triple, rustTargets, ok, bad, warn);
+  checkWhisper(triple, rustTargets, ok, bad);
 
   return { problems, warnings };
 }
@@ -302,6 +303,23 @@ function checkFfmpeg(triple, rustTargets, ok, bad, warn) {
   if (rustTargets.some((t) => t.startsWith('x86_64')) && capture('nasm', ['-v']) === null) {
     warn('没有 nasm：x86_64 的 ffmpeg 不带汇编优化，转码会慢很多', hint);
   }
+}
+
+/** 随应用分发的 whisper-cli（scripts/whisper/，识别字幕）：已编好时不需要编译工具，否则要 cmake 和 C++ 编译器 */
+function checkWhisper(triple, rustTargets, ok, bad) {
+  const ext = triple.includes('windows') ? '.exe' : '';
+  const built = [triple, ...rustTargets].every((t) => {
+    const p = join(ROOT, 'src-tauri', 'binaries', `whisper-cli-${t}${ext}`);
+    return existsSync(p) && statSync(p).size > 512 * 1024;
+  });
+  if (built) return ok('字幕识别组件 whisper-cli（已编译）');
+  if (capture('cmake', ['--version']) === null) {
+    const hint = platform === 'darwin'
+      ? 'brew install cmake'
+      : platform === 'win32' ? '安装 Visual Studio 生成工具（勾选「使用 C++ 的桌面开发」，自带 cmake）' : 'sudo apt install -y cmake（或发行版对应的包）';
+    return bad('编译字幕识别组件 whisper-cli 需要 cmake', hint);
+  }
+  ok('字幕识别组件 whisper-cli 编译工具（首次构建时编译，约 1–3 分钟）');
 }
 
 // ───────────────────────── 构建步骤 ─────────────────────────
@@ -369,7 +387,7 @@ function collectArtifacts(triple, opts, version) {
 
   if (opts.noBundle) {
     const exe = join(base, IS_WIN ? 'pindu-app.exe' : 'pindu-app');
-    const sidecars = ['redlark-agent', 'ffmpeg', 'ffprobe'].map((n) => join(base, `${n}${IS_WIN ? '.exe' : ''}`));
+    const sidecars = ['redlark-agent', 'ffmpeg', 'ffprobe', 'whisper-cli'].map((n) => join(base, `${n}${IS_WIN ? '.exe' : ''}`));
     for (const f of [exe, ...sidecars]) {
       if (existsSync(f)) {
         const dest = join(outDir, relative(base, f));
@@ -472,6 +490,9 @@ function main() {
 
   step('准备视频组件（ffmpeg）');
   run(process.execPath, [join(ROOT, 'scripts', 'ffmpeg', 'prepare.mjs'), triple], { failMessage: '视频组件 ffmpeg 准备失败' });
+
+  step('准备字幕识别组件（whisper-cli）');
+  run(process.execPath, [join(ROOT, 'scripts', 'whisper', 'prepare.mjs'), triple], { failMessage: '字幕识别组件 whisper-cli 准备失败' });
 
   step('构建应用（首次会编译全部 Rust 依赖，约 5–15 分钟）');
   // 清掉上次的安装包，避免把改名前的旧产物一起收集

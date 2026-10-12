@@ -1,0 +1,9 @@
+{
+  "_comment": "随应用分发的 whisper-cli（视频没有字幕时识别英文语音）所用源码（固定版本 + sha256）。改版本后产物会变，CI 缓存键随本目录变化。",
+  "whisper.cpp": {
+    "version": "1.9.4",
+    "url": "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.9.4.tar.gz",
+    "sha256": "57e280cee375ab02425b806ad5146b99f6eb9357e3c2b31357c8a6af2e2e44ae",
+    "license": "MIT"
+  }
+}

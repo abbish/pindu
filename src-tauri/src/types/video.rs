@@ -119,10 +119,64 @@ pub struct VideoSegment {
 #[serde(rename_all = "camelCase")]
 pub struct StartVideoImportRequest {
     pub video_path: String,
+    /// 字幕文件（选的、或自动找到的；视频自带的字幕已导出成文件）；为空时必须 `recognize`
+    #[serde(default)]
     pub subtitle_path: String,
     /// 另一个语言的字幕（可选，按时间对齐）
     pub second_subtitle_path: Option<String>,
     pub title: Option<String>,
+    /// 没有字幕：导入后在本机识别英文语音生成字幕
+    #[serde(default)]
+    pub recognize: bool,
+}
+
+/// 自动找到的一个字幕
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleCandidate {
+    /// 字幕文件（视频自带的已导出到缓存）
+    pub path: String,
+    /// file 视频旁边的字幕文件 / embedded 视频自带
+    pub source: String,
+    /// 给用户看的名字（文件名，或「视频自带 · 英文」）
+    pub label: String,
+    /// en（英文或中英双语）/ zh / 空
+    pub language: String,
+    /// 开头几句
+    pub preview: String,
+}
+
+/// 给一个视频自动找字幕的结果
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleDiscovery {
+    pub candidates: Vec<SubtitleCandidate>,
+    /// 建议做「字幕」的候选序号（英文）
+    pub primary: Option<usize>,
+    /// 建议做「第二字幕」的候选序号（中文）
+    pub secondary: Option<usize>,
+    /// 视频里的图片字幕轨道数（取不出文字）
+    pub image_tracks: i64,
+}
+
+/// 给已导入、还没有字幕的视频补上字幕文件
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetVideoSubtitlesRequest {
+    pub video_id: i64,
+    pub subtitle_path: String,
+    pub second_subtitle_path: Option<String>,
+}
+
+/// 语音识别模型的状态（设置页）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechModelStatus {
+    pub downloaded: bool,
+    /// 已下载的大小（字节）
+    pub size_bytes: i64,
+    /// 需要下载的大小（字节）
+    pub download_bytes: i64,
 }
 
 /// 导入已提交：视频 id 与任务 id

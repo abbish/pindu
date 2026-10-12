@@ -8,8 +8,8 @@ use crate::repositories::settings_repository::SettingsRepository;
 use crate::repositories::video_repository::VideoRepository;
 use crate::services::{subtitle, video as video_service};
 use crate::types::video::{
-    StartVideoImportRequest, StartVideoPlanRequest, Video, VideoDetail, VideoImportStarted,
-    VideoPlan,
+    SetVideoSubtitlesRequest, SpeechModelStatus, StartVideoImportRequest, StartVideoPlanRequest,
+    SubtitleDiscovery, Video, VideoDetail, VideoImportStarted, VideoPlan,
 };
 use sqlx::SqlitePool;
 use std::path::Path;
@@ -96,14 +96,21 @@ pub async fn start_video_import(
         let size = std::fs::metadata(&source)
             .map_err(|_| AppError::ValidationError("找不到这个视频文件".to_string()))?
             .len();
-        let primary = read_subtitle(&request.subtitle_path)?;
-        let secondary = request
-            .second_subtitle_path
-            .as_deref()
-            .filter(|p| !p.trim().is_empty())
-            .map(read_subtitle)
-            .transpose()?;
-        let cues = subtitle::build_cues(&primary, secondary.as_deref())?;
+        // 没有字幕：导入后在本机识别（D61）
+        let has_subtitle = !request.subtitle_path.trim().is_empty();
+        if !has_subtitle && !request.recognize {
+            return Err(AppError::ValidationError(
+                "请选择字幕文件，或选择自动识别语音".to_string(),
+            ));
+        }
+        let cues = if has_subtitle {
+            read_cues(
+                &request.subtitle_path,
+                request.second_subtitle_path.as_deref(),
+            )?
+        } else {
+            Vec::new()
+        };
 
         let source_name = file_name(&source);
         let title = request
@@ -120,7 +127,9 @@ pub async fn start_video_import(
             pool.inner(),
             &title,
             &source_name,
-            Some(&file_name(Path::new(&request.subtitle_path))),
+            has_subtitle
+                .then(|| file_name(Path::new(&request.subtitle_path)))
+                .as_deref(),
             &cues,
             size as i64,
         )
@@ -148,24 +157,211 @@ pub async fn start_video_import(
             },
             move |ctx| import.run(ctx),
         );
-        // 同时在 AI 队列里整理整部字幕（断句、补中文，与转码并行）；没配好 AI 时不影响导入，规划 / 切分前会再整理。
-        // 设置里关掉时不在导入时整理
-        if crate::services::material_settings::load(pool.inner())
-            .await?
-            .video_auto_prepare
-        {
-            if let Err(e) = spawn_translate(&app, video_id, &title, None).await {
-                logger.warn(
-                    "VIDEO",
-                    &format!("视频 {video_id} 没有开始翻译字幕"),
-                    Some(&e.to_string()),
-                );
-            }
+        if has_subtitle {
+            // 同时在 AI 队列里整理整部字幕（断句、补中文，与转码并行）；没配好 AI 时不影响导入，规划 / 切分前会再整理
+            auto_translate(&app, video_id, &title).await;
+        } else {
+            // 识别排在导入之后（同一条 media 队列），识别完再整理
+            spawn_recognize(&app, video_id, &title).await?;
         }
         Ok(VideoImportStarted { video_id, job_id })
     }
     .await;
     super::finish(&logger, "start_video_import", result)
+}
+
+/// 设置里打开了「导入时整理字幕」：在 AI 队列里整理整部字幕（断句、补中文）；没开始不影响导入，规划 / 切分前会再整理
+async fn auto_translate(app: &AppHandle, video_id: i64, title: &str) {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    match crate::services::material_settings::load(pool.inner()).await {
+        Ok(settings) if !settings.video_auto_prepare => return,
+        Err(e) => {
+            logger.warn(
+                "VIDEO",
+                "读取素材设置失败，按默认整理字幕",
+                Some(&e.to_string()),
+            );
+        }
+        Ok(_) => {}
+    }
+    if let Err(e) = spawn_translate(app, video_id, title, None).await {
+        logger.warn(
+            "VIDEO",
+            &format!("视频 {video_id} 没有开始翻译字幕"),
+            Some(&e.to_string()),
+        );
+    }
+}
+
+/// 字幕文件（可带另一个语言的字幕）→ 字幕条
+fn read_cues(path: &str, second: Option<&str>) -> AppResult<Vec<subtitle::Cue>> {
+    let primary = read_subtitle(path)?;
+    let secondary = second
+        .filter(|p| !p.trim().is_empty())
+        .map(read_subtitle)
+        .transpose()?;
+    subtitle::build_cues(&primary, secondary.as_deref())
+}
+
+/// 提交识别字幕的后台任务（media 队列：排在导入 / 转码之后）；识别完接着整理字幕
+async fn spawn_recognize(app: &AppHandle, video_id: i64, title: &str) -> AppResult<String> {
+    let job = crate::services::subtitle_recognition::RecognizeJob {
+        pool: Arc::new(app.state::<SqlitePool>().inner().clone()),
+        logger: Arc::new(app.state::<Logger>().inner().clone()),
+        tools: require_tools(app).await?,
+        data_dir: crate::app_paths::dirs(app).data,
+        video_id,
+    };
+    let app = app.clone();
+    let title = title.to_string();
+    Ok(app.clone().state::<Jobs>().spawn(
+        JobSpec {
+            kind: "video_recognize",
+            module: Some(JobModule::Videos),
+            title: format!("识别字幕 · {title}"),
+            lane: Lane::Media,
+            detached: true,
+            link: Some(JobLink::new(
+                "video-editor",
+                serde_json::json!({ "videoId": video_id }),
+            )),
+        },
+        move |ctx| async move {
+            let count = job.run(&ctx).await?;
+            auto_translate(&app, video_id, &title).await;
+            Ok(serde_json::json!({ "videoId": video_id, "cues": count }))
+        },
+    ))
+}
+
+/// 选好视频后自动找字幕：视频旁边的同名字幕文件、视频自带的文字字幕（导出到缓存）
+#[tauri::command]
+pub async fn find_video_subtitles(
+    app: AppHandle,
+    video_path: String,
+) -> AppResult<SubtitleDiscovery> {
+    let logger = app.state::<Logger>();
+    logger.api_request("find_video_subtitles", Some(&video_path));
+    let result = async {
+        let tools = require_tools(&app).await?;
+        let path = Path::new(&video_path);
+        if !path.is_file() {
+            return Err(AppError::ValidationError("找不到这个视频文件".to_string()));
+        }
+        crate::services::subtitle_discovery::discover(
+            &tools,
+            path,
+            &crate::app_paths::dirs(&app).cache,
+            &logger,
+        )
+        .await
+    }
+    .await;
+    super::finish(&logger, "find_video_subtitles", result)
+}
+
+/// 已导入、还没有字幕的视频：在本机识别字幕（导入时识别失败后重试）
+#[tauri::command]
+pub async fn start_video_recognition(app: AppHandle, video_id: i64) -> AppResult<String> {
+    let logger = app.state::<Logger>();
+    logger.api_request("start_video_recognition", Some(&video_id.to_string()));
+    let result = async {
+        let video = VideoRepository::get(app.state::<SqlitePool>().inner(), video_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("视频不存在".to_string()))?;
+        if video.cue_count > 0 {
+            return Err(AppError::ValidationError(
+                "这个视频已经有字幕了".to_string(),
+            ));
+        }
+        spawn_recognize(&app, video_id, &video.title).await
+    }
+    .await;
+    super::finish(&logger, "start_video_recognition", result)
+}
+
+/// 已导入、还没有字幕的视频：用字幕文件补上
+#[tauri::command]
+pub async fn set_video_subtitles(
+    app: AppHandle,
+    request: SetVideoSubtitlesRequest,
+) -> AppResult<()> {
+    let pool = app.state::<SqlitePool>();
+    let logger = app.state::<Logger>();
+    logger.api_request("set_video_subtitles", Some(&format!("{:?}", request)));
+    let result = async {
+        let video = VideoRepository::get(pool.inner(), request.video_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("视频不存在".to_string()))?;
+        if video.cue_count > 0 {
+            return Err(AppError::ValidationError(
+                "这个视频已经有字幕了".to_string(),
+            ));
+        }
+        let busy = app.state::<Jobs>().list().into_iter().any(|j| {
+            j.kind == "video_recognize"
+                && j.status.is_active()
+                && j.link
+                    .as_ref()
+                    .and_then(|l| l.params.get("videoId"))
+                    .and_then(|v| v.as_i64())
+                    == Some(request.video_id)
+        });
+        if busy {
+            return Err(AppError::ValidationError(
+                "正在识别字幕，请先停止识别".to_string(),
+            ));
+        }
+        let cues = read_cues(
+            &request.subtitle_path,
+            request.second_subtitle_path.as_deref(),
+        )?;
+        VideoRepository::set_subtitles(
+            pool.inner(),
+            request.video_id,
+            &file_name(Path::new(&request.subtitle_path)),
+            &cues,
+        )
+        .await?;
+        auto_translate(&app, request.video_id, &video.title).await;
+        Ok(())
+    }
+    .await;
+    super::finish(&logger, "set_video_subtitles", result)
+}
+
+/// 语音识别模型下载了没有（设置页）
+#[tauri::command]
+pub async fn get_speech_model_status(app: AppHandle) -> AppResult<SpeechModelStatus> {
+    let logger = app.state::<Logger>();
+    logger.api_request("get_speech_model_status", None);
+    let result = Ok(crate::services::subtitle_recognition::model_status(
+        &crate::app_paths::dirs(&app).data,
+    ));
+    super::finish(&logger, "get_speech_model_status", result)
+}
+
+/// 删除下载的语音识别模型（下次识别时再下载）
+#[tauri::command]
+pub async fn delete_speech_model(app: AppHandle) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    logger.api_request("delete_speech_model", None);
+    let result = async {
+        let busy = app
+            .state::<Jobs>()
+            .list()
+            .into_iter()
+            .any(|j| j.kind == "video_recognize" && j.status.is_active());
+        if busy {
+            return Err(AppError::ValidationError(
+                "正在识别字幕，识别完再删除".to_string(),
+            ));
+        }
+        crate::services::subtitle_recognition::delete_model(&crate::app_paths::dirs(&app).data)
+    }
+    .await;
+    super::finish(&logger, "delete_speech_model", result)
 }
 
 fn read_subtitle(path: &str) -> AppResult<String> {

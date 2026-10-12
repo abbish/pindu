@@ -65,6 +65,33 @@ pub fn build_cues(primary: &str, secondary: Option<&str>) -> AppResult<Vec<Cue>>
     Ok(cues)
 }
 
+/// 字幕文件主要是什么语言：英文（含中英双语）"en"、中文 "zh"、读不出 ""
+pub fn content_language(text: &str) -> &'static str {
+    let cues = parse(text);
+    if cues.is_empty() {
+        return "";
+    }
+    if english_share(&cues) >= 0.5 {
+        return "en";
+    }
+    if cues.iter().any(|c| !split_languages(&c.lines).1.is_empty()) {
+        "zh"
+    } else {
+        ""
+    }
+}
+
+/// 字幕文件开头的几句（界面上给用户确认用）
+pub fn preview(text: &str, lines: usize) -> String {
+    parse(text)
+        .iter()
+        .flat_map(|c| c.lines.clone())
+        .filter(|l| !l.is_empty())
+        .take(lines)
+        .collect::<Vec<_>>()
+        .join(" / ")
+}
+
 /// 英文字幕条的占比（判断哪个文件是英文）
 fn english_share(cues: &[RawCue]) -> f64 {
     if cues.is_empty() {
