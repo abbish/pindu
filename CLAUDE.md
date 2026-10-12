@@ -241,6 +241,7 @@ export const fooService = new FooService();
 - **改版不丢功能**：每个改版 / 重做批次先从代码盘点该页功能清单，完成后逐条核对；删减或合并功能须用户同意。
 - 新增原语用 `npx shadcn@latest add <name>`（生成后检查导入应为 `@/lib/utils`、未安装名为 `cn` 的包、未往 app.css 追加 `.dark {}`）。
 - 只写 Tailwind 类，不新建 `.module.css` 或全局 CSS 变量；全局样式只在 `styles/app.css`。轻提示用 `useToast()`（底层 sonner，右下角），页面加载失败用 `PageError`、弹窗 / 表单内提交失败用 `InlineError`，设置类页面用 `components/SettingsLayout`；何时用哪种、标题与原因怎么写（“已…” / “无法…” + `result.error`）见 `ui-interaction-patterns.md` §6。服务层失败的 `result.error` 已由 `api/errors.ts::toUserMessage` 转成用户能看懂的说法，调用点不再拼兜底文案。
+- 正式版有内容安全策略（`tauri.conf.json` `app.security.csp`，开发版不套用）：轻提示、对话框滚动锁定等会在运行时插入 `<style>`，所以 `style-src` 允许 `'unsafe-inline'` 并且 `dangerousDisableAssetCspModification` 含 `style-src`（否则 Tauri 加 nonce 后 `'unsafe-inline'` 失效、提示看不见；`check-release-invariants.py` 强制）。新增要加载外部资源或插入样式 / 脚本的库时，打正式包验证一次。
 - 主题 owner：`useTheme`（全局单一状态，偏好 浅色 / 深色 / 跟随系统存 localStorage）写 `document.documentElement[data-theme]`，`dark:` 经 `@custom-variant` 跟随 `data-theme`。最小窗口 1200×800，窄屏断点 `max-md:` / `max-sm:`。
 
 ## 6. AI 提示词
