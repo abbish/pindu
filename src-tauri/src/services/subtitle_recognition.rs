@@ -862,6 +862,12 @@ mod tests {
 
         let err = cues_from_recognized("1\n00:00:01,000 --> 00:00:03,000\n(music)\n").unwrap_err();
         assert!(err.to_string().contains("没有识别出英文对白"));
+        // 只认英语的模型遇到中文语音只写这一句（实测 small.en / base.en）
+        let err = cues_from_recognized(
+            "1\n00:00:00,000 --> 00:00:03,840\n (speaking in foreign language)\n",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("没有识别出英文对白"));
     }
 
     #[test]

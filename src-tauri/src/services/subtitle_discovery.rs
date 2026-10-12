@@ -138,6 +138,27 @@ pub fn suggest(candidates: &[SubtitleCandidate]) -> (Option<usize>, Option<usize
     )
 }
 
+/// 导出的字幕在缓存里留几天（导入时已经读进数据库，留着只为同一个视频再选时不用重新导出）
+const EXPORT_KEEP: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+
+/// 清掉几天前导出的字幕
+fn clean_old_exports(cache: &Path) {
+    let Ok(entries) = std::fs::read_dir(cache.join("subtitles")) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > EXPORT_KEEP);
+        if old {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 /// 缓存里放导出字幕的目录：按视频路径、大小与修改时间区分（同一个文件再选不重复导出）
 fn export_dir(cache: &Path, video: &Path) -> PathBuf {
     use std::hash::{Hash, Hasher};
@@ -184,6 +205,7 @@ pub async fn discover(
     });
     let image_tracks = tracks.iter().filter(|t| !t.is_text()).count() as i64;
     let text_tracks: Vec<&SubtitleTrack> = tracks.iter().filter(|t| t.is_text()).collect();
+    clean_old_exports(cache);
     if !text_tracks.is_empty() {
         let dir = export_dir(cache, video);
         std::fs::create_dir_all(&dir)
