@@ -250,7 +250,8 @@ export interface ViewStep {
 export type ViewItem = { kind: 'text'; key: string; text: string } | { kind: 'steps'; key: string; steps: ViewStep[] };
 
 export type ViewTurn =
-  | { role: 'user'; key: string; text: string; images: string[]; files: string[]; pending?: boolean }
+  /** timestamp：pi 消息的时刻（「从这里重新问」按它找到这条；还没发出去的没有） */
+  | { role: 'user'; key: string; text: string; images: string[]; files: string[]; pending?: boolean; timestamp?: number }
   /** 系统提示（后台任务结束等），AI 老师随后会接着说 */
   | { role: 'notice'; key: string; text: string }
   | {
@@ -413,7 +414,7 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
       agent = null;
       askedAt = m.timestamp;
       anchors += 1;
-      turns.push({ role: 'user', key: `u${anchors}`, ...userText(m) });
+      turns.push({ role: 'user', key: `u${anchors}`, ...userText(m), timestamp: m.timestamp });
     } else if (m.role === 'assistant') {
       const live = state.running && !state.partial && i === lastAssistant && m.stopReason !== 'aborted' && m.stopReason !== 'error';
       addAssistant(m, live);

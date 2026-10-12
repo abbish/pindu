@@ -177,6 +177,12 @@
   }
 }
 
+/* AI 老师：从搜索结果打开对话时标出匹配处（pages/tutor/revealText.ts） */
+::highlight(tutor-find) {
+  background-color: var(--warning-soft);
+  color: var(--foreground);
+}
+
 /* Markdown 正文（AI 讲解 / AI 老师回答）：react-markdown 输出的元素没有类名，在此统一排版 */
 @layer components {
   .markdown-body {

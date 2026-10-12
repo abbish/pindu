@@ -6,7 +6,8 @@ use crate::handlers::{agent_paths, finish};
 use crate::logger::Logger;
 use crate::services::tutor_chat::{ChatEnv, TutorChatService};
 use crate::types::tutor::{
-    TutorActivity, TutorConversation, TutorFlags, TutorOpened, TutorSendRequest, TutorUiAnswer,
+    TutorActivity, TutorConversation, TutorFlags, TutorOpened, TutorSearchHit, TutorSendRequest,
+    TutorUiAnswer,
 };
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -38,8 +39,58 @@ fn emitter(app: &AppHandle) -> Emit {
 pub async fn get_tutor_conversations(app: AppHandle) -> AppResult<Vec<TutorConversation>> {
     let logger = app.state::<Logger>();
     logger.api_request("get_tutor_conversations", None);
-    let result = async { service(&app).list(&agent_paths(&app)?, &hub(&app)).await }.await;
+    let result = async {
+        // 对话很多时 pi 分批读：读好一批就推给界面（`tutor-conversations-partial`），不用等全部读完
+        let emitter = app.clone();
+        service(&app)
+            .list(&agent_paths(&app)?, &hub(&app), move |partial| {
+                let _ = emitter.emit("tutor-conversations-partial", partial);
+            })
+            .await
+    }
+    .await;
     finish(&logger, "get_tutor_conversations", result)
+}
+
+/// 搜索对话：标题或对话内容
+#[tauri::command]
+pub async fn search_tutor_conversations(
+    app: AppHandle,
+    query: String,
+) -> AppResult<Vec<TutorSearchHit>> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "search_tutor_conversations",
+        Some(&format!("query: {} 字", query.chars().count())),
+    );
+    let result = async {
+        service(&app)
+            .search(&agent_paths(&app)?, &hub(&app), &query)
+            .await
+    }
+    .await;
+    finish(&logger, "search_tutor_conversations", result)
+}
+
+/// 从某条学习者消息重新问：这条之前的对话另开成新对话，返回新对话 id（这条之前还没有回答时为空，界面直接开新对话）
+#[tauri::command]
+pub async fn fork_tutor_conversation(
+    app: AppHandle,
+    conversation_id: String,
+    timestamp: i64,
+) -> AppResult<Option<String>> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "fork_tutor_conversation",
+        Some(&format!("{conversation_id} @ {timestamp}")),
+    );
+    let result = async {
+        service(&app)
+            .fork(&agent_paths(&app)?, &hub(&app), &conversation_id, timestamp)
+            .await
+    }
+    .await;
+    finish(&logger, "fork_tutor_conversation", result)
 }
 
 #[tauri::command]

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, MessageCircleQuestionMark, MoreHorizontal, Pin, PinOff } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, CornerUpLeft, Loader2, MessageCircleQuestionMark, MoreHorizontal, Pin, PinOff, Search, X } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,13 +12,17 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { markNavSeen, NAV_SEEN_SINCE, useNavSeen } from '@/hooks/useNavSeen';
 import { useTutorActivity } from '@/hooks/useTutorActivity';
-import type { TutorConversation } from '@/types/tutor';
-import { formatRelativeDay } from '@/utils/datetime';
+import { tutorService } from '@/services/tutorService';
+import type { TutorConversation, TutorSearchHit } from '@/types/tutor';
+import { formatRelative, formatRelativeDay } from '@/utils/datetime';
 import { conversationMark, tutorSeenKey, type ConversationMark } from '@/utils/tutorActivity';
+import { clearReveal } from './revealText';
 
 /** 列表的前 n 个；正在看的对话在后面时一直显示到它 */
 function firstPage<T extends { id: string }>(list: T[], n: number, activeId: string | null): T[] {
@@ -63,12 +67,20 @@ export const ConversationList: React.FC<{
   conversations: TutorConversation[];
   /** 第一次加载：显示占位 */
   loading?: boolean;
+  /** 第一次加载时已显示读到的部分，还在读其余的 */
+  partial?: boolean;
   activeId: string | null;
-  onOpen: (id: string) => void;
+  /** query：从搜索结果打开、匹配在对话内容里时带上（打开后滚到匹配处） */
+  onOpen: (id: string, query?: string) => void;
   onFlags: (id: string, pinned: boolean, archived: boolean) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
-}> = ({ conversations, loading, activeId, onOpen, onFlags, onRename, onDelete }) => {
+}> = ({ conversations, loading, partial, activeId, onOpen, onFlags, onRename, onDelete }) => {
+  const [query, setQuery] = useState('');
+  // 清掉搜索：对话里标出的匹配处也去掉
+  useEffect(() => {
+    if (!query.trim()) clearReveal();
+  }, [query]);
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
   const [limit, setLimit] = useState(PAGE);
   const [archivedLimit, setArchivedLimit] = useState(PAGE);
@@ -109,10 +121,12 @@ export const ConversationList: React.FC<{
 
   const markOf = (c: TutorConversation) =>
     conversationMark(activity, c.id, Math.max(NAV_SEEN_SINCE, seen.get(tutorSeenKey(c.id)) ?? 0), c.id === activeId);
+  const byId = new Map(conversations.map((c) => [c.id, c]));
   const row = (c: TutorConversation) => (
     <ConversationRow
       key={c.id}
       conversation={c}
+      parentTitle={c.parentId ? byId.get(c.parentId)?.title : undefined}
       active={c.id === activeId}
       mark={markOf(c)}
       renaming={renaming === c.id}
@@ -163,24 +177,62 @@ export const ConversationList: React.FC<{
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      {loading && conversations.length === 0 && (
-        <div className="flex flex-col gap-2 px-2 pt-1" aria-label="正在加载对话">
-          {[70, 85, 60, 75].map((w) => (
-            <Skeleton key={w} className="h-4" style={{ width: `${w}%` }} />
-          ))}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {conversations.length > 0 && (
+        <div className="relative mx-3 mb-2">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
+            placeholder="搜索对话"
+            aria-label="搜索对话"
+            className="h-8 bg-background pr-7 pl-8 text-sm"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label="清除搜索"
+              title="清除搜索"
+              className="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
       )}
-      {!loading && conversations.length === 0 && <div className="px-2 py-4 text-xs text-muted-foreground">还没有对话</div>}
-      {pinned.length > 0 && section(PINNED, pinned, pinned)}
-      {dateGroups.map((g) => (
-        <div key={g.label} className="mb-3">
-          <div className="px-2 pb-1 text-xs text-muted-foreground">{g.label}</div>
-          {g.items.map(row)}
-        </div>
-      ))}
-      {recentShown.length < recent.length && <MoreButton onClick={() => setLimit((n) => n + PAGE)} />}
-      {archived.length > 0 && section(ARCHIVED, archived, archivedShown, () => setArchivedLimit((n) => n + PAGE))}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        {query.trim() ? (
+          <SearchResults query={query.trim()} conversations={conversations} activeId={activeId} onOpen={onOpen} />
+        ) : (
+          <>
+            {loading && conversations.length === 0 && (
+              <div className="flex flex-col gap-2 px-2 pt-1" aria-label="正在加载对话">
+                {[70, 85, 60, 75].map((w) => (
+                  <Skeleton key={w} className="h-4" style={{ width: `${w}%` }} />
+                ))}
+              </div>
+            )}
+            {!loading && conversations.length === 0 && <div className="px-2 py-4 text-xs text-muted-foreground">还没有对话</div>}
+            {pinned.length > 0 && section(PINNED, pinned, pinned)}
+            {dateGroups.map((g) => (
+              <div key={g.label} className="mb-3">
+                <div className="px-2 pb-1 text-xs text-muted-foreground">{g.label}</div>
+                {g.items.map(row)}
+              </div>
+            ))}
+            {recentShown.length < recent.length && <MoreButton onClick={() => setLimit((n) => n + PAGE)} />}
+            {archived.length > 0 && section(ARCHIVED, archived, archivedShown, () => setArchivedLimit((n) => n + PAGE))}
+            {partial && (
+              <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                正在读取更多对话…
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
@@ -208,6 +260,80 @@ export const ConversationList: React.FC<{
   );
 };
 
+/** 文字里的 query 标出来（不分大小写） */
+const Marked: React.FC<{ text: string; query: string }> = ({ text, query }) => {
+  const at = text.toLowerCase().indexOf(query.toLowerCase());
+  if (at < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="rounded-sm bg-warning-soft text-foreground">{text.slice(at, at + query.length)}</mark>
+      {text.slice(at + query.length)}
+    </>
+  );
+};
+
+/** 搜索结果：先按标题在本地筛（马上有），稍等后由后端按标题与对话内容搜，内容匹配的带上那一段 */
+const SearchResults: React.FC<{
+  query: string;
+  conversations: TutorConversation[];
+  activeId: string | null;
+  onOpen: (id: string, query?: string) => void;
+}> = ({ query, conversations, activeId, onOpen }) => {
+  const [hits, setHits] = useState<{ query: string; hits: TutorSearchHit[] } | null>(null);
+  const run = useRef(0);
+  useEffect(() => {
+    const id = ++run.current;
+    const timer = window.setTimeout(() => {
+      void tutorService.search(query).then((result) => {
+        if (id === run.current && result.success) setHits({ query, hits: result.data });
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  const byId = new Map(conversations.map((c) => [c.id, c]));
+  const lower = query.toLowerCase();
+  const results: { conversation: TutorConversation; snippet: string }[] =
+    hits?.query === query
+      ? hits.hits.flatMap((h) => {
+          const c = byId.get(h.id);
+          return c ? [{ conversation: c, snippet: h.snippet }] : [];
+        })
+      : conversations.filter((c) => c.title.toLowerCase().includes(lower)).map((c) => ({ conversation: c, snippet: '' }));
+  const searching = hits?.query !== query;
+
+  return (
+    <div className="flex flex-col">
+      {results.map(({ conversation: c, snippet }) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => onOpen(c.id, snippet ? query : undefined)}
+          className={cn('flex flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-accent', c.id === activeId && 'bg-accent')}
+        >
+          <span className={cn('truncate text-sm', c.archived && 'text-muted-foreground')}>
+            <Marked text={c.title} query={query} />
+          </span>
+          {snippet && (
+            <span className="line-clamp-2 text-xs text-muted-foreground">
+              <Marked text={snippet} query={query} />
+            </span>
+          )}
+        </button>
+      ))}
+      {searching ? (
+        <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" />
+          正在搜索对话内容…
+        </div>
+      ) : (
+        results.length === 0 && <div className="px-2 py-4 text-xs text-muted-foreground">没有找到</div>
+      )}
+    </div>
+  );
+};
+
 /** 显示下一批对话 */
 const MoreButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   <button type="button" onClick={onClick} className="mb-3 w-full rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground">
@@ -226,6 +352,8 @@ const MARK: Record<ConversationMark, { label: string; icon: React.ReactNode }> =
 
 const ConversationRow: React.FC<{
   conversation: TutorConversation;
+  /** 从这个对话「重新问」另开的（悬停预览里说明） */
+  parentTitle?: string;
   active: boolean;
   mark: ConversationMark | null;
   renaming: boolean;
@@ -235,7 +363,7 @@ const ConversationRow: React.FC<{
   onStartRename: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
-}> = ({ conversation: c, active, mark, renaming, onOpen, onPin, onArchive, onStartRename, onRename, onDelete }) => {
+}> = ({ conversation: c, parentTitle, active, mark, renaming, onOpen, onPin, onArchive, onStartRename, onRename, onDelete }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const action =
     'flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground';
@@ -259,19 +387,40 @@ const ConversationRow: React.FC<{
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div className={cn('group relative flex items-center rounded-md hover:bg-accent has-focus-visible:bg-accent', (active || menuOpen) && 'bg-accent')}>
-          <button
-            type="button"
-            onClick={onOpen}
-            onDoubleClick={onStartRename}
-            title={c.title}
-            className={cn(
-              'min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm',
-              active && 'font-medium',
-              c.archived && 'text-muted-foreground'
-            )}
-          >
-            {c.title}
-          </button>
+          {/* 停一会儿显示预览：第一句、最近说的、从哪个对话重新问的 */}
+          <HoverCard openDelay={700} closeDelay={80}>
+            <HoverCardTrigger asChild>
+              <button
+                type="button"
+                onClick={onOpen}
+                onDoubleClick={onStartRename}
+                className={cn(
+                  'min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm',
+                  active && 'font-medium',
+                  c.archived && 'text-muted-foreground'
+                )}
+              >
+                {c.title}
+              </button>
+            </HoverCardTrigger>
+            <HoverCardContent side="right" align="start" className="flex w-72 flex-col gap-2 p-3 text-sm">
+              <div className="font-medium">{c.title}</div>
+              {parentTitle && (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <CornerUpLeft className="size-3.5 shrink-0" />
+                  <span className="truncate">从「{parentTitle}」重新问</span>
+                </div>
+              )}
+              {c.firstMessage && c.firstMessage !== c.title && <p className="line-clamp-3 text-muted-foreground">{c.firstMessage}</p>}
+              {c.recent && (
+                <div>
+                  <div className="text-xs text-muted-foreground">最近</div>
+                  <p className="line-clamp-3">{c.recent}</p>
+                </div>
+              )}
+              <div className="text-xs text-muted-foreground">{formatRelative(c.modified)}</div>
+            </HoverCardContent>
+          </HoverCard>
           {/* 状态常驻；悬停、键盘移到这一行或菜单打开时，操作盖在右端（一直可以用 Tab 到达，只是看不见） */}
           {mark && (
             <span

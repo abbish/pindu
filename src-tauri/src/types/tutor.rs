@@ -15,6 +15,21 @@ pub struct TutorConversation {
     pub message_count: i64,
     pub pinned: bool,
     pub archived: bool,
+    /// 从哪个对话「重新问」另开的（那个对话还在时）
+    pub parent_id: Option<String>,
+    /// 学习者说的第一句话（悬停预览）
+    pub first_message: String,
+    /// 最近说的几句（悬停预览；列表读完之前为空）
+    pub recent: String,
+}
+
+/// 搜索对话的一条结果
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TutorSearchHit {
+    pub id: String,
+    /// 对话内容里匹配的那一段（只有标题匹配时为空）
+    pub snippet: String,
 }
 
 /// 打开一个对话：pi 的消息（`get_messages`）

@@ -558,3 +558,12 @@
   1. 少犯错：`suggest_replies` 用 pi 的 `prepareArguments` 在校验前整理写法偏差（item / reply / items、超过 3 条）；`create_question_set`、`create_plan` 改为直接声明（存短文、建词汇本之后最常接着用）；`save_passage` 说明词汇用原形，核对时词汇写成变形而正文用了同一原形的其他形式，直接指出该写的原形。
   2. 交稿前的核对没通过用 `needs_revision`（`redlark.check`）：模型照旧看到要改什么，界面显示成「核对后重新整理」的灰色一步。
   3. 界面按 pi 给的说明分类没成功的调用（`TOOL_OUTCOMES`）：找工具（not found）、参数格式不对（Validation failed）是智能体自己的来回，和 tool_search 一样不显示；没同意、只查看、停止显示成「（没有改动）」的灰色一步；只有工具真正失败才是红色。确认门的两句说明导出为常量，两边各有测试锁住开头。
+
+## D60 · 2026-10-12 · AI 老师的对话列表分批读取、可搜索，可以从一条消息重新问
+
+- **背景**：对话列表要等 pi 把全部会话文件读完才显示，对话多时第一次打开要等；没有办法找回以前的对话；学习者想换个问法时只能另起对话、把前面的内容再说一遍。
+- **决定**：
+  1. 分批读取用 pi 自己的机制：`SessionManager.list` 的进度回调每读好一批就给出已读到的部分，sidecar 的 `--redlark-sessions` 改为逐行输出（`{"partial": [...]}` 不带全文，最后 `{"done": [...]}` 带全文），后端读到一批就推 `tutor-conversations-partial`，界面第一次加载时先显示；读完的列表照旧缓存在 `ChatHub`，之后不再分批。
+  2. 搜索：pi 的会话信息自带对话文字（`allMessagesText`，每个对话取最近 20 万字），随列表缓存在后端；`search_tutor_conversations` 按标题与内容不分大小写匹配，内容匹配带上前后一段。界面先按标题在本地筛，稍后换成后端结果；从内容匹配打开时滚到对话里的那一处，用 CSS Custom Highlight 标出（不改 DOM）。
+  3. 重新问：pi 的 `fork` RPC 会把正在运行的进程切到新会话，与「一个对话一个常驻进程」不合；改用 sidecar 的离线命令 `--redlark-fork`，同样调用 pi 的 `createBranchedSession`（新会话头记着 `parentSession`），按那条学习者消息的 timestamp 找到它，复制它之前的对话，名字是原名加「（重新问）」；资料夹一起复制。那条之前还没有回答时不另开，直接开新对话。原话放回输入框，学习者改了再发。
+  4. 来源关系：列表里的 `parentId` 由 pi 的 `parentSessionPath` 换算（来源已删时为空），对话标题栏与悬停预览显示「从哪个对话重新问的」。

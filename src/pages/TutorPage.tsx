@@ -3,13 +3,14 @@
  * 对话由 pi 会话保存（handlers/tutor.rs）；页面按 pi 的事件重建对话（utils/tutorTranscript.ts）。
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, GraduationCap, Loader2, MessageSquarePlus } from 'lucide-react';
+import { ArrowDown, CornerUpLeft, GraduationCap, Loader2, MessageSquarePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { NavigateFn } from '@/navigation';
 import { toTurns } from '@/utils/tutorTranscript';
 import { Composer } from './tutor/Composer';
 import { ConversationList } from './tutor/ConversationList';
 import { AgentTurnView, NoticeRow, OutputsPopover, UserBubble } from './tutor/TurnViews';
+import { clearReveal, revealText } from './tutor/revealText';
 import { useStickToBottom } from './tutor/useStickToBottom';
 import { useTutorChat, type Attachment } from './tutor/useTutorChat';
 
@@ -58,6 +59,29 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
   useEffect(() => {
     scrollToBottom();
   }, [chat.activeId, chat.loading, scrollToBottom]);
+
+  // 从搜索结果打开：对话显示出来后滚到匹配的地方并标出来（换对话时去掉）
+  const [find, setFind] = useState<{ id: string; query: string } | null>(null);
+  const contentEl = useRef<HTMLDivElement | null>(null);
+  useEffect(() => clearReveal, [chat.activeId]);
+  useEffect(() => {
+    if (!find || find.id !== chat.activeId || chat.loading || turns.length === 0) return;
+    // 等贴底滚动与布局完成
+    const timer = window.setTimeout(() => {
+      if (contentEl.current) revealText(contentEl.current, find.query);
+      setFind(null);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [find, chat.activeId, chat.loading, turns.length]);
+
+  /** 从学习者的某条消息重新问：另开的对话打开后，这句话放回输入框改了再发 */
+  const retry = async (turn: { text: string; timestamp?: number }) => {
+    if (turn.timestamp === undefined) return;
+    if (!(await chat.retryFrom(turn.timestamp))) return;
+    setDraft(turn.text);
+    setFocusKey((k) => k + 1);
+  };
+  const parent = active?.parentId ? chat.conversations.find((c) => c.id === active.parentId) : undefined;
 
   const send = async (text: string, files: Attachment[] = attachments) => {
     // 有提问在等：输入的文字就是回答（不然消息会排在提问后面，两边互相等）
@@ -109,8 +133,12 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
         <ConversationList
           conversations={chat.conversations}
           loading={chat.listLoading}
+          partial={chat.listPartial}
           activeId={chat.activeId}
-          onOpen={(id) => id !== chat.activeId && void chat.open(id)}
+          onOpen={(id, query) => {
+            if (query) setFind({ id, query });
+            if (id !== chat.activeId) void chat.open(id);
+          }}
           onFlags={(id, pinned, archived) => void chat.setFlags(id, pinned, archived)}
           onRename={(id, name) => void chat.rename(id, name)}
           onDelete={(id) => void chat.remove(id)}
@@ -122,6 +150,17 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
           <div className="min-w-0 flex-1 truncate text-sm font-medium" title={active?.title}>
             {chat.activeId ? (active?.title ?? '') : '新对话'}
           </div>
+          {parent && (
+            <button
+              type="button"
+              onClick={() => void chat.open(parent.id)}
+              title={`从「${parent.title}」重新问的，点开原来的对话`}
+              className="flex max-w-56 shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <CornerUpLeft className="size-3.5 shrink-0" />
+              <span className="truncate">{parent.title}</span>
+            </button>
+          )}
           {outputs.length > 0 && <OutputsPopover outputs={outputs} onNavigate={onNavigate} />}
         </header>
 
@@ -132,10 +171,16 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
                 <Loader2 className="size-5 animate-spin" />
               </div>
             ) : turns.length > 0 ? (
-              <div ref={stick.contentRef} className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-6">
+              <div
+                ref={(el) => {
+                  contentEl.current = el;
+                  stick.contentRef(el);
+                }}
+                className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-6"
+              >
                 {turns.map((turn, i) =>
                   turn.role === 'user' ? (
-                    <UserBubble key={turn.key} turn={turn} />
+                    <UserBubble key={turn.key} turn={turn} onRetry={turn.timestamp !== undefined && !turn.pending ? () => void retry(turn) : undefined} />
                   ) : turn.role === 'notice' ? (
                     <NoticeRow key={turn.key} text={turn.text} />
                   ) : (

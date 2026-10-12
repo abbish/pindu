@@ -52,6 +52,9 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
   const [conversations, setConversationsState] = useState<TutorConversation[]>(lastConversations ?? []);
   /** 第一次加载列表（还没有上次的列表可显示） */
   const [listLoading, setListLoading] = useState(lastConversations === null);
+  /** 第一次加载时 pi 分批读：已经显示了读到的部分，还在读其余的 */
+  const [listPartial, setListPartial] = useState(false);
+  const firstLoad = useRef(lastConversations === null);
   const setConversations = useCallback((update: React.SetStateAction<TutorConversation[]>) => {
     setConversationsState((prev) => {
       const next = typeof update === 'function' ? update(prev) : update;
@@ -105,7 +108,9 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
       });
     }
     const result = await listing!;
+    firstLoad.current = false;
     setListLoading(false);
+    setListPartial(false);
     if (result.success) setConversations(result.data);
   }, [setConversations]);
 
@@ -135,9 +140,18 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
       }
       if (conversationId === activeRef.current && seq > seqFloor.current) enqueue(conversationId, event);
     }).then((fn) => (disposed ? fn() : (unlisten = fn)));
+    // 第一次加载：pi 每读好一批就先显示（之后的刷新列表一直在，不用分批）
+    let unlistenPartial: (() => void) | undefined;
+    void listen<TutorConversation[]>('tutor-conversations-partial', ({ payload }) => {
+      if (!firstLoad.current) return;
+      setConversations(payload);
+      setListLoading(false);
+      setListPartial(true);
+    }).then((fn) => (disposed ? fn() : (unlistenPartial = fn)));
     return () => {
       disposed = true;
       unlisten?.();
+      unlistenPartial?.();
       window.clearTimeout(refreshTimer.current);
     };
   }, [refreshList, refreshSoon]);
@@ -324,9 +338,32 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
     [newConversation, toast]
   );
 
+  /** 从当前对话里学习者的某条消息重新问：这条之前的对话另开成新对话并打开（这条之前还没有回答时开新对话）；成功返回 true */
+  const retryFrom = useCallback(
+    async (timestamp: number) => {
+      const from = activeRef.current;
+      if (!from) return false;
+      const result = await tutorService.fork(from, timestamp);
+      if (!result.success) {
+        toast.showError('无法重新问', result.error);
+        return false;
+      }
+      if (result.data) {
+        void open(result.data);
+        void refreshList(true);
+      } else {
+        newConversation();
+      }
+      return true;
+    },
+    [open, newConversation, refreshList, toast]
+  );
+
   return {
     conversations,
     listLoading,
+    listPartial,
+    retryFrom,
     activeId,
     transcript,
     loading,

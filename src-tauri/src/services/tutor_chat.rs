@@ -2,7 +2,7 @@
 //! 这里只负责启动参数（模型、学习者档案、提示词、工具与 skills、拼读 MCP 服务地址）、对话的资料夹（附件），
 //! 对话列表与置顶 / 归档（pi 没有，存 app_settings）。
 
-use crate::agent::chat::{ChatHub, ChatSession, Emit};
+use crate::agent::chat::{ChatHub, ChatSession, Emit, SessionSummary};
 use crate::agent::config::{prepare_launch, SessionMode, TaskWorkspace};
 use crate::agent::{tasks, AgentPaths};
 use crate::error::{AppError, AppResult};
@@ -10,7 +10,7 @@ use crate::logger::Logger;
 use crate::mcp::McpEndpoint;
 use crate::repositories::settings_repository::SettingsRepository;
 use crate::types::tutor::{
-    TutorConversation, TutorFlags, TutorOpened, TutorSendRequest, TutorUiAnswer,
+    TutorConversation, TutorFlags, TutorOpened, TutorSearchHit, TutorSendRequest, TutorUiAnswer,
 };
 use serde_json::{json, Value};
 use sqlx::SqlitePool;
@@ -28,6 +28,14 @@ pub const MAX_IMAGES: usize = 8;
 pub const MAX_FILES: usize = 5;
 /// 标题最长（字符）
 const MAX_TITLE_CHARS: usize = 60;
+/// 悬停预览里「最近说的」最长（字符）
+const RECENT_CHARS: usize = 120;
+/// 搜索结果里匹配处前后各带多少字
+const SNIPPET_RADIUS: usize = 24;
+/// 搜索最多返回几个对话
+const MAX_SEARCH_HITS: usize = 50;
+/// 「重新问」另开的对话名的后缀
+const RETRY_SUFFIX: &str = "（重新问）";
 
 /// 对话的会话目录与工作目录（工作目录固定，pi 按它归类会话）
 fn dirs(paths: &AgentPaths) -> (PathBuf, PathBuf) {
@@ -79,8 +87,152 @@ async fn list_sessions(
     paths: &AgentPaths,
     session_dir: &std::path::Path,
     cwd: &std::path::Path,
-) -> AppResult<Vec<crate::agent::chat::SessionSummary>> {
-    crate::agent::chat::list_sessions(paths, session_dir, &real_path(cwd.to_path_buf())).await
+    on_partial: impl FnMut(Vec<SessionSummary>),
+) -> AppResult<Vec<SessionSummary>> {
+    crate::agent::chat::list_sessions(
+        paths,
+        session_dir,
+        &real_path(cwd.to_path_buf()),
+        on_partial,
+    )
+    .await
+}
+
+/// 对话标题：pi 会话名，没有时为第一条消息
+fn title_of(s: &SessionSummary) -> String {
+    s.name
+        .as_deref()
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or(&s.first_message)
+        .trim()
+        .chars()
+        .take(MAX_TITLE_CHARS)
+        .collect()
+}
+
+/// 最近说的几句：对话文字的末尾（从一个词的开头起）
+fn recent_of(text: &str) -> String {
+    let chars: Vec<char> = text.trim().chars().collect();
+    if chars.len() <= RECENT_CHARS {
+        return chars.into_iter().collect();
+    }
+    let tail = &chars[chars.len() - RECENT_CHARS..];
+    let start = tail
+        .iter()
+        .position(|c| c.is_whitespace())
+        .filter(|&i| i < 20)
+        .map_or(0, |i| i + 1);
+    format!("…{}", tail[start..].iter().collect::<String>())
+}
+
+/// 文字里第一次出现 query（不分大小写）的那一段，前后各带 SNIPPET_RADIUS 个字
+fn snippet(text: &str, query: &str) -> Option<String> {
+    let lower = |s: &str| -> Vec<char> {
+        s.chars()
+            .map(|c| c.to_lowercase().next().unwrap_or(c))
+            .collect()
+    };
+    let hay = lower(text);
+    let needle = lower(query.trim());
+    if needle.is_empty() || needle.len() > hay.len() {
+        return None;
+    }
+    let at = (0..=hay.len() - needle.len()).find(|&i| hay[i..i + needle.len()] == needle[..])?;
+    let chars: Vec<char> = text.chars().collect();
+    // 英文不从半个词开始、不在半个词结束（往里收到最近的空格，最多收 10 个字）
+    let mut from = at.saturating_sub(SNIPPET_RADIUS);
+    if from > 0 && !chars[from - 1].is_whitespace() {
+        if let Some(i) = chars[from..at]
+            .iter()
+            .take(10)
+            .position(|c| c.is_whitespace())
+        {
+            from += i + 1;
+        }
+    }
+    let end = at + needle.len();
+    let mut to = (end + SNIPPET_RADIUS).min(chars.len());
+    if to < chars.len() && !chars[to].is_whitespace() {
+        if let Some(i) = chars[end..to]
+            .iter()
+            .rev()
+            .take(10)
+            .position(|c| c.is_whitespace())
+        {
+            to -= i + 1;
+        }
+    }
+    let body: String = chars[from..to]
+        .iter()
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(format!(
+        "{}{}{}",
+        if from > 0 { "…" } else { "" },
+        body,
+        if to < chars.len() { "…" } else { "" }
+    ))
+}
+
+/// 「重新问」另开的对话名：原名加后缀（原名已经带着就不重复加）
+fn retry_name(title: &str) -> String {
+    let base = title.trim().trim_end_matches(RETRY_SUFFIX).trim();
+    let base: String = base
+        .chars()
+        .take(MAX_TITLE_CHARS - RETRY_SUFFIX.chars().count())
+        .collect();
+    format!("{base}{RETRY_SUFFIX}")
+}
+
+/// pi 的会话列表 → 对话列表（只要有消息的；带上置顶 / 归档与来源）
+fn to_conversations(
+    sessions: &[SessionSummary],
+    flags: &HashMap<String, TutorFlags>,
+) -> Vec<TutorConversation> {
+    let by_path: HashMap<&str, &str> = sessions
+        .iter()
+        .map(|s| (s.path.as_str(), s.id.as_str()))
+        .collect();
+    sessions
+        .iter()
+        .filter(|s| s.message_count > 0)
+        .map(|s| {
+            let flag = flags.get(&s.id).cloned().unwrap_or_default();
+            TutorConversation {
+                id: s.id.clone(),
+                title: title_of(s),
+                created: s.created.clone(),
+                modified: s.modified.clone(),
+                message_count: s.message_count,
+                pinned: flag.pinned,
+                archived: flag.archived,
+                parent_id: s
+                    .parent_path
+                    .as_deref()
+                    .and_then(|p| by_path.get(p))
+                    .map(|id| id.to_string()),
+                first_message: s.first_message.trim().chars().take(RECENT_CHARS).collect(),
+                recent: recent_of(&s.text),
+            }
+        })
+        .collect()
+}
+
+/// 复制对话的资料夹（另开的对话里还能读到之前发的文件）
+fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
 }
 
 pub struct TutorChatService {
@@ -115,23 +267,38 @@ impl TutorChatService {
         SettingsRepository::set(&mut conn, FLAGS_KEY, Some(&json)).await
     }
 
-    /// 对话列表（pi 列出会话），新的在前
+    /// pi 的会话列表：用缓存的，没有时让 pi 列（每读好一批调用一次 on_partial）
+    async fn sessions(
+        &self,
+        paths: &AgentPaths,
+        hub: &ChatHub,
+        on_partial: impl FnMut(Vec<SessionSummary>),
+    ) -> AppResult<Vec<SessionSummary>> {
+        let (session_dir, cwd) = dirs(paths);
+        Ok(match hub.cached_list() {
+            Some(cached) => cached,
+            None if !session_dir.exists() => Vec::new(),
+            None => {
+                let listed = list_sessions(paths, &session_dir, &cwd, on_partial).await?;
+                hub.cache_list(listed.clone());
+                listed
+            }
+        })
+    }
+
+    /// 对话列表（pi 列出会话），新的在前。对话很多时 pi 分批读：每读好一批，`on_partial` 收到已读到的部分（新的在前）
     pub async fn list(
         &self,
         paths: &AgentPaths,
         hub: &ChatHub,
+        mut on_partial: impl FnMut(Vec<TutorConversation>),
     ) -> AppResult<Vec<TutorConversation>> {
-        let (session_dir, cwd) = dirs(paths);
-        let sessions = match hub.cached_list() {
-            Some(cached) => cached,
-            None if !session_dir.exists() => Vec::new(),
-            None => {
-                let listed = list_sessions(paths, &session_dir, &cwd).await?;
-                hub.cache_list(listed.clone());
-                listed
-            }
-        };
         let flags = self.flags().await;
+        let sessions = self
+            .sessions(paths, hub, |partial| {
+                on_partial(to_conversations(&partial, &flags))
+            })
+            .await?;
         // 刚发出第一句话的新对话：pi 还没写进会话文件（或列表缓存早于写入），先按第一句话列出来
         let fresh: Vec<FreshConversation> = hub
             .sessions()
@@ -145,26 +312,7 @@ impl TutorChatService {
                 })
             })
             .collect();
-        let mut list: Vec<TutorConversation> = sessions
-            .into_iter()
-            .filter(|s| s.message_count > 0)
-            .map(|s| {
-                let flag = flags.get(&s.id).cloned().unwrap_or_default();
-                let title = s
-                    .name
-                    .filter(|n| !n.trim().is_empty())
-                    .unwrap_or(s.first_message);
-                TutorConversation {
-                    title: title.trim().chars().take(MAX_TITLE_CHARS).collect(),
-                    id: s.id,
-                    created: s.created,
-                    modified: s.modified,
-                    message_count: s.message_count,
-                    pinned: flag.pinned,
-                    archived: flag.archived,
-                }
-            })
-            .collect();
+        let mut list = to_conversations(&sessions, &flags);
         add_fresh(&mut list, fresh, &flags);
         list.sort_by(|a, b| b.modified.cmp(&a.modified));
         Ok(list)
@@ -432,6 +580,83 @@ impl TutorChatService {
         }
     }
 
+    /// 搜索对话：标题或对话内容里有这些字（不分大小写），新的在前；内容匹配时带上匹配的那一段
+    pub async fn search(
+        &self,
+        paths: &AgentPaths,
+        hub: &ChatHub,
+        query: &str,
+    ) -> AppResult<Vec<TutorSearchHit>> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let sessions = self.sessions(paths, hub, |_| {}).await?;
+        let lower = query.to_lowercase();
+        Ok(sessions
+            .iter()
+            .filter(|s| s.message_count > 0)
+            .filter_map(|s| {
+                let in_title = title_of(s).to_lowercase().contains(&lower);
+                match snippet(&s.text, query) {
+                    Some(snippet) => Some(TutorSearchHit {
+                        id: s.id.clone(),
+                        snippet,
+                    }),
+                    None if in_title => Some(TutorSearchHit {
+                        id: s.id.clone(),
+                        snippet: String::new(),
+                    }),
+                    None => None,
+                }
+            })
+            .take(MAX_SEARCH_HITS)
+            .collect())
+    }
+
+    /// 从某条学习者消息「重新问」：这条之前的对话另开成新对话（名字是原名加「（重新问）」，带上资料夹），返回新对话 id；
+    /// 这条之前还没有回答时返回 None（界面直接开新对话）
+    pub async fn fork(
+        &self,
+        paths: &AgentPaths,
+        hub: &ChatHub,
+        id: &str,
+        timestamp: i64,
+    ) -> AppResult<Option<String>> {
+        check_id(id)?;
+        let sessions = self.sessions(paths, hub, |_| {}).await?;
+        let source = sessions
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| AppError::NotFound("对话不存在".to_string()))?;
+        let (session_dir, _) = dirs(paths);
+        let forked = crate::agent::chat::fork_session(
+            paths,
+            &session_dir,
+            &source.path,
+            timestamp,
+            &retry_name(&title_of(source)),
+        )
+        .await?;
+        if let Some(new_id) = forked.as_deref() {
+            check_id(new_id)?;
+            let from = files_dir(paths, id);
+            if from.exists() {
+                if let Err(e) = copy_dir(&from, &files_dir(paths, new_id)) {
+                    self.logger.warn(
+                        "TUTOR",
+                        &format!("对话 {id} 另开为 {new_id} 时复制资料夹失败"),
+                        Some(&e.to_string()),
+                    );
+                }
+            }
+            hub.invalidate_list();
+            self.logger
+                .info("TUTOR", &format!("对话 {id} 从一条消息另开为 {new_id}"));
+        }
+        Ok(forked)
+    }
+
     pub async fn set_flags(&self, id: &str, flags: TutorFlags) -> AppResult<()> {
         let mut all = self.flags().await;
         if flags.pinned || flags.archived {
@@ -449,7 +674,7 @@ impl TutorChatService {
         hub.invalidate_list();
         let _ = std::fs::remove_dir_all(files_dir(paths, id));
         let (session_dir, cwd) = dirs(paths);
-        let sessions = list_sessions(paths, &session_dir, &cwd).await?;
+        let sessions = list_sessions(paths, &session_dir, &cwd, |_| {}).await?;
         if let Some(session) = sessions.iter().find(|s| s.id == id) {
             let path = real_path(PathBuf::from(&session.path));
             // 只删会话目录里的文件
@@ -484,13 +709,17 @@ fn add_fresh(
             continue;
         }
         let flag = flags.get(&f.id).cloned().unwrap_or_default();
+        let title: String = f.title.trim().chars().take(MAX_TITLE_CHARS).collect();
         list.push(TutorConversation {
-            title: f.title.trim().chars().take(MAX_TITLE_CHARS).collect(),
+            first_message: title.clone(),
+            title,
             modified: f.created.clone(),
             created: f.created,
             message_count: 1,
             pinned: flag.pinned,
             archived: flag.archived,
+            parent_id: None,
+            recent: String::new(),
             id: f.id,
         });
     }
@@ -517,6 +746,69 @@ mod tests {
         assert!(!all.contains_key("none"));
     }
 
+    fn summary(id: &str, name: Option<&str>, parent: Option<&str>, text: &str) -> SessionSummary {
+        SessionSummary {
+            id: id.into(),
+            path: format!("/s/{id}.jsonl"),
+            name: name.map(str::to_string),
+            parent_path: parent.map(|p| format!("/s/{p}.jsonl")),
+            first_message: format!("问题 {id}"),
+            created: "2026-10-12T00:00:00.000Z".into(),
+            modified: "2026-10-12T00:00:01.000Z".into(),
+            message_count: 2,
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn conversations_link_to_the_one_they_were_retried_from() {
+        let sessions = [
+            summary("b", Some("机场英语（重新问）"), Some("a"), "check in"),
+            summary("a", Some("机场英语"), None, "check in please"),
+            summary("c", None, Some("gone"), ""),
+        ];
+        let list = to_conversations(&sessions, &HashMap::new());
+        assert_eq!(list[0].parent_id.as_deref(), Some("a"));
+        assert_eq!(list[1].parent_id, None);
+        // 来源对话已删：不显示来源；没有名字时标题是第一句话
+        assert_eq!(
+            (list[2].parent_id.as_deref(), list[2].title.as_str()),
+            (None, "问题 c")
+        );
+    }
+
+    #[test]
+    fn search_snippet_recent_and_retry_name() {
+        let text = "Teacher: when you check in at the airport, show your Passport and ticket.";
+        assert_eq!(
+            snippet(text, "passport").as_deref(),
+            Some("…the airport, show your Passport and ticket.")
+        );
+        assert_eq!(
+            snippet("登机牌在哪里办", "登机").as_deref(),
+            Some("登机牌在哪里办")
+        );
+        // 不从半个词开始
+        assert_eq!(
+            snippet(text, "ticket").as_deref(),
+            Some("…show your Passport and ticket.")
+        );
+        assert_eq!(snippet(text, "visa"), None);
+        assert_eq!(snippet(text, "  "), None);
+        assert_eq!(recent_of("short"), "short");
+        let long = format!("{} the last words", "word ".repeat(40));
+        let recent = recent_of(&long);
+        assert!(
+            recent.starts_with('…')
+                && recent.ends_with("the last words")
+                && recent.chars().count() <= RECENT_CHARS + 1,
+            "{recent}"
+        );
+        assert_eq!(retry_name("机场英语"), "机场英语（重新问）");
+        assert_eq!(retry_name("机场英语（重新问）"), "机场英语（重新问）");
+        assert!(retry_name(&"长".repeat(80)).chars().count() <= MAX_TITLE_CHARS);
+    }
+
     #[test]
     fn fresh_conversations_are_listed_until_pi_lists_them() {
         let listed = TutorConversation {
@@ -527,6 +819,9 @@ mod tests {
             message_count: 4,
             pinned: false,
             archived: false,
+            parent_id: None,
+            first_message: "帮我准备a".into(),
+            recent: String::new(),
         };
         let mut list = vec![listed];
         let fresh = |id: &str| FreshConversation {
@@ -757,7 +1052,7 @@ mod tests {
             .await
             .unwrap();
         // 刚发出第一句话：马上出现在对话列表里（pi 还没写会话文件时用第一句话作标题）
-        let listed = service.list(&paths, &hub).await.unwrap();
+        let listed = service.list(&paths, &hub, |_| {}).await.unwrap();
         let fresh = listed.iter().find(|c| c.id == id);
         println!("发出后马上列：{:?}", fresh.map(|c| &c.title));
         assert!(fresh.is_some(), "新对话应马上出现在列表里");
@@ -1093,7 +1388,7 @@ mod tests {
             });
         println!("通知后 AI 老师说：{:?}", reply);
 
-        let list = service.list(&paths, &hub).await.unwrap();
+        let list = service.list(&paths, &hub, |_| {}).await.unwrap();
         let item = list.iter().find(|c| c.id == id).expect("列表里有这个对话");
         println!("列表：{:?}", item);
 
@@ -1149,7 +1444,7 @@ mod tests {
 
         service.rename(&env, &id, "itinerary 查词").await.unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
-        let list = service.list(&paths, &hub).await.unwrap();
+        let list = service.list(&paths, &hub, |_| {}).await.unwrap();
         assert_eq!(
             list.iter().find(|c| c.id == id).unwrap().title,
             "itinerary 查词"
@@ -1157,7 +1452,7 @@ mod tests {
 
         service.delete(&paths, &hub, &id).await.unwrap();
         assert!(service
-            .list(&paths, &hub)
+            .list(&paths, &hub, |_| {})
             .await
             .unwrap()
             .iter()

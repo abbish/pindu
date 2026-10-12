@@ -12,6 +12,19 @@ export interface TutorConversation {
   messageCount: number;
   pinned: boolean;
   archived: boolean;
+  /** 从哪个对话「重新问」另开的（那个对话还在时） */
+  parentId: string | null;
+  /** 学习者说的第一句话（悬停预览） */
+  firstMessage: string;
+  /** 最近说的几句（悬停预览；列表读完之前为空） */
+  recent: string;
+}
+
+/** 搜索对话的一条结果 */
+export interface TutorSearchHit {
+  id: string;
+  /** 对话内容里匹配的那一段（只有标题匹配时为空） */
+  snippet: string;
 }
 
 /** 打开对话：pi 的消息（get_messages） */

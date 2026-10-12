@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Ban, Bell, BookOpen, CalendarCheck, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, Plus, RotateCcw } from 'lucide-react';
+import { Ban, Bell, BookOpen, CalendarCheck, Check, ChevronRight, CircleAlert, FileText, GraduationCap, ListChecks, Loader2, PencilLine, Plus, RotateCcw } from 'lucide-react';
 import { JobProgress } from '@/components/Jobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,8 +39,9 @@ export function openOutput(output: StepOutput, onNavigate: NavigateFn) {
   else onNavigate('passage-detail', { passageId: output.id, tab: output.kind === 'questions' ? 'sets' : undefined });
 }
 
-export const UserBubble: React.FC<{ turn: Extract<ViewTurn, { role: 'user' }> }> = ({ turn }) => (
-  <div className={cn('flex flex-col items-end gap-1.5', turn.pending && 'opacity-70')}>
+/** 学习者的消息。onRetry：「从这里重新问」——这条之前的对话另开成新对话，这句话放回输入框改了再发 */
+export const UserBubble: React.FC<{ turn: Extract<ViewTurn, { role: 'user' }>; onRetry?: () => void }> = ({ turn, onRetry }) => (
+  <div className={cn('group/user flex flex-col items-end gap-1.5', turn.pending && 'opacity-70')}>
     {turn.images.length > 0 && (
       <div className="flex flex-wrap justify-end gap-1.5">
         {turn.images.map((src, i) => (
@@ -62,6 +63,18 @@ export const UserBubble: React.FC<{ turn: Extract<ViewTurn, { role: 'user' }> }>
       <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2 text-sm whitespace-pre-wrap text-primary-foreground select-text">
         {turn.text}
       </div>
+    )}
+    {onRetry && (
+      <button
+        type="button"
+        onClick={onRetry}
+        title="从这里重新问"
+        aria-label="从这里重新问"
+        className="-mt-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/user:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100"
+      >
+        <PencilLine className="size-3.5" />
+        重新问
+      </button>
     )}
   </div>
 );

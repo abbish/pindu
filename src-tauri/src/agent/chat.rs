@@ -554,24 +554,105 @@ pub struct SessionSummary {
     pub id: String,
     pub path: String,
     pub name: Option<String>,
+    /// 从哪个会话另开的（pi 会话头的 parentSession）
+    #[serde(default)]
+    pub parent_path: Option<String>,
     pub first_message: String,
     pub created: String,
     pub modified: String,
     pub message_count: i64,
+    /// 对话的文字（学习者与 AI 老师说的话，搜索与预览用；读的过程中回报的那几批没有）
+    #[serde(default)]
+    pub text: String,
 }
 
-/// 用 pi 列出会话目录里的对话
+/// `--redlark-sessions` 输出的一行：读好一批（不带全文）或全部读完
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum SessionListLine {
+    Partial(Vec<SessionSummary>),
+    Done(Vec<SessionSummary>),
+}
+
+/// 等列表的上限：每读好一批就有一行输出，这么久没有新的一行才算卡住
+const SESSION_LIST_STALL: Duration = Duration::from_secs(30);
+
+/// 用 pi 列出会话目录里的对话。pi 每读好一批调用一次 `on_partial`（新的在前，还不完整、没有全文），全部读完返回完整列表
 pub async fn list_sessions(
     paths: &super::AgentPaths,
     session_dir: &std::path::Path,
     cwd: &std::path::Path,
+    mut on_partial: impl FnMut(Vec<SessionSummary>),
 ) -> AppResult<Vec<SessionSummary>> {
+    use tokio::io::AsyncBufReadExt;
+    let mut child = tokio::process::Command::new(&paths.program)
+        .arg("--redlark-sessions")
+        .arg(session_dir)
+        .arg(cwd)
+        .env("PI_OFFLINE", "1")
+        .env("PI_TELEMETRY", "0")
+        .env("PI_CODING_AGENT_DIR", paths.root.join("catalog"))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| {
+            AppError::ExternalServiceError(format!(
+                "{}（{}）：{}",
+                super::session::SPAWN_FAILURE,
+                paths.program.display(),
+                e
+            ))
+        })?;
+    let stdout = child.stdout.take().expect("stdout piped");
+    let mut lines = tokio::io::BufReader::new(stdout).lines();
+    loop {
+        let line = tokio::time::timeout(SESSION_LIST_STALL, lines.next_line())
+            .await
+            .map_err(|_| AppError::ExternalServiceError("读取对话列表超时".to_string()))?
+            .map_err(|e| AppError::ExternalServiceError(format!("读取对话列表失败：{}", e)))?;
+        let Some(line) = line else { break };
+        match serde_json::from_str::<SessionListLine>(&line) {
+            Ok(SessionListLine::Partial(list)) => on_partial(list),
+            Ok(SessionListLine::Done(list)) => return Ok(list),
+            Err(e) => {
+                return Err(AppError::ExternalServiceError(format!(
+                    "无法解析对话列表：{}",
+                    e
+                )))
+            }
+        }
+    }
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| AppError::ExternalServiceError(format!("读取对话列表失败：{}", e)))?;
+    Err(AppError::ExternalServiceError(format!(
+        "读取对话列表失败：{}",
+        String::from_utf8_lossy(&output.stderr)
+            .chars()
+            .take(300)
+            .collect::<String>()
+    )))
+}
+
+/// 用 pi 把来源会话里某条学习者消息之前的对话复制成新会话（记着来源），返回新会话 id；
+/// 这条消息之前还没有回答时返回 None（直接开新对话）
+pub async fn fork_session(
+    paths: &super::AgentPaths,
+    session_dir: &std::path::Path,
+    source_path: &str,
+    timestamp: i64,
+    name: &str,
+) -> AppResult<Option<String>> {
     let output = tokio::time::timeout(
         Duration::from_secs(30),
         tokio::process::Command::new(&paths.program)
-            .arg("--redlark-sessions")
+            .arg("--redlark-fork")
             .arg(session_dir)
-            .arg(cwd)
+            .arg(source_path)
+            .arg(timestamp.to_string())
+            .arg(name)
             .env("PI_OFFLINE", "1")
             .env("PI_TELEMETRY", "0")
             .env("PI_CODING_AGENT_DIR", paths.root.join("catalog"))
@@ -579,7 +660,7 @@ pub async fn list_sessions(
             .output(),
     )
     .await
-    .map_err(|_| AppError::ExternalServiceError("读取对话列表超时".to_string()))?
+    .map_err(|_| AppError::ExternalServiceError("另开对话超时".to_string()))?
     .map_err(|e| {
         AppError::ExternalServiceError(format!(
             "{}（{}）：{}",
@@ -590,21 +671,48 @@ pub async fn list_sessions(
     })?;
     if !output.status.success() {
         return Err(AppError::ExternalServiceError(format!(
-            "读取对话列表失败：{}",
+            "另开对话失败：{}",
             String::from_utf8_lossy(&output.stderr)
                 .chars()
                 .take(300)
                 .collect::<String>()
         )));
     }
-    serde_json::from_slice(&output.stdout)
-        .map_err(|e| AppError::ExternalServiceError(format!("无法解析对话列表：{}", e)))
+    #[derive(serde::Deserialize)]
+    struct Forked {
+        id: Option<String>,
+    }
+    serde_json::from_slice::<Forked>(&output.stdout)
+        .map(|f| f.id)
+        .map_err(|e| AppError::ExternalServiceError(format!("另开对话失败：{}", e)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn session_list_lines_are_partial_batches_then_done() {
+        let item = json!({"id": "a", "path": "/s/a.jsonl", "name": null, "firstMessage": "hi",
+            "created": "2026-10-12T00:00:00.000Z", "modified": "2026-10-12T00:00:01.000Z", "messageCount": 2});
+        let partial: SessionListLine =
+            serde_json::from_value(json!({ "partial": [item.clone()] })).unwrap();
+        assert!(
+            matches!(partial, SessionListLine::Partial(ref l) if l.len() == 1 && l[0].text.is_empty() && l[0].parent_path.is_none())
+        );
+        let mut done_item = item;
+        done_item["text"] = json!("hi there");
+        done_item["parentPath"] = json!("/s/p.jsonl");
+        let done: SessionListLine = serde_json::from_value(json!({ "done": [done_item] })).unwrap();
+        let SessionListLine::Done(list) = done else {
+            panic!("应是 done")
+        };
+        assert_eq!(
+            (list[0].text.as_str(), list[0].parent_path.as_deref()),
+            ("hi there", Some("/s/p.jsonl"))
+        );
+    }
 
     type Seen = Arc<Mutex<Vec<(u64, Value)>>>;
 
