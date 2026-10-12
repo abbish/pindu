@@ -89,7 +89,7 @@ pub fn parse_catalog(json: &[u8]) -> AppResult<Vec<CatalogProvider>> {
 async fn fetch_catalog(paths: &AgentPaths) -> AppResult<Arc<Vec<CatalogProvider>>> {
     let output = tokio::time::timeout(
         Duration::from_secs(30),
-        tokio::process::Command::new(&paths.program)
+        crate::process::command(&paths.program)
             .arg("--redlark-catalog")
             .env("PI_OFFLINE", "1")
             .env("PI_TELEMETRY", "0")

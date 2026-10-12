@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
-use tokio::process::Command;
 
 /// 设置里指定 ffmpeg 所在目录的键（app_settings）
 pub const FFMPEG_DIR_SETTING: &str = "media.ffmpeg_dir";
@@ -134,7 +133,7 @@ pub async fn locate_in(dir: &Path) -> Option<MediaTools> {
 }
 
 async fn pick_encoder(ffmpeg: &Path) -> Option<String> {
-    let output = Command::new(ffmpeg)
+    let output = crate::process::command(ffmpeg)
         .args(["-hide_banner", "-encoders"])
         .stdin(Stdio::null())
         .output()
@@ -170,7 +169,7 @@ impl MediaTools {
                 built_in: false,
             };
         };
-        let version = Command::new(&tools.ffmpeg)
+        let version = crate::process::command(&tools.ffmpeg)
             .arg("-version")
             .stdin(Stdio::null())
             .output()
@@ -194,7 +193,7 @@ impl MediaTools {
 
     /// 读取视频信息
     pub async fn probe(&self, path: &Path) -> AppResult<ProbeInfo> {
-        let output = Command::new(&self.ffprobe)
+        let output = crate::process::command(&self.ffprobe)
             .args([
                 "-v",
                 "error",
@@ -318,7 +317,7 @@ impl MediaTools {
 
     /// 波形峰值：每秒 PEAKS_PER_SECOND 个，0–1（没有声音时全是 0）
     pub async fn peaks(&self, src: &Path) -> AppResult<Vec<f32>> {
-        let mut child = Command::new(&self.ffmpeg)
+        let mut child = crate::process::command(&self.ffmpeg)
             .args(["-hide_banner", "-loglevel", "error", "-i"])
             .arg(src)
             .args(["-vn", "-ac", "1", "-ar"])
@@ -384,7 +383,7 @@ impl MediaTools {
         mut on_progress: impl FnMut(f64),
         cancelled: impl Fn() -> bool,
     ) -> AppResult<()> {
-        let mut child = Command::new(&self.ffmpeg)
+        let mut child = crate::process::command(&self.ffmpeg)
             .args([
                 "-hide_banner",
                 "-nostdin",

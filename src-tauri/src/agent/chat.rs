@@ -568,7 +568,7 @@ pub async fn list_sessions(
 ) -> AppResult<Vec<SessionSummary>> {
     let output = tokio::time::timeout(
         Duration::from_secs(30),
-        tokio::process::Command::new(&paths.program)
+        crate::process::command(&paths.program)
             .arg("--redlark-sessions")
             .arg(session_dir)
             .arg(cwd)
