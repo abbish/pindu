@@ -131,7 +131,7 @@ export const ConversationList: React.FC<{
         if (g.items.length === 0) return null;
         const closed = collapsed.has(g.label);
         // 收起的分组：标出里面最要紧的状态，等你回答的对话不会被藏起来
-        const marks = closed ? g.items.map(markOf) : [];
+        const marks = closed ? g.items.filter((c) => c.id !== activeId).map(markOf) : [];
         const groupMark = MARK_ORDER.find((m) => marks.includes(m));
         return (
           <div key={g.label} className="mb-3">
@@ -156,7 +156,8 @@ export const ConversationList: React.FC<{
                 <ChevronDown className="size-3 opacity-0 transition-opacity group-hover/head:opacity-100 group-focus-visible/head:opacity-100" />
               )}
             </button>
-            {!closed && g.items.map(row)}
+            {/* 收起的分组里正在看的对话照样露出来（如刚归档的） */}
+            {(closed ? g.items.filter((c) => c.id === activeId) : g.items).map(row)}
           </div>
         );
       })}
@@ -230,7 +231,7 @@ const ConversationRow: React.FC<{
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className={cn('group flex items-center rounded-md hover:bg-accent', (active || menuOpen) && 'bg-accent')}>
+        <div className={cn('group relative flex items-center rounded-md hover:bg-accent has-focus-visible:bg-accent', (active || menuOpen) && 'bg-accent')}>
           <button
             type="button"
             onClick={onOpen}
@@ -244,21 +245,27 @@ const ConversationRow: React.FC<{
           >
             {c.title}
           </button>
-          {/* 状态常驻；悬停（或菜单打开）时换成操作 */}
+          {/* 状态常驻；悬停、键盘移到这一行或菜单打开时，操作盖在右端（一直可以用 Tab 到达，只是看不见） */}
           {mark && (
             <span
               role="img"
               aria-label={MARK[mark].label}
               title={MARK[mark].label}
-              className={cn('flex size-6 shrink-0 items-center justify-center pr-1 group-hover:hidden group-has-focus-visible:hidden', menuOpen && 'hidden')}
+              className={cn('flex size-6 shrink-0 items-center justify-center pr-1 group-hover:invisible group-has-focus-visible:invisible', menuOpen && 'invisible')}
             >
               {MARK[mark].icon}
             </span>
           )}
-          <div className={cn('hidden shrink-0 items-center gap-0.5 pr-1 group-hover:flex group-has-focus-visible:flex', menuOpen && 'flex')}>
+          <div
+            className={cn(
+              'pointer-events-none absolute inset-y-0 right-0 flex items-center gap-0.5 rounded-r-md bg-accent pr-1 pl-1 opacity-0',
+              'group-hover:pointer-events-auto group-hover:opacity-100 group-has-focus-visible:pointer-events-auto group-has-focus-visible:opacity-100',
+              menuOpen && 'pointer-events-auto opacity-100'
+            )}
+          >
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
-                <button type="button" className={action} title="更多" aria-label="更多">
+                <button type="button" className={action} title="更多" aria-label={`更多操作：${c.title}`}>
                   <MoreHorizontal className="size-3.5" />
                 </button>
               </DropdownMenuTrigger>
@@ -273,7 +280,7 @@ const ConversationRow: React.FC<{
               </DropdownMenuContent>
             </DropdownMenu>
             {!c.archived && (
-              <button type="button" onClick={onPin} className={action} title={c.pinned ? '取消置顶' : '置顶'} aria-label={c.pinned ? '取消置顶' : '置顶'}>
+              <button type="button" onClick={onPin} className={action} title={c.pinned ? '取消置顶' : '置顶'} aria-label={`${c.pinned ? '取消置顶' : '置顶'}：${c.title}`}>
                 {c.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
               </button>
             )}

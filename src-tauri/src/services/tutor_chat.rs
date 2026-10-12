@@ -337,25 +337,8 @@ impl TutorChatService {
             .map(|i| json!({ "type": "image", "data": i.data, "mimeType": i.mime_type }))
             .collect();
         session.send(&text, images).await?;
-        // 在归档的对话里接着聊：回到对话列表
         if let Some(id) = request.conversation_id.as_deref() {
-            let flags = self.flags().await;
-            if let Some(flag) = flags.get(id).filter(|f| f.archived) {
-                let pinned = flag.pinned;
-                if let Err(e) = self
-                    .set_flags(
-                        id,
-                        TutorFlags {
-                            pinned,
-                            archived: false,
-                        },
-                    )
-                    .await
-                {
-                    self.logger
-                        .warn("TUTOR", "取消归档失败", Some(&e.to_string()));
-                }
-            }
+            self.unarchive(id).await;
         }
         // 发出去了才记：第一句没发出去时不在列表里留一个打不开的对话
         if request.conversation_id.is_none() {
@@ -434,6 +417,24 @@ impl TutorChatService {
             .map(|_| ())
     }
 
+    /// 在归档的对话里接着聊：回到对话列表（置顶保留）；失败只记 WARN，不影响发消息
+    async fn unarchive(&self, id: &str) {
+        let Some(flag) = self.flags().await.get(id).filter(|f| f.archived).cloned() else {
+            return;
+        };
+        let flags = TutorFlags {
+            pinned: flag.pinned,
+            archived: false,
+        };
+        if let Err(e) = self.set_flags(id, flags).await {
+            self.logger.warn(
+                "TUTOR",
+                &format!("对话 {id} 发消息后取消归档失败"),
+                Some(&e.to_string()),
+            );
+        }
+    }
+
     pub async fn set_flags(&self, id: &str, flags: TutorFlags) -> AppResult<()> {
         let mut all = self.flags().await;
         if flags.pinned || flags.archived {
@@ -502,6 +503,25 @@ fn add_fresh(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn sending_in_an_archived_conversation_unarchives_it() {
+        use super::*;
+        let svc = TutorChatService::new(
+            crate::test_support::memory_pool().await,
+            crate::test_support::test_logger(),
+        );
+        let flag = |pinned, archived| TutorFlags { pinned, archived };
+        svc.set_flags("a", flag(true, true)).await.unwrap();
+        svc.set_flags("b", flag(true, false)).await.unwrap();
+        svc.unarchive("a").await;
+        svc.unarchive("b").await;
+        svc.unarchive("none").await;
+        let all = svc.flags().await;
+        assert!(all["a"].pinned && !all["a"].archived);
+        assert!(all["b"].pinned && !all["b"].archived);
+        assert!(!all.contains_key("none"));
+    }
+
     #[test]
     fn fresh_conversations_are_listed_until_pi_lists_them() {
         let listed = TutorConversation {
