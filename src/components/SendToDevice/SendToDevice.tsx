@@ -8,6 +8,7 @@ import { useToast } from '@/components/Toast/ToastContainer';
 import { cn } from '@/lib/utils';
 import { lanService } from '@/services/lanService';
 import { osLabel, type ExportItem, type PairedDevice } from '@/types/lan';
+import type { NavigateFn } from '@/navigation';
 
 /** 要发送的内容：几项 + 给用户看的名字（「旅行词汇」/「3 个词汇本」） */
 export interface SendRequest {
@@ -38,7 +39,7 @@ export const BatchSendButton: React.FC<SendRequest> = (request) => (
  * 「发送到其他电脑」：选一台已配对、在线的电脑，计划可选连同学习进度，视频可选包括原始视频。
  * 发送在后台进行（后台任务里看进度），对方确认后开始。
  */
-export const SendToDeviceHost: React.FC = () => {
+export const SendToDeviceHost: React.FC<{ onNavigate: NavigateFn }> = ({ onNavigate }) => {
   const toast = useToast();
   const [request, setRequest] = useState<SendRequest | null>(null);
   const [devices, setDevices] = useState<PairedDevice[] | null>(null);
@@ -89,6 +90,16 @@ export const SendToDeviceHost: React.FC = () => {
   };
 
   const close = () => setRequest(null);
+  /** 去「设置 → 附近的设备」打开互传或配对（设置页按上次打开的分类显示） */
+  const openSettings = () => {
+    try {
+      localStorage.setItem('settings.activePanel', 'devices');
+    } catch {
+      // 存储不可用时停在设置页默认分类
+    }
+    close();
+    onNavigate('settings');
+  };
 
   return (
     <Dialog open={request !== null} onOpenChange={(o) => !o && close()}>
@@ -99,13 +110,23 @@ export const SendToDeviceHost: React.FC = () => {
         </DialogHeader>
 
         {!running ? (
-          <p className="rounded-lg bg-muted px-3 py-3 text-sm text-muted-foreground">请先在「设置 → 附近的设备」里打开设备互传，并和另一台电脑配对。</p>
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-3 text-sm text-muted-foreground">
+            还没有打开设备互传
+            <Button size="sm" variant="outline" onClick={openSettings}>
+              去设置
+            </Button>
+          </div>
         ) : devices === null ? (
           <div className="flex justify-center py-6">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
         ) : devices.length === 0 ? (
-          <p className="rounded-lg bg-muted px-3 py-3 text-sm text-muted-foreground">还没有配对的电脑，请先在「设置 → 附近的设备」里配对。</p>
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-3 text-sm text-muted-foreground">
+            还没有配对的电脑
+            <Button size="sm" variant="outline" onClick={openSettings}>
+              去配对
+            </Button>
+          </div>
         ) : (
           <div role="radiogroup" aria-label="发送到" className="flex flex-col gap-1.5">
             {devices.map((d) => (

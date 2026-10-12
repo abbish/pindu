@@ -18,6 +18,8 @@ import { PLAN_STATUS } from '@/types/study';
 import { PageError } from '@/components/PageError';
 import { SortSelect, useSortPref } from '@/components/SortSelect';
 import { byInstant, byNumber, byText, sortItems, type SortOption } from '@/utils/sorting';
+import { SelectionBar, useSelection } from '@/components/MaterialSelection/MaterialSelection';
+import { BatchSendButton } from '@/components/SendToDevice';
 
 export interface StudyPlansPageProps {
   /** Navigation handler */
@@ -84,6 +86,13 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
 
   const handleStudyStart = usePlanPractice(studyPlans, onNavigate);
 
+  // 多选：当前页签里看得见的计划（与素材库一致：悬停勾选，选择栏替换页签行）
+  const visiblePlans = useMemo(
+    () => statusesOf(statusFilter).flatMap((st) => byStatus.get(st) ?? []),
+    [byStatus, statusFilter]
+  );
+  const selection = useSelection(useMemo(() => visiblePlans.map((p) => p.id), [visiblePlans]));
+
   const renderPlans = (plans: StudyPlanWithProgress[]) => (
     <div className="flex flex-col gap-3">
       {plans.map((plan) => (
@@ -94,6 +103,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
           onAction={handleStudyStart}
           todaySchedule={today?.schedules.find((t) => t.plan_id === plan.id)}
           todayPassages={today?.passages.filter((t) => t.planId === plan.id)}
+          select={{ checked: selection.selected.has(plan.id), selecting: selection.selecting, onToggle: () => selection.toggle(plan.id) }}
         />
       ))}
     </div>
@@ -157,6 +167,11 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
         <PageError title="无法加载学习计划" message={error.message} onRetry={refresh} />
       )}
 
+      {selection.selecting ? (
+        <SelectionBar selection={selection} unit="个计划">
+          <BatchSendButton items={selection.ids.map((id) => ({ kind: 'plan', id }))} title={`${selection.selected.size} 个学习计划`} />
+        </SelectionBar>
+      ) : (
       <div className="flex items-center justify-between gap-2">
       <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
         <TabsList>
@@ -170,6 +185,7 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
       </Tabs>
         <SortSelect value={sortBy} options={PLAN_SORTS} onChange={setSortBy} />
       </div>
+      )}
 
       {renderContent()}
     </div>

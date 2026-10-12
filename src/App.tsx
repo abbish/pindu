@@ -183,7 +183,7 @@ function App() {
           {/* 局域网里别的设备发来的配对请求（设置 → 附近的设备） */}
           <LanPairRequest />
           {/* 设备互传：发送弹窗（各页面「发送到其他电脑…」）与收到发送时的确认 */}
-          <SendToDeviceHost />
+          <SendToDeviceHost onNavigate={navigate} />
           <LanTransferOffer />
           <DevTools />
         </StartupGate>

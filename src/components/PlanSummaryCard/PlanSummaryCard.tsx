@@ -31,6 +31,7 @@ import { intervalLabel } from '@/components/PlanPassagePicker';
 import { JobProgress, activeJobFor } from '@/components/Jobs';
 import { useJobs } from '@/hooks/useJobs';
 import { SEND_LABEL, sendToDevice } from '@/components/SendToDevice';
+import { SelectCheckbox } from '@/components/MaterialSelection/MaterialSelection';
 
 export interface PlanSummaryCardProps {
   /** 学习计划 */
@@ -43,6 +44,8 @@ export interface PlanSummaryCardProps {
   todaySchedule?: TodayStudySchedule;
   /** 这个计划今天的短文任务（到期没完成的 + 今天完成的） */
   todayPassages?: TodayPassageTask[];
+  /** 多选（计划列表）：勾选状态与切换；不传则没有勾选框 */
+  select?: { checked: boolean; selecting: boolean; onToggle: () => void };
 }
 
 
@@ -69,7 +72,7 @@ function dayPosition(startDate: string | undefined, totalDays: number, today: st
  * 每张卡自行拉取 get_study_plan_statistics。右键与 ⋯ 菜单为同一组操作。
  * 四栏：计划（名称 / 状态 / 参数）→ 单词进度（已学 / 总数、进度条 + 时间刻度、正确率）→ 日程（第几天、日程方块）→ 主操作。
  */
-export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, onAction, todaySchedule, todayPassages = [] }) => {
+export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, onAction, todaySchedule, todayPassages = [], select }) => {
   const [statistics, setStatistics] = useState<StudyPlanStatistics | null>(null);
   const [statisticsLoading, setStatisticsLoading] = useState(true);
 
@@ -135,8 +138,11 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <Card
-          className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-8 px-5 py-4 transition-colors hover:border-ring/60"
-          onClick={() => onOpen(plan.id)}
+          className={cn(
+            'group grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-8 px-5 py-4 transition-colors hover:border-ring/60',
+            select?.checked && 'border-primary ring-2 ring-primary/30'
+          )}
+          onClick={() => (select?.selecting ? select.onToggle() : onOpen(plan.id))}
         >
           {/* 计划 */}
           <div className="min-w-0 space-y-1">
@@ -146,7 +152,8 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
                 className="truncate text-left text-[15px] font-semibold outline-none focus-visible:underline"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onOpen(plan.id);
+                  if (select?.selecting) select.onToggle();
+                  else onOpen(plan.id);
                 }}
               >
                 {plan.name}
@@ -241,6 +248,7 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
                 {action}
               </Button>
             )}
+            {select && <SelectCheckbox inline checked={select.checked} selecting={select.selecting} onToggle={select.onToggle} label={`选择「${plan.name}」`} />}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="更多操作" onClick={(e) => e.stopPropagation()}>
