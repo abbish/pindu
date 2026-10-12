@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { AlertTriangle, AudioLines, Captions, FileVideo, FolderOpen, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -80,6 +80,8 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
   const [recognize, setRecognize] = useState(false);
   /** 选用的识别模型（没下载时提示第一次要下载多大） */
   const [model, setModel] = useState<SpeechModelInfo | null>(null);
+  /** 第几次找字幕：换了视频后，上一个视频晚到的结果不用 */
+  const findRun = useRef(0);
   const [title, setTitle] = useState('');
   /** 用户自己改过标题后，重新选视频不再覆盖 */
   const [titleEdited, setTitleEdited] = useState(false);
@@ -93,6 +95,7 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
     setSecond(null);
     setDiscovery(null);
     setRecognize(false);
+    findRun.current += 1;
     setTitle('');
     setTitleEdited(false);
     setError(null);
@@ -122,7 +125,9 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
     setSecond(keep);
     setRecognize(false);
     setDiscovery('loading');
+    const run = ++findRun.current;
     const found = await videoService.findSubtitles(path);
+    if (run !== findRun.current) return;
     if (!found.success) {
       setDiscovery({ candidates: [], primary: null, secondary: null, imageTracks: 0 });
       return;
@@ -253,7 +258,8 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
                   onPick={pickSubtitle}
                 />
               )}
-              {!searching && (subtitle || second) && (
+              {/* 第二字幕跟着字幕走：只有中文、选了识别时用不上它（识别出的英文由整理字幕翻译） */}
+                {!searching && subtitle && (
                 <FileRow
                   label="第二字幕"
                   hint="例如单独的中文字幕"

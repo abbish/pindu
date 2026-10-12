@@ -288,30 +288,32 @@ pub async fn start_video_recognition(
                 "这个视频已经有字幕了".to_string(),
             ));
         }
-        if subtitle_busy(&app, video_id) {
-            return Err(AppError::ValidationError(
-                "这个视频正在识别字幕或规划、切分，请稍后再试".to_string(),
-            ));
-        }
+        check_subtitle_free(&app, video_id)?;
         spawn_recognize(&app, video_id, &video.title, replace).await
     }
     .await;
     super::finish(&logger, "start_video_recognition", result)
 }
 
-/// 这个视频有进行中的识别、整理字幕、规划或切分：这时不能换字幕
-fn subtitle_busy(app: &AppHandle, video_id: i64) -> bool {
-    app.state::<Jobs>().list().into_iter().any(|j| {
-        matches!(
-            j.kind.as_str(),
-            "video_recognize" | "video_translate" | "video_plan" | "video_process"
-        ) && j.status.is_active()
-            && j.link
-                .as_ref()
-                .and_then(|l| l.params.get("videoId"))
-                .and_then(|v| v.as_i64())
-                == Some(video_id)
-    })
+/// 现在能不能换这个视频的字幕：正在识别、整理（逐条写回）、规划、切分时不能换
+fn check_subtitle_free(app: &AppHandle, video_id: i64) -> AppResult<()> {
+    let reason = if running(app, video_id, &["video_recognize"]) {
+        Some("正在识别字幕，可以先停止识别")
+    } else if running(app, video_id, &["video_translate"]) {
+        Some("字幕正在整理（断句、翻译），整理完再换")
+    } else if running(
+        app,
+        video_id,
+        &["video_import", "video_plan", "video_process"],
+    ) {
+        Some("这个视频正在导入、规划或切分，完成后再换")
+    } else {
+        None
+    };
+    match reason {
+        Some(text) => Err(AppError::ValidationError(text.to_string())),
+        None => Ok(()),
+    }
 }
 
 /// 用字幕文件补上字幕（还没有字幕的视频），或 `replace` 时换掉已有的字幕；已规划的片段只记时间范围，不受影响
@@ -332,11 +334,7 @@ pub async fn set_video_subtitles(
                 "这个视频已经有字幕了".to_string(),
             ));
         }
-        if subtitle_busy(&app, request.video_id) {
-            return Err(AppError::ValidationError(
-                "这个视频正在识别字幕或规划、切分，请稍后再试".to_string(),
-            ));
-        }
+        check_subtitle_free(&app, request.video_id)?;
         let cues = read_cues(
             &request.subtitle_path,
             request.second_subtitle_path.as_deref(),
@@ -1127,6 +1125,11 @@ fn busy(app: &AppHandle, video_id: i64) -> bool {
     )
 }
 
+/// 能不能删这个视频（或它的原视频文件）：除了 `busy`，识别字幕也在读原视频
+fn in_use(app: &AppHandle, video_id: i64) -> bool {
+    busy(app, video_id) || running(app, video_id, &["video_recognize"])
+}
+
 /// 字幕时间纠偏（毫秒，正数 = 字幕延后，±10 分钟内）；不改原始时间，显示、规划、切分都按它换算
 #[tauri::command]
 pub async fn set_video_subtitle_offset(
@@ -1214,7 +1217,7 @@ pub async fn delete_video(app: AppHandle, video_id: i64) -> AppResult<()> {
     let logger = app.state::<Logger>();
     logger.api_request("delete_video", Some(&format!("video_id: {video_id}")));
     let result = async {
-        if busy(&app, video_id) {
+        if in_use(&app, video_id) {
             return Err(AppError::ValidationError(
                 "这个视频正在导入或处理，请先在后台任务里停止".to_string(),
             ));
@@ -1241,12 +1244,20 @@ pub async fn delete_video_source(app: AppHandle, video_id: i64) -> AppResult<()>
         Some(&format!("video_id: {video_id}")),
     );
     let pool = app.state::<SqlitePool>();
-    let result = video_service::delete_source(
-        pool.inner(),
-        &crate::app_paths::dirs(&app).data,
-        video_id,
-        &logger,
-    )
+    let result = async {
+        if in_use(&app, video_id) {
+            return Err(AppError::ValidationError(
+                "这个视频正在导入或处理，请先在后台任务里停止".to_string(),
+            ));
+        }
+        video_service::delete_source(
+            pool.inner(),
+            &crate::app_paths::dirs(&app).data,
+            video_id,
+            &logger,
+        )
+        .await
+    }
     .await;
     super::finish(&logger, "delete_video_source", result)
 }

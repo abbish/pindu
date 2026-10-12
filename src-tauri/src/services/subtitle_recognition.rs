@@ -234,6 +234,16 @@ enum Failure {
 }
 
 impl Failure {
+    /// 还没拿到响应时出错：超时也算连不上（国内连 Hugging Face 多半是这样）
+    fn from_send(e: &reqwest::Error) -> Self {
+        if e.is_timeout() || e.is_connect() || e.is_request() {
+            Failure::Connect
+        } else {
+            Failure::from_reqwest(e)
+        }
+    }
+
+    /// 下载过程中出错
     fn from_reqwest(e: &reqwest::Error) -> Self {
         if e.is_timeout() {
             Failure::Stalled
@@ -370,10 +380,7 @@ async fn download(
     if have > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={have}-"));
     }
-    let mut response = request
-        .send()
-        .await
-        .map_err(|e| Failure::from_reqwest(&e))?;
+    let mut response = request.send().await.map_err(|e| Failure::from_send(&e))?;
     let status = response.status();
     if !status.is_success() {
         return Err(Failure::Http(status.as_u16()));
@@ -429,7 +436,7 @@ pub async fn test_source(source: &DownloadSource) -> crate::types::video::Speech
             .header(reqwest::header::RANGE, format!("bytes=0-{}", PROBE - 1))
             .send()
             .await
-            .map_err(|e| Failure::from_reqwest(&e))?;
+            .map_err(|e| Failure::from_send(&e))?;
         if !response.status().is_success() {
             return Err(Failure::Http(response.status().as_u16()));
         }
@@ -686,9 +693,10 @@ pub struct RecognizeJob {
 impl RecognizeJob {
     /// 识别并写回字幕，返回字幕条数
     pub async fn run(&self, ctx: &crate::jobs::JobCtx) -> AppResult<usize> {
+        // 视频已经不在（如导入时停止了）：识别也就不用做了，算作取消
         let video = VideoRepository::get(&self.pool, self.video_id)
             .await?
-            .ok_or_else(|| AppError::NotFound("视频已经删除".to_string()))?;
+            .ok_or_else(cancelled_error)?;
         if video.status == "failed" || video.status == "importing" {
             return Err(AppError::ValidationError(
                 "视频没有导入成功，不能识别字幕".to_string(),
@@ -773,7 +781,12 @@ impl RecognizeJob {
         .await;
         let _ = std::fs::remove_dir_all(&work);
         let cues = result?;
-        VideoRepository::set_subtitles(&self.pool, self.video_id, RECOGNIZED_NAME, &cues).await?;
+        // 识别期间视频被删了：不算识别成功（之后也不再整理）
+        if !VideoRepository::set_subtitles(&self.pool, self.video_id, RECOGNIZED_NAME, &cues)
+            .await?
+        {
+            return Err(AppError::NotFound("视频已经删除".to_string()));
+        }
         self.logger.info(
             "VIDEO",
             &format!("视频 {} 识别出 {} 条字幕", self.video_id, cues.len()),
