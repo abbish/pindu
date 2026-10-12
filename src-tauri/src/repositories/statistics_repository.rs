@@ -16,14 +16,15 @@ use std::sync::Arc;
 /// 统计仓储
 ///
 /// 负责统计数据的数据访问逻辑,封装所有数据库操作
-/// 不能经「清空选中的表」清掉的表：迁移记录、AI / 语音配置、应用设置
-const PROTECTED_TABLES: [&str; 6] = [
+/// 不能经「清空选中的表」清掉的表：迁移记录、AI / 语音配置、应用设置、配对过的设备
+const PROTECTED_TABLES: [&str; 7] = [
     "_sqlx_migrations",
     "ai_providers",
     "ai_models",
     "app_settings",
     "volcengine_tts_config",
     "elevenlabs_config",
+    "lan_devices",
 ];
 
 /// 表的类别：config 配置类（设置页不建议清空）/ user_data 用户数据

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Bot, Database, GraduationCap, Library, Search, Settings2, Sparkles, UserRound, Volume2, type LucideIcon } from 'lucide-react';
+import { Bot, Database, GraduationCap, Laptop, Library, Search, Settings2, Sparkles, UserRound, Volume2, type LucideIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '../navigation';
@@ -11,13 +11,14 @@ import { TutorSettings } from './settings/TutorSettings';
 import { GeneralSettings } from './settings/GeneralSettings';
 import { MaterialSettings } from './settings/MaterialSettings';
 import { DataManagementSettings } from './settings/DataManagementSettings';
+import { LanSettings } from './settings/LanSettings';
 
 export interface SettingsPageProps {
   /** Navigation handler */
   onNavigate?: NavigateFn;
 }
 
-type SettingsKey = 'general' | 'materials' | 'learner' | 'ai-models' | 'agent' | 'tutor' | 'tts' | 'data-management';
+type SettingsKey = 'general' | 'materials' | 'learner' | 'ai-models' | 'agent' | 'tutor' | 'tts' | 'devices' | 'data-management';
 
 interface NavItem {
   key: SettingsKey;
@@ -54,7 +55,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: '数据',
-    items: [{ key: 'data-management', label: '数据管理', icon: Database, keywords: ['数据库', '重置', '删除', '清理', '数据表', '统计'] }],
+    items: [
+      { key: 'devices', label: '附近的设备', icon: Laptop, keywords: ['局域网', '配对', '传送', '互传', '同步', '其他电脑', '设备'] },
+      { key: 'data-management', label: '数据管理', icon: Database, keywords: ['数据库', '重置', '删除', '清理', '数据表', '统计'] },
+    ],
   },
 ];
 
@@ -143,6 +147,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = () => {
           {active === 'agent' && <AgentSettings />}
           {active === 'tutor' && <TutorSettings />}
           {active === 'tts' && <TTSSettings />}
+          {active === 'devices' && <LanSettings />}
           {active === 'data-management' && <DataManagementSettings />}
         </div>
       </div>

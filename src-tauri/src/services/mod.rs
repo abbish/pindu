@@ -11,6 +11,7 @@ pub mod ai_model;
 pub mod calendar;
 #[cfg(debug_assertions)]
 pub mod diagnostics;
+pub mod lan_settings;
 pub mod log_settings;
 pub mod material_read;
 pub mod material_settings;

@@ -31,6 +31,7 @@ pub mod calendar;
 #[cfg(debug_assertions)]
 pub mod diagnostics;
 pub mod jobs;
+pub mod lan;
 pub mod material;
 pub mod passage;
 pub mod passage_import;
@@ -57,6 +58,7 @@ pub use calendar::*;
 #[cfg(debug_assertions)]
 pub use diagnostics::*;
 pub use jobs::*;
+pub use lan::*;
 pub use material::*;
 pub use passage::*;
 pub use passage_import::*;

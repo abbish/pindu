@@ -4,6 +4,7 @@ pub mod ai_model_repository;
 pub mod calendar_repository;
 #[cfg(debug_assertions)]
 pub mod diagnostics_repository;
+pub mod lan_repository;
 pub mod passage_repository;
 pub mod passage_word_repository;
 pub mod plan_pace_repository;

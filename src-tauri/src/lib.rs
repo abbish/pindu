@@ -4,6 +4,7 @@ mod database;
 mod error;
 mod handlers;
 mod jobs;
+mod lan;
 mod lemma;
 mod log_bridge;
 mod logger;
@@ -27,6 +28,21 @@ mod test_support;
 
 use handlers::*;
 use tauri::Manager;
+
+/// 局域网设备互传的变化转成前端事件（lan/）
+fn lan_events(app: &tauri::AppHandle) -> lan::EventSink {
+    let app = app.clone();
+    std::sync::Arc::new(move |event| {
+        use tauri::Emitter;
+        let _ = match event {
+            lan::LanEvent::NearbyChanged => app.emit("lan-nearby-changed", ()),
+            lan::LanEvent::PairedChanged => app.emit("lan-paired-changed", ()),
+            lan::LanEvent::PairRequest(r) => app.emit("lan-pair-request", r),
+            lan::LanEvent::PairRequestClosed(c) => app.emit("lan-pair-request-closed", c),
+            lan::LanEvent::PairingResult(r) => app.emit("lan-pairing-result", r),
+        };
+    })
+}
 
 /// 后台任务的日志：提交（INFO）、成功（INFO）、取消（INFO）、失败（ERROR，附错误）。
 /// 进度更新也会走 emit，只在这几个状态各记一次（排队只在提交时出现一次，结束状态只出现一次）。
@@ -198,8 +214,18 @@ pub fn run() {
                                 Some(&e.to_string()),
                             ),
                         }
+                        // 局域网设备互传：设置里开启的话，就绪后启动服务（设置 → 附近的设备）
+                        let lan = lan::LanNode::new(
+                            pool.clone(),
+                            logger.clone(),
+                            dirs.data.clone(),
+                            handle.package_info().version.to_string(),
+                            lan_events(&handle),
+                        );
+                        handle.manage(lan.clone());
                         handle.manage(pool);
                         state.ready();
+                        tauri::async_runtime::spawn(async move { lan.apply_saved().await });
                         logger.info(
                             "STARTUP",
                             &format!("数据已就绪（{:.1}s）", started.elapsed().as_secs_f64()),
@@ -285,6 +311,17 @@ pub fn run() {
                 get_system_logs,
                 get_log_level,
                 set_log_level,
+                get_lan_status,
+                update_lan_settings,
+                get_nearby_devices,
+                refresh_nearby_devices,
+                add_device_by_address,
+                start_pairing,
+                cancel_pairing,
+                respond_pair_request,
+                get_pending_pair_requests,
+                get_paired_devices,
+                unpair_device,
                 write_client_log,
                 open_log_folder,
                 open_data_folder,
@@ -438,6 +475,14 @@ pub fn run() {
                 commands(invoke)
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // 退出时告诉附近的设备本机下线（设备互传开启时）
+            if let tauri::RunEvent::Exit = event {
+                if let Some(lan) = app.try_state::<lan::LanNode>() {
+                    lan.shutdown();
+                }
+            }
+        });
 }

@@ -4,6 +4,7 @@ import { AppShell } from './components/AppShell/AppShell';
 import { DevTools } from './components/DevTools';
 import { JobCenter } from './components/Jobs';
 import { TutorBridge } from './components/TutorBridge';
+import { LanPairRequest } from './components/LanPairRequest';
 import { StartupGate } from './components/StartupGate';
 import { UpdateWatcher } from './components/UpdateBanner';
 import { HomePage } from './pages/HomePage';
@@ -178,6 +179,8 @@ function App() {
           <JobCenter onNavigate={navigate} />
           {/* AI 老师在界面上的动作：打开页面、开始练习、朗读 */}
           <TutorBridge onNavigate={navigate} />
+          {/* 局域网里别的设备发来的配对请求（设置 → 附近的设备） */}
+          <LanPairRequest />
           <DevTools />
         </StartupGate>
       </ToastProvider>

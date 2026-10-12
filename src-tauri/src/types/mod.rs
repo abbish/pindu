@@ -7,6 +7,7 @@
 
 pub mod ai_model;
 pub mod common;
+pub mod lan;
 pub mod material;
 pub mod passage;
 pub mod study;
