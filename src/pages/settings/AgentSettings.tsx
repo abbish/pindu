@@ -147,7 +147,7 @@ export const AgentSettings: React.FC = () => {
       </SettingsSection>
 
       <SettingsSection title="AI 请求">
-        <SettingsRow label="后台同时进行" description="写短文、出题、批量分析等后台任务">
+        <SettingsRow label="后台任务同时进行">
           <Select value={String(settings.jobSlots)} disabled={saving} onValueChange={(v) => save({ jobSlots: Number(v) })}>
             <SelectTrigger className="w-32" aria-label="后台同时进行的任务数">
               <SelectValue />
@@ -161,7 +161,7 @@ export const AgentSettings: React.FC = () => {
             </SelectContent>
           </Select>
         </SettingsRow>
-        <SettingsRow label="出错时自动重试" description="服务商限流或繁忙时">
+        <SettingsRow label="出错时自动重试">
           <Select value={String(settings.maxRetries)} disabled={saving} onValueChange={(v) => save({ maxRetries: Number(v) })}>
             <SelectTrigger className="w-32" aria-label="出错时自动重试">
               <SelectValue />

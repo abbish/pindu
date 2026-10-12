@@ -710,7 +710,7 @@ export const AIModelSettings: React.FC = () => {
         {configured.length > 0 ? (
           configured.map(providerRow)
         ) : (
-          <SettingsRow label="还没有配置提供商" description="添加后才能使用 AI 功能" />
+          <SettingsRow label="还没有配置提供商" />
         )}
       </SettingsSection>
       {dialogs}

@@ -68,7 +68,7 @@ export const TutorSettings: React.FC = () => {
 
   return (
     <SettingsPanel title="AI 老师">
-      <SettingsSection title="人设" description="练习时的讲解、答疑和「AI 老师」对话都用这个设定">
+      <SettingsSection title="人设">
         <SettingsRow label="名字">
           <Input
             value={nameDraft}
@@ -129,7 +129,7 @@ export const TutorSettings: React.FC = () => {
       <SettingsSection title="对话">
         {agent ? (
           <>
-            <SettingsRow label="改动你的内容" description="新建、修改、删除词汇本、短文、学习计划等">
+            <SettingsRow label="改动你的内容">
               <OptionSelect
                 label="改动你的内容"
                 value={agent.tutorPermission}

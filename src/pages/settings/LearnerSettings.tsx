@@ -71,7 +71,7 @@ export const LearnerSettings: React.FC = () => {
   return (
     <SettingsPanel title="学习者">
       <SettingsSection title="学习者">
-        <SettingsRow label="快速套用" description="不改兴趣场景、AI 老师与补充要求">
+        <SettingsRow label="快速套用">
           <div className="flex gap-2">
             {PRESETS.map((p) => (
               <Button key={p.value} variant="outline" size="sm" disabled={saving} onClick={() => applyPreset(p.value, p.label)}>

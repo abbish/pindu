@@ -91,7 +91,7 @@ export const TtsStyleSection: React.FC<TtsStyleSectionProps> = ({ resourceId, ca
   return (
     <SettingsSection
       title="朗读风格"
-      description={supportsStyle ? '句子朗读的语气；单词发音始终是平稳的示范语气' : '当前音色不支持朗读风格，换用 2.0 音色才会生效；音调和音量照样有效'}
+      description={supportsStyle ? undefined : '当前音色不支持'}
       actions={
         <Button variant="outline" size="sm" onClick={() => onTogglePreview(STYLE_PREVIEW)} disabled={!canPreview}>
           {previewState === 'loading' ? <Loader2 className="animate-spin" /> : previewState === 'playing' ? <Square className="fill-current" /> : <Play />}
@@ -128,7 +128,6 @@ export const TtsStyleSection: React.FC<TtsStyleSectionProps> = ({ resourceId, ca
             />
             <p className="text-xs text-muted-foreground">
               {customDraft.trim().length} / {CUSTOM_MAX}
-              {!customDraft.trim() && ' · 写好后自动保存'}
             </p>
           </div>
         )}

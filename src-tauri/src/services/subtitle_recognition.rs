@@ -35,7 +35,7 @@ pub const MODELS: [SpeechModel; 3] = [
     SpeechModel {
         id: "base.en",
         label: "快速",
-        note: "体积小、识别快，准确度一般，适合配置较低的电脑",
+        note: "最快，准确度一般",
         bytes: 147_964_211,
         sha256: "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
     },
@@ -49,7 +49,7 @@ pub const MODELS: [SpeechModel; 3] = [
     SpeechModel {
         id: "medium.en",
         label: "更准确",
-        note: "准确度略高，识别要慢几倍，适合较新的电脑",
+        note: "最准，识别慢几倍",
         bytes: 1_533_774_781,
         sha256: "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
     },

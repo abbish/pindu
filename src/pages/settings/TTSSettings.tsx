@@ -215,7 +215,7 @@ export const TTSSettings: React.FC = () => {
   const connection = (
     <SettingsSection
       title="豆包语音连接"
-      description={config.configured ? undefined : '填写火山引擎的 API Key 后即可使用'}
+      description={config.configured ? undefined : '未连接'}
       actions={
         <Button variant={config.configured ? 'outline' : 'default'} size="sm" onClick={() => setShowEdit(true)} disabled={saving}>
           <Pencil />
@@ -254,7 +254,7 @@ export const TTSSettings: React.FC = () => {
 
       <SettingsSection
         title="音色"
-        description={config.configured ? '单词和句子朗读用的声音，点一下就换；▶ 试听' : '先完成下方的豆包语音连接，才能试听和使用'}
+        description={config.configured ? undefined : '先连接豆包语音'}
         actions={
           <ToggleGroup type="single" value={gender} onValueChange={(v) => v && setGender(v as typeof gender)} className="rounded-lg bg-muted p-0.5" aria-label="按性别筛选">
             {(['all', 'female', 'male'] as const).map((g) => (

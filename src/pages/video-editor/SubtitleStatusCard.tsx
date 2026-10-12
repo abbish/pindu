@@ -16,7 +16,7 @@ function useRemaining(job: Job): string | null {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  const percent = jobPercent(job);
+  const percent = Math.floor(jobPercent(job));
   if (start.current?.stage !== job.stage) start.current = { stage: job.stage, at: Date.now(), percent };
   const s = start.current;
   const done = percent - s.percent;
@@ -35,7 +35,7 @@ const STAGE_TITLE: Record<string, string> = {
 const RecognizingCard: React.FC<{ job: Job; replacing: boolean; onStop: () => void }> = ({ job, replacing, onStop }) => {
   const remaining = useRemaining(job);
   const heard = (job.detail ?? {}) as Heard;
-  const percent = jobPercent(job);
+  const percent = Math.floor(jobPercent(job));
   const title = job.status === 'queued' ? '等待识别字幕（视频还在导入）' : (STAGE_TITLE[job.stage ?? ''] ?? '正在识别字幕');
   return (
     <div className="flex flex-col gap-3">

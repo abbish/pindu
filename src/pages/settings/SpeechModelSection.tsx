@@ -19,11 +19,11 @@ import type { SpeechModelInfo, SpeechModels, SpeechSourceTest } from '@/types/vi
 const AUTO = 'auto';
 const speed = (bps: number) => (bps >= 1024 * 1024 ? `${(bps / 1024 / 1024).toFixed(1)} MB/s` : `${Math.max(1, Math.round(bps / 1024))} KB/s`);
 
-/** 模型一行的说明：大小与下载状态（没下载完的可以接着下） */
+/** 模型一行的说明：特点 · 大小或下载状态 */
 function modelState(m: SpeechModelInfo): string {
-  if (m.downloaded) return `${formatBytes(m.downloadBytes)}，已下载`;
-  if (m.partialBytes > 0) return `已下载 ${formatBytes(m.partialBytes)} / ${formatBytes(m.downloadBytes)}，可以继续下载`;
-  return `${formatBytes(m.downloadBytes)}，未下载（第一次识别时自动下载）`;
+  if (m.downloaded) return `${m.note} · 已下载`;
+  if (m.partialBytes > 0) return `${m.note} · 已下载 ${formatBytes(m.partialBytes)} / ${formatBytes(m.downloadBytes)}`;
+  return `${m.note} · ${formatBytes(m.downloadBytes)}`;
 }
 
 /**
@@ -101,7 +101,7 @@ export const SpeechModelSection: React.FC = () => {
   };
 
   return (
-    <SettingsSection title="字幕识别" description="视频没有字幕时，在本机识别英文语音生成字幕；音频不会上传">
+    <SettingsSection title="字幕识别" description="在本机识别，音频不上传">
       <SettingsRow
         label="模型下载来源"
         description={
@@ -119,9 +119,7 @@ export const SpeechModelSection: React.FC = () => {
                 </span>
               ))}
             </span>
-          ) : (
-            '自动会先试国内的来源；下载慢或失败时可以测试一下，换个来源'
-          )
+          ) : undefined
         }
       >
         <div className="flex items-center gap-2">
@@ -164,7 +162,7 @@ export const SpeechModelSection: React.FC = () => {
               job ? (
                 <span className="flex items-center gap-2">
                   <Progress value={jobPercent(job)} className="h-1 w-40" aria-label={`下载 ${m.label} 进度`} />
-                  {job.status === 'queued' ? '等待中' : `下载中 ${jobPercent(job)}%`}
+                  {job.status === 'queued' ? '等待中' : `下载中 ${Math.floor(jobPercent(job))}%`}
                 </span>
               ) : importing === m.id ? (
                 <span className="flex items-center gap-1.5">
@@ -172,7 +170,7 @@ export const SpeechModelSection: React.FC = () => {
                   正在校验并导入…
                 </span>
               ) : (
-                `${m.note}。${modelState(m)}`
+                modelState(m)
               )
             }
           >
