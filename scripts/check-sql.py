@@ -9,10 +9,9 @@
 import glob
 import os
 import re
-import sqlite3
 import sys
 
-from _schema import ROOT, build_schema_db
+from _schema import ROOT, build_schema_db, sqlite3
 
 SRC = os.path.join(ROOT, 'src-tauri', 'src')
 SQL_START = re.compile(r'^\s*(SELECT|INSERT|UPDATE|DELETE|WITH|REPLACE)\b', re.I)

@@ -53,6 +53,8 @@ jobs:
         run: |
           npm ci
           npm --prefix agent ci
+          # SQL 校验要用不比应用自带的旧的 SQLite（系统的是 3.37，见 scripts/_schema.py）
+          python3 -m pip install --user pysqlite3-binary
 
       - name: Verify
         run: bash scripts/verify.sh
