@@ -13,6 +13,7 @@ mod media;
 mod media_server;
 #[cfg(target_os = "macos")]
 mod menu;
+mod process;
 mod repositories;
 mod services;
 mod startup;

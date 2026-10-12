@@ -85,6 +85,7 @@ src-tauri/
 ├── src/lemma.rs              词形与词组位置的唯一 owner（Rust 端）：WordNet 词形库 + morphy、词组按标注写法 / 连着出现匹配，与 shared/lemma 同一实现（D47）
 ├── src/prompts.rs            提示词渲染唯一 owner（见 §6）；src/time.rs 取时与格式唯一入口（见 §7.5）；src/menu.rs macOS 中文菜单
 ├── src/mcp/                  拼读的 MCP 服务（给 AI 老师 / pi 用的工具，D55）：只在本机、带令牌，第一次打开 AI 老师对话时启动
+├── src/process.rs            子进程创建唯一入口 `process::command`（Windows 上不弹命令行窗口；AI sidecar 与 ffmpeg 都经它，不直接 `Command::new`）
 ├── src/media.rs              ffmpeg / ffprobe 调用唯一 owner：定位、读取信息、转码与精确切分（进度 + 取消）、波形峰值、缩略图
 ├── src/jobs.rs               后台任务唯一 owner：提交即返回 jobId，agent / media 两条队列，进度与结果经 `job-updated` 事件推送；只放内存（见 §4.4）
 ├── src/prompts/agent/*.md    agent 任务提示词，include_str! 编译进二进制（见 §6）

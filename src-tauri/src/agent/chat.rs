@@ -585,7 +585,7 @@ pub async fn list_sessions(
     mut on_partial: impl FnMut(Vec<SessionSummary>),
 ) -> AppResult<Vec<SessionSummary>> {
     use tokio::io::AsyncBufReadExt;
-    let mut child = tokio::process::Command::new(&paths.program)
+    let mut child = crate::process::command(&paths.program)
         .arg("--redlark-sessions")
         .arg(session_dir)
         .arg(cwd)
@@ -647,7 +647,7 @@ pub async fn fork_session(
 ) -> AppResult<Option<String>> {
     let output = tokio::time::timeout(
         Duration::from_secs(30),
-        tokio::process::Command::new(&paths.program)
+        crate::process::command(&paths.program)
             .arg("--redlark-fork")
             .arg(session_dir)
             .arg(source_path)

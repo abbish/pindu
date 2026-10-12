@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
-use tokio::process::{Child, Command};
+use tokio::process::Child;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
@@ -288,7 +288,7 @@ impl AgentProcess {
                 "新版本正在安装或已经装好，请重启应用后再使用".to_string(),
             ));
         }
-        let mut command = Command::new(&launch.program);
+        let mut command = crate::process::command(&launch.program);
         command
             .args(&launch.args)
             .current_dir(&launch.cwd)
