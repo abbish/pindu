@@ -1,5 +1,5 @@
 //! 本机在局域网里的身份：自签证书 + 私钥，存 `<数据目录>/lan/identity.pem`（不进数据库：
-//! 以后整机迁移时，新电脑保留自己的身份）。设备编号 = 证书 DER 的 SHA-256（hex），对方按它认出这台电脑。
+//! 数据库备份或在别的电脑上恢复时，身份不跟着走，每台电脑保留自己的）。设备编号 = 证书 DER 的 SHA-256（hex），对方按它认出这台电脑。
 
 use crate::error::{AppError, AppResult};
 use rustls::pki_types::pem::PemObject;
