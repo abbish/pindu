@@ -6,7 +6,10 @@
 3. 迁移文件命名规范、编号从 001 连续；
 4. 已发布的迁移内容不变：src-tauri/migrations.lock 记录每个迁移的 sha256，只允许追加新迁移。
    用户的库里记着每个已执行迁移的校验和，改动已发布的迁移会让升级被拒绝（见 startup.rs）；
-5. 应用内更新的公钥与地址不变：改了已安装的应用就再也收不到更新（换钥匙的流程见 docs/RELEASING.md，届时同步改这里）。
+5. 应用内更新的公钥与地址不变：改了已安装的应用就再也收不到更新（换钥匙的流程见 docs/RELEASING.md，届时同步改这里）；
+6. 正式版的内容安全策略不拦运行时插入的样式：轻提示（sonner）、对话框的滚动锁定等会往页面插 <style>。Tauri 打包时默认往
+   style-src 加 nonce / 哈希，一旦有它们浏览器就忽略 'unsafe-inline'，这些样式被拦掉——提示变成页面底部没有样式的一行字
+   或完全看不见；开发版不套这套策略，平时测不出来。所以 style-src 允许内联时，必须关掉 Tauri 对 style-src 的改写。
 
 用法：
   python3 scripts/check-release-invariants.py           # 检查
@@ -45,6 +48,13 @@ def main() -> int:
         errors.append("tauri.conf.json plugins.updater.pubkey 被改了：已安装的应用会无法验证新的更新（换钥匙见 docs/RELEASING.md）")
     if updater.get("endpoints") != UPDATER_ENDPOINTS:
         errors.append(f"tauri.conf.json plugins.updater.endpoints 必须是 {UPDATER_ENDPOINTS}：改了已安装的应用会找不到更新")
+    security = conf.get("app", {}).get("security", {})
+    style_src = (security.get("csp") or {}).get("style-src", "") if isinstance(security.get("csp"), dict) else ""
+    disabled = security.get("dangerousDisableAssetCspModification", False)
+    if security.get("csp") and "'unsafe-inline'" not in style_src:
+        errors.append("tauri.conf.json app.security.csp 的 style-src 要允许 'unsafe-inline'：轻提示与对话框会在运行时插入样式")
+    if security.get("csp") and not (disabled is True or (isinstance(disabled, list) and "style-src" in disabled)):
+        errors.append("tauri.conf.json app.security.dangerousDisableAssetCspModification 要包含 \"style-src\"：否则正式版里 Tauri 往 style-src 加 nonce，'unsafe-inline' 失效，提示等运行时样式被拦（开发版看不出来）")
     if conf.get("bundle", {}).get("createUpdaterArtifacts") is not False:
         errors.append("tauri.conf.json bundle.createUpdaterArtifacts 应为 false（发版时由 package.mjs 在有私钥时打开），否则没有私钥的本地打包会失败")
 

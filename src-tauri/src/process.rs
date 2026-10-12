@@ -19,3 +19,35 @@ pub fn command(program: impl AsRef<OsStr>) -> Command {
     command.creation_flags(CREATE_NO_WINDOW);
     command
 }
+
+#[cfg(test)]
+mod tests {
+    /// 子进程都经 `process::command` 创建：直接 `Command::new` 的在 Windows 上会弹出命令行窗口，
+    /// 关掉窗口就结束了进程（AI 老师对话因此中断）
+    #[test]
+    fn subprocesses_are_created_through_process_command() {
+        fn walk(dir: &std::path::Path, found: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, found);
+                } else if path.extension().is_some_and(|e| e == "rs")
+                    && !path.ends_with("process.rs")
+                {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    for (i, line) in text.lines().enumerate() {
+                        if line.contains("Command::new(") {
+                            found.push(format!("{}:{}", path.display(), i + 1));
+                        }
+                    }
+                }
+            }
+        }
+        let mut found = Vec::new();
+        walk(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut found,
+        );
+        assert!(found.is_empty(), "改用 crate::process::command：{found:?}");
+    }
+}
