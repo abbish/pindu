@@ -27,6 +27,7 @@ Build vocabulary books from words and phrases you encounter in your own material
 - Entries can be single words or phrases (phrasal verbs, collocations, idioms, fixed expressions). Phrases are marked as separable or not.
 - Ways to add entries:
   - Extract new words and phrases from text, subtitles or documents (txt, md, srt, vtt, docx, pdf).
+  - Collect words and meanings as printed from images or PDFs of word lists and vocabulary posters.
   - Type them in by hand and auto-fill the details with AI.
   - Generate additional vocabulary from the book's scene description, with vocabulary topic suggestions to choose from.
 - Entry details include IPA, syllables, phonics chunks, meanings and graded example sentences.
@@ -38,17 +39,18 @@ Build vocabulary books from words and phrases you encounter in your own material
 
 Import articles, course readings or work documents and study words and phrases in the original text.
 
-- When you import English material, the original text is kept unchanged. Only translations, a title, a level and key words are added.
+- When you import English material, the original text is kept unchanged. Only translations, a title, a level and vocabulary are added.
+- You can also import a PDF, Word file or image directly (such as a bilingual handout or a photo of a textbook page). Chinese translations printed in the material are kept, and underlined phrases and word lists become the passage's vocabulary.
 - While reading:
   - Vocabulary words are highlighted, and clicking one opens its word card.
   - Passages can be played sentence by sentence or listened to with the text hidden.
   - Any word or phrase you select in the text can be added to the vocabulary. Words can be removed, or re-picked by AI with conditions you set.
-- The title, level and each sentence's translation can be edited.
+- The title, level, scene description and tags can be edited. Each sentence's translation is edited in sentence analysis.
 - Sentence analysis: sentence pattern, constituents, grammar points, communicative function, useful phrases and pronunciation notes.
-- Comprehension exercises:
+- Reading and listening exercises are separate, each with its own question sets:
   - Cloze, multiple-choice and true/false questions are graded automatically.
   - Open questions receive scores and suggestions for improvement.
-- Passages can be added to study plans at a fixed interval.
+- Passages can be added to study plans at a fixed interval. The detail page shows which plans use a passage.
 - When you need more practice material, generate passages from vocabulary books, words in study plans or a topic description, with sentence-by-sentence translations.
 
 ![Passage reader](docs/screenshots/passage.png)
@@ -73,7 +75,7 @@ Cut videos you want to understand into scene clips you can study repeatedly, usi
 
 Add vocabulary books, passages and scene clips to a study plan so each day has specific material to learn.
 
-- Choose vocabulary books and a daily number of new words, and the schedule is arranged automatically. Plans can be paused; the schedule shifts when you resume.
+- Choose vocabulary books and a daily number of new words, and the schedule is arranged automatically. Words can be learned from easy to hard or in the book's own order. Plans can be paused; the schedule shifts when you resume.
 - New words are practised in three steps:
   1. Full information.
   2. English hidden; spell from memory.
@@ -87,13 +89,18 @@ Add vocabulary books, passages and scene clips to a study plan so each day has s
 
 ### AI tutor
 
-Ask about words, usage or sentences you do not understand as you study, and follow up with more questions.
+Ask about words, usage or sentences whenever you need to, or have the AI tutor organise materials and plan your study for you.
 
-- Word cards offer explanations of meanings, spelling patterns, related words, usage, commonly confused words and memory aids.
-- The depth of explanations follows the learner profile (primary school, secondary school or adult).
-- Sentences in passages and scene clips can also be discussed with the tutor.
+- **AI 老师** (AI tutor) in the sidebar is a standalone chat page: look up words, translate, and get sentences and grammar explained. You can paste screenshots or send PDFs, Word files and images. Conversations are saved so you can pick them up later, and the quick-ask box in the top bar (⌘K) starts a new conversation from any page.
+- The tutor draws on your vocabulary books and learning progress, and can create vocabulary books, add words, save or write passages, make question sets, and create or adjust study plans when you ask. Each step it takes is listed, and it asks for confirmation before deleting anything or ending a plan.
+- While studying, word cards offer explanations of meanings, spelling patterns, related words, usage, commonly confused words and memory aids. Sentences in passages and scene clips can also be discussed with the tutor.
+- The depth of explanations follows the learner profile (primary school, secondary school or adult) in Settings → 学习者 (Learner). The tutor's name, speaking style and whether it asks before changing your content are set in Settings → AI 老师 (AI tutor).
 
 ![AI tutor](docs/screenshots/tutor.png)
+
+### Background work
+
+Slower work such as writing passages, making question sets, importing materials and processing videos runs in the background, so you can leave the page and do something else. Vocabulary books, the passage library, the video library and plans show how many tasks are in progress, and **后台任务** (Background tasks) in the sidebar lists them all.
 
 ### Speech
 
@@ -131,7 +138,7 @@ Without them, you can still manage vocabulary books by hand, practise and view s
 
 ## Privacy
 
-- Your learning materials and records are stored on your computer. There is no usage tracking.
+- Your learning materials and records, including AI tutor conversations, are stored on your computer. There is no usage tracking.
 - The app connects to the network in two cases only:
   - When you use AI or speech features, the relevant content is sent directly to the provider you configured.
   - When it checks GitHub for updates. You can turn this off in Settings.
