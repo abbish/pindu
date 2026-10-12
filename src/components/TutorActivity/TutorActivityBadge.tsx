@@ -70,7 +70,7 @@ export const TutorActivityBadge: React.FC<{ current: boolean; onNavigate: Naviga
       />
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
-          <SidebarMenuAction aria-label={`AI 老师：${title}`} title={title} className="aspect-auto w-auto min-w-5 px-0.5">
+          <SidebarMenuAction aria-label={`AI 老师：${title}`} title={title} className="aspect-auto h-5 w-auto min-w-5 px-0.5">
             {asking.length > 0 ? (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[11px] leading-none font-medium text-background tabular-nums">
                 {asking.length}

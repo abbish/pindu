@@ -98,7 +98,7 @@ export const ModuleJobBadge: React.FC<{ module: JobModule; label: string; active
       />
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
-          <SidebarMenuAction aria-label={`${label}：${title}`} title={title} className="aspect-auto w-auto min-w-5 px-0.5">
+          <SidebarMenuAction aria-label={`${label}：${title}`} title={title} className="aspect-auto h-5 w-auto min-w-5 px-0.5">
             {active.length > 0 ? (
               <span className="relative flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[11px] leading-none font-medium text-primary-foreground tabular-nums motion-safe:animate-pulse">
                 {active.length}
