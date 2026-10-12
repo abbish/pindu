@@ -1,6 +1,6 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '../types';
-import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, SetVideoSubtitlesRequest, SpeechModels, StartVideoImportRequest, StartVideoPlanRequest, SubtitleDiscovery, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
+import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, SetVideoSubtitlesRequest, SpeechModels, SpeechSourceTest, StartVideoImportRequest, StartVideoPlanRequest, SubtitleDiscovery, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
 import { notifyOnSuccess } from './tagService';
 
 /** 视频库（handlers/video.rs）：视频组件、导入（后台任务）、列表 / 详情 / 波形、改名、规划草稿、删除 */
@@ -46,6 +46,21 @@ export class VideoService extends BaseService {
   /** 下载识别模型（后台任务，返回任务 id）；force：删掉已有的重新下载 */
   async startSpeechModelDownload(modelId: string, force = false): Promise<ApiResult<string>> {
     return this.executeWithLoading(() => this.client.invoke<string>('start_speech_model_download', { modelId, force }));
+  }
+
+  /** 选用哪个下载来源：auto 或某个来源的 id */
+  async setSpeechSource(sourceId: string): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('set_speech_source', { sourceId }));
+  }
+
+  /** 测试各下载来源能不能连上、速度多快 */
+  async testSpeechSources(): Promise<ApiResult<SpeechSourceTest[]>> {
+    return this.executeWithLoading(() => this.client.invoke<SpeechSourceTest[]>('test_speech_sources'));
+  }
+
+  /** 从文件导入识别模型（校验大小与 sha256） */
+  async importSpeechModel(modelId: string, filePath: string): Promise<ApiResult<void>> {
+    return this.executeWithLoading(() => this.client.invoke<void>('import_speech_model', { modelId, filePath }));
   }
 
   async deleteSpeechModel(modelId: string): Promise<ApiResult<void>> {

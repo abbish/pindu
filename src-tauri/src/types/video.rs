@@ -183,16 +183,44 @@ pub struct SpeechModelInfo {
     pub downloaded: bool,
     /// 已下载的大小（字节）
     pub size_bytes: i64,
+    /// 没下载完的部分（字节；下次接着下）
+    pub partial_bytes: i64,
     /// 需要下载的大小（字节）
     pub download_bytes: i64,
 }
 
-/// 语音识别模型：可选的几个与选用的那个
+/// 模型的一个下载来源
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechSourceInfo {
+    pub id: String,
+    pub label: String,
+}
+
+/// 语音识别模型：可选的几个与选用的那个，下载来源
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpeechModels {
     pub selected: String,
     pub models: Vec<SpeechModelInfo>,
+    /// 选用的下载来源：auto 或某个来源的 id
+    pub source: String,
+    pub sources: Vec<SpeechSourceInfo>,
+}
+
+/// 测试一个下载来源的结果
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechSourceTest {
+    pub id: String,
+    pub label: String,
+    pub ok: bool,
+    /// 连上用了多久（毫秒）
+    pub latency_ms: i64,
+    /// 下载速度（字节 / 秒）
+    pub bytes_per_second: i64,
+    /// 不能用时的原因
+    pub error: Option<String>,
 }
 
 /// 导入已提交：视频 id 与任务 id

@@ -168,14 +168,38 @@ export interface SpeechModelInfo {
   downloaded: boolean;
   /** 已下载的大小（字节） */
   sizeBytes: number;
+  /** 没下载完的部分（字节；下次接着下） */
+  partialBytes: number;
   /** 需要下载的大小（字节） */
   downloadBytes: number;
 }
 
-/** 语音识别模型：可选的几个与选用的那个 */
+/** 模型的一个下载来源 */
+export interface SpeechSourceInfo {
+  id: string;
+  label: string;
+}
+
+/** 语音识别模型：可选的几个与选用的那个，下载来源 */
 export interface SpeechModels {
   selected: string;
   models: SpeechModelInfo[];
+  /** 选用的下载来源：auto 或某个来源的 id */
+  source: string;
+  sources: SpeechSourceInfo[];
+}
+
+/** 测试一个下载来源的结果 */
+export interface SpeechSourceTest {
+  id: string;
+  label: string;
+  ok: boolean;
+  /** 连上用了多久（毫秒） */
+  latencyMs: number;
+  /** 下载速度（字节 / 秒） */
+  bytesPerSecond: number;
+  /** 不能用时的原因 */
+  error: string | null;
 }
 
 export interface VideoImportStarted {

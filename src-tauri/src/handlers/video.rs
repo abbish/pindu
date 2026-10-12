@@ -360,12 +360,13 @@ pub async fn set_video_subtitles(
 pub async fn get_speech_models(app: AppHandle) -> AppResult<SpeechModels> {
     let logger = app.state::<Logger>();
     logger.api_request("get_speech_models", None);
-    let selected =
-        crate::services::subtitle_recognition::selected_model(app.state::<SqlitePool>().inner())
-            .await;
+    let pool = app.state::<SqlitePool>();
+    let selected = crate::services::subtitle_recognition::selected_model(pool.inner()).await;
+    let source = crate::services::subtitle_recognition::selected_source(pool.inner()).await;
     let result = Ok(crate::services::subtitle_recognition::models_status(
         &crate::app_paths::dirs(&app).data,
         selected,
+        &source,
     ));
     super::finish(&logger, "get_speech_models", result)
 }
@@ -403,6 +404,10 @@ pub async fn start_speech_model_download(
             ));
         }
         let data_dir = crate::app_paths::dirs(&app).data;
+        let source = crate::services::subtitle_recognition::selected_source(
+            app.state::<SqlitePool>().inner(),
+        )
+        .await;
         let task_logger = Arc::new(logger.inner().clone());
         Ok(app.state::<Jobs>().spawn(
             JobSpec {
@@ -420,6 +425,7 @@ pub async fn start_speech_model_download(
                     &data_dir,
                     model,
                     force,
+                    &source,
                     &task_logger,
                     |f| ctx.progress((f * 100.0) as u64, 100),
                     || ctx.is_cancelled(),
@@ -431,6 +437,87 @@ pub async fn start_speech_model_download(
     }
     .await;
     super::finish(&logger, "start_speech_model_download", result)
+}
+
+/// 选用哪个下载来源：auto（按顺序试）或某个来源
+#[tauri::command]
+pub async fn set_speech_source(app: AppHandle, source_id: String) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    logger.api_request("set_speech_source", Some(&source_id));
+    let result = crate::services::subtitle_recognition::select_source(
+        app.state::<SqlitePool>().inner(),
+        &source_id,
+    )
+    .await;
+    super::finish(&logger, "set_speech_source", result)
+}
+
+/// 测试各下载来源能不能连上、速度多快（同时测）
+#[tauri::command]
+pub async fn test_speech_sources(
+    app: AppHandle,
+) -> AppResult<Vec<crate::types::video::SpeechSourceTest>> {
+    let logger = app.state::<Logger>();
+    logger.api_request("test_speech_sources", None);
+    let tests = crate::services::subtitle_recognition::SOURCES
+        .iter()
+        .map(crate::services::subtitle_recognition::test_source);
+    let result = Ok(futures::future::join_all(tests).await);
+    if let Ok(list) = &result {
+        logger.info(
+            "VIDEO",
+            &format!(
+                "测试模型下载来源：{}",
+                list.iter()
+                    .map(|t| format!(
+                        "{} {}",
+                        t.id,
+                        if t.ok {
+                            format!("{} KB/s", t.bytes_per_second / 1024)
+                        } else {
+                            t.error.clone().unwrap_or_default()
+                        }
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("；")
+            ),
+        );
+    }
+    super::finish(&logger, "test_speech_sources", result)
+}
+
+/// 从文件导入识别模型（在别处下好的；校验大小与 sha256）
+#[tauri::command]
+pub async fn import_speech_model(
+    app: AppHandle,
+    model_id: String,
+    file_path: String,
+) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "import_speech_model",
+        Some(&format!("{model_id}: {file_path}")),
+    );
+    let result = async {
+        let model = crate::services::subtitle_recognition::find_model(&model_id)?;
+        if model_in_use(&app) {
+            return Err(AppError::ValidationError(
+                "正在识别字幕或下载模型，完成后再导入".to_string(),
+            ));
+        }
+        let data_dir = crate::app_paths::dirs(&app).data;
+        tokio::task::spawn_blocking(move || {
+            crate::services::subtitle_recognition::import_model_file(
+                &data_dir,
+                model,
+                Path::new(&file_path),
+            )
+        })
+        .await
+        .map_err(|e| AppError::InternalError(format!("导入模型失败：{e}")))?
+    }
+    .await;
+    super::finish(&logger, "import_speech_model", result)
 }
 
 /// 正在识别字幕或下载模型（这时不能删、不能再下载）
