@@ -16,6 +16,12 @@ export function invalidatePronunciationCache() {
   loading = null;
   cached = null;
 }
+/** 评估模型下载好了：通知同一页面上的其他实例（工具栏与句子后面的跟读各有一个） */
+const readyListeners = new Set<(ready: boolean) => void>();
+const announceReady = (ready: boolean) => {
+  if (cached) cached.ready = ready;
+  readyListeners.forEach((f) => f(ready));
+};
 const fresh = () => {
   if (!loading || Date.now() - loading.at > 3000) {
     loading = { at: Date.now(), status: pronunciationService.status(), profile: promptProfileService.getProfile() };
@@ -44,6 +50,15 @@ export function usePronunciation(context?: PronunciationContext) {
   const contextRef = useRef(context);
   contextRef.current = context;
 
+  // 卸载后到的评估结果作废（不再回调已经离开的页面）；其他实例下载好模型时跟着变
+  useEffect(() => {
+    readyListeners.add(setReady);
+    return () => {
+      readyListeners.delete(setReady);
+      seq.current += 1;
+    };
+  }, []);
+
   useEffect(() => {
     const { status, profile } = fresh();
     void status.then((r) => {
@@ -62,8 +77,7 @@ export function usePronunciation(context?: PronunciationContext) {
 
   useEffect(() => {
     if (downloading?.status === 'succeeded') {
-      if (cached) cached.ready = true;
-      setReady(true);
+      announceReady(true);
       setDownloadJob(null);
     } else if (downloading?.status === 'failed') {
       setError('评估模型没有下载成功，请检查网络后再试');

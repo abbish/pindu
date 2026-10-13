@@ -10,13 +10,15 @@ import { SayText, SayVerdict } from './SayText';
  * 原文每句后面的「跟读」（在句子分析图标左边）：点一下跟读这一句，读完本机评估，结果留在这句下面（逐词标色 + 三档 + 怎么读）。
  * 同一时间只录一句；录音中再点（这句或别的句子）是停止。设置里关掉跟读评估时不显示。
  * `onStart`：开始录音前调用（停掉正在放的原音 / 朗读，免得录进去）。
- * 返回 `action(i)`（放进句子行的按钮）与 `below(i)`（句子下面的状态 / 结果）。
+ * 返回 `action(i)`（放进句子行的按钮）、`below(i)`（句子下面的状态 / 结果）与 `stop()`（朗读、播放前停掉跟读）。
  */
 export function useSentenceSay(texts: string[], context?: PronunciationContext, onStart?: () => void) {
   const recorder = useRecorder({ silenceStopMs: 900, maxMs: 15000 });
   const say = usePronunciation(context);
   const [saying, setSaying] = useState<number | null>(null);
   const [results, setResults] = useState<Map<number, Assessment>>(new Map());
+  /** 麦克风打不开的那一句：在它下面说明原因 */
+  const [micFailed, setMicFailed] = useState<number | null>(null);
 
   // 换了一篇：清掉
   useEffect(() => {
@@ -32,6 +34,7 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     const take = recorder.take;
     recorder.close();
     if (!take || take.tag !== String(index)) {
+      if (recorder.error) setMicFailed(index);
       setSaying(null);
       return;
     }
@@ -50,6 +53,7 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     // 录音中点任何一句都是先停下（再点一次才开始那一句），不会一下停一下开
     if (recording) return recorder.stop();
     onStart?.();
+    setMicFailed(null);
     say.reset();
     // 清掉上一次的录音：这次太短没录成时，结束时不会拿到上一次的
     recorder.clear();
@@ -83,6 +87,9 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
   const below = (i: number): React.ReactNode => {
     const active = saying === i;
     const result = results.get(i);
+    if (micFailed === i && recorder.error) {
+      return <div className="mt-2 rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">{recorder.error}</div>;
+    }
     if (!active && !result) return null;
     return (
       <div className="mt-2 flex flex-col gap-1.5 rounded-lg border bg-background px-3 py-2 text-sm select-none" aria-live="polite">
@@ -113,5 +120,10 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     );
   };
 
-  return { action, below };
+  /** 朗读、播放视频前调用：正在跟读就停下（不然会把朗读录进去） */
+  const stop = () => {
+    if (recording) recorder.stop();
+  };
+
+  return { action, below, stop };
 }

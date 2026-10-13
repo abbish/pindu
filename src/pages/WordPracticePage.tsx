@@ -658,10 +658,12 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const handleSayRecording = useCallback((on: boolean) => {
     sayRecording.current = on;
     if (!on) return;
+    // 复习词写对后跟读：不再自动跳到下一题（否则录到一半被切走）
+    clearNextStepTimer();
     clearAutoPlay();
     audioPlayer.stop();
     setPlayingExample(null);
-  }, [clearAutoPlay, audioPlayer]);
+  }, [clearAutoPlay, clearNextStepTimer, audioPlayer]);
 
   // 换题时清除例句高亮
   useEffect(() => {

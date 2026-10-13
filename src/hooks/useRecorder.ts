@@ -46,14 +46,21 @@ export function useRecorder(options: RecorderOptions = {}) {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const frameRef = useRef(0);
+  /** 每次 close 加一：等麦克风授权期间关掉了（离开页面、暂停），拿到的 stream 立即停掉 */
+  const generationRef = useRef(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
   /** 打开麦克风（已打开则直接返回） */
   const open = useCallback(async (): Promise<boolean> => {
     if (streamRef.current) return true;
+    const generation = generationRef.current;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (generation !== generationRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return false;
+      }
       streamRef.current = stream;
       const ctx = new AudioContext();
       const analyser = ctx.createAnalyser();
@@ -64,12 +71,13 @@ export function useRecorder(options: RecorderOptions = {}) {
       setError(null);
       return true;
     } catch {
-      setError('无法使用麦克风，请在系统设置里允许拼读使用麦克风');
+      if (generation === generationRef.current) setError('无法使用麦克风，请在系统设置里允许拼读使用麦克风');
       return false;
     }
   }, []);
 
   const close = useCallback(() => {
+    generationRef.current += 1;
     cancelAnimationFrame(frameRef.current);
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
     recorderRef.current = null;
@@ -98,11 +106,14 @@ export function useRecorder(options: RecorderOptions = {}) {
   const start = useCallback(async (tag?: string): Promise<boolean> => {
     if (recorderRef.current) return false;
     setState('arming');
+    const generation = generationRef.current;
     if (!(await open())) {
       setState('idle');
       setEnded((n) => n + 1);
       return false;
     }
+    // 打开麦克风期间被关掉了：不再开始
+    if (generation !== generationRef.current) return false;
     const stream = streamRef.current!;
     const analyser = analyserRef.current!;
     void ctxRef.current?.resume();
@@ -123,7 +134,8 @@ export function useRecorder(options: RecorderOptions = {}) {
       setState('idle');
       setLevel(0);
       const durationMs = begun ? performance.now() - begun : 0;
-      if (chunks.length > 0 && durationMs > 300) {
+      // 已经关掉（卸载）的不再生成录音地址：没人会释放它
+      if (chunks.length > 0 && durationMs > 300 && generation === generationRef.current) {
         setTake({ url: URL.createObjectURL(new Blob(chunks, { type: rec.mimeType })), durationMs, peaks, tag });
       }
       setEnded((n) => n + 1);

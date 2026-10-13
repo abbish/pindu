@@ -119,8 +119,10 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
     void recorder.start();
   };
 
-  const tip = error
-    ? error
+  // 麦克风打不开的原因也要说出来（不然按钮闪一下就恢复，用户不知道为什么）
+  const problem = error ?? recorder.error;
+  const tip = problem
+    ? problem
     : downloading
       ? `正在下载语音输入模型 ${Math.floor(jobPercent(downloading))}%`
       : ready === false
@@ -132,7 +134,7 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
             : label;
 
   return (
-    <Tooltip open={error || recording || downloading ? true : undefined}>
+    <Tooltip open={problem || recording || downloading ? true : undefined}>
       <TooltipTrigger asChild>
         <Button
           type="button"

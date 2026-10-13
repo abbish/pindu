@@ -230,6 +230,8 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
     const v = videoRef.current;
     if (!v) return;
     if (!v.paused) return pause();
+    // 句子后面的跟读还在录：先停（不然原声会被录进去）
+    sentenceSay.stop();
     if (mode === 'shadow') return playSentence(current);
     if (mode === 'listen') return playSentence(current);
     // 场景学习：每句后暂停由播放头跟踪（见上面的 tick）
@@ -369,6 +371,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               onPlaySentence={(i) => {
                 // 正在播这句：暂停
                 if (playing && active === i) return pause();
+                sentenceSay.stop();
                 seek(startOf(sentences[i]));
                 stopAt.current = null;
                 playingSentence.current = i;

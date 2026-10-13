@@ -137,6 +137,8 @@ export const ReadAloudPanel: React.FC<{
   const recorder = useRecorder({ silenceStopMs: 900, maxMs: 15000 });
   const [shadowing, setShadowing] = useState<{ index: number; resolve: () => void } | null>(null);
   const [sayResults, setSayResults] = useState<Map<number, Assessment>>(new Map());
+  /** 读完一句自动跟读时麦克风打不开的那一句：停下朗读，在这句下面说明原因 */
+  const [shadowMicError, setShadowMicError] = useState<number | null>(null);
   /** 读完一遍（onFinish 里只置位，effect 里收尾：那时 player 已经有了） */
   const [roundDone, setRoundDone] = useState(false);
   // 原文每句后面的跟读（点一句跟读一句）：开始前停掉朗读
@@ -200,6 +202,14 @@ export const ReadAloudPanel: React.FC<{
         current.resolve();
       }, delay);
     if (!take || take.tag !== String(current.index)) {
+      if (recorder.error) {
+        // 麦克风打不开：每句都会失败，停下来说明，不再一句一句地闪过去
+        setShadowMicError(current.index);
+        setShadowing((s) => (s === current ? null : s));
+        current.resolve();
+        player.stop();
+        return;
+      }
       finish(0);
       return;
     }
@@ -235,6 +245,8 @@ export const ReadAloudPanel: React.FC<{
   /** 主按钮：没在读时从停下的那句接着读；从头读是新的一遍，清掉上一遍的跟读结果 */
   const playOrPause = () => {
     if (player.playing) return stopAll();
+    sentenceSay.stop();
+    setShadowMicError(null);
     if (player.current == null) setSayResults(new Map());
     void player.play(player.current ?? 0);
   };
@@ -314,6 +326,7 @@ export const ReadAloudPanel: React.FC<{
 
   const go = (delta: number) => {
     const next = Math.min(texts.length - 1, Math.max(0, (player.current ?? 0) + delta));
+    sentenceSay.stop();
     stopAll();
     player.play(next, true);
   };
@@ -344,6 +357,9 @@ export const ReadAloudPanel: React.FC<{
   const shadowPanel = (index: number) => {
     const result = sayResults.get(index);
     const active = shadowing?.index === index;
+    if (shadowMicError === index && recorder.error) {
+      return <div className="mt-2 rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">{recorder.error}</div>;
+    }
     if (!active && !result) return null;
     const recording = active && recorder.state !== 'idle';
     return (
@@ -551,6 +567,8 @@ export const ReadAloudPanel: React.FC<{
         onPlaySentence={(i) => {
           // 正在读这句：暂停；暂停在这句：从这句接着读；别的句子：读这一句
           if (player.current === i && player.playing) return stopAll();
+          // 句子后面的跟读还在录：先停（不然朗读会被录进去）
+          sentenceSay.stop();
           if (player.current === i) return player.play(i);
           stopAll();
           player.play(i, true);
