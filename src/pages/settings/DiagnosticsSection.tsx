@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LogViewer } from '@/components/LogViewer';
 import { useToast } from '@/components/Toast/ToastContainer';
-import { SettingsPanel, SettingsRow, SettingsSection } from '@/components/SettingsLayout/SettingsLayout';
+import { SettingsRow, SettingsSection } from '@/components/SettingsLayout/SettingsLayout';
 import { dataManagementService } from '../../services/dataManagementService';
 
 /** 日志记录级别：选中的级别及更严重的才写入日志 */
@@ -15,8 +15,8 @@ const LOG_LEVELS = [
   { value: 'ERROR', label: '仅错误' },
 ];
 
-/** 设置「诊断」：日志记录级别、打开 / 查看系统日志（出问题时给开发者看） */
-export const DiagnosticsSettings: React.FC = () => {
+/** 「通用」里的诊断：日志记录级别、打开 / 查看系统日志（出问题时给开发者看） */
+export const DiagnosticsSection: React.FC = () => {
   const toast = useToast();
   const [showLogs, setShowLogs] = useState(false);
   const [logLevel, setLogLevel] = useState<string | null>(null);
@@ -29,8 +29,8 @@ export const DiagnosticsSettings: React.FC = () => {
     else toast.showError('无法修改日志级别', result.error);
   };
   return (
-    <SettingsPanel title="诊断">
-      <SettingsSection title="日志">
+    <>
+      <SettingsSection title="诊断">
         <SettingsRow label="记录级别">
           <Select value={logLevel ?? ''} onValueChange={changeLogLevel} disabled={logLevel === null}>
             <SelectTrigger className="w-36" aria-label="日志记录级别">
@@ -60,6 +60,6 @@ export const DiagnosticsSettings: React.FC = () => {
       </SettingsSection>
 
       <LogViewer isOpen={showLogs} onClose={() => setShowLogs(false)} />
-    </SettingsPanel>
+    </>
   );
 };

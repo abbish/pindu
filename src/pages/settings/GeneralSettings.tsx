@@ -9,6 +9,7 @@ import { SettingsPanel, SettingsRow, SettingsSection } from '@/components/Settin
 import { useTheme, type ThemePreference } from '@/hooks/useTheme';
 import { updater, useUpdater } from '@/hooks/useUpdater';
 import { useCheckForUpdates } from '@/components/UpdateBanner';
+import { DiagnosticsSection } from './DiagnosticsSection';
 
 const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }[] = [
   { value: 'system', label: '跟随系统', icon: Monitor },
@@ -16,7 +17,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }
   { value: 'dark', label: '深色', icon: Moon },
 ];
 
-/** 设置「通用」：外观（主题）与更新（版本与自动检查）。诊断在「数据与系统 → 诊断」。 */
+/** 设置「通用」：外观（主题）、更新（版本与自动检查）、诊断（系统日志）。 */
 export const GeneralSettings: React.FC = () => {
   const { preference, setPreference } = useTheme();
   const { state: updateState, autoCheck } = useUpdater();
@@ -62,6 +63,8 @@ export const GeneralSettings: React.FC = () => {
         </SettingsRow>
       </SettingsSection>
 
+
+      <DiagnosticsSection />
     </SettingsPanel>
   );
 };

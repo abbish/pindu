@@ -52,7 +52,7 @@ npm run clean               # 清 dist、target、vite 缓存
 ```
 
 后端测试写在 crate 内（`#[cfg(test)] mod tests`），内存库与种子数据用 `src-tauri/src/test_support.rs`；规范见 `.claude/skills/deliver-backend-rust/references/rust-test-standard.md`。
-日志：`<app_data_dir>/logs/app.log`（每行一条 JSON `{timestamp, level, component, message, details?, fields?}`；超过 5MB 轮转为 app.1 … app.4.log，总量约 25MB 封顶；写入队列有上限，满了丢弃并补记条数）。统一入口：`Logger`（Tauri 状态）、`tracing` 宏（拿不到 Logger 的代码直接用）、第三方库的 `log` / `tracing`（只收 WARN 以上）、前端 `write_client_log`、panic 钩子，全部经 `log_bridge.rs` / `logger.rs` 写入同一个文件；命令进出自动带请求编号与耗时。分级记录：低于最低级别的不写，「设置 → 诊断」可调（`get_log_level` / `set_log_level`，存 `app_settings` 的 `log.level`，`services/log_settings.rs`；未设置时发布版 INFO、开发版 DEBUG）。AI 助手每次运行由 `agent/run_log.rs` 记 `[任务名#编号]` 开头的执行日志（开始 / 自动重试与原因 / 工具校验退回 / 结束用量 / 模型原始错误 / 失败附 stderr；DEBUG 再记消息与工具结果，均去掉密钥）。`get_system_logs(limit)` 只读文件末尾、`open_log_folder` 在访达中打开（`handlers/system.rs`）；前端有 LogViewer / DevTools 浮层。
+日志：`<app_data_dir>/logs/app.log`（每行一条 JSON `{timestamp, level, component, message, details?, fields?}`；超过 5MB 轮转为 app.1 … app.4.log，总量约 25MB 封顶；写入队列有上限，满了丢弃并补记条数）。统一入口：`Logger`（Tauri 状态）、`tracing` 宏（拿不到 Logger 的代码直接用）、第三方库的 `log` / `tracing`（只收 WARN 以上）、前端 `write_client_log`、panic 钩子，全部经 `log_bridge.rs` / `logger.rs` 写入同一个文件；命令进出自动带请求编号与耗时。分级记录：低于最低级别的不写，「设置 → 通用 → 诊断」可调（`get_log_level` / `set_log_level`，存 `app_settings` 的 `log.level`，`services/log_settings.rs`；未设置时发布版 INFO、开发版 DEBUG）。AI 助手每次运行由 `agent/run_log.rs` 记 `[任务名#编号]` 开头的执行日志（开始 / 自动重试与原因 / 工具校验退回 / 结束用量 / 模型原始错误 / 失败附 stderr；DEBUG 再记消息与工具结果，均去掉密钥）。`get_system_logs(limit)` 只读文件末尾、`open_log_folder` 在访达中打开（`handlers/system.rs`）；前端有 LogViewer / DevTools 浮层。
 
 ## 3. 目录地图
 
@@ -228,7 +228,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 ### 5.1 路由
 `App.tsx` 的 `switch(currentPage)`，页面通过 `onNavigate(page, params)` 跳转。有效 page 键：
 `home` `plans` `create-plan` `plan-detail` `wordbooks` `wordbook-detail` `passages` `create-passage` `import-passage` `passage-detail` `word-practice` `passage-practice` `practice-result` `videos` `video-editor` `tag` `calendar` `tutor` `jobs` `settings`。侧边栏：一级 首页 / 计划 / 日历 / AI 老师（`pages/TutorPage.tsx` + `pages/tutor/`；顶栏右侧快速对话框 `components/QuickAsk` 在任何页面开新对话，⌘K 聚焦，`tutor` 带 prompt 参数），分组「素材库」= 单词本 / 短文库 / 视频库（`AppShell` 的 `NAV_GROUPS`），分组「标签」= 有素材的标签按数量从多到少（`TagNav`，数量来自 `hooks/useTagUsage`，tagService 改标签后发 `TAGS_CHANGED_EVENT` 自动刷新）→ 标签页 `pages/TagPage.tsx`（按种类分页签，每个页签是对应素材库页面传 `tagId` 的嵌入模式）；列表排序 `components/SortSelect` + `utils/sorting`，分页 `components/ListPagination`；三个素材首页共用 `components/MaterialToolbar`（搜索 → 标签筛选与管理 → 专属筛选 → 重置 → 数量），视频库默认「片段」页签（`pages/videos/`），原始视频是第二页签。剪辑编辑器 `pages/video-editor/`（时间轴自绘，规划操作是 `plan.ts` 纯函数）是整窗页面。路由表唯一 owner 是 `src/navigation.ts` 的 `RouteParams`（键 → 参数类型），`onNavigate` 类型为 `NavigateFn`，无别名键。
-设置页（`pages/SettingsPage.tsx` 的 `NAV_GROUPS`）分四组：学习偏好（学习者、朗读与发音、素材与计划、AI 老师——功能怎么表现）；服务与模型（AI 服务、AI 任务、语音服务、本机模型——要先配好的基础依赖）；数据与系统（附近的设备、数据管理、诊断）；通用（外观、更新，放最后）。新设置项按这个口径归组，依赖（服务连接、模型下载）不放进偏好页。
+设置页（`pages/SettingsPage.tsx` 的 `NAV_GROUPS`）分四组：学习偏好（学习者、朗读与发音、素材与计划、AI 老师——功能怎么表现）；服务与模型（AI 服务、AI 任务、语音服务、本机模型——要先配好的基础依赖）；数据与系统（附近的设备、数据管理）；通用（外观、更新、诊断，放最后）。新设置项按这个口径归组，依赖（服务连接、模型下载）不放进偏好页。
 新增页面：`RouteParams`、`TOP_LEVEL_OF`、`PAGE_TITLE` 加键 → pages/ 下建 `XxxPage.tsx` → App.tsx 加 case（tsc 会指出遗漏）。页面由 `AppShell`（侧边栏 + 顶栏面包屑）包裹，只渲染内容区；整窗专注页面（单词练习、短文练习）列入 `FOCUS_PAGES`。
 
 ### 5.2 服务层

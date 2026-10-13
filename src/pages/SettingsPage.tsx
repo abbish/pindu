@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AudioLines, Bot, Cpu, Database, GraduationCap, Laptop, Library, Mic, Search, Settings2, Sparkles, Stethoscope, UserRound, type LucideIcon } from 'lucide-react';
+import { AudioLines, Bot, Cpu, Database, GraduationCap, Laptop, Library, Mic, Search, Settings2, Sparkles, UserRound, type LucideIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '../navigation';
@@ -14,14 +14,13 @@ import { DataManagementSettings } from './settings/DataManagementSettings';
 import { LanSettings } from './settings/LanSettings';
 import { VoiceSettings } from './settings/VoiceSettings';
 import { LocalModelsSettings } from './settings/LocalModelsSettings';
-import { DiagnosticsSettings } from './settings/DiagnosticsSettings';
 
 export interface SettingsPageProps {
   /** Navigation handler */
   onNavigate?: NavigateFn;
 }
 
-type SettingsKey = 'general' | 'learner' | 'voice' | 'materials' | 'tutor' | 'ai-models' | 'agent' | 'tts' | 'local-models' | 'devices' | 'data-management' | 'diagnostics';
+type SettingsKey = 'general' | 'learner' | 'voice' | 'materials' | 'tutor' | 'ai-models' | 'agent' | 'tts' | 'local-models' | 'devices' | 'data-management';
 
 interface NavItem {
   key: SettingsKey;
@@ -34,7 +33,7 @@ interface NavItem {
 const STORAGE_KEY = 'settings.activePanel';
 
 /**
- * 四组：学习偏好（功能怎么表现）；服务与模型（要先配好的基础依赖：AI 服务、语音服务、本机模型）；数据与系统；通用（放最后）。
+ * 四组：学习偏好（功能怎么表现）；服务与模型（要先配好的基础依赖：AI 服务、语音服务、本机模型）；数据与系统；通用（外观、更新、诊断，放最后）。
  */
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
@@ -70,12 +69,11 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       { key: 'devices', label: '附近的设备', icon: Laptop, keywords: ['局域网', '配对', '传送', '互传', '同步', '其他电脑', '设备'] },
       { key: 'data-management', label: '数据管理', icon: Database, keywords: ['数据库', '重置', '删除', '清理', '数据表', '统计'] },
-      { key: 'diagnostics', label: '诊断', icon: Stethoscope, keywords: ['系统日志', '日志级别', '诊断'] },
     ],
   },
   {
     title: '通用',
-    items: [{ key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '更新', '版本'] }],
+    items: [{ key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '更新', '版本', '诊断', '系统日志', '日志级别'] }],
   },
 ];
 
@@ -168,7 +166,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = () => {
           {active === 'local-models' && <LocalModelsSettings />}
           {active === 'devices' && <LanSettings />}
           {active === 'data-management' && <DataManagementSettings />}
-          {active === 'diagnostics' && <DiagnosticsSettings />}
         </div>
       </div>
     </div>
