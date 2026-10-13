@@ -245,7 +245,8 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
                     active && 'mt-2'
                   )}
                 >
-                  <Icon className={cn('size-4', active && 'size-5')} />
+                  {/* 三种图标同一尺寸、同样细的线条（暂停、播放比喇叭更实，线条再细一点） */}
+                  <Icon className="size-4" strokeWidth={Icon === Volume2 ? 2 : 1.75} />
                 </button>
               );
             })()}
