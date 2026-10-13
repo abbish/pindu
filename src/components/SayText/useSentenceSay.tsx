@@ -51,6 +51,8 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     if (recording) return recorder.stop();
     onStart?.();
     say.reset();
+    // 清掉上一次的录音：这次太短没录成时，结束时不会拿到上一次的
+    recorder.clear();
     setSaying(i);
     void recorder.start(String(i));
   };

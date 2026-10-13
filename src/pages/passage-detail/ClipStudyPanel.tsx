@@ -38,6 +38,8 @@ interface ClipPrefs {
   showText: boolean;
   /** 右侧台词的翻译 */
   translation: TranslationMode;
+  /** 译文打开时显示哪些：当前句 / 全部（关掉再打开时沿用） */
+  translationMode: 'current' | 'all';
   /** 聚焦：当前句放大，上下文渐隐 */
   focusBlur: boolean;
   /** 场景学习：每句播完自动暂停 */
@@ -47,12 +49,16 @@ interface ClipPrefs {
 }
 
 const PREFS_KEY = 'passage.clipStudy.v1';
-const DEFAULT_PREFS: ClipPrefs = { subtitles: 'both', showText: true, translation: 'all', focusBlur: true, pauseEach: false, autoRecord: false };
+const DEFAULT_PREFS: ClipPrefs = { subtitles: 'both', showText: true, translation: 'all', translationMode: 'all', focusBlur: true, pauseEach: false, autoRecord: false };
 
 function loadPrefs(): ClipPrefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
-    return raw ? { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<ClipPrefs>) } : DEFAULT_PREFS;
+    if (!raw) return DEFAULT_PREFS;
+    const saved = { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<ClipPrefs>) };
+    // 以前只有 translation：开着时它就是显示方式
+    if (!(JSON.parse(raw) as Partial<ClipPrefs>).translationMode && saved.translation !== 'off') saved.translationMode = saved.translation;
+    return saved;
   } catch {
     return DEFAULT_PREFS;
   }
@@ -325,7 +331,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               <IconToggle
                 label="译文"
                 pressed={prefs.translation !== 'off'}
-                onPressedChange={(on) => updatePrefs({ translation: on ? 'all' : 'off' })}
+                onPressedChange={(on) => updatePrefs({ translation: on ? prefs.translationMode : 'off' })}
                 disabled={!prefs.showText}
               >
                 <Languages />
@@ -531,7 +537,14 @@ const PrefsPopover: React.FC<{ mode: Mode; prefs: ClipPrefs; onChange: (patch: P
             <Switch id="cs-text" checked={prefs.showText} onCheckedChange={(showText) => onChange({ showText })} />
           </Row>
           <Row label="译文显示">
-            <Select value={prefs.translation === 'current' ? 'current' : 'all'} onValueChange={(v) => onChange({ translation: v as TranslationMode })} disabled={!prefs.showText || prefs.translation === 'off'}>
+            <Select
+              value={prefs.translationMode}
+              onValueChange={(v) => {
+                const mode = v as ClipPrefs['translationMode'];
+                onChange({ translationMode: mode, translation: prefs.translation === 'off' ? 'off' : mode });
+              }}
+              disabled={!prefs.showText}
+            >
               <SelectTrigger size="sm" className="w-28">
                 <SelectValue />
               </SelectTrigger>

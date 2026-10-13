@@ -168,6 +168,8 @@ export const ReadAloudPanel: React.FC<{
     if (!shadowRef.current) return;
     return new Promise<void>((resolve) => {
       setShadowing({ index, resolve });
+      // 清掉上一次的录音：这次太短没录成时，结束时不会拿到上一次的
+      recorder.clear();
       void recorder.start(String(index));
     });
   }, [recorder]);
