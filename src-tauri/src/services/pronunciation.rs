@@ -98,7 +98,11 @@ impl PronunciationService {
         Ok(summarize(rows.iter().map(|r| {
             (
                 r.score,
-                serde_json::from_str::<Vec<WordAssessment>>(&r.detail).unwrap_or_default(),
+                serde_json::from_str::<Vec<WordAssessment>>(&r.detail).unwrap_or_else(|e| {
+                    // 这次的分数照算，只是没有逐音明细（常读不准的音会少算）
+                    tracing::warn!("发音评估记录的明细读不出来：{e}");
+                    Vec::new()
+                }),
             )
         })))
     }

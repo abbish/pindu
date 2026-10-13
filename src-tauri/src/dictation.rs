@@ -84,13 +84,36 @@ struct Engine {
 }
 
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
+/// 上次用的时刻：空闲 `IDLE_UNLOAD` 后卸载（模型常驻内存要几百 MB）
+static LAST_USED: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+pub const IDLE_UNLOAD: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// 空闲够久就卸载；正在识别（拿着锁）时不动，下次用时重新加载
+pub fn unload_if_idle() {
+    let idle = LAST_USED
+        .lock()
+        .map(|t| t.is_some_and(|t| t.elapsed() >= IDLE_UNLOAD))
+        .unwrap_or(false);
+    if idle {
+        if let Ok(mut engine) = ENGINE.try_lock() {
+            *engine = None;
+        }
+    }
+}
 
 fn engine_lock() -> MutexGuard<'static, Option<Engine>> {
     ENGINE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 fn load(data_dir: &Path) -> AppResult<Engine> {
-    let fail = |e: String| AppError::InternalError(format!("加载语音输入模型失败：{e}"));
+    // 检查过之后模型被删了：按没下载处理，界面会引导重新下载
+    let fail = |e: String| {
+        if ready(data_dir) {
+            AppError::InternalError(format!("加载语音输入模型失败：{e}"))
+        } else {
+            AppError::NotFound("语音输入模型还没有下载".to_string())
+        }
+    };
     let session = Session::builder()
         .map_err(|e| fail(e.to_string()))?
         .with_intra_threads(2)
@@ -208,6 +231,9 @@ pub fn transcribe(data_dir: &Path, samples: &[f32], language: Language) -> AppRe
     }
     let feats = fbank::SENSE_VOICE.compute(samples);
     let mut guard = engine_lock();
+    if let Ok(mut t) = LAST_USED.lock() {
+        *t = Some(std::time::Instant::now());
+    }
     if guard.is_none() {
         *guard = Some(load(data_dir)?);
     }

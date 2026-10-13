@@ -136,6 +136,11 @@ pub async fn transcribe_speech(
             .map(|v| v as f32 / 32768.0)
             .collect();
         let dir = data_dir(&app);
+        // 空闲一阵后卸载模型（释放内存）
+        tauri::async_runtime::spawn(async {
+            tokio::time::sleep(dictation::IDLE_UNLOAD + std::time::Duration::from_secs(1)).await;
+            dictation::unload_if_idle();
+        });
         tokio::task::spawn_blocking(move || dictation::transcribe(&dir, &samples, language))
             .await
             .map_err(|e| AppError::InternalError(format!("语音输入中断：{e}")))?

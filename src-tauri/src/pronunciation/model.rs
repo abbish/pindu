@@ -46,6 +46,22 @@ pub async fn ensure(
 }
 
 static SESSION: Mutex<Option<Session>> = Mutex::new(None);
+/// 上次用的时刻：空闲 `IDLE_UNLOAD` 后卸载会话（模型常驻内存要几百 MB）
+static LAST_USED: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+pub const IDLE_UNLOAD: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// 空闲够久就卸载会话；正在评估（拿着锁）时不动，下次用时重新加载
+pub fn unload_if_idle() {
+    let idle = LAST_USED
+        .lock()
+        .map(|t| t.is_some_and(|t| t.elapsed() >= IDLE_UNLOAD))
+        .unwrap_or(false);
+    if idle {
+        if let Ok(mut session) = SESSION.try_lock() {
+            *session = None;
+        }
+    }
+}
 
 /// 会话锁；上次推理出错（锁中毒）时接着用，不至于要重启
 fn session_lock() -> std::sync::MutexGuard<'static, Option<Session>> {
@@ -60,8 +76,18 @@ pub fn log_probs(model: &Path, samples: &[f32]) -> AppResult<(usize, usize, Vec<
         return Err(AppError::ValidationError("录音太短了".to_string()));
     }
     let mut guard = session_lock();
+    if let Ok(mut t) = LAST_USED.lock() {
+        *t = Some(std::time::Instant::now());
+    }
     if guard.is_none() {
-        let load = |e: String| AppError::InternalError(format!("加载发音模型失败：{e}"));
+        // 检查过之后模型被删了（设置里点了删除）：按没下载处理，界面会引导重新下载
+        let load = |e: String| {
+            if model.exists() {
+                AppError::InternalError(format!("加载发音模型失败：{e}"))
+            } else {
+                AppError::NotFound("发音评估模型还没有下载".to_string())
+            }
+        };
         let session = Session::builder()
             .map_err(|e| load(e.to_string()))?
             .with_intra_threads(2)

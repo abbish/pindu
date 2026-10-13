@@ -41,8 +41,9 @@ pub struct AssessPronunciationRequest {
 }
 
 const DOWNLOAD_KIND: &str = "pronunciation_model";
-/// 一次评估最长录音（秒）与最多词数：再长评估会很慢（每个音都要试几十种读法）
-const MAX_ASSESS_SECONDS: usize = 30;
+/// 一次评估最长录音（秒）与最多词数：再长评估会很慢（每个音都要试几十种读法，耗时随句长平方增长）；
+/// 界面上句子跟读最长录 15 秒
+const MAX_ASSESS_SECONDS: usize = 20;
 const MAX_ASSESS_WORDS: usize = 40;
 /// base64 的录音最长多少字（16kHz × 2 字节，base64 放大 4/3）
 pub(crate) const fn max_audio_chars(seconds: usize) -> usize {
@@ -197,10 +198,16 @@ pub async fn assess_pronunciation(
         }
         let path = model::path(&dir);
         let text = request.text.clone();
-        let assessment =
+        let assessment = {
+            // 空闲一阵后卸载模型（释放内存）
+            tauri::async_runtime::spawn(async {
+                tokio::time::sleep(model::IDLE_UNLOAD + std::time::Duration::from_secs(1)).await;
+                model::unload_if_idle();
+            });
             tokio::task::spawn_blocking(move || pronunciation::assess(&path, &text, &samples))
-                .await
-                .map_err(|e| AppError::InternalError(format!("发音评估中断：{e}")))??;
+        }
+        .await
+        .map_err(|e| AppError::InternalError(format!("发音评估中断：{e}")))??;
         if let Some(context) = &request.context {
             // 保存失败不影响这次的结果，只记一条警告
             if let Err(e) = PronunciationService::record(
