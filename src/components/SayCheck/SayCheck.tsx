@@ -84,7 +84,9 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
   const recording = recorder.state !== 'idle';
   const onRecordingRef = useRef(onRecordingChange);
   onRecordingRef.current = onRecordingChange;
-  useEffect(() => onRecordingRef.current?.(recording), [recording]);
+  useEffect(() => {
+    onRecordingRef.current?.(recording);
+  }, [recording]);
 
   useEffect(() => {
     if (disabled && recorder.state !== 'idle') recorder.stop();

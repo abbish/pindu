@@ -74,7 +74,9 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
   }, [error]);
 
   const recording = recorder.state !== 'idle';
-  useEffect(() => onRecordingChange?.(recording), [recording]);
+  useEffect(() => {
+    onRecordingChange?.(recording);
+  }, [recording]);
 
   const take = recorder.take;
   useEffect(() => {
