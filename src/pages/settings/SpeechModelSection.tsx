@@ -101,7 +101,7 @@ export const SpeechModelSection: React.FC = () => {
   };
 
   return (
-    <SettingsSection title="字幕识别" description="在本机识别，音频不上传">
+    <SettingsSection title="字幕识别">
       <SettingsRow
         label="模型下载来源"
         description={
