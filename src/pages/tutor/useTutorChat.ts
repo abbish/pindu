@@ -15,7 +15,10 @@ let lastConversationId: string | null = null;
 /** 上次的对话列表：再进来时先显示，后台再刷新 */
 let lastConversations: TutorConversation[] | null = null;
 /** 正在进行的列表请求（同一时间只发一个） */
-let listing: ReturnType<typeof tutorService.list> | null = null;
+let listing: { seq: number; result: ReturnType<typeof tutorService.list> } | null = null;
+/** 列表请求的序号：较早发出的请求晚返回时不覆盖较新的结果 */
+let listSeq = 0;
+let appliedSeq = 0;
 
 const IMAGE_MIME: Record<string, string> = {
   png: 'image/png',
@@ -101,13 +104,16 @@ export function useTutorChat(initialPrompt?: string, initialConversationId?: str
   /** fresh：不复用进行中的请求（它可能早于刚开的新对话） */
   const refreshList = useCallback(async (fresh = false) => {
     if (fresh || !listing) {
-      const started = tutorService.list();
+      const started = { seq: ++listSeq, result: tutorService.list() };
       listing = started;
-      void started.finally(() => {
+      void started.result.finally(() => {
         if (listing === started) listing = null;
       });
     }
-    const result = await listing!;
+    const { seq, result: pending } = listing!;
+    const result = await pending;
+    if (seq < appliedSeq) return;
+    appliedSeq = seq;
     firstLoad.current = false;
     setListLoading(false);
     setListPartial(false);

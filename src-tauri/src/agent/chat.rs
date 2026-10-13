@@ -336,12 +336,21 @@ impl ChatSession {
     }
 }
 
+/// 对话列表缓存：`generation` 每次作废加一，读取开始时记下，读完没变才存
+#[derive(Default)]
+struct ListCache {
+    list: Option<Vec<SessionSummary>>,
+    generation: u64,
+}
+
 /// 全部常驻对话（Tauri 状态）
 #[derive(Clone, Default)]
 pub struct ChatHub {
     sessions: Arc<tokio::sync::Mutex<HashMap<String, Arc<ChatSession>>>>,
     /// 上次用 pi 列出的对话（每次列都要起一个 sidecar）；对话有变化时清掉
-    listed: Arc<Mutex<Option<Vec<SessionSummary>>>>,
+    listed: Arc<Mutex<ListCache>>,
+    /// 同一时刻只让一个列表读取在跑：后到的等它读完直接用缓存
+    listing: Arc<tokio::sync::Mutex<()>>,
     /// 闲置回收已经在跑
     reaper: Arc<AtomicBool>,
     /// 事件序号（见模块说明）
@@ -364,21 +373,38 @@ impl ChatHub {
         });
     }
 
-    /// 缓存的对话列表
-    pub fn cached_list(&self) -> Option<Vec<SessionSummary>> {
-        self.listed.lock().ok().and_then(|l| l.clone())
-    }
-
-    pub fn cache_list(&self, list: Vec<SessionSummary>) {
-        if let Ok(mut l) = self.listed.lock() {
-            *l = Some(list);
+    /// 对话列表：有缓存用缓存，没有时 `read` 读一次（同一时刻只有一个读取，后到的等着用它的结果）。
+    /// 读的过程中对话有变化（缓存被作废）时结果不存，下次重新读
+    pub async fn list_with<F, Fut>(&self, read: F) -> AppResult<Vec<SessionSummary>>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = AppResult<Vec<SessionSummary>>>,
+    {
+        let _reading = self.listing.lock().await;
+        // 锁不能跨 await：先取出缓存或当前代号
+        let cached = self.listed.lock().ok().map(|cache| match &cache.list {
+            Some(list) => Ok(list.clone()),
+            None => Err(cache.generation),
+        });
+        let generation = match cached {
+            Some(Ok(list)) => return Ok(list),
+            Some(Err(generation)) => generation,
+            None => return read().await,
+        };
+        let list = read().await?;
+        if let Ok(mut cache) = self.listed.lock() {
+            if cache.generation == generation {
+                cache.list = Some(list.clone());
+            }
         }
+        Ok(list)
     }
 
-    /// 对话有变化（新对话、改名、一轮结束、删除）：下次重新列
+    /// 对话有变化（新对话、改名、一轮结束、删除）：下次重新列，正在读的结果也不再存
     pub fn invalidate_list(&self) {
-        if let Ok(mut l) = self.listed.lock() {
-            *l = None;
+        if let Ok(mut cache) = self.listed.lock() {
+            cache.list = None;
+            cache.generation += 1;
         }
     }
 
@@ -691,6 +717,41 @@ pub async fn fork_session(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn summary(id: &str) -> SessionSummary {
+        serde_json::from_value(
+            json!({"id": id, "path": format!("/s/{id}.jsonl"), "name": null,
+            "firstMessage": "hi", "created": "", "modified": "", "messageCount": 1}),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn list_read_overtaken_by_change_is_not_cached() {
+        let hub = ChatHub::new();
+        // 读的过程中对话有变化：这次的结果照样返回，但不存
+        let list = hub
+            .list_with(|| async {
+                hub.invalidate_list();
+                Ok(vec![summary("old")])
+            })
+            .await
+            .unwrap();
+        assert_eq!(list[0].id, "old");
+        let reads = std::sync::atomic::AtomicUsize::new(0);
+        let read = || async {
+            reads.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![summary("new")])
+        };
+        assert_eq!(hub.list_with(read).await.unwrap()[0].id, "new");
+        // 读好且没被作废的存下来，下次直接用
+        let cached = hub
+            .list_with(|| async { panic!("应该用缓存") })
+            .await
+            .unwrap();
+        assert_eq!(cached[0].id, "new");
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn session_list_lines_are_partial_batches_then_done() {

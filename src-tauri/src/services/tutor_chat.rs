@@ -275,15 +275,13 @@ impl TutorChatService {
         on_partial: impl FnMut(Vec<SessionSummary>),
     ) -> AppResult<Vec<SessionSummary>> {
         let (session_dir, cwd) = dirs(paths);
-        Ok(match hub.cached_list() {
-            Some(cached) => cached,
-            None if !session_dir.exists() => Vec::new(),
-            None => {
-                let listed = list_sessions(paths, &session_dir, &cwd, on_partial).await?;
-                hub.cache_list(listed.clone());
-                listed
+        hub.list_with(|| async move {
+            if !session_dir.exists() {
+                return Ok(Vec::new());
             }
+            list_sessions(paths, &session_dir, &cwd, on_partial).await
         })
+        .await
     }
 
     /// 对话列表（pi 列出会话），新的在前。对话很多时 pi 分批读：每读好一批，`on_partial` 收到已读到的部分（新的在前）
@@ -671,18 +669,29 @@ impl TutorChatService {
     pub async fn delete(&self, paths: &AgentPaths, hub: &ChatHub, id: &str) -> AppResult<()> {
         check_id(id)?;
         hub.close(id).await;
-        hub.invalidate_list();
         let _ = std::fs::remove_dir_all(files_dir(paths, id));
-        let (session_dir, cwd) = dirs(paths);
-        let sessions = list_sessions(paths, &session_dir, &cwd, |_| {}).await?;
-        if let Some(session) = sessions.iter().find(|s| s.id == id) {
-            let path = real_path(PathBuf::from(&session.path));
-            // 只删会话目录里的文件
-            if path.starts_with(real_path(session_dir)) {
-                std::fs::remove_file(&path)
-                    .map_err(|e| AppError::InternalError(format!("删除对话失败：{}", e)))?;
-            }
+        let (session_dir, _) = dirs(paths);
+        // 会话文件的位置：先看缓存的列表，没有（缓存早于这个对话）再重新列一次
+        let mut sessions = self.sessions(paths, hub, |_| {}).await?;
+        if !sessions.iter().any(|s| s.id == id) {
+            hub.invalidate_list();
+            sessions = self.sessions(paths, hub, |_| {}).await?;
         }
+        let removed = match sessions.iter().find(|s| s.id == id) {
+            // 只删会话目录里的文件
+            Some(session) => {
+                let path = real_path(PathBuf::from(&session.path));
+                if path.starts_with(real_path(session_dir)) {
+                    std::fs::remove_file(&path)
+                } else {
+                    Ok(())
+                }
+            }
+            None => Ok(()),
+        };
+        // 文件删掉之后再作废：之后开始的读取不会再读到它
+        hub.invalidate_list();
+        removed.map_err(|e| AppError::InternalError(format!("删除对话失败：{}", e)))?;
         let mut all = self.flags().await;
         if all.remove(id).is_some() {
             self.save_flags(&all).await?;
