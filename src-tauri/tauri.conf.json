@@ -32,7 +32,7 @@
         "img-src": "'self' data: blob: http://127.0.0.1:*",
         "media-src": "'self' data: blob: http://127.0.0.1:*",
         "font-src": "'self' data:",
-        "connect-src": "'self' ipc: http://ipc.localhost",
+        "connect-src": "'self' ipc: http://ipc.localhost blob:",
         "object-src": "'none'",
         "base-uri": "'self'",
         "form-action": "'none'"

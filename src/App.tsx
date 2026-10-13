@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ErrorBoundary, ToastProvider } from './components';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { AppShell } from './components/AppShell/AppShell';
 import { DevTools } from './components/DevTools';
 import { JobCenter } from './components/Jobs';
@@ -163,6 +164,8 @@ function App() {
 
   return (
     <ErrorBoundary>
+      {/* 整窗页面（练习）、启动错误页也不在 AppShell 里：图标提示的容器放在最外层 */}
+      <TooltipProvider delayDuration={300}>
       <ToastProvider>
         {/* 自动检查更新与菜单「检查更新…」：在启动错误页也有效，数据库出问题时也能装上修复版 */}
         <UpdateWatcher />
@@ -188,6 +191,7 @@ function App() {
           <DevTools />
         </StartupGate>
       </ToastProvider>
+      </TooltipProvider>
     </ErrorBoundary>
   );
 }

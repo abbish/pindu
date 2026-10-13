@@ -55,6 +55,9 @@ def main() -> int:
         errors.append("tauri.conf.json app.security.csp 的 style-src 要允许 'unsafe-inline'：轻提示与对话框会在运行时插入样式")
     if security.get("csp") and not (disabled is True or (isinstance(disabled, list) and "style-src" in disabled)):
         errors.append("tauri.conf.json app.security.dangerousDisableAssetCspModification 要包含 \"style-src\"：否则正式版里 Tauri 往 style-src 加 nonce，'unsafe-inline' 失效，提示等运行时样式被拦（开发版看不出来）")
+    connect_src = (security.get("csp") or {}).get("connect-src", "") if isinstance(security.get("csp"), dict) else ""
+    if security.get("csp") and "blob:" not in connect_src.split():
+        errors.append("tauri.conf.json app.security.csp 的 connect-src 要包含 blob:：跟读评估与语音输入用 fetch 读录音（blob: 地址），正式版不允许时全部失败（开发版看不出来）")
     if conf.get("bundle", {}).get("createUpdaterArtifacts") is not False:
         errors.append("tauri.conf.json bundle.createUpdaterArtifacts 应为 false（发版时由 package.mjs 在有私钥时打开），否则没有私钥的本地打包会失败")
 
