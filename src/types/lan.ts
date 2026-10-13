@@ -69,7 +69,7 @@ export interface PairRequestClosed {
   reason: string;
 }
 
-/** 本机发起的配对的结果：accepted / rejected / failed / canceled */
+/** 本机发起的配对的结果：remote_accepted（对方已同意，等本机确认数字）/ accepted / rejected / failed / canceled */
 export interface PairingResult {
   pairingId: string;
   alias: string;

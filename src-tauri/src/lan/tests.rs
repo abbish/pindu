@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::test_support::memory_pool;
+use std::net::IpAddr;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
@@ -94,6 +95,17 @@ async fn pair_accept_unpair_and_reject() {
     assert_eq!(request.alias, "书房");
     assert_eq!(b.node.pending_requests().len(), 1);
     b.node.respond(&request.request_id, true).unwrap();
+    // B 先同意：A 还没确认数字，不保存
+    let result = a
+        .wait(|e| match e {
+            LanEvent::PairingResult(r) => Some(r.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(result.outcome, "remote_accepted", "{:?}", result.message);
+    assert!(paired_with(&a).await.is_empty());
+    // A 确认数字一致后才保存
+    a.node.confirm_pairing(&started.pairing_id).await.unwrap();
     let result = a
         .wait(|e| match e {
             LanEvent::PairingResult(r) => Some(r.clone()),
@@ -105,8 +117,9 @@ async fn pair_accept_unpair_and_reject() {
     assert_eq!(paired_with(&b).await, vec!["书房"]);
     assert!(b.node.pending_requests().is_empty());
 
-    // 再配一次：已经配对过，不用对方确认
-    a.node.start_pairing(&b.fingerprint()).await.unwrap();
+    // 再配一次：已经配对过，不用对方确认（本机先确认数字）
+    let again = a.node.start_pairing(&b.fingerprint()).await.unwrap();
+    a.node.confirm_pairing(&again.pairing_id).await.unwrap();
     let again = a
         .wait(|e| match e {
             LanEvent::PairingResult(r) => Some(r.outcome.clone()),
@@ -225,7 +238,8 @@ async fn refuses_a_server_with_another_identity() {
 /// 配对两个节点（A 发起，B 同意）
 async fn pair(a: &mut TestNode, b: &mut TestNode) {
     a.node.add_by_address(&b.address()).await.unwrap();
-    a.node.start_pairing(&b.fingerprint()).await.unwrap();
+    let started = a.node.start_pairing(&b.fingerprint()).await.unwrap();
+    a.node.confirm_pairing(&started.pairing_id).await.unwrap();
     let request = b
         .wait(|e| match e {
             LanEvent::PairRequest(r) => Some(r.clone()),
@@ -631,4 +645,154 @@ async fn upload_resumes_from_where_it_stopped() {
         .await;
     assert_eq!(reason, "canceled");
     assert!(!dir.exists());
+}
+
+#[tokio::test]
+async fn initiator_cancel_after_remote_accepted_unpairs_both_sides() {
+    let mut a = node("A").await;
+    let mut b = node("B").await;
+    a.node.add_by_address(&b.address()).await.unwrap();
+    let started = a.node.start_pairing(&b.fingerprint()).await.unwrap();
+    let request = b
+        .wait(|e| match e {
+            LanEvent::PairRequest(r) => Some(r.clone()),
+            _ => None,
+        })
+        .await;
+    b.node.respond(&request.request_id, true).unwrap();
+    a.wait(|e| {
+        matches!(e, LanEvent::PairingResult(r) if r.outcome == "remote_accepted").then_some(())
+    })
+    .await;
+    assert_eq!(paired_with(&b).await.len(), 1);
+    // A 发现数字对不上，取消：B 那边也删除
+    a.node.cancel_pairing(&started.pairing_id);
+    for _ in 0..100 {
+        if paired_with(&b).await.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(paired_with(&a).await.is_empty());
+    assert!(paired_with(&b).await.is_empty());
+    assert!(a.node.confirm_pairing(&started.pairing_id).await.is_err());
+}
+
+#[tokio::test]
+async fn unpairing_stops_an_active_transfer() {
+    use crate::services::lan_export::{export, ExportItem, ExportOptions};
+    let src = crate::services::lan_import::tests::seed().await;
+    let mut a = node_with("A", (*src.pool).clone(), src.dir.clone()).await;
+    let mut b = node("B").await;
+    pair(&mut a, &mut b).await;
+    let exported = export(
+        src.pool.clone(),
+        &src.dir,
+        &[ExportItem {
+            kind: "video".into(),
+            id: src.video_id,
+        }],
+        &ExportOptions::default(),
+        "0",
+    )
+    .await
+    .unwrap();
+    let id = a.node.shared.identity().unwrap();
+    let target = Target {
+        address: "127.0.0.1".parse().unwrap(),
+        port: b.node.status().port.unwrap(),
+        fingerprint: Some(b.fingerprint()),
+    };
+    let offer = transfer::OfferRequest {
+        transfer_id: "t-unpair".into(),
+        package_version: 1,
+        summary: exported.package.summary(),
+    };
+    let ask = {
+        let id = id.clone();
+        let target = target.clone();
+        tokio::spawn(async move {
+            client::post_json::<_, transfer::OfferResponse>(
+                &id,
+                &target,
+                "/transfer/offer",
+                &offer,
+                REQUEST_WAIT,
+            )
+            .await
+            .unwrap()
+            .1
+        })
+    };
+    b.wait(|e| matches!(e, LanEvent::TransferOffer(_)).then_some(()))
+        .await;
+    b.node.respond_transfer("t-unpair", true).unwrap();
+    let token = ask.await.unwrap().token.unwrap();
+    // B 取消配对：进行中的接收立刻结束，之后的请求被拒绝
+    b.node.unpair(&a.fingerprint()).await.unwrap();
+    let reason = b
+        .wait(|e| match e {
+            LanEvent::TransferClosed(c) => Some(c.reason.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(reason, "canceled");
+    let err = client::send(
+        &id,
+        &target,
+        hyper::Method::PUT,
+        "/transfer/t-unpair/manifest",
+        &[(transfer::TOKEN_HEADER, token)],
+        client::bytes_body(serde_json::to_vec(&exported.package).unwrap()),
+        REQUEST_WAIT,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ClientError::Status(s, _) if s == StatusCode::GONE),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn spoofed_announcements_cannot_rename_or_remove_a_device() {
+    let mut a = node("A").await;
+    let mut b = node("B").await;
+    pair(&mut a, &mut b).await;
+    let b_fp = b.fingerprint();
+    let before = a.node.nearby().await.unwrap();
+    let real = before
+        .iter()
+        .find(|d| d.fingerprint == b_fp)
+        .unwrap()
+        .clone();
+    // 别的地址冒名发：改名、下线
+    let fake = |bye: bool| {
+        serde_json::to_vec(&Announcement::new(
+            DeviceInfo {
+                alias: "冒名的电脑".into(),
+                fingerprint: b_fp.clone(),
+                port: 1,
+                os: "linux".into(),
+                app_version: "9".into(),
+                protocol: PROTOCOL,
+            },
+            false,
+            bye,
+        ))
+        .unwrap()
+    };
+    let other: IpAddr = "10.255.255.1".parse().unwrap();
+    a.node.shared.on_datagram(&fake(false), other);
+    a.node.shared.on_datagram(&fake(true), other);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let after = a.node.nearby().await.unwrap();
+    let still = after
+        .iter()
+        .find(|d| d.fingerprint == b_fp)
+        .expect("冒名下线不应生效");
+    assert_eq!(still.alias, real.alias);
+    assert_eq!(still.address, real.address);
+    assert_eq!(paired_with(&a).await, vec![real.alias.clone()]);
+    let _ = &mut b;
 }

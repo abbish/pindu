@@ -28,6 +28,11 @@ class LanService extends BaseService {
     return this.executeWithLoading(async () => this.client.invoke<PairingStarted>('start_pairing', { fingerprint }));
   }
 
+  /** 发起方确认两边数字一致（对方也同意了才完成配对） */
+  async confirmPairing(pairingId: string): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => this.client.invoke<void>('confirm_pairing', { pairingId }));
+  }
+
   async cancelPairing(pairingId: string): Promise<ApiResult<void>> {
     return this.executeWithLoading(async () => this.client.invoke<void>('cancel_pairing', { pairingId }));
   }

@@ -17,6 +17,7 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
 /// 请求体（流式文件或一段字节）
 pub type Body = BoxBody<Bytes, std::io::Error>;
@@ -150,8 +151,8 @@ pub async fn send(
             .await
             .map_err(|e| ClientError::Unreachable(e.to_string()))?;
         let status = response.status();
-        let bytes = response
-            .into_body()
+        // 回应都很小：设个上限，连到不认识的地址（按地址添加）时对方也撑不爆内存
+        let bytes = http_body_util::Limited::new(response.into_body(), MAX_RESPONSE_BYTES)
             .collect()
             .await
             .map_err(|e| ClientError::Unreachable(e.to_string()))?

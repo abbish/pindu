@@ -687,10 +687,20 @@ impl Package {
             }
         }
         let files: HashSet<&str> = self.files.iter().map(|f| f.id.as_str()).collect();
-        if files.len() != self.files.len() {
+        // 不区分大小写也不能重复（macOS / Windows 的磁盘通常不区分大小写，会写到同一个文件）
+        let lower: HashSet<String> = self
+            .files
+            .iter()
+            .map(|f| f.id.to_ascii_lowercase())
+            .collect();
+        if files.len() != self.files.len() || lower.len() != self.files.len() {
             return Err("素材包的文件表重复".into());
         }
+        let mut used_files = HashSet::new();
         for f in &self.files {
+            if !safe_file_id(&f.id) {
+                return Err("素材包的文件编号不对".into());
+            }
             if f.sha256.len() != 64 || !f.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
                 return Err("素材包的文件校验码格式不对".into());
             }
@@ -704,12 +714,20 @@ impl Package {
                 plans.insert(vp.ref_.as_str());
             }
             let mut paths = HashSet::new();
+            let mut lower_paths = HashSet::new();
             for f in &v.files {
-                if !safe_video_path(&f.path) || !paths.insert(f.path.as_str()) {
+                if !safe_video_path(&f.path)
+                    || !paths.insert(f.path.as_str())
+                    || !lower_paths.insert(f.path.to_ascii_lowercase())
+                {
                     return Err(format!("视频文件路径不安全：{}", f.path));
                 }
                 if !files.contains(f.file.as_str()) {
                     return Err("视频文件不在文件表里".into());
+                }
+                // 一个文件只能放到一个位置（导入时是移动过去的）
+                if !used_files.insert(f.file.as_str()) {
+                    return Err("视频文件被重复引用".into());
                 }
             }
             for p in [&v.source_file, &v.media_file].into_iter().flatten() {
@@ -838,6 +856,15 @@ impl Package {
     }
 }
 
+/// 文件编号：接收方直接拿它当临时文件名，只允许字母、数字、- 和 _（不能带路径）
+pub fn safe_file_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 32
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 /// 视频目录里允许的相对路径：固定文件名，或 thumbs/、clips/ 下的单层文件名（不含 .. 与路径分隔符）
 pub fn safe_video_path(path: &str) -> bool {
     let name_ok = |n: &str| {
@@ -888,6 +915,26 @@ mod tests {
         ] {
             assert!(!safe_video_path(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn file_ids_cannot_escape_the_incoming_folder() {
+        for bad in ["", "../x", "a/b", "..", "f\\1", &"f".repeat(40)] {
+            assert!(!safe_file_id(bad), "{bad}");
+        }
+        assert!(safe_file_id("f12") && safe_file_id("a-b_c"));
+        let p = Package {
+            format: FORMAT.into(),
+            version: VERSION,
+            files: vec![PkgFile {
+                id: "../../evil".into(),
+                size: 1,
+                sha256: "0".repeat(64),
+                kind: "json".into(),
+            }],
+            ..Default::default()
+        };
+        assert!(p.validate().unwrap_err().contains("文件编号"));
     }
 
     #[test]

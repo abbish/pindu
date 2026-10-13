@@ -41,12 +41,16 @@ use tokio::task::JoinHandle;
 /// 广播心跳间隔；超过 [`NEARBY_TTL`] 没听到就从附近列表移除
 const HEARTBEAT: Duration = Duration::from_secs(30);
 const NEARBY_TTL: Duration = Duration::from_secs(95);
+/// 按地址 / 接口认识的设备（组播可能不通）留得久一些；已配对的靠探测续期
+const STICKY_TTL: Duration = Duration::from_secs(10 * 60);
 /// 对方确认配对的等待时间（接收方弹窗）与发起方的等待上限
 const DECISION_TIMEOUT: Duration = Duration::from_secs(60);
 const CONFIRM_WAIT: Duration = Duration::from_secs(75);
 const REQUEST_WAIT: Duration = Duration::from_secs(10);
 /// 同时等待确认的配对请求上限
 const MAX_INCOMING: usize = 3;
+/// 附近设备列表的上限（网络里有人乱发广播时不会无限增长；满了先挤掉最久没听到的）
+const MAX_NEARBY: usize = 200;
 
 /// 交给调用方的变化（lib.rs 转成前端事件）
 #[derive(Debug, Clone)]
@@ -115,6 +119,8 @@ struct State {
     replied: HashMap<String, Instant>,
     /// 正在接收的传送（同时只接收一个）
     inbound: Option<transfer::Inbound>,
+    /// 最近一次用 TLS 确认某台设备的时间（节流）
+    verifying: HashMap<String, Instant>,
 }
 
 struct Running {
@@ -147,6 +153,10 @@ struct Outgoing {
     target: Target,
     request_id: String,
     task: Option<JoinHandle<()>>,
+    /// 本机用户已确认两边数字一致
+    confirmed: bool,
+    /// 对方已同意、等本机用户确认（确认后才保存）
+    accepted: Option<LanDeviceRow>,
 }
 
 fn current_os() -> String {
@@ -291,6 +301,7 @@ impl LanNode {
     /// 重新广播，请附近的设备回应
     pub fn refresh(&self) {
         self.shared.announce(true);
+        self.shared.probe_paired();
     }
 
     /// 按地址添加（组播不通时）：`192.168.1.5` 或 `192.168.1.5:53318`
@@ -375,6 +386,8 @@ impl LanNode {
                 target: target.clone(),
                 request_id: resp.request_id.clone(),
                 task: None,
+                confirmed: false,
+                accepted: None,
             },
         );
         let shared = self.shared.clone();
@@ -418,17 +431,48 @@ impl LanNode {
             let body = PairCancelRequest {
                 request_id: outgoing.request_id,
             };
+            // 对方已经同意（已保存配对）：请它取消配对；否则关掉它的弹窗
+            let remote_saved = outgoing.accepted.is_some();
             tokio::spawn(async move {
-                let _ = client::post_json::<_, serde_json::Value>(
-                    &id,
-                    &outgoing.target,
-                    "/pair/cancel",
-                    &body,
-                    REQUEST_WAIT,
-                )
-                .await;
+                let _ = if remote_saved {
+                    client::post_json::<_, serde_json::Value>(
+                        &id,
+                        &outgoing.target,
+                        "/unpair",
+                        &serde_json::json!({}),
+                        REQUEST_WAIT,
+                    )
+                    .await
+                } else {
+                    client::post_json::<_, serde_json::Value>(
+                        &id,
+                        &outgoing.target,
+                        "/pair/cancel",
+                        &body,
+                        REQUEST_WAIT,
+                    )
+                    .await
+                };
             });
         }
+    }
+
+    /// 本机用户确认两边数字一致；对方也同意了才保存配对（数字比对要两边都确认）
+    pub async fn confirm_pairing(&self, pairing_id: &str) -> AppResult<()> {
+        let ready = {
+            let mut st = self.shared.lock();
+            let o = st
+                .outgoing
+                .get_mut(pairing_id)
+                .ok_or_else(|| AppError::NotFound("这次配对已经结束了".into()))?;
+            o.confirmed = true;
+            o.accepted.take()
+        };
+        if let Some(row) = ready {
+            self.shared.lock().outgoing.remove(pairing_id);
+            self.shared.save_pairing(pairing_id, row).await;
+        }
+        Ok(())
     }
 
     /// 本机用户对配对请求的决定
@@ -481,6 +525,7 @@ impl LanNode {
             .await?
             .ok_or_else(|| AppError::NotFound("没有和这台设备配对".into()))?;
         LanRepository::delete(&self.shared.pool, fingerprint).await?;
+        self.shared.end_inbound_from(fingerprint);
         self.shared
             .logger
             .info("LAN", &format!("取消了和「{}」的配对", row.alias));
@@ -706,6 +751,9 @@ impl Shared {
             ),
         );
         self.announce(true);
+        if self.options.discovery {
+            self.probe_paired();
+        }
         (self.emit)(LanEvent::NearbyChanged);
         Ok(())
     }
@@ -785,6 +833,17 @@ impl Shared {
                     changed
                 }
                 None => {
+                    if st.nearby.len() >= MAX_NEARBY {
+                        // 先挤掉组播发现的；全是按地址 / 接口认识的也照样挤掉最久的，不让新设备进不来
+                        let oldest = st
+                            .nearby
+                            .iter()
+                            .min_by_key(|(_, n)| (n.sticky, n.last_seen))
+                            .map(|(k, _)| k.clone());
+                        if let Some(k) = oldest {
+                            st.nearby.remove(&k);
+                        }
+                    }
                     st.nearby.insert(
                         info.fingerprint.clone(),
                         Nearby {
@@ -835,7 +894,15 @@ impl Shared {
         };
         let fingerprint = msg.info.fingerprint.clone();
         if msg.bye {
-            let removed = self.lock().nearby.remove(&fingerprint).is_some();
+            // 只认同一个地址发来的下线（别的机器冒名发的不理）
+            let removed = {
+                let mut st = self.lock();
+                let same = st
+                    .nearby
+                    .get(&fingerprint)
+                    .is_some_and(|n| n.address == src);
+                same && st.nearby.remove(&fingerprint).is_some()
+            };
             if removed {
                 tracing::debug!(component = "LAN", alias = %msg.info.alias, "设备下线");
                 (self.emit)(LanEvent::NearbyChanged);
@@ -843,7 +910,20 @@ impl Shared {
             }
             return;
         }
-        self.remember_nearby(msg.info, src, false);
+        // 已确认过、地址与信息都没变：续期；否则先用 TLS 确认对方身份再记下（防止冒名改名字、改地址）
+        let renewed = {
+            let mut st = self.lock();
+            match st.nearby.get_mut(&fingerprint) {
+                Some(n) if n.address == src && n.info == msg.info => {
+                    n.last_seen = Instant::now();
+                    true
+                }
+                _ => false,
+            }
+        };
+        if !renewed {
+            self.verify(src, msg.info.port, fingerprint.clone());
+        }
         if msg.announce {
             let reply = {
                 let mut st = self.lock();
@@ -864,14 +944,41 @@ impl Shared {
     }
 
     /// 心跳：广播、清理过期的附近设备与没走完的配对请求
-    fn tick(&self) {
+    fn tick(self: &Arc<Self>) {
         self.announce(false);
+        self.probe_paired();
+        // 接收任务已经结束（还没开始就被取消等），接收位置也要放开
+        let finished_job = self.lock().inbound.as_ref().and_then(|i| {
+            let job = i.job_id.as_ref()?;
+            let active = self
+                .jobs
+                .list()
+                .iter()
+                .any(|j| &j.id == job && j.status.is_active());
+            (!active).then(|| i.transfer_id.clone())
+        });
+        if let Some(id) = finished_job {
+            self.end_inbound(&id, "canceled");
+        }
+        // 等确认的传送请求：发送方已经断开（等待的那一端没了）就关掉，否则会一直占着「只接收一个」的位置
+        let stale_offer = self.lock().inbound.as_ref().and_then(|i| {
+            i.decision
+                .as_ref()
+                .filter(|tx| tx.is_closed())
+                .map(|_| i.transfer_id.clone())
+        });
+        if let Some(id) = stale_offer {
+            self.end_inbound(&id, "canceled");
+        }
         let pruned = {
             let mut st = self.lock();
             let now = Instant::now();
             let before = st.nearby.len();
-            st.nearby
-                .retain(|_, n| n.sticky || now.duration_since(n.last_seen) < NEARBY_TTL);
+            st.nearby.retain(|_, n| {
+                now.duration_since(n.last_seen) < if n.sticky { STICKY_TTL } else { NEARBY_TTL }
+            });
+            st.verifying
+                .retain(|_, t| now.duration_since(*t) < Duration::from_secs(60));
             // 对方断开（等待确认的那一端已经没了）或超过时限的请求一并清掉
             let mut closed = Vec::new();
             st.incoming.retain(|id, r| {
@@ -906,9 +1013,13 @@ impl Shared {
         alias: String,
         result: Result<(String, PairConfirmResponse), ClientError>,
     ) {
-        if self.lock().outgoing.remove(pairing_id).is_none() {
-            return; // 已经取消
-        }
+        let confirmed = match self.lock().outgoing.get_mut(pairing_id) {
+            Some(o) => {
+                o.task = None;
+                o.confirmed
+            }
+            None => return, // 已经取消
+        };
         let (outcome, message) = match result {
             Ok((fingerprint, resp)) if resp.accepted && resp.info.fingerprint == fingerprint => {
                 let alias = clean_alias(&resp.info.alias).unwrap_or(alias.clone());
@@ -923,27 +1034,19 @@ impl Shared {
                     paired_at: now.clone(),
                     last_seen_at: Some(now),
                 };
-                match LanRepository::upsert_paired(&self.pool, &row).await {
-                    Ok(()) => {
-                        self.logger.info(
-                            "LAN",
-                            &format!("已和「{alias}」配对（pairing {pairing_id}）"),
-                        );
-                        (self.emit)(LanEvent::PairedChanged);
-                        (self.emit)(LanEvent::NearbyChanged);
-                        ("accepted", None)
-                    }
-                    Err(e) => {
-                        self.logger
-                            .error("LAN", "保存配对失败", Some(&e.to_string()));
-                        (
-                            "failed",
-                            Some("对方已同意，但这台电脑没能保存配对，请重试".to_string()),
-                        )
-                    }
+                if confirmed {
+                    self.lock().outgoing.remove(pairing_id);
+                    self.save_pairing(pairing_id, row).await;
+                    return;
                 }
+                // 对方已同意，等本机用户确认数字一致
+                if let Some(o) = self.lock().outgoing.get_mut(pairing_id) {
+                    o.accepted = Some(row);
+                }
+                ("remote_accepted", None)
             }
             Ok((_, resp)) if resp.reason == "timeout" => {
+                self.lock().outgoing.remove(pairing_id);
                 self.logger.info(
                     "LAN",
                     &format!("「{alias}」没有在一分钟内确认配对（pairing {pairing_id}）"),
@@ -951,6 +1054,7 @@ impl Shared {
                 ("failed", Some(format!("「{alias}」没有在一分钟内确认")))
             }
             Ok(_) => {
+                self.lock().outgoing.remove(pairing_id);
                 self.logger.info(
                     "LAN",
                     &format!("「{alias}」没有同意配对（pairing {pairing_id}）"),
@@ -958,6 +1062,7 @@ impl Shared {
                 ("rejected", None)
             }
             Err(e) => {
+                self.lock().outgoing.remove(pairing_id);
                 let msg = match &e {
                     ClientError::Timeout => format!("「{alias}」没有在一分钟内确认"),
                     other => user_error(other, &alias).to_string(),
@@ -976,6 +1081,134 @@ impl Shared {
             outcome: outcome.to_string(),
             message,
         }));
+    }
+
+    /// 两边都确认后保存配对
+    async fn save_pairing(&self, pairing_id: &str, row: LanDeviceRow) {
+        let alias = row.alias.clone();
+        let (outcome, message) = match LanRepository::upsert_paired(&self.pool, &row).await {
+            Ok(()) => {
+                self.logger.info(
+                    "LAN",
+                    &format!("已和「{alias}」配对（pairing {pairing_id}）"),
+                );
+                (self.emit)(LanEvent::PairedChanged);
+                (self.emit)(LanEvent::NearbyChanged);
+                ("accepted", None)
+            }
+            Err(e) => {
+                self.logger
+                    .error("LAN", "保存配对失败", Some(&e.to_string()));
+                (
+                    "failed",
+                    Some("对方已同意，但这台电脑没能保存配对，请重试".to_string()),
+                )
+            }
+        };
+        (self.emit)(LanEvent::PairingResult(PairingResult {
+            pairing_id: pairing_id.to_string(),
+            alias,
+            outcome: outcome.to_string(),
+            message,
+        }));
+    }
+
+    /// 停止来自这台设备的接收（取消配对时）
+    fn end_inbound_from(&self, fingerprint: &str) {
+        let found = self
+            .lock()
+            .inbound
+            .as_ref()
+            .filter(|i| i.peer == fingerprint)
+            .map(|i| (i.transfer_id.clone(), i.job_id.clone()));
+        if let Some((transfer_id, job)) = found {
+            self.end_inbound(&transfer_id, "canceled");
+            if let Some(job) = job {
+                self.jobs.cancel(&job);
+            }
+        }
+    }
+
+    /// 用钉住编号的 TLS 连接确认对方（组播消息谁都能发，不能直接信）；同一台设备 10 秒内只确认一次
+    fn verify(self: &Arc<Self>, address: IpAddr, port: u16, fingerprint: String) {
+        {
+            let mut st = self.lock();
+            let now = Instant::now();
+            if st
+                .verifying
+                .get(&fingerprint)
+                .is_some_and(|t| now.duration_since(*t) < Duration::from_secs(10))
+            {
+                return;
+            }
+            st.verifying.insert(fingerprint.clone(), now);
+        }
+        let (Some(id), Ok(own)) = (self.identity(), self.own_info()) else {
+            return;
+        };
+        let shared = self.clone();
+        tokio::spawn(async move {
+            let target = Target {
+                address,
+                port,
+                fingerprint: Some(fingerprint.clone()),
+            };
+            match client::post_json::<_, RegisterResponse>(
+                &id,
+                &target,
+                "/register",
+                &own,
+                REQUEST_WAIT,
+            )
+            .await
+            {
+                Ok((actual, resp))
+                    if actual == fingerprint && resp.info.fingerprint == fingerprint =>
+                {
+                    let mut info = resp.info;
+                    if let Some(alias) = clean_alias(&info.alias) {
+                        info.alias = alias;
+                        shared.remember_nearby(info, address, false);
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => tracing::debug!(component = "LAN", %address, error = %e, "确认设备失败"),
+            }
+        });
+    }
+
+    /// 已配对的设备：附近列表里没有或很久没确认的，按最后的地址探一下（组播不通、刚启动时也能连上）
+    fn probe_paired(self: &Arc<Self>) {
+        let shared = self.clone();
+        tokio::spawn(async move {
+            let Ok(rows) = LanRepository::list(&shared.pool).await else {
+                return;
+            };
+            for row in rows {
+                let known = {
+                    let st = shared.lock();
+                    st.nearby.get(&row.fingerprint).map(|n| {
+                        (
+                            n.address,
+                            n.info.port,
+                            n.last_seen.elapsed() < NEARBY_TTL / 2,
+                        )
+                    })
+                };
+                let target = match known {
+                    Some((_, _, true)) => continue,
+                    Some((address, port, false)) => Some((address, port)),
+                    None => row
+                        .last_address
+                        .as_deref()
+                        .and_then(|a| a.parse::<IpAddr>().ok())
+                        .zip(row.last_port.and_then(|p| u16::try_from(p).ok())),
+                };
+                if let Some((address, port)) = target {
+                    shared.verify(address, port, row.fingerprint.clone());
+                }
+            }
+        });
     }
 
     // ---- 接口（server.rs 调用；peer_fp 来自 TLS 客户端证书） ----
@@ -1194,6 +1427,7 @@ impl Shared {
             LanRepository::delete(&self.pool, peer_fp)
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            self.end_inbound_from(peer_fp);
             self.logger
                 .info("LAN", &format!("「{}」取消了和本机的配对", row.alias));
             (self.emit)(LanEvent::PairedChanged);
@@ -1209,8 +1443,26 @@ async fn recv_loop(
     mut shutdown: watch::Receiver<bool>,
 ) {
     let mut buf = vec![0u8; 4096];
+    // 换了网络（连上别的 Wi-Fi、插上网线）后在新网卡上也加入组播
+    let mut joined: HashSet<Ipv4Addr> = discovery::local_ipv4().into_iter().collect();
+    let mut rejoin = tokio::time::interval(HEARTBEAT);
+    rejoin.tick().await;
     loop {
         tokio::select! {
+            _ = rejoin.tick() => {
+                for ip in discovery::local_ipv4() {
+                    if !joined.contains(&ip) {
+                        match socket.join_multicast_v4(protocol::MULTICAST_ADDR, ip) {
+                            Ok(()) => {
+                                tracing::info!(component = "LAN", %ip, "网络变了，在新网卡上接收广播");
+                                joined.insert(ip);
+                                shared.announce(true);
+                            }
+                            Err(e) => tracing::debug!(component = "LAN", %ip, error = %e, "新网卡加入组播失败"),
+                        }
+                    }
+                }
+            }
             r = socket.recv_from(&mut buf) => match r {
                 Ok((n, src)) => shared.on_datagram(&buf[..n], src.ip()),
                 Err(e) => {

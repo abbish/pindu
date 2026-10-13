@@ -321,6 +321,7 @@ pub fn run() {
                 refresh_nearby_devices,
                 add_device_by_address,
                 start_pairing,
+                confirm_pairing,
                 cancel_pairing,
                 respond_pair_request,
                 get_pending_pair_requests,

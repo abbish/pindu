@@ -65,13 +65,22 @@ export const SendToDeviceHost: React.FC<{ onNavigate: NavigateFn }> = ({ onNavig
 
   useEffect(() => {
     if (!request) return;
+    // 弹窗关掉或换了要发的内容后，旧的结果不再写进来
+    let stale = false;
     void Promise.all([lanService.getStatus(), lanService.getPairedDevices()]).then(([s, d]) => {
+      if (stale) return;
       setRunning(s.success ? s.data.running : false);
-      if (!d.success) return setError(d.error);
+      if (!d.success) {
+        setDevices([]);
+        return setError(d.error);
+      }
       setDevices(d.data);
       const online = d.data.filter((x) => x.online);
       if (online.length === 1) setTarget(online[0].fingerprint);
     });
+    return () => {
+      stale = true;
+    };
   }, [request]);
 
   const hasPlan = request?.items.some((i) => i.kind === 'plan') ?? false;

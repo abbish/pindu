@@ -36,6 +36,8 @@ export const LanSettings: React.FC = () => {
   const [nearby, setNearby] = useState<NearbyDevice[]>([]);
   const [saving, setSaving] = useState(false);
   const [pairing, setPairing] = useState<PairingStarted | null>(null);
+  /** 配对弹窗的进展：本机已确认数字 / 对方已同意 */
+  const [pairingState, setPairingState] = useState({ confirmed: false, remoteAccepted: false });
   const [pairingWith, setPairingWith] = useState<string | null>(null);
   const [unpairTarget, setUnpairTarget] = useState<PairedDevice | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -63,6 +65,10 @@ export const LanSettings: React.FC = () => {
   useEffect(() => {
     const off = listen<PairingResult>(LAN_EVENTS.pairingResult, ({ payload }) => {
       if (pairingRef.current?.pairingId !== payload.pairingId) return;
+      if (payload.outcome === 'remote_accepted') {
+        setPairingState((s) => ({ ...s, remoteAccepted: true }));
+        return;
+      }
       setPairing(null);
       if (payload.outcome === 'accepted') toast.showSuccess(`已和「${payload.alias}」配对`);
       else if (payload.outcome === 'rejected') toast.showInfo(`「${payload.alias}」没有同意配对`);
@@ -94,8 +100,20 @@ export const LanSettings: React.FC = () => {
     setPairingWith(device.fingerprint);
     const r = await lanService.startPairing(device.fingerprint);
     setPairingWith(null);
-    if (r.success) setPairing(r.data);
-    else toast.showError('无法配对', r.error);
+    if (r.success) {
+      setPairingState({ confirmed: false, remoteAccepted: false });
+      setPairing(r.data);
+    } else toast.showError('无法配对', r.error);
+  };
+
+  const confirmPairing = async () => {
+    if (!pairing) return;
+    setPairingState((s) => ({ ...s, confirmed: true }));
+    const r = await lanService.confirmPairing(pairing.pairingId);
+    if (!r.success) {
+      setPairing(null);
+      toast.showError('配对没有完成', r.error);
+    }
   };
 
   const cancelPairing = () => {
@@ -225,16 +243,21 @@ export const LanSettings: React.FC = () => {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>与「{pairing?.alias}」配对</DialogTitle>
-            <DialogDescription>请在「{pairing?.alias}」上确认看到的是这串数字。</DialogDescription>
+            <DialogDescription>两台电脑上显示的数字一致，才说明连上的是对方。</DialogDescription>
           </DialogHeader>
           {pairing && <PairingCode code={pairing.code} />}
-          <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            等待对方确认
-          </p>
+          {(pairingState.confirmed || pairingState.remoteAccepted) && (
+            <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              {pairingState.confirmed && <Loader2 className="size-4 animate-spin" />}
+              {pairingState.confirmed ? `等待「${pairing?.alias}」确认` : `「${pairing?.alias}」已确认，请核对数字`}
+            </p>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={cancelPairing}>
-              取消
+              数字不一致，取消
+            </Button>
+            <Button onClick={() => void confirmPairing()} disabled={pairingState.confirmed}>
+              数字一致
             </Button>
           </DialogFooter>
         </DialogContent>

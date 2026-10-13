@@ -84,6 +84,19 @@ pub async fn start_pairing(app: AppHandle, fingerprint: String) -> AppResult<Pai
     finish(&logger, cmd, result)
 }
 
+/// 发起方确认两边数字一致（对方也同意了才保存配对）
+#[tauri::command]
+pub async fn confirm_pairing(app: AppHandle, pairing_id: String) -> AppResult<()> {
+    let logger = app.state::<Logger>();
+    let cmd = "confirm_pairing";
+    logger.api_request(cmd, Some(&pairing_id));
+    let result = match node(&app) {
+        Ok(n) => n.confirm_pairing(&pairing_id).await,
+        Err(e) => Err(e),
+    };
+    finish(&logger, cmd, result)
+}
+
 #[tauri::command]
 pub async fn cancel_pairing(app: AppHandle, pairing_id: String) -> AppResult<()> {
     node(&app)?.cancel_pairing(&pairing_id);

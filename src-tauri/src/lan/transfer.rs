@@ -91,6 +91,29 @@ pub(super) struct Inbound {
     pub progress: Option<watch::Sender<u64>>,
     pub signals: Option<mpsc::UnboundedSender<Signal>>,
     pub job_id: Option<String>,
+    /// 正在写的文件：同一个文件同时只接受一个上传（发送方超时重试时旧连接可能还在写）
+    pub uploading: std::collections::HashSet<String>,
+}
+
+/// 占住一个正在写的文件，离开作用域时放开
+struct UploadSlot<'a> {
+    shared: &'a Shared,
+    transfer_id: String,
+    file_id: String,
+}
+
+impl Drop for UploadSlot<'_> {
+    fn drop(&mut self) {
+        if let Some(i) = self
+            .shared
+            .lock()
+            .inbound
+            .as_mut()
+            .filter(|i| i.transfer_id == self.transfer_id)
+        {
+            i.uploading.remove(&self.file_id);
+        }
+    }
 }
 
 type Reply<T> = Result<T, (StatusCode, String)>;
@@ -187,6 +210,7 @@ impl Shared {
                 progress: None,
                 signals: None,
                 job_id: None,
+                uploading: Default::default(),
             });
         }
         self.logger.info(
@@ -268,7 +292,7 @@ impl Shared {
                 kind: "lan_receive",
                 module: None,
                 title: format!("接收「{alias}」发来的内容"),
-                lane: Lane::Transfer,
+                lane: Lane::Receive,
                 detached: true,
                 link: None,
             },
@@ -442,6 +466,21 @@ impl Shared {
                 received: HashMap::from([(file.id.clone(), file.size)]),
             });
         }
+        let _slot = {
+            let mut st = self.lock();
+            let busy = match st.inbound.as_mut().filter(|i| i.transfer_id == transfer_id) {
+                Some(i) => !i.uploading.insert(file.id.clone()),
+                None => return Err(err(StatusCode::GONE, "传送已经结束或不存在")),
+            };
+            if busy {
+                return Err(err(StatusCode::CONFLICT, "这个文件正在接收"));
+            }
+            UploadSlot {
+                shared: self,
+                transfer_id: transfer_id.to_string(),
+                file_id: file.id.clone(),
+            }
+        };
         let part = dir.join(format!("{}.part", file.id));
         let current = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
         if offset != current {
@@ -764,8 +803,23 @@ impl LanNode {
                     wait,
                 )
                 .await;
+                let result = result.and_then(|(_, bytes)| {
+                    let got = serde_json::from_slice::<ReceivedFiles>(&bytes)
+                        .ok()
+                        .and_then(|r| r.received.get(&file.id).copied())
+                        .unwrap_or(0);
+                    if got >= file.size {
+                        Ok(())
+                    } else {
+                        // 对方只收到一部分（文件中途变了、连接提前结束）：当作中断，问进度后接着传
+                        Err(ClientError::Unreachable(format!(
+                            "对方只收到 {got} / {} 字节",
+                            file.size
+                        )))
+                    }
+                });
                 match result {
-                    Ok(_) => {
+                    Ok(()) => {
                         received.insert(file.id.clone(), file.size);
                         break;
                     }
@@ -794,9 +848,20 @@ impl LanNode {
                             });
                         }
                         tracing::warn!(component = "LAN", error = %e, attempt = attempts, "传送文件中断，接着传");
-                        tokio::time::sleep(Duration::from_secs(2)).await;
-                        // 问对方收到了多少，从那里接着传
-                        received = put_manifest().await?.received;
+                        // 问对方收到了多少，从那里接着传（问的时候网络也可能还没恢复：一起算在重试次数里）
+                        let mut asked = None;
+                        while attempts <= RETRIES {
+                            tokio::time::sleep(Duration::from_secs(2)).await;
+                            match put_manifest().await {
+                                Ok(r) => {
+                                    asked = Some(r.received);
+                                    break;
+                                }
+                                Err(e) if attempts >= RETRIES => return Err(e),
+                                Err(_) => attempts += 1,
+                            }
+                        }
+                        received = asked.ok_or_else(|| user_error(&e, alias))?;
                     }
                 }
             }

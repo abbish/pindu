@@ -86,7 +86,8 @@ pub struct LanPackageRepository;
 impl LanPackageRepository {
     pub async fn book(pool: &SqlitePool, id: Id) -> AppResult<Option<BookRow>> {
         Ok(sqlx::query(
-            "SELECT title, description, icon, icon_color FROM word_books WHERE id = ? AND deleted_at IS NULL",
+            // 已结束的计划可能用着已删除（软删除）的词汇本：照样能带上，对方收到的是正常的词汇本
+            "SELECT title, description, icon, icon_color FROM word_books WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(pool)
