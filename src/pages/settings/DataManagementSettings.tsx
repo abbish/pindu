@@ -102,8 +102,13 @@ export const DataManagementSettings: React.FC = () => {
       toast.showError('无法重置数据', result.error);
       return;
     }
+    // 全部重置后各页面缓存的内容都失效了：重新载入
+    if (resetScope === 'all') {
+      window.location.reload();
+      return;
+    }
     setResetDialog(CLOSED);
-    if (resetScope === 'selected') exitSelecting();
+    exitSelecting();
     await load();
     toast.showSuccess('已重置数据', `删除了 ${result.data.deleted_records} 条记录`);
   };
@@ -221,7 +226,7 @@ export const DataManagementSettings: React.FC = () => {
       )}
 
       <SettingsSection title="危险操作" tone="danger">
-        <SettingsRow label="重置所有用户数据" description="删除词汇本、计划和练习记录，保留 AI 模型与设置">
+        <SettingsRow label="重置所有用户数据" description="清空全部学习内容，保留 AI 服务、语音服务与设置">
           <Button variant="destructive" size="sm" onClick={() => openReset('all')} disabled={busy || loading}>
             重置…
           </Button>
@@ -263,11 +268,12 @@ export const DataManagementSettings: React.FC = () => {
                 <>
                   <p>将删除：</p>
                   <ul className="list-inside list-disc text-muted-foreground">
-                    <li>{countOf('word_books')} 个词汇本和其中的单词</li>
-                    <li>{countOf('study_plans')} 个学习计划和进度</li>
-                    <li>{countOf('practice_sessions')} 次练习的记录</li>
+                    <li>{countOf('word_books')} 个词汇本</li>
+                    <li>全部短文、{countOf('videos')} 个视频和场景片段</li>
+                    <li>{countOf('study_plans')} 个学习计划、全部练习与跟读记录</li>
+                    <li>AI 老师的对话</li>
                   </ul>
-                  <p className="font-medium">AI 模型与设置会保留。</p>
+                  <p className="font-medium">AI 服务、语音服务、设置、下载的模型和配对的设备会保留。</p>
                 </>
               )}
             </div>

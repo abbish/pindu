@@ -169,7 +169,7 @@ impl PromptProfile {
             tutor_quiz: true,
             learner_name: String::new(),
             tutor_character: String::new(),
-            ipa: "british".into(),
+            ipa: "american".into(),
             custom: HashMap::new(),
         };
         match name {
@@ -308,8 +308,8 @@ fn tutor_style_fragment(v: &str) -> &'static str {
 
 fn ipa_fragment(v: &str) -> &'static str {
     match v {
-        "american" => include_str!("prompts/fragments/ipa/american.md"),
-        _ => include_str!("prompts/fragments/ipa/british.md"),
+        "british" => include_str!("prompts/fragments/ipa/british.md"),
+        _ => include_str!("prompts/fragments/ipa/american.md"),
     }
 }
 

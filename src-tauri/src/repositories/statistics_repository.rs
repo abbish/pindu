@@ -17,6 +17,10 @@ use std::sync::Arc;
 ///
 /// 负责统计数据的数据访问逻辑,封装所有数据库操作
 /// 不能经「清空选中的表」清掉的表：迁移记录、AI / 语音配置、应用设置、配对过的设备
+/// 重置所有用户数据时也保留：朗读缓存（音频文件在缓存目录，与学习内容无关）、
+/// 标签名（含预置标签；素材上的标签随素材清空，没有素材的标签不出现在侧边栏）
+const KEPT_ON_RESET: [&str; 2] = ["tts_cache", "tags"];
+
 const PROTECTED_TABLES: [&str; 7] = [
     "_sqlx_migrations",
     "ai_providers",
@@ -264,22 +268,28 @@ impl StatisticsRepository {
         })
     }
 
-    /// 重置用户数据
+    /// 重置用户数据：清空全部学习内容（词汇本、计划、短文、视频、素材上的标签、练习与跟读记录等），
+    /// 只保留配置（AI 服务与模型、语音服务、设置、配对的设备）、标签名与朗读缓存
     pub async fn reset_user_data(&self) -> AppResult<ResetResult> {
-        let user_data_tables = vec![
-            "word_practice_records",
-            "practice_sessions",
-            "study_plan_words",
-            "study_plan_schedules",
-            "study_plans",
-            "words",
-            "word_books",
-        ];
+        let user_data_tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        )
+        .fetch_all(self.pool.as_ref())
+        .await?
+        .into_iter()
+        .filter(|name: &String| {
+            !PROTECTED_TABLES.contains(&name.as_str()) && !KEPT_ON_RESET.contains(&name.as_str())
+        })
+        .collect();
 
         let mut deleted_records = 0i64;
         let mut affected_tables = Vec::new();
 
         let mut tx = crate::services::srs::begin_write(&self.pool).await?;
+        // 表按名字顺序清空：外键到提交时再检查（那时子表也都清空了）
+        sqlx::query("PRAGMA defer_foreign_keys = ON")
+            .execute(&mut *tx)
+            .await?;
 
         for table_name in &user_data_tables {
             let count_query = format!("SELECT COUNT(*) as count FROM {}", table_name);
@@ -858,5 +868,50 @@ mod tests {
         assert_eq!(pct("2026-10-06"), 33.0);
         assert_eq!(pct("2026-10-07"), 67.0);
         assert_eq!(pct("2026-10-08"), 100.0);
+    }
+
+    #[tokio::test]
+    async fn reset_user_data_clears_all_learning_content_and_keeps_config() {
+        let pool = memory_pool().await;
+        let fx = seed_schedule(&pool, 2).await;
+        seed_session(&pool, &fx, "s1", true).await;
+        let now = "2026-10-13T00:00:00.000Z";
+        for sql in [
+            "INSERT INTO passages (id, title, sentences, target_words, level, word_count, created_at, updated_at) VALUES (1, 't', '[]', '[]', 'a1', 0, ?1, ?1)",
+            "INSERT INTO material_tags (kind, ref_id, tag_id, created_at) SELECT 'passage', 1, id, ?1 FROM tags LIMIT 1",
+            "INSERT INTO app_settings (key, value, updated_at) VALUES ('prompt.profile', '{}', ?1)",
+        ] {
+            sqlx::query(sql).bind(now).execute(pool.as_ref()).await.unwrap();
+        }
+        let count = |table: &'static str| {
+            let pool = pool.clone();
+            async move {
+                sqlx::query_scalar::<_, i64>(&format!("SELECT COUNT(*) FROM {table}"))
+                    .fetch_one(pool.as_ref())
+                    .await
+                    .unwrap()
+            }
+        };
+        let providers = count("ai_providers").await;
+        let settings = count("app_settings").await;
+        let tags = count("tags").await;
+
+        let repo = StatisticsRepository::new(pool.clone(), test_logger());
+        let result = repo.reset_user_data().await.unwrap();
+
+        assert!(result.success);
+        for table in [
+            "word_books",
+            "words",
+            "study_plans",
+            "practice_sessions",
+            "passages",
+            "material_tags",
+        ] {
+            assert_eq!(count(table).await, 0, "{table}");
+        }
+        assert_eq!(count("app_settings").await, settings);
+        assert_eq!(count("tags").await, tags);
+        assert_eq!(count("ai_providers").await, providers);
     }
 }

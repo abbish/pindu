@@ -689,6 +689,22 @@ impl TutorChatService {
         }
         Ok(())
     }
+
+    /// 删除全部对话（重置所有用户数据）：关掉进程，删除会话与资料夹，清掉置顶 / 归档
+    pub async fn delete_all(&self, paths: &AgentPaths, hub: &ChatHub) -> AppResult<()> {
+        for session in hub.sessions().await {
+            hub.close(&session.id).await;
+        }
+        hub.invalidate_list();
+        let root = paths.root.join("tutor");
+        for dir in [root.join("sessions"), root.join("files")] {
+            if dir.exists() {
+                std::fs::remove_dir_all(&dir)
+                    .map_err(|e| AppError::InternalError(format!("删除对话失败：{}", e)))?;
+            }
+        }
+        self.save_flags(&HashMap::new()).await
+    }
 }
 
 /// 刚发出第一句话、还没出现在 pi 会话列表里的对话

@@ -30,8 +30,8 @@ const LANGUAGES: Option[] = [
   { value: 'en', label: '英文为主' },
 ];
 const IPAS: Option[] = [
-  { value: 'british', label: '英式' },
   { value: 'american', label: '美式' },
+  { value: 'british', label: '英式' },
 ];
 const LENGTHS: Option[] = [
   { value: 'brief', label: '精简' },

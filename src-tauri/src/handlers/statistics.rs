@@ -2,9 +2,13 @@
 //!
 //! 包含所有与数据统计和管理相关的 Tauri 命令
 
+use crate::agent::chat::ChatHub;
 use crate::error::{AppError, AppResult};
+use crate::handlers::agent_paths;
+use crate::jobs::Jobs;
 use crate::logger::Logger;
 use crate::services::statistics::StatisticsService;
+use crate::services::tutor_chat::TutorChatService;
 use crate::types::*;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -77,7 +81,7 @@ pub async fn get_database_statistics(app: AppHandle) -> AppResult<DatabaseOvervi
     }
 }
 
-/// 重置用户数据（保留配置数据）
+/// 重置所有用户数据（初始化）：清空学习内容、视频文件与 AI 老师的对话，保留 AI 模型、语音服务、设置与配对的设备
 #[tauri::command]
 pub async fn reset_user_data(app: AppHandle) -> AppResult<ResetResult> {
     let pool = app.state::<SqlitePool>();
@@ -85,14 +89,42 @@ pub async fn reset_user_data(app: AppHandle) -> AppResult<ResetResult> {
 
     logger.api_request("reset_user_data", None);
 
-    let service = StatisticsService::new(
-        Arc::new(pool.inner().clone()),
-        Arc::new(logger.inner().clone()),
-    );
-
-    match service.reset_user_data().await {
+    let result = async {
+        let running = app.state::<Jobs>().active_titles();
+        if !running.is_empty() {
+            return Err(AppError::ValidationError(format!(
+                "还有后台任务在进行（{}），等它们结束或停止后再重置",
+                running.join("、")
+            )));
+        }
+        let pool = Arc::new(pool.inner().clone());
+        let log = Arc::new(logger.inner().clone());
+        let result = StatisticsService::new(pool.clone(), log.clone())
+            .reset_user_data()
+            .await?;
+        if !result.success {
+            return Ok(result);
+        }
+        // 数据库清空后再删文件：失败只记警告（剩下的文件不再被引用）
+        let hub = app.state::<ChatHub>().inner().clone();
+        if let Err(e) = TutorChatService::new(pool, log)
+            .delete_all(&agent_paths(&app)?, &hub)
+            .await
+        {
+            logger.warn("RESET", "删除 AI 老师的对话失败", Some(&e.to_string()));
+        }
+        let videos = crate::app_paths::dirs(&app).data.join("videos");
+        if videos.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&videos) {
+                logger.warn("RESET", "删除视频文件失败", Some(&e.to_string()));
+            }
+        }
+        Ok(result)
+    }
+    .await;
+    match result {
         Ok(result) => {
-            logger.api_response("reset_user_data", true, Some(&result.message));
+            logger.api_response("reset_user_data", result.success, Some(&result.message));
             Ok(result)
         }
         Err(e) => {
