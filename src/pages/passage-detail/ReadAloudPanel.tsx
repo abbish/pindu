@@ -91,11 +91,11 @@ const shuffle = <T,>(list: T[]) => {
   return copy;
 };
 
-/** 工具栏上的图标开关：悬停显示名字，开着时高亮 */
+/** 工具栏上的图标开关：悬停显示名字，开着时图标变主题色并带浅底（按 aria-pressed 上色：外面的 Tooltip 会覆盖 data-state） */
 const IconToggle: React.FC<{ label: string; pressed: boolean; onPressedChange: (on: boolean) => void; disabled?: boolean; children: React.ReactNode }> = ({ label, pressed, onPressedChange, disabled, children }) => (
   <Tooltip>
     <TooltipTrigger asChild>
-      <Toggle size="sm" className="size-8 p-0 data-[state=on]:bg-accent data-[state=on]:text-accent-foreground" pressed={pressed} onPressedChange={onPressedChange} disabled={disabled} aria-label={label}>
+      <Toggle size="sm" className="size-8 p-0 text-muted-foreground aria-pressed:bg-primary/10 aria-pressed:text-primary hover:aria-pressed:bg-primary/15" pressed={pressed} onPressedChange={onPressedChange} disabled={disabled} aria-label={label}>
         {children}
       </Toggle>
     </TooltipTrigger>
