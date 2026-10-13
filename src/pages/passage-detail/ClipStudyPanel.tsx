@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Ear, Eye, Mic, Pause, Play, Settings2 } from 'lucide-react';
+import { Ear, Eye, Languages, Mic, Pause, Play, Settings2 } from 'lucide-react';
+import { IconToggle } from '@/components/IconToggle';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -318,6 +320,17 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
                 ))}
               </SelectContent>
             </Select>
+            {/* 场景学习时译文常开常关，放在外面；其余设一次就不动的在 ⚙ 里 */}
+            {mode === 'study' && (
+              <IconToggle
+                label="译文"
+                pressed={prefs.translation !== 'off'}
+                onPressedChange={(on) => updatePrefs({ translation: on ? 'all' : 'off' })}
+                disabled={!prefs.showText}
+              >
+                <Languages />
+              </IconToggle>
+            )}
             {mode !== 'listen' && <PrefsPopover mode={mode} prefs={prefs} onChange={updatePrefs} />}
           </div>
         </div>
@@ -488,12 +501,16 @@ const ClipTimeline: React.FC<{
 /** 练习设置：画面字幕；场景学习另有台词显示、翻译、聚焦、每句后暂停 */
 const PrefsPopover: React.FC<{ mode: Mode; prefs: ClipPrefs; onChange: (patch: Partial<ClipPrefs>) => void }> = ({ mode, prefs, onChange }) => (
   <Popover>
-    <PopoverTrigger asChild>
-      <Button variant="ghost" size="sm">
-        <Settings2 />
-        练习设置
-      </Button>
-    </PopoverTrigger>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="icon" className="size-8" aria-label="练习设置">
+            <Settings2 />
+          </Button>
+        </PopoverTrigger>
+      </TooltipTrigger>
+      <TooltipContent>练习设置</TooltipContent>
+    </Tooltip>
     <PopoverContent align="end" className="w-72 space-y-4">
       <Row label="画面字幕">
         <Select value={prefs.subtitles} onValueChange={(v) => onChange({ subtitles: v as Subtitles })}>
@@ -513,15 +530,14 @@ const PrefsPopover: React.FC<{ mode: Mode; prefs: ClipPrefs; onChange: (patch: P
           <Row label="显示台词列表" htmlFor="cs-text">
             <Switch id="cs-text" checked={prefs.showText} onCheckedChange={(showText) => onChange({ showText })} />
           </Row>
-          <Row label="译文">
-            <Select value={prefs.translation} onValueChange={(v) => onChange({ translation: v as TranslationMode })} disabled={!prefs.showText}>
+          <Row label="译文显示">
+            <Select value={prefs.translation === 'current' ? 'current' : 'all'} onValueChange={(v) => onChange({ translation: v as TranslationMode })} disabled={!prefs.showText || prefs.translation === 'off'}>
               <SelectTrigger size="sm" className="w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部</SelectItem>
                 <SelectItem value="current">当前句</SelectItem>
-                <SelectItem value="off">不显示</SelectItem>
               </SelectContent>
             </Select>
           </Row>

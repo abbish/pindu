@@ -8,7 +8,7 @@ import { SayText, SayVerdict } from './SayText';
 
 /**
  * 原文每句后面的「跟读」（在句子分析图标左边）：点一下跟读这一句，读完本机评估，结果留在这句下面（逐词标色 + 三档 + 怎么读）。
- * 同一时间只录一句；再点正在录的那句是结束。设置里关掉跟读评估时不显示。
+ * 同一时间只录一句；录音中再点（这句或别的句子）是停止。设置里关掉跟读评估时不显示。
  * `onStart`：开始录音前调用（停掉正在放的原音 / 朗读，免得录进去）。
  * 返回 `action(i)`（放进句子行的按钮）与 `below(i)`（句子下面的状态 / 结果）。
  */
@@ -47,10 +47,8 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
       if (!say.downloading) void say.download();
       return;
     }
-    if (recording) {
-      recorder.stop();
-      if (saying === i) return;
-    }
+    // 录音中点任何一句都是先停下（再点一次才开始那一句），不会一下停一下开
+    if (recording) return recorder.stop();
     onStart?.();
     say.reset();
     setSaying(i);

@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
-import { Toggle } from '@/components/ui/toggle';
+import { IconToggle } from '@/components/IconToggle';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PassageReader, type TranslationMode } from '@/components/PassageReader';
@@ -90,18 +90,6 @@ const shuffle = <T,>(list: T[]) => {
   }
   return copy;
 };
-
-/** 工具栏上的图标开关：悬停显示名字，开着时图标变主题色并带浅底（按 aria-pressed 上色：外面的 Tooltip 会覆盖 data-state） */
-const IconToggle: React.FC<{ label: string; pressed: boolean; onPressedChange: (on: boolean) => void; disabled?: boolean; children: React.ReactNode }> = ({ label, pressed, onPressedChange, disabled, children }) => (
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <Toggle size="sm" className="size-8 p-0 text-muted-foreground aria-pressed:bg-primary/10 aria-pressed:text-primary hover:aria-pressed:bg-primary/15" pressed={pressed} onPressedChange={onPressedChange} disabled={disabled} aria-label={label}>
-        {children}
-      </Toggle>
-    </TooltipTrigger>
-    <TooltipContent>{label}</TooltipContent>
-  </Tooltip>
-);
 
 /** 一段设置：标题 + 分段选择 */
 const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (

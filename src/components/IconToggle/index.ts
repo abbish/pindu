@@ -1,0 +1,1 @@
+export { IconToggle } from './IconToggle';

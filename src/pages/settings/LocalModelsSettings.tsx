@@ -136,6 +136,18 @@ const MediaToolsSection: React.FC = () => {
   );
 };
 
+/** 各模型的读取 / 下载 / 删除（固定的函数，ModelRow 的 effect 不会因为每次渲染换了函数而重复读取） */
+const pronunciationModel = {
+  load: () => pronunciationService.status(),
+  start: () => pronunciationService.startDownload(),
+  remove: () => pronunciationService.deleteModel(),
+};
+const dictationModel = {
+  load: () => dictationService.status(),
+  start: () => dictationService.startDownload(),
+  remove: () => dictationService.deleteModel(),
+};
+
 /**
  * 设置「本机模型」：在这台电脑上运行的模型与组件，按需下载、可以删除——
  * 字幕识别（视频没有字幕时）、发音评估（跟读评分）、语音输入（说话转文字）、视频组件（ffmpeg）。
@@ -147,9 +159,7 @@ export const LocalModelsSettings: React.FC = () => (
       <ModelRow
         label="评估模型"
         kind="pronunciation_model"
-        load={pronunciationService.status.bind(pronunciationService)}
-        start={pronunciationService.startDownload.bind(pronunciationService)}
-        remove={pronunciationService.deleteModel.bind(pronunciationService)}
+        {...pronunciationModel}
         onChanged={invalidatePronunciationCache}
       />
     </SettingsSection>
@@ -157,9 +167,7 @@ export const LocalModelsSettings: React.FC = () => (
       <ModelRow
         label="识别模型"
         kind="dictation_model"
-        load={dictationService.status.bind(dictationService)}
-        start={dictationService.startDownload.bind(dictationService)}
-        remove={dictationService.deleteModel.bind(dictationService)}
+        {...dictationModel}
       />
     </SettingsSection>
     <MediaToolsSection />
