@@ -19,6 +19,8 @@ use tauri::{AppHandle, Manager};
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PronunciationStatus {
+    /// 这台电脑能运行本机模型（ONNX Runtime 加载得了）；不能时不显示跟读评估
+    pub supported: bool,
     /// 模型已下载，可以评估
     pub ready: bool,
     /// 模型大小（字节），给「需要下载约 71MB」用
@@ -82,6 +84,7 @@ pub async fn get_pronunciation_status(app: AppHandle) -> AppResult<Pronunciation
     let result = PronunciationSettingsService::get(&app.state::<SqlitePool>())
         .await
         .map(|settings| PronunciationStatus {
+            supported: crate::onnx_runtime::available(),
             ready: model::ready(&data_dir(&app)),
             model_bytes: model::BYTES,
             download_job: running_download(&app),

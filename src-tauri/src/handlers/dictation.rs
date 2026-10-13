@@ -14,6 +14,8 @@ const DOWNLOAD_KIND: &str = "dictation_model";
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DictationStatus {
+    /// 这台电脑能运行本机模型（ONNX Runtime 加载得了）；不能时不显示说话输入
+    pub supported: bool,
     /// 模型已下载，可以说话输入
     pub ready: bool,
     /// 模型大小（字节）
@@ -48,6 +50,7 @@ pub async fn get_dictation_status(app: AppHandle) -> AppResult<DictationStatus> 
     let logger = app.state::<Logger>();
     logger.api_request("get_dictation_status", None);
     let status = DictationStatus {
+        supported: crate::onnx_runtime::available(),
         ready: dictation::ready(&data_dir(&app)),
         model_bytes: dictation::BYTES,
         download_job: running_download(&app),

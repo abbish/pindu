@@ -49,7 +49,7 @@ WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved. 只取�
 
 | 组件 | 版本 | 许可证 | 来源 |
 |---|---|---|---|
-| ONNX Runtime | 1.28.0（经 ort 2.0.0-rc.13 静态链接） | MIT（`onnxruntime-MIT.txt`） | https://github.com/microsoft/onnxruntime |
+| ONNX Runtime | 微软官方预编译库随应用分发：Apple 芯片与 Windows 1.28.3，Intel Mac 1.23.2 | MIT（`onnxruntime-MIT.txt`） | https://github.com/microsoft/onnxruntime |
 | ZIPA small CTC 音素识别模型（int8 ONNX） | zipa-small-crctc-500k | CC-BY-4.0 | https://huggingface.co/anyspeech/zipa-small-crctc-500k |
 | CMU 发音词典 | cmudict（2015 版起） | BSD-2-Clause（`cmudict-BSD-2-Clause.txt`） | https://github.com/cmusphinx/cmudict |
 

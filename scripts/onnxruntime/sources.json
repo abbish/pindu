@@ -1,0 +1,31 @@
+{
+  "_comment": "随应用分发的 ONNX Runtime（发音评估、语音输入）：微软官方预编译库（固定版本 + sha256）。发音评分按 1.28 的计算结果校准（与 1.23 的 int8 结果有差别），所以 Apple 芯片与 Windows 用 1.28.3；微软从 1.24 起不再发布 Intel Mac 版，Intel 只能用 1.23.2。Mac 把两个架构合成一个通用库。Cargo.toml 的 ort 用 api-23（两个版本都支持）。",
+  "license": "MIT",
+  "packages": {
+    "macos-arm64": {
+      "version": "1.28.3",
+      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.28.3/onnxruntime-osx-arm64-1.28.3.tgz",
+      "sha256": "c436bd9f47dbce6f6311ccc21de97f829b3c862c09d24aa321958cb72f0a1d32",
+      "lib": "onnxruntime-osx-arm64-1.28.3/lib/libonnxruntime.1.28.3.dylib"
+    },
+    "macos-x86_64": {
+      "version": "1.23.2",
+      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-osx-universal2-1.23.2.tgz",
+      "sha256": "49ae8e3a66ccb18d98ad3fe7f5906b6d7887df8a5edd40f49eb2b14e20885809",
+      "lib": "onnxruntime-osx-universal2-1.23.2/lib/libonnxruntime.1.23.2.dylib",
+      "arch": "x86_64"
+    },
+    "windows-x86_64": {
+      "version": "1.28.3",
+      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.28.3/onnxruntime-win-x64-1.28.3.zip",
+      "sha256": "1d6fab48e85f948436af7c8c971d2c145cf224e2c444755dec894f8b0de11a83",
+      "lib": "onnxruntime-win-x64-1.28.3/lib/onnxruntime.dll"
+    },
+    "windows-aarch64": {
+      "version": "1.28.3",
+      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.28.3/onnxruntime-win-arm64-1.28.3.zip",
+      "sha256": "76d5e5a23fb7fdbc2ca0c3214bad1b58b2a41016c7052e74e60ed8004bea71b1",
+      "lib": "onnxruntime-win-arm64-1.28.3/lib/onnxruntime.dll"
+    }
+  }
+}

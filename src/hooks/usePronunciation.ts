@@ -7,7 +7,7 @@ import { recordingToPcmBase64 } from '@/utils/audioPcm';
 import { strictnessFor } from '@/utils/pronunciation';
 
 /** 模型状态与设置在页面间共用：下载好以后不用每次再查 */
-let cached: { ready: boolean; settings: PronunciationSettings; modelBytes: number } | null = null;
+let cached: { ready: boolean; supported: boolean; settings: PronunciationSettings; modelBytes: number } | null = null;
 let cachedLearner: string | undefined;
 /** 同一时间很多个一起挂载时（练一练的一组词）只查一次 */
 let loading: { at: number; status: ReturnType<typeof pronunciationService.status>; profile: ReturnType<typeof promptProfileService.getProfile> } | null = null;
@@ -40,6 +40,8 @@ const fresh = () => {
 export function usePronunciation(context?: PronunciationContext) {
   const [ready, setReady] = useState<boolean | null>(cached?.ready ?? null);
   const [settings, setSettings] = useState<PronunciationSettings | null>(cached?.settings ?? null);
+  /** 这台电脑能不能运行本机模型（不能时跟读评估整个不出现） */
+  const [supported, setSupported] = useState<boolean>(cached?.supported ?? true);
   const [learner, setLearner] = useState<string | undefined>(cachedLearner);
   const [downloadJob, setDownloadJob] = useState<string | null>(null);
   const downloading = useJob(downloadJob);
@@ -63,7 +65,8 @@ export function usePronunciation(context?: PronunciationContext) {
     const { status, profile } = fresh();
     void status.then((r) => {
       if (!r.success) return;
-      cached = { ready: r.data.ready, settings: r.data.settings, modelBytes: r.data.modelBytes };
+      cached = { ready: r.data.ready, supported: r.data.supported, settings: r.data.settings, modelBytes: r.data.modelBytes };
+      setSupported(r.data.supported);
       setReady(r.data.ready);
       setSettings(r.data.settings);
       if (r.data.downloadJob) setDownloadJob(r.data.downloadJob);
@@ -132,7 +135,7 @@ export function usePronunciation(context?: PronunciationContext) {
     }
   }, []);
 
-  const enabled = settings?.enabled ?? false;
+  const enabled = (settings?.enabled ?? false) && supported;
   const strictness = strictnessFor(learner, settings?.strictness);
   const showScore = learner !== undefined && learner !== 'primary';
   const modelBytes = cached?.modelBytes ?? 0;

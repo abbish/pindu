@@ -106,6 +106,7 @@ fn engine_lock() -> MutexGuard<'static, Option<Engine>> {
 }
 
 fn load(data_dir: &Path) -> AppResult<Engine> {
+    crate::onnx_runtime::ensure()?;
     // 检查过之后模型被删了：按没下载处理，界面会引导重新下载
     let fail = |e: String| {
         if ready(data_dir) {

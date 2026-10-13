@@ -133,6 +133,9 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
             ? '正在转文字…'
             : label;
 
+  // 这台电脑运行不了本机模型：不显示说话输入
+  if (status && !status.supported) return null;
+
   return (
     <Tooltip open={problem || recording || downloading ? true : undefined}>
       <TooltipTrigger asChild>

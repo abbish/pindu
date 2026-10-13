@@ -80,6 +80,7 @@ pub fn log_probs(model: &Path, samples: &[f32]) -> AppResult<(usize, usize, Vec<
         *t = Some(std::time::Instant::now());
     }
     if guard.is_none() {
+        crate::onnx_runtime::ensure()?;
         // 检查过之后模型被删了（设置里点了删除）：按没下载处理，界面会引导重新下载
         let load = |e: String| {
             if model.exists() {

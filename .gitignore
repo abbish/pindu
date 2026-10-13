@@ -72,6 +72,8 @@ pids
 
 # agent sidecar 编译产物（npm run agent:build 生成）
 src-tauri/binaries/
+# 随应用分发的 ONNX Runtime（scripts/onnxruntime/prepare.mjs 下载）
+src-tauri/resources/onnxruntime/
 
 # Claude Code：个人本地设置、跨会话工作记录与验证日志（只在本机）
 .claude/settings.local.json

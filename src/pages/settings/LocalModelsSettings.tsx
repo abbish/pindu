@@ -19,6 +19,8 @@ import { formatBytes } from '@/utils/fileSize';
 import { SpeechModelSection } from './SpeechModelSection';
 
 interface ModelState {
+  /** 这台电脑能运行本机模型 */
+  supported: boolean;
   ready: boolean;
   modelBytes: number;
 }
@@ -73,6 +75,8 @@ const ModelRow: React.FC<{
             <Progress value={jobPercent(downloading)} className="h-1 w-40" aria-label={`下载${label}进度`} />
             {downloading.status === 'queued' ? '等待中' : `下载中 ${Math.floor(jobPercent(downloading))}%`}
           </span>
+        ) : !state.supported ? (
+          '这台电脑上用不了（需要 macOS 13.4 以上或 Windows）'
         ) : state.ready ? (
           '已下载'
         ) : (
@@ -80,7 +84,7 @@ const ModelRow: React.FC<{
         )
       }
     >
-      {downloading ? (
+      {!state.supported && !state.ready ? null : downloading ? (
         <Button variant="outline" size="sm" onClick={() => void jobService.cancel(downloading.id)}>
           停止
         </Button>

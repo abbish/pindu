@@ -41,8 +41,9 @@ log = { version = "0.4", features = ["std"] }
 
 sha2 = "0.11"
 base64 = "0.23"
-# 本机发音评估（pronunciation/）：ONNX Runtime 跑发音模型，预编译库静态链接
-ort = "=2.0.0-rc.13"
+# 本机发音评估（pronunciation/）与语音输入（dictation.rs）：ONNX Runtime 跑模型。不链接，运行时加载随应用分发的
+# 微软官方库（scripts/onnxruntime/，1.23.2：最后一个有 Intel / 通用 Mac 版的版本，所以 API 用到 23），见 onnx_runtime.rs
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "tracing", "load-dynamic", "api-23"] }
 encoding_rs = "0.8"
 quick-xml = "0.42"
 zip = { version = "9.0.1", default-features = false, features = ["deflate"] }

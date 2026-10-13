@@ -231,7 +231,8 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const [saySettings, setSaySettings] = useState<PronunciationSettings | null>(null);
   useEffect(() => {
     void promptProfileService.getProfile().then((r) => r.success && setLearner(r.data.learner));
-    void pronunciationService.status().then((r) => r.success && setSaySettings(r.data.settings));
+    // 这台电脑运行不了本机模型时按关掉跟读处理
+    void pronunciationService.status().then((r) => r.success && setSaySettings(r.data.supported ? r.data.settings : { ...r.data.settings, enabled: false }));
   }, []);
   const examples = currentWord?.examples ?? [];
   const writing = stage === 'write';

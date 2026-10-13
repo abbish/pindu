@@ -1,6 +1,8 @@
 /** 本机发音评估（对应 src-tauri/src/pronunciation 与 handlers/pronunciation.rs，camelCase） */
 
 export interface PronunciationStatus {
+  /** 这台电脑能运行本机模型；不能时不显示跟读评估 */
+  supported: boolean;
   /** 模型已下载，可以评估 */
   ready: boolean;
   /** 模型大小（字节） */
@@ -88,6 +90,8 @@ export interface Assessment {
 
 /** 语音输入（本机把说的话转成文字，中英文都认） */
 export interface DictationStatus {
+  /** 这台电脑能运行本机模型；不能时不显示说话输入 */
+  supported: boolean;
   /** 模型已下载 */
   ready: boolean;
   /** 模型大小（字节） */

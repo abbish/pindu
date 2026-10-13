@@ -79,6 +79,10 @@ if [[ -d agent/node_modules ]]; then
   if ! ls src-tauri/binaries/whisper-cli-* >/dev/null 2>&1; then
     run "whisper-cli 编译（缺失时）" node scripts/whisper/prepare.mjs
   fi
+  # 发音评估、语音输入用的 ONNX Runtime（scripts/onnxruntime/，只分发 macOS / Windows；Windows 打包配置引用了它）
+  if ! ls src-tauri/resources/onnxruntime/*onnxruntime* >/dev/null 2>&1; then
+    run "ONNX Runtime 下载（缺失时）" node scripts/onnxruntime/prepare.mjs
+  fi
 else
   skip "agent 检查" "agent/node_modules 未安装（npm run agent:install）"
 fi

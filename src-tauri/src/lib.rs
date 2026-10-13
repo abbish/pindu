@@ -16,6 +16,7 @@ mod media_server;
 #[cfg(target_os = "macos")]
 mod menu;
 mod model_download;
+mod onnx_runtime;
 mod process;
 mod pronunciation;
 mod repositories;
@@ -157,6 +158,8 @@ pub fn run() {
             app.manage(startup::StartupState::default());
             app.manage(logger.clone());
             app.manage(dirs.clone());
+            // 发音评估、语音输入用的 ONNX Runtime：记下随应用分发的库在哪（第一次用时才加载）
+            onnx_runtime::locate(app.path().resource_dir().ok());
 
             // 视频库的文件经本机媒体服务给播放器（media_server.rs）；启动失败只影响视频播放
             match tauri::async_runtime::block_on(media_server::MediaServer::start(
