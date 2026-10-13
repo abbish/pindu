@@ -97,14 +97,14 @@ const ModelRow: React.FC<{
   );
 };
 
-/** 视频组件（ffmpeg / ffprobe）：默认用自带的；不可用时可以指定别的文件夹 */
+/** 视频组件（ffmpeg / ffprobe）：随应用内置，能用时不显示；不可用或改用了别的文件夹时才出现 */
 const MediaToolsSection: React.FC = () => {
   const toast = useToast();
   const [media, setMedia] = useState<MediaToolsStatus | null>(null);
   useEffect(() => {
     void videoService.getMediaToolsStatus().then((r) => r.success && setMedia(r.data));
   }, []);
-  if (!media) return null;
+  if (!media || (media.available && media.builtIn)) return null;
   const pick = async () => {
     const dir = await openFileDialog({ directory: true, multiple: false, title: '选择 ffmpeg 和 ffprobe 所在的文件夹' });
     if (typeof dir !== 'string') return;
@@ -117,22 +117,19 @@ const MediaToolsSection: React.FC = () => {
     if (result.success) setMedia(result.data);
     else toast.showError('无法改用自带的视频组件', result.error);
   };
-  const builtIn = media.available && media.builtIn;
   return (
     <SettingsSection title="视频组件">
-      <SettingsRow label="ffmpeg" description={builtIn ? '内置' : media.available ? (media.dir ?? undefined) : '没有找到'}>
+      <SettingsRow label="ffmpeg" description={media.available ? (media.dir ?? undefined) : '没有找到'}>
         <div className="flex gap-2">
-          {media.available && !media.builtIn && (
+          {media.available && (
             <Button variant="ghost" size="sm" onClick={() => void reset()}>
               使用内置组件
             </Button>
           )}
-          {!builtIn && (
-            <Button variant="outline" size="sm" onClick={() => void pick()}>
-              <FolderOpen />
-              选择文件夹
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={() => void pick()}>
+            <FolderOpen />
+            选择文件夹
+          </Button>
         </div>
       </SettingsRow>
     </SettingsSection>
