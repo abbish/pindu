@@ -346,7 +346,10 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               highlightForms={forms}
               focusBlur={prefs.focusBlur}
               hidden={!prefs.showText}
+              playState={active >= 0 ? { index: active, playing } : null}
               onPlaySentence={(i) => {
+                // 正在播这句：暂停
+                if (playing && active === i) return pause();
                 seek(startOf(sentences[i]));
                 stopAt.current = null;
                 playingSentence.current = i;

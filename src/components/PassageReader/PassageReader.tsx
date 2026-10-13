@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ScanText, Volume2 } from 'lucide-react';
+import { Pause, Play, ScanText, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { activeWordIndex, targetSpans, tokenize, type TargetForms, type TargetSpan } from '@/utils/passage';
 import type { WordTiming } from '@/services/ttsService';
@@ -26,6 +26,8 @@ export interface PassageReaderProps {
   timeNowMs?: () => number | null;
   /** 点击句子朗读这一句；不传则句子不可点 */
   onPlaySentence?: (index: number) => void;
+  /** 停在哪一句、在不在播：这句的句首图标显示暂停（在播，点了暂停）或播放（暂停了，点了接着读） */
+  playState?: { index: number; playing: boolean } | null;
   /** 自定义一句英文的渲染（如选词填空的空位、听后回忆的空位）；返回 undefined 时按默认渲染 */
   renderSentence?: (index: number) => React.ReactNode | undefined;
   /** 包装目标词（如点击弹出单词卡片）；`active` 为正在读到这个词 */
@@ -168,6 +170,7 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
   words,
   timeNowMs,
   onPlaySentence,
+  playState,
   renderSentence,
   renderTarget,
   hidden,
@@ -227,19 +230,25 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
             className={cn('group flex items-start gap-2 rounded-md px-2 py-1 transition-colors', s.paragraph && i > 0 && 'mt-3', active && 'bg-accent py-2', onPlaySentence && !active && 'hover:bg-muted/60', analyzing === i && 'ring-2 ring-primary/40')}
             aria-current={active ? 'true' : undefined}
           >
-            {onPlaySentence && (
-              <button
-                type="button"
-                onClick={() => onPlaySentence(i)}
-                aria-label={`朗读第 ${i + 1} 句`}
-                className={cn(
-                  'mt-1.5 shrink-0 rounded-sm text-muted-foreground opacity-0 outline-none transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                  active && 'mt-2 text-primary opacity-100'
-                )}
-              >
-                <Volume2 className={cn('size-4', active && 'size-5')} />
-              </button>
-            )}
+            {onPlaySentence && (() => {
+              const here = playState?.index === i ? playState : null;
+              const Icon = here ? (here.playing ? Pause : Play) : Volume2;
+              return (
+                <button
+                  type="button"
+                  onClick={() => onPlaySentence(i)}
+                  aria-label={here ? (here.playing ? '暂停' : `从第 ${i + 1} 句接着读`) : `朗读第 ${i + 1} 句`}
+                  title={here ? (here.playing ? '暂停' : '接着读') : undefined}
+                  className={cn(
+                    'mt-1.5 shrink-0 rounded-sm text-muted-foreground opacity-0 outline-none transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                    (active || here) && 'text-primary opacity-100',
+                    active && 'mt-2'
+                  )}
+                >
+                  <Icon className={cn('size-4', active && 'size-5')} />
+                </button>
+              );
+            })()}
             <div
               className={cn(
                 'min-w-0 flex-1',

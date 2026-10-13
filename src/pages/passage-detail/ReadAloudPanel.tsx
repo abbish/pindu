@@ -543,9 +543,13 @@ export const ReadAloudPanel: React.FC<{
         words={player.words}
         timeNowMs={player.timeNowMs}
         onPlaySentence={(i) => {
+          // 正在读这句：暂停；暂停在这句：从这句接着读；别的句子：读这一句
+          if (player.current === i && player.playing) return stopAll();
+          if (player.current === i) return player.play(i);
           stopAll();
           player.play(i, true);
         }}
+        playState={player.current != null && !recall ? { index: player.current, playing: player.playing } : null}
         hidden={blind}
         focusBlur={prefs.focusBlur}
         renderSentence={renderRecallSentence}
