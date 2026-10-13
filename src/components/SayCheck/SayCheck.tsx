@@ -150,7 +150,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
   } else {
     action = recording ? (
       <Button variant="outline" size="lg" onClick={recorder.stop} aria-label="停止录音">
-        <Square className="text-destructive" />
+        <Square className="fill-current text-destructive" />
         {recorder.state === 'arming' ? '准备…' : '停止'}
         <span className="flex h-4 items-end gap-0.5" aria-hidden>
           {recorder.live.slice(-8).map((v, i) => (

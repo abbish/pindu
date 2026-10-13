@@ -141,9 +141,9 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
           className={cn('size-8', className)}
           disabled={disabled || busy || Boolean(downloading) || ready === null}
           onClick={() => void click()}
-          aria-label={recording ? '说完了' : label}
+          aria-label={recording ? '停止' : label}
         >
-          {busy || downloading ? <Loader2 className="animate-spin" /> : recording ? <Square className="text-destructive" /> : <Mic />}
+          {busy || downloading ? <Loader2 className="animate-spin" /> : recording ? <Square className="fill-current text-destructive" /> : <Mic />}
         </Button>
       </TooltipTrigger>
       <TooltipContent>{tip}</TooltipContent>

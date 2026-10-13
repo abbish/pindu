@@ -217,7 +217,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
         <div className="space-y-1">
           {recording || arming ? (
             <Button variant="destructive" className="w-full" onClick={recorder.stop} disabled={arming}>
-              <Square />
+              <Square className="fill-current" />
               停止
             </Button>
           ) : (

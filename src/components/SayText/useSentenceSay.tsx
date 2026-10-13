@@ -61,7 +61,7 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     if (!say.enabled) return null;
     const active = saying === i;
     const busy = active && (say.assessing || recorder.state === 'arming');
-    const label = say.ready === false ? (say.downloading ? '正在下载评估模型' : '跟读（先下载评估模型）') : active && recording ? '读完了' : '跟读';
+    const label = say.ready === false ? (say.downloading ? '正在下载评估模型' : '跟读（先下载评估模型）') : active && recording ? '停止' : '跟读';
     return (
       <button
         type="button"
@@ -75,7 +75,7 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
           active && recording && 'text-destructive hover:text-destructive'
         )}
       >
-        {busy || (say.downloading && say.ready === false) ? <Loader2 className="size-4 animate-spin" /> : active && recording ? <Square className="size-4" /> : <Mic className="size-4" />}
+        {busy || (say.downloading && say.ready === false) ? <Loader2 className="size-4 animate-spin" /> : active && recording ? <Square className="size-3.5 fill-current" /> : <Mic className="size-4" />}
       </button>
     );
   };

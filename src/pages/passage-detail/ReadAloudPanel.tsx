@@ -400,8 +400,8 @@ export const ReadAloudPanel: React.FC<{
               ))}
             </span>
             <Button variant="ghost" size="sm" className="ml-auto h-7" onClick={recorder.stop}>
-              <Square />
-              读完了
+              <Square className="fill-current" />
+              停止
             </Button>
           </div>
         ) : active && say.assessing ? (
