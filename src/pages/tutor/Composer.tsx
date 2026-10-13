@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { ArrowUp, Clock, FileText, Paperclip, Pencil, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { MicButton } from '@/components/MicButton';
 import { useToast } from '@/components';
 import { AI_MATERIAL_EXTENSIONS, IMPORT_FILE_EXTENSIONS, IMPORT_MAX_FILE_BYTES } from '@/utils/passageImport';
 import { imageMime, type Attachment } from './useTutorChat';
@@ -177,7 +178,7 @@ export const Composer: React.FC<{
             ))}
           </div>
         )}
-        {/* 一行：添加文件 · 输入框（随内容长高） · 发送 / 停止 */}
+        {/* 一行：添加文件 · 输入框（随内容长高） · 用英语说 · 发送 / 停止 */}
         <div className="flex items-end gap-1">
           <Button
             size="icon"
@@ -217,6 +218,7 @@ export const Composer: React.FC<{
             rows={1}
             className="max-h-60 min-h-8 flex-1 resize-none border-0 px-1 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
+          <MicButton className="shrink-0" label="用英语说" onText={(text) => onDraft(draft.trim() ? `${draft.trimEnd()} ${text}` : text)} />
           {running && !canSend ? (
             <Button size="icon" className="size-8 shrink-0" onClick={onStop} aria-label="停止" title="停止">
               <Square className="size-3.5 fill-current" />

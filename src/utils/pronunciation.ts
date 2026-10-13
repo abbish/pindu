@@ -206,3 +206,75 @@ export function sentenceTips(words: WordAssessment[], strictness: Strictness, ma
     .slice(0, max)
     .map(({ w, flagged }) => ({ word: w.word, tip: phoneTip(flagged[0]) }));
 }
+
+/** 听后复述：原句的每个词有没有说出来 */
+export interface RetellPiece {
+  text: string;
+  /** 是词时：说出来了没有（标点空格为 null） */
+  hit: boolean | null;
+}
+
+/** 比较用：小写、去掉撇号（where's 与 wheres 算同一个） */
+const norm = (w: string) => w.toLowerCase().replace(/['’]/g, '');
+
+/** 原句与说出的话逐词对照（最长公共子序列，不分大小写、忽略标点与撇号）；hits / total 是说对的词数 */
+export function retellDiff(original: string, said: string): { pieces: RetellPiece[]; hits: number; total: number } {
+  const tokens = [...original.matchAll(WORD_RE)].filter((m) => /\p{L}/u.test(m[0]));
+  const a = tokens.map((m) => norm(m[0]));
+  const b = [...said.matchAll(WORD_RE)].map((m) => norm(m[0])).filter(Boolean);
+  const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const hit = new Array<boolean>(a.length).fill(false);
+  for (let i = 0, j = 0; i < a.length && j < b.length; ) {
+    if (a[i] === b[j]) {
+      hit[i] = true;
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+    else j++;
+  }
+  const pieces: RetellPiece[] = [];
+  let last = 0;
+  tokens.forEach((m, k) => {
+    const at = m.index ?? 0;
+    if (at > last) pieces.push({ text: original.slice(last, at), hit: null });
+    pieces.push({ text: m[0], hit: hit[k] });
+    last = at + m[0].length;
+  });
+  if (last < original.length) pieces.push({ text: original.slice(last), hit: null });
+  return { pieces, hits: hit.filter(Boolean).length, total: a.length };
+}
+
+/**
+ * 专项练音用的最小对立词：每个音给几组「只差这一个音」的词（前一个含这个音，后一个是常读成的那个），
+ * 练的时候两个都读，听出、读出区别。只收中国学习者常混的音。
+ */
+export const MINIMAL_PAIRS: Record<string, [string, string][]> = {
+  θ: [['think', 'sink'], ['thick', 'sick'], ['mouth', 'mouse'], ['three', 'tree']],
+  ð: [['they', 'day'], ['then', 'den'], ['breathe', 'breeze']],
+  v: [['very', 'wary'], ['vest', 'west'], ['vine', 'wine']],
+  w: [['wet', 'vet'], ['west', 'vest']],
+  ɹ: [['right', 'light'], ['read', 'lead'], ['rice', 'lice'], ['road', 'load']],
+  l: [['light', 'right'], ['lead', 'read'], ['night', 'light']],
+  n: [['night', 'light'], ['no', 'low'], ['knee', 'lee']],
+  æ: [['bad', 'bed'], ['man', 'men'], ['cat', 'cut'], ['bag', 'beg']],
+  ɛ: [['bed', 'bad'], ['pen', 'pan'], ['set', 'sat']],
+  ɪ: [['ship', 'sheep'], ['sit', 'seat'], ['live', 'leave'], ['fill', 'feel']],
+  i: [['sheep', 'ship'], ['seat', 'sit'], ['leave', 'live']],
+  ʊ: [['full', 'fool'], ['pull', 'pool'], ['look', 'Luke']],
+  u: [['fool', 'full'], ['pool', 'pull']],
+  ʃ: [['ship', 'sip'], ['she', 'see'], ['shoe', 'sue']],
+  s: [['sink', 'think'], ['sip', 'ship']],
+  z: [['zoo', 'sue'], ['prize', 'price'], ['buzz', 'bus']],
+  dʒ: [['jeep', 'cheap'], ['joke', 'choke']],
+  tʃ: [['chip', 'ship'], ['cheap', 'jeep']],
+  ŋ: [['sing', 'sin'], ['thing', 'thin'], ['wing', 'win']],
+  f: [['fan', 'pan'], ['fine', 'pine'], ['coffee', 'copy']],
+  p: [['pan', 'fan'], ['pig', 'big']],
+  b: [['big', 'pig'], ['bat', 'pat']],
+  d: [['bed', 'bet'], ['dog', 'dock']],
+  t: [['bet', 'bed'], ['tie', 'die']],
+  k: [['back', 'bag'], ['coat', 'goat']],
+  g: [['bag', 'back'], ['goat', 'coat']],
+  h: [['hat', 'at'], ['hair', 'air']],
+};

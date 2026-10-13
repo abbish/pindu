@@ -85,3 +85,14 @@ export interface Assessment {
   /** 有没有听到说话 */
   voiced: boolean;
 }
+
+/** 说话转文字（复用字幕识别的模型） */
+export interface DictationStatus {
+  /** 有已下载的识别模型 */
+  ready: boolean;
+  /** 还没有时下载哪个 */
+  modelId: string;
+  modelBytes: number;
+  /** 正在下载识别模型的任务 */
+  downloadJob: string | null;
+}

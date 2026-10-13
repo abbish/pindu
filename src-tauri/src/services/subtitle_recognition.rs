@@ -105,13 +105,17 @@ impl SpeechModel {
     fn file(&self) -> String {
         format!("ggml-{}.bin", self.id)
     }
-    fn path(&self, data_dir: &Path) -> PathBuf {
+    pub(crate) fn path(&self, data_dir: &Path) -> PathBuf {
         models_dir(data_dir).join(self.file())
     }
     fn part_path(&self, data_dir: &Path) -> PathBuf {
         models_dir(data_dir).join(format!("{}.part", self.file()))
     }
-    fn ready(&self, data_dir: &Path) -> bool {
+    /// 文件大小（字节）
+    pub fn download_bytes(&self) -> u64 {
+        self.bytes
+    }
+    pub(crate) fn ready(&self, data_dir: &Path) -> bool {
         std::fs::metadata(self.path(data_dir)).is_ok_and(|m| m.len() == self.bytes)
     }
 }
@@ -531,7 +535,7 @@ fn sha256_file(path: &Path) -> AppResult<String> {
 }
 
 /// 随应用自带的 whisper-cli（开发版可用 PINDU_WHISPER_DIR 指定目录）
-fn whisper_cli() -> AppResult<PathBuf> {
+pub(crate) fn whisper_cli() -> AppResult<PathBuf> {
     let name = if cfg!(windows) {
         "whisper-cli.exe"
     } else {
@@ -562,7 +566,7 @@ fn parse_progress(line: &str) -> Option<f64> {
 }
 
 /// 识别线程数：留一半核给界面，至少 2、最多 8
-fn threads() -> usize {
+pub(crate) fn threads() -> usize {
     std::thread::available_parallelism()
         .map(|n| (n.get() / 2).clamp(2, 8))
         .unwrap_or(4)

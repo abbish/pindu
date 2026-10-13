@@ -9,6 +9,14 @@ import { strictnessFor } from '@/utils/pronunciation';
 /** 模型状态与设置在页面间共用：下载好以后不用每次再查 */
 let cached: { ready: boolean; settings: PronunciationSettings } | null = null;
 let cachedLearner: string | undefined;
+/** 同一时间很多个一起挂载时（练一练的一组词）只查一次 */
+let loading: { at: number; status: ReturnType<typeof pronunciationService.status>; profile: ReturnType<typeof promptProfileService.getProfile> } | null = null;
+const fresh = () => {
+  if (!loading || Date.now() - loading.at > 3000) {
+    loading = { at: Date.now(), status: pronunciationService.status(), profile: promptProfileService.getProfile() };
+  }
+  return loading;
+};
 
 /**
  * 本机发音评估（单词「看 · 说」、句子跟读共用）：
@@ -32,14 +40,15 @@ export function usePronunciation(context?: PronunciationContext) {
   contextRef.current = context;
 
   useEffect(() => {
-    void pronunciationService.status().then((r) => {
+    const { status, profile } = fresh();
+    void status.then((r) => {
       if (!r.success) return;
       cached = { ready: r.data.ready, settings: r.data.settings };
       setReady(r.data.ready);
       setSettings(r.data.settings);
       if (r.data.downloadJob) setDownloadJob(r.data.downloadJob);
     });
-    void promptProfileService.getProfile().then((r) => {
+    void profile.then((r) => {
       if (!r.success) return;
       cachedLearner = r.data.learner;
       setLearner(r.data.learner);

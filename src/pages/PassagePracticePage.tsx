@@ -37,6 +37,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
+import { MicButton } from '@/components/MicButton';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { InlineError } from '@/components/InlineError';
@@ -359,13 +360,14 @@ const QuestionItem: React.FC<{
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 maxLength={OPEN_MAX}
-                placeholder="用英文回答"
+                placeholder="用英文回答（也可以点麦克风说出来）"
                 className="min-h-24 resize-none"
                 aria-invalid={missing || undefined}
               />
-              <p className="mt-1 text-right text-xs text-muted-foreground tabular-nums">
+              <div className="mt-1 flex items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums">
+                <MicButton label="用英语说" onText={(text) => onChange((value.trim() ? `${value.trimEnd()} ${text}` : text).slice(0, OPEN_MAX))} />
                 {value.length} / {OPEN_MAX}
-              </p>
+              </div>
             </>
           )}
         </div>

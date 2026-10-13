@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bandOf, flaggedPhones, phoneSegments, phoneTip, sentencePieces, sentenceTips, soundLabel, strictnessFor } from './pronunciation.ts';
+import { bandOf, flaggedPhones, phoneSegments, phoneTip, retellDiff, sentencePieces, sentenceTips, soundLabel, strictnessFor } from './pronunciation.ts';
 
 test('三档按严格程度：宽松时 80 分也算还差一点，标准时就是再试试', () => {
   assert.equal(bandOf(90, 'lenient'), 'good');
@@ -62,4 +62,15 @@ test('一句话按词切开标档：标点空格原样保留，与后端拆词�
     [["I'm", 'good'], ['thinking', 'retry'], ['Xyzzy', null]]
   );
   assert.deepEqual(sentenceTips(words, 'standard'), [{ word: 'thinking', tip: 'th 听起来像 s：舌尖轻放在上下齿之间，往外送气' }]);
+});
+
+test('听后复述逐词对照：不分大小写、标点与撇号，漏说的词标出来', () => {
+  const r = retellDiff("Excuse me, where's the front desk?", 'excuse me wheres the desk');
+  assert.equal(r.pieces.map((p) => p.text).join(''), "Excuse me, where's the front desk?");
+  assert.deepEqual(
+    r.pieces.filter((p) => p.hit !== null).map((p) => [p.text, p.hit]),
+    [['Excuse', true], ['me', true], ["where's", true], ['the', true], ['front', false], ['desk', true]]
+  );
+  assert.equal(r.hits, 5);
+  assert.equal(r.total, 6);
 });
