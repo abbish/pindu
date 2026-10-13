@@ -37,6 +37,33 @@ export function bandOf(score: number, strictness: Strictness): Band {
   return score >= good ? 'good' : score >= close ? 'close' : 'retry';
 }
 
+/** 一次单词练习的跟读汇总 */
+export interface PracticePronunciation {
+  /** 跟读过的词数 */
+  read: number;
+  /** 过关（读得很好 / 还差一点）的词数 */
+  passed: number;
+  /** 平均分（每个词取这次最好的一次） */
+  average: number;
+  /** 每个词的档位 */
+  bands: Map<number, { band: Band; score: number }>;
+}
+
+/** 练习结果里的跟读汇总；没跟读时为 null */
+export function practicePronunciation(scores: { wordId: number; score: number }[] | undefined, strictness: Strictness): PracticePronunciation | null {
+  if (!scores || scores.length === 0) return null;
+  const bands = new Map(scores.map((s) => [s.wordId, { band: bandOf(s.score, strictness), score: s.score }]));
+  const passed = [...bands.values()].filter((b) => b.band !== 'retry').length;
+  const average = Math.round(scores.reduce((n, s) => n + s.score, 0) / scores.length);
+  return { read: scores.length, passed, average, bands };
+}
+
+/** 总评分：拼写占七成、跟读过关率占三成；没跟读时只看拼写 */
+export function practiceOverall(wordAccuracy: number, pronunciation: PracticePronunciation | null): number {
+  if (!pronunciation) return wordAccuracy;
+  return wordAccuracy * 0.7 + (pronunciation.passed / pronunciation.read) * 100 * 0.3;
+}
+
 /** 一个音常见的拼写（长的在前）；元音拼法很多，只列常见的 */
 const SPELLINGS: Record<string, string[]> = {
   θ: ['th'],

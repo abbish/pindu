@@ -161,6 +161,14 @@ export interface PracticeResult {
   difficultWords: WordPracticeState[]; // 未通过的单词
   passedWordsList: WordPracticeState[]; // 通过的单词列表
   completedAt: string;
+  /** 跟读（看 · 说）：每个读过的词这次最好的分数；没跟读时为空 */
+  pronunciation?: WordPronunciationScore[];
+}
+
+/// 一个词这次练习里跟读的最好分数（0–100）
+export interface WordPronunciationScore {
+  wordId: number;
+  score: number;
 }
 
 /// 开始练习会话请求

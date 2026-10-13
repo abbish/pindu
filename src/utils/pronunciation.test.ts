@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bandOf, flaggedPhones, phoneSegments, phoneTip, sentencePieces, sentenceTips, soundLabel, strictnessFor } from './pronunciation.ts';
+import { bandOf, flaggedPhones, practiceOverall, practicePronunciation, phoneSegments, phoneTip, sentencePieces, sentenceTips, soundLabel, strictnessFor } from './pronunciation.ts';
 
 test('三档按严格程度：宽松时 80 分也算还差一点，标准时就是再试试', () => {
   assert.equal(bandOf(90, 'lenient'), 'good');
@@ -62,4 +62,22 @@ test('一句话按词切开标档：标点空格原样保留，与后端拆词�
     [["I'm", 'good'], ['thinking', 'retry'], ['Xyzzy', null]]
   );
   assert.deepEqual(sentenceTips(words, 'standard'), [{ word: 'thinking', tip: 'th 听起来像 s：舌尖轻放在上下齿之间，往外送气' }]);
+});
+
+test('练习结果的跟读：每个词按最好的一次分档，总评拼写七成、跟读过关率三成，没跟读只看拼写', () => {
+  const p = practicePronunciation(
+    [
+      { wordId: 1, score: 95 },
+      { wordId: 2, score: 84 },
+      { wordId: 3, score: 60 },
+    ],
+    'standard'
+  )!;
+  assert.equal(p.read, 3);
+  assert.equal(p.passed, 2);
+  assert.equal(p.average, 80);
+  assert.equal(p.bands.get(3)?.band, 'retry');
+  assert.equal(practicePronunciation([], 'standard'), null);
+  assert.equal(practiceOverall(90, null), 90);
+  assert.ok(Math.abs(practiceOverall(100, p) - (70 + 20)) < 1e-9);
 });

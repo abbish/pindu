@@ -278,6 +278,16 @@ pub struct PracticeResult {
     pub passed_words_list: Vec<WordPracticeState>, // 通过的单词列表
     #[serde(rename = "completedAt")]
     pub completed_at: String,
+    /// 跟读（看 · 说）：每个读过的词这次最好的分数；没跟读时为空
+    pub pronunciation: Vec<WordPronunciationScore>,
+}
+
+/// 一个词这次练习里跟读的最好分数（0–100）
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct WordPronunciationScore {
+    #[serde(rename = "wordId")]
+    pub word_id: i64,
+    pub score: i64,
 }
 
 // ==================== AI规划相关类型 ====================

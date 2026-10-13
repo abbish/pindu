@@ -1,6 +1,7 @@
 //! 发音评估结果（pronunciation_attempts）：只记学习计划里的跟读
 
 use crate::error::AppResult;
+use crate::types::study::WordPronunciationScore;
 use sqlx::{SqliteConnection, SqlitePool};
 
 /// 一条要保存的评估
@@ -97,6 +98,21 @@ impl PronunciationRepository {
         .execute(conn)
         .await?;
         Ok(())
+    }
+
+    /// 一次单词练习里每个跟读过的词的最好分数（按词的编号）
+    pub async fn best_word_scores_by_session(
+        pool: &SqlitePool,
+        session_id: &str,
+    ) -> AppResult<Vec<WordPronunciationScore>> {
+        Ok(sqlx::query_as::<_, WordPronunciationScore>(
+            "SELECT word_id, MAX(score) AS score FROM pronunciation_attempts
+             WHERE session_id = ? AND word_id IS NOT NULL
+             GROUP BY word_id ORDER BY word_id",
+        )
+        .bind(session_id)
+        .fetch_all(pool)
+        .await?)
     }
 
     /// 计划里的评估，新的在前

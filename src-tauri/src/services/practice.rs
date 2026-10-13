@@ -9,6 +9,7 @@
 
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
+use crate::repositories::pronunciation_repository::PronunciationRepository;
 use crate::repositories::{
     practice_repository::PracticeRepository, study_plan_repository::StudyPlanRepository,
     study_schedule_repository::StudyScheduleRepository,
@@ -300,6 +301,21 @@ impl PracticeService {
         total_time: i64,
         active_time: i64,
     ) -> AppResult<PracticeResult> {
+        let mut result = self
+            .complete_session_inner(session_id, total_time, active_time)
+            .await?;
+        // 跟读：单独一项，不影响通过与复习安排
+        result.pronunciation =
+            PronunciationRepository::best_word_scores_by_session(&self.pool, session_id).await?;
+        Ok(result)
+    }
+
+    async fn complete_session_inner(
+        &self,
+        session_id: &str,
+        total_time: i64,
+        active_time: i64,
+    ) -> AppResult<PracticeResult> {
         // 读取放在事务之外，事务只包含写入
         let session = self
             .practice_repo
@@ -585,6 +601,7 @@ impl PracticeService {
             difficult_words,
             passed_words_list,
             completed_at,
+            pronunciation: Vec::new(),
         }
     }
 }
