@@ -299,8 +299,8 @@ export const ReadAloudPanel: React.FC<{
     if (shadowing) return recorder.state === 'recording' ? '请跟读' : say.assessing ? '正在评分…' : '准备跟读…';
     if (recall) return '回忆词汇';
     if (player.pausing) return '停顿中，请跟读';
-    // 盲听只是隐藏原文，不会自己开始播放：没在播时不显示状态，播放按钮写明「开始盲听」
-    if (player.current == null || !player.playing) return blind ? '' : '点击句首图标朗读单句，点击词汇查看单词';
+    // 没在播时不显示状态（盲听时播放按钮写明「开始盲听」）
+    if (player.current == null || !player.playing) return '';
     const round = prefs.repeat > 1 ? ` · 第 ${player.round}/${prefs.repeat} 遍` : '';
     return `第 ${player.current + 1}/${texts.length} 句${round}`;
   })();
