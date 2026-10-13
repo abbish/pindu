@@ -75,8 +75,10 @@ export interface DailyLearningActivity {
   date: string;
   /** 当天练过的单词数（有首次作答记录的不同单词，含未完成会话） */
   practiced_words: number;
-  /** 当天学会的单词数（已完成会话中三步首答全对） */
+  /** 当天本次通过的单词数 */
   mastered_words: number;
+  /** 当天完成的计划短文篇数（作答或只朗读） */
+  passages: number;
 }
 
 // ==================== 单词练习相关类型 ====================

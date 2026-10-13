@@ -7,7 +7,8 @@
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::repositories::practice_metrics::{
-    streak_days, study_dates, FIRST_LEARN_CTE, MASTERED_CTE, SRS_LEARNED_BOX, SRS_MASTERED_BOX,
+    streak_days, study_dates, ACTIVITY_CTE, FIRST_LEARN_CTE, MASTERED_CTE, SRS_LEARNED_BOX,
+    SRS_MASTERED_BOX,
 };
 use crate::types::*;
 use sqlx::{Row, SqlitePool};
@@ -79,7 +80,9 @@ impl StatisticsRepository {
         let average_accuracy: f64 = row.get("avg_accuracy");
 
         // 2. 连续学习天数：完成过练习的本地日期
-        let study_dates = study_dates(self.pool.as_ref()).await.map_err(db_err)?;
+        let study_dates = study_dates(self.pool.as_ref(), None)
+            .await
+            .map_err(db_err)?;
         let today = crate::time::local_today();
         let streak_days = streak_days(&study_dates, today);
 
@@ -150,7 +153,7 @@ impl StatisticsRepository {
         let since = since.format("%Y-%m-%d").to_string();
 
         let query = format!(
-            "WITH {}, {},
+            "WITH {}, {}, {},
              practiced AS (
                  SELECT DATE(r.created_at, 'localtime') AS d, COUNT(DISTINCT r.word_id) AS n
                  FROM word_practice_records r
@@ -168,18 +171,29 @@ impl StatisticsRepository {
                    AND DATE(m.end_time, 'localtime') >= ?
                  GROUP BY d
              ),
-             days AS (SELECT d FROM practiced UNION SELECT d FROM learned)
+             read AS (
+                 SELECT DATE(a.at, 'localtime') AS d, COUNT(*) AS n
+                 FROM activity a
+                 JOIN study_plans sp ON sp.id = a.plan_id
+                 WHERE a.kind = 'passage' AND sp.deleted_at IS NULL
+                   AND DATE(a.at, 'localtime') >= ?
+                 GROUP BY d
+             ),
+             days AS (SELECT d FROM practiced UNION SELECT d FROM learned UNION SELECT d FROM read)
              SELECT days.d AS study_date,
                     COALESCE(p.n, 0) AS practiced,
-                    COALESCE(l.n, 0) AS mastered
+                    COALESCE(l.n, 0) AS mastered,
+                    COALESCE(r.n, 0) AS passages
              FROM days
              LEFT JOIN practiced p ON p.d = days.d
              LEFT JOIN learned l ON l.d = days.d
+             LEFT JOIN read r ON r.d = days.d
              WHERE days.d IS NOT NULL
              ORDER BY days.d",
-            FIRST_LEARN_CTE, MASTERED_CTE
+            FIRST_LEARN_CTE, MASTERED_CTE, ACTIVITY_CTE
         );
         let rows = sqlx::query(&query)
+            .bind(&since)
             .bind(&since)
             .bind(&since)
             .fetch_all(self.pool.as_ref())
@@ -192,6 +206,7 @@ impl StatisticsRepository {
                 date: row.get("study_date"),
                 practiced_words: row.get::<i64, _>("practiced") as i32,
                 mastered_words: row.get::<i64, _>("mastered") as i32,
+                passages: row.get::<i64, _>("passages") as i32,
             })
             .collect())
     }
@@ -619,13 +634,14 @@ impl StatisticsRepository {
         let learned_words: i64 = summary.get("learned_count");
         let avg_accuracy: f64 = summary.get("avg_accuracy");
 
-        // 4. 练习时长（有效时长，不含暂停）与学习天数（完成过练习的本地日期）
-        let time_row = sqlx::query(
-            "SELECT COALESCE(SUM(active_time), 0) AS active_ms,
-                    COUNT(DISTINCT DATE(end_time, 'localtime')) AS study_days
-             FROM practice_sessions
-             WHERE plan_id = ? AND completed = TRUE",
-        )
+        // 4. 练习时长（有效时长，不含暂停）与学习天数：单词练习 + 短文（practice_metrics::ACTIVITY_CTE）
+        let time_row = sqlx::query(&format!(
+            "WITH {}
+             SELECT COALESCE(SUM(active_ms), 0) AS active_ms,
+                    COUNT(DISTINCT DATE(at, 'localtime')) AS study_days
+             FROM activity WHERE plan_id = ?",
+            ACTIVITY_CTE
+        ))
         .bind(plan_id)
         .fetch_one(self.pool.as_ref())
         .await
@@ -660,19 +676,10 @@ impl StatisticsRepository {
             0.0
         };
 
-        // 7. 连续学习天数（该计划，本地日期）
-        let plan_dates: Vec<String> = sqlx::query_scalar(
-            "SELECT DISTINCT DATE(end_time, 'localtime') FROM practice_sessions
-             WHERE plan_id = ? AND completed = TRUE AND end_time IS NOT NULL",
-        )
-        .bind(plan_id)
-        .fetch_all(self.pool.as_ref())
-        .await
-        .map_err(db_err)?;
-        let plan_dates: Vec<chrono::NaiveDate> = plan_dates
-            .iter()
-            .filter_map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
-            .collect();
+        // 7. 连续学习天数（该计划，本地日期，含短文）
+        let plan_dates = study_dates(self.pool.as_ref(), Some(plan_id))
+            .await
+            .map_err(db_err)?;
         let plan_streak_days = streak_days(&plan_dates, today);
 
         self.logger.database_operation(
@@ -806,12 +813,14 @@ mod tests {
                 DailyLearningActivity {
                     date: "2026-10-05".into(),
                     practiced_words: 2,
-                    mastered_words: 1
+                    mastered_words: 1,
+                    passages: 0
                 },
                 DailyLearningActivity {
                     date: "2026-10-06".into(),
                     practiced_words: 1,
-                    mastered_words: 0
+                    mastered_words: 0,
+                    passages: 0
                 },
             ]
         );
@@ -868,6 +877,87 @@ mod tests {
         assert_eq!(pct("2026-10-06"), 33.0);
         assert_eq!(pct("2026-10-07"), 67.0);
         assert_eq!(pct("2026-10-08"), 100.0);
+    }
+
+    #[tokio::test]
+    async fn passage_tasks_count_as_study_activity() {
+        let pool = memory_pool().await;
+        let fx = seed_schedule(&pool, 1).await;
+        let at = crate::time::now_utc();
+        sqlx::query("INSERT INTO passages (id, title, sentences, target_words, level, word_count, created_at, updated_at) VALUES (1, 't', '[]', '[]', 'a1', 0, ?1, ?1)")
+            .bind(&at)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        // 只朗读的短文任务读完了：没有单词练习，也算今天学习过
+        sqlx::query("INSERT INTO study_plan_passages (plan_id, passage_id, mode, sort_order, scheduled_date, completed_at, created_at) VALUES (?1, 1, 'reading', 0, '2026-10-06', ?2, ?2)")
+            .bind(fx.plan_id)
+            .bind(&at)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        let repo = StatisticsRepository::new(pool.clone(), test_logger());
+        let stats = repo.get_study_plan_statistics(fx.plan_id).await.unwrap();
+        assert_eq!(stats.streak_days, 1);
+        let days = repo
+            .get_daily_learning_activity(crate::time::local_today())
+            .await
+            .unwrap();
+        assert_eq!(days.len(), 1);
+        assert_eq!((days[0].practiced_words, days[0].passages), (0, 1));
+        assert_eq!(repo.get_study_statistics().await.unwrap().streak_days, 1);
+    }
+
+    #[tokio::test]
+    async fn quiz_mistake_means_not_passed_this_time() {
+        let pool = memory_pool().await;
+        let fx = seed_schedule(&pool, 2).await;
+        seed_session(&pool, &fx, "s1", true).await;
+        sqlx::query(
+            "UPDATE practice_sessions SET end_time = '2026-10-05T12:30:00+00:00' WHERE id = 's1'",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        for i in 0..2 {
+            for step in 1..=3 {
+                seed_step(
+                    &pool,
+                    "s1",
+                    fx.word_ids[i],
+                    fx.schedule_word_ids[i],
+                    step,
+                    true,
+                    &format!("2026-10-05T12:0{i}:0{step}+00:00"),
+                )
+                .await;
+            }
+        }
+        // 第一个词的当轮小测第一次写错，之后又写对：本次不算通过
+        for (correct, at) in [
+            (false, "2026-10-05T12:10:00.000Z"),
+            (true, "2026-10-05T12:11:00.000Z"),
+        ] {
+            sqlx::query(
+                "INSERT INTO word_practice_records (session_id, word_id, plan_word_id, step, user_input, is_correct, time_spent, attempts, kind, created_at)
+                 VALUES ('s1', ?, ?, 3, '', ?, 1000, 1, 'review', ?)",
+            )
+            .bind(fx.word_ids[0])
+            .bind(fx.schedule_word_ids[0])
+            .bind(correct)
+            .bind(at)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        }
+        let repo = StatisticsRepository::new(pool.clone(), test_logger());
+        let days = repo
+            .get_daily_learning_activity(chrono::NaiveDate::from_ymd_opt(2026, 10, 1).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(days.len(), 1);
+        assert_eq!(days[0].practiced_words, 2);
+        assert_eq!(days[0].mastered_words, 1);
     }
 
     #[tokio::test]

@@ -152,7 +152,7 @@ impl CalendarRepository {
 
     /// 学习日（完成过练习的本地日期），用于连续学习天数
     pub async fn find_study_dates(&self) -> AppResult<Vec<chrono::NaiveDate>> {
-        Ok(crate::repositories::practice_metrics::study_dates(self.pool.as_ref()).await?)
+        Ok(crate::repositories::practice_metrics::study_dates(self.pool.as_ref(), None).await?)
     }
 
     /// 日期范围内按（完成日期, 计划）汇总的学习记录（study_sessions，本地日期；不含已删除计划）。

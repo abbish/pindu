@@ -11,6 +11,8 @@ export interface HeatmapActivity {
   date: string;
   practiced_words: number;
   mastered_words: number;
+  /** 完成的计划短文篇数（旧数据没有） */
+  passages?: number;
 }
 
 export interface HeatmapCell {
@@ -18,6 +20,7 @@ export interface HeatmapCell {
   date: string;
   practiced: number;
   mastered: number;
+  passages: number;
   /** 0 = 无学习，1–4 = 由浅到深 */
   level: 0 | 1 | 2 | 3 | 4;
   isToday: boolean;
@@ -30,10 +33,15 @@ export interface HeatmapGrid {
   weeks: HeatmapCell[][];
   /** 月份标签：在该月第一次出现的列上显示 */
   monthLabels: { column: number; label: string }[];
-  /** 区间内（不含 future）有学习的天数与练习单词合计 */
+  /** 区间内（不含 future）有学习的天数、练习单词与完成短文合计 */
   activeDays: number;
   totalPracticed: number;
+  totalPassages: number;
 }
+
+/** 颜色深浅的学习量：一篇短文约等于练 5 个单词 */
+const PASSAGE_WEIGHT = 5;
+const amount = (d: { practiced: number; passages: number }) => d.practiced + d.passages * PASSAGE_WEIGHT;
 
 /** 按区间最大值四等分映射到 1–4 级；0 为无学习 */
 export function heatLevel(count: number, max: number): HeatmapCell['level'] {
@@ -58,18 +66,19 @@ export function buildHeatmap(activity: HeatmapActivity[], today: Date, weekCount
       date: key,
       practiced: a?.practiced_words ?? 0,
       mastered: a?.mastered_words ?? 0,
+      passages: a?.passages ?? 0,
       isToday: key === todayKey,
       future: key > todayKey,
     });
   }
 
   const visible = days.filter((d) => !d.future);
-  const max = Math.max(0, ...visible.map((d) => d.practiced));
+  const max = Math.max(0, ...visible.map(amount));
   const weeks: HeatmapCell[][] = [];
   const monthLabels: HeatmapGrid['monthLabels'] = [];
   let lastMonth = -1;
   for (let w = 0; w < weekCount; w++) {
-    const column = days.slice(w * 7, w * 7 + 7).map((d) => ({ ...d, level: d.future ? 0 : heatLevel(d.practiced, max) }) as HeatmapCell);
+    const column = days.slice(w * 7, w * 7 + 7).map((d) => ({ ...d, level: d.future ? 0 : heatLevel(amount(d), max) }) as HeatmapCell);
     weeks.push(column);
     const month = Number(column[0].date.slice(5, 7));
     if (month !== lastMonth) {
@@ -81,7 +90,8 @@ export function buildHeatmap(activity: HeatmapActivity[], today: Date, weekCount
   return {
     weeks,
     monthLabels,
-    activeDays: visible.filter((d) => d.practiced > 0).length,
+    activeDays: visible.filter((d) => amount(d) > 0).length,
     totalPracticed: visible.reduce((s, d) => s + d.practiced, 0),
+    totalPassages: visible.reduce((s, d) => s + d.passages, 0),
   };
 }

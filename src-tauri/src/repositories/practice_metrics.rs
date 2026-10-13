@@ -1,13 +1,15 @@
 //! 练习统计的统一口径（所有统计查询共用，避免各处各算各的）。
 //!
 //! - 首答：每个（会话, 单词, 步骤）第一条 `kind = 'learn'` 记录；纠正后重考（retry）与当轮小测（review）不计入正确率。
-//! - 当次通过：某个**已完成**会话中该词首答全对——新词三步、复习词只考第三步（与 `StudyScheduleRepository::refresh_completion` 一致）。
+//! - 本次通过：某个**已完成**会话中该词首答全对——新词三步、复习词只考第三步——且当轮小测第一次没写错
+//!   （与 `StudyScheduleRepository::refresh_completion`、练习结果页一致）。
 //!   用于日程完成数、每日学习量等“当天”的统计。
 //! - 掌握（长期）：自适应复习的记忆等级 `study_plan_words.srs_box >= SRS_MASTERED_BOX`（间隔 ≥7 天后仍首次写对，见 `services::srs`）。
 //!   用于已掌握单词数、计划详情的学习进度。
 //! - 已学：`srs_box >= SRS_LEARNED_BOX`（完成过一次含该词的练习），用于学习单词数、首页计划卡进度。
 //! - 日期：练习时间以 UTC 的 RFC3339 存储，统计按**本地日期**（`DATE(x, 'localtime')`）分组。
-//! - 时长：`practice_sessions.active_time`（毫秒，不含暂停）。
+//! - 学习活动（`ACTIVITY_CTE`）：单词练习 + 计划里的短文（作答 / 只朗读）；学习日、连续学习、时长、热力图都按它。
+//! - 时长：有效时长（毫秒，不含暂停）：单词练习会话 + 短文作答。
 
 /// 已完成会话中的首答记录：列 session_id, word_id, step, is_correct, is_review, plan_id, schedule_id, end_time
 pub const FIRST_LEARN_CTE: &str = r#"
@@ -26,15 +28,18 @@ pub const FIRST_LEARN_CTE: &str = r#"
         WHERE f.rn = 1 AND ps.completed = TRUE
     )"#;
 
-/// 当次通过的（会话, 单词）：首答全对且做满应做的步数（新词 3 步、复习词 1 步）；
+/// 本次通过的（会话, 单词）：首答全对、做满应做的步数（新词 3 步、复习词 1 步），且当轮小测第一次没写错；
 /// 列 session_id, word_id, plan_id, end_time。需与 FIRST_LEARN_CTE 一起使用
 pub const MASTERED_CTE: &str = r#"
     mastered AS (
-        SELECT session_id, word_id, plan_id, end_time
-        FROM first_learn
-        GROUP BY session_id, word_id
-        HAVING SUM(is_correct) = COUNT(*)
-           AND COUNT(*) = CASE WHEN MAX(is_review) = 1 THEN 1 ELSE 3 END
+        SELECT fl.session_id, fl.word_id, fl.plan_id, fl.end_time
+        FROM first_learn fl
+        GROUP BY fl.session_id, fl.word_id
+        HAVING SUM(fl.is_correct) = COUNT(*)
+           AND COUNT(*) = CASE WHEN MAX(fl.is_review) = 1 THEN 1 ELSE 3 END
+           AND COALESCE((SELECT q.is_correct FROM word_practice_records q
+                         WHERE q.session_id = fl.session_id AND q.word_id = fl.word_id AND q.kind = 'review'
+                         ORDER BY q.created_at, q.id LIMIT 1), 1) = 1
     )"#;
 
 /// 长期掌握的记忆等级下限（见 `services::srs`）
@@ -42,13 +47,37 @@ pub const SRS_MASTERED_BOX: i64 = 4;
 /// 已学（完成过一次含该词的练习）的记忆等级下限：用于学习单词数、首页计划进度
 pub const SRS_LEARNED_BOX: i64 = 1;
 
-/// 学习日：完成过练习的本地日期（全部计划，不含已删除计划）。连续天数等按此计算。
-pub async fn study_dates(pool: &sqlx::SqlitePool) -> Result<Vec<chrono::NaiveDate>, sqlx::Error> {
-    let dates: Vec<String> = sqlx::query_scalar(
-        "SELECT DISTINCT DATE(ps.end_time, 'localtime') FROM practice_sessions ps
-         JOIN study_plans sp ON sp.id = ps.plan_id
-         WHERE ps.completed = TRUE AND ps.end_time IS NOT NULL AND sp.deleted_at IS NULL",
-    )
+/// 学习活动：单词练习完成、计划里的短文作答完成、只朗读的短文任务读完（不含素材上的自由练习）。
+/// 列 plan_id, at（完成时刻，UTC）, active_ms（有效时长，只朗读的没有）, kind（words / passage）。
+/// 学习日、连续学习、练习时长、热力图都按它算
+pub const ACTIVITY_CTE: &str = r#"
+    activity AS (
+        SELECT ps.plan_id, ps.end_time AS at, ps.active_time AS active_ms, 'words' AS kind
+        FROM practice_sessions ps
+        WHERE ps.completed = TRUE AND ps.end_time IS NOT NULL
+        UNION ALL
+        SELECT pa.plan_id, pa.completed_at, pa.active_time, 'passage'
+        FROM passage_attempts pa
+        WHERE pa.status = 'completed' AND pa.plan_id IS NOT NULL AND pa.completed_at IS NOT NULL
+        UNION ALL
+        SELECT spp.plan_id, spp.completed_at, 0, 'passage'
+        FROM study_plan_passages spp
+        WHERE spp.completed_at IS NOT NULL AND spp.attempt_id IS NULL
+    )"#;
+
+/// 学习日：有学习活动的本地日期（全部计划或一个计划，不含已删除计划）。连续天数等按此计算。
+pub async fn study_dates(
+    pool: &sqlx::SqlitePool,
+    plan_id: Option<i64>,
+) -> Result<Vec<chrono::NaiveDate>, sqlx::Error> {
+    let dates: Vec<String> = sqlx::query_scalar(&format!(
+        "WITH {}
+         SELECT DISTINCT DATE(a.at, 'localtime') FROM activity a
+         JOIN study_plans sp ON sp.id = a.plan_id
+         WHERE sp.deleted_at IS NULL AND (?1 IS NULL OR a.plan_id = ?1)",
+        ACTIVITY_CTE
+    ))
+    .bind(plan_id)
     .fetch_all(pool)
     .await?;
     Ok(dates

@@ -35,6 +35,22 @@ test('网格：周一开头，最后一列含今天，之后为 future', () => {
   assert.deepEqual(grid.monthLabels, [{ column: 0, label: '9月' }, { column: 1, label: '10月' }]);
 });
 
+test('只练了短文的日子也算学习：一篇短文按 5 个单词算深浅', () => {
+  const today = new Date(2026, 9, 7);
+  const grid = buildHeatmap(
+    [
+      { date: '2026-10-05', practiced_words: 10, mastered_words: 4 },
+      { date: '2026-10-06', practiced_words: 0, mastered_words: 0, passages: 2 },
+    ],
+    today,
+    1
+  );
+  assert.equal(grid.weeks[0][1].level, 4);
+  assert.equal(grid.weeks[0][0].level, 4);
+  assert.equal(grid.activeDays, 2);
+  assert.equal(grid.totalPassages, 2);
+});
+
 test('本地日期键', () => {
   assert.equal(toLocalDateKey(new Date(2026, 0, 5)), '2026-01-05');
 });

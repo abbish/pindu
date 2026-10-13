@@ -120,8 +120,10 @@ pub struct DailyLearningActivity {
     pub date: String,
     /// 当天练过的单词数：有首次作答（kind = learn）记录的不同单词，含未完成会话
     pub practiced_words: i32,
-    /// 当天学会的单词数：当天结束的已完成会话中三步首答全对（口径同 practice_metrics）
+    /// 当天本次通过的单词数（口径同 practice_metrics::MASTERED_CTE）
     pub mastered_words: i32,
+    /// 当天完成的计划短文（作答或只朗读）篇数
+    pub passages: i32,
 }
 
 // ==================== 单词练习相关类型 ====================

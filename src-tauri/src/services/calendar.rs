@@ -395,10 +395,14 @@ fn build_month_with_passages(
 
     let monthly_stats = CalendarMonthlyStats {
         total_days: current_month_days.len() as i32,
-        // 学习天数：实际练过的天数（不是有安排的天数）
+        // 学习天数：有学习活动的天数（单词练习 + 短文，与连续学习同一口径；不是有安排的天数）
         study_days: current_month_days
             .iter()
-            .filter(|d| d.study_sessions.is_some())
+            .filter(|d| {
+                d.study_sessions.is_some()
+                    || NaiveDate::parse_from_str(&d.date, "%Y-%m-%d")
+                        .is_ok_and(|date| study_dates.contains(&date))
+            })
             .count() as i32,
         completed_days: current_month_days
             .iter()

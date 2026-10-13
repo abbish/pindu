@@ -844,7 +844,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn review_miss_moves_word_to_difficult_but_schedule_still_counts_it() {
+    async fn review_miss_means_not_passed_in_result_and_schedule() {
         let (service, pool) = setup().await;
         let fx = seed_schedule(&pool, 1).await;
         seed_session(&pool, &fx, "s1", false).await;
@@ -875,8 +875,8 @@ mod tests {
             .unwrap();
         assert_eq!(result.passed_words, 0, "小测写错不算完全掌握");
         assert_eq!(result.difficult_words.len(), 1);
-        // 日程完成数只看三步首次作答，小测不影响
-        assert_eq!(schedule_progress(&pool, fx.schedule_id).await.0, 1);
+        // 日程的通过数与结果页同一口径：小测第一次写错就不算本次通过
+        assert_eq!(schedule_progress(&pool, fx.schedule_id).await.0, 0);
     }
 
     fn rec(

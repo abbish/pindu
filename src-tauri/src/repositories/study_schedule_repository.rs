@@ -50,9 +50,12 @@ impl StudyScheduleRepository {
                         ) f
                         WHERE f.rn = 1
                         GROUP BY f.session_id, f.word_id
-                        -- 当次通过：新词三步首答全对，复习词第三步首答对
+                        -- 本次通过：新词三步首答全对，复习词第三步首答对，且当轮小测第一次没写错（practice_metrics）
                         HAVING SUM(f.is_correct) = COUNT(*)
                            AND COUNT(*) = CASE WHEN MAX(f.is_review) = 1 THEN 1 ELSE 3 END
+                           AND COALESCE((SELECT q.is_correct FROM word_practice_records q
+                                         WHERE q.session_id = f.session_id AND q.word_id = f.word_id AND q.kind = 'review'
+                                         ORDER BY q.created_at, q.id LIMIT 1), 1) = 1
                     ) p
                     JOIN study_plan_schedule_words sw
                       ON sw.schedule_id = study_plan_schedules.id AND sw.word_id = p.word_id

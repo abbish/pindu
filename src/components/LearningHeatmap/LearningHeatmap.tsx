@@ -33,12 +33,16 @@ const WEEKDAY_LABELS = ['一', '', '三', '', '五', '', ''];
 function cellTitle(cell: HeatmapCell): string {
   const [, m, d] = cell.date.split('-').map(Number);
   const day = `${m}月${d}日${cell.isToday ? '（今天）' : ''}`;
-  if (cell.practiced === 0) return `${day} · 没有学习`;
-  return `${day} · 练习 ${cell.practiced} 个单词${cell.mastered > 0 ? ` · 学会 ${cell.mastered} 个` : ''}`;
+  const parts = [
+    cell.practiced > 0 ? `练习 ${cell.practiced} 个单词` : '',
+    cell.mastered > 0 ? `通过 ${cell.mastered} 个` : '',
+    cell.passages > 0 ? `完成 ${cell.passages} 篇短文` : '',
+  ].filter(Boolean);
+  return `${day} · ${parts.length > 0 ? parts.join(' · ') : '没有学习'}`;
 }
 
 /**
- * 学习热力图（类似 GitHub 贡献图）：每格一天，颜色越深当天练习的单词越多。
+ * 学习热力图（类似 GitHub 贡献图）：每格一天，颜色越深当天学得越多（练习的单词 + 完成的短文）。
  * 周数随卡片宽度自适应（12–53 周），最后一列是本周。
  */
 export const LearningHeatmap: React.FC<LearningHeatmapProps> = ({ activity, loading }) => {
@@ -71,7 +75,7 @@ export const LearningHeatmap: React.FC<LearningHeatmapProps> = ({ activity, load
         <h2 className="text-sm font-medium">学习热力图</h2>
         {!loading && (
           <span className="text-xs text-muted-foreground">
-            近 {weekCount} 周学习 {grid.activeDays} 天 · 共练习 {grid.totalPracticed} 个单词
+            近 {weekCount} 周学习 {grid.activeDays} 天 · 共练习 {grid.totalPracticed} 个单词{grid.totalPassages > 0 ? ` · ${grid.totalPassages} 篇短文` : ''}
           </span>
         )}
       </div>
