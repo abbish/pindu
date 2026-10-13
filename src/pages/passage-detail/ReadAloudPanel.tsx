@@ -399,9 +399,8 @@ export const ReadAloudPanel: React.FC<{
                 <span key={i} className="w-0.5 rounded-full bg-primary" style={{ height: `${Math.max(2, v * 16)}px` }} />
               ))}
             </span>
-            <Button variant="ghost" size="sm" className="ml-auto h-7" onClick={recorder.stop}>
-              <Square className="fill-current" />
-              停止
+            <Button variant="ghost" size="icon" className="ml-auto size-7" onClick={recorder.stop} aria-label="停止" title="停止">
+              <Square className="size-3.5 fill-current" />
             </Button>
           </div>
         ) : active && say.assessing ? (
