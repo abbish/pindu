@@ -368,7 +368,7 @@ const QuestionItem: React.FC<{
                 aria-invalid={missing || undefined}
               />
               <div className="mt-1 flex items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums">
-                <MicButton label="用英语说" onText={(text) => onChange((valueRef.current.trim() ? `${valueRef.current.trimEnd()} ${text}` : text).slice(0, OPEN_MAX))} />
+                <MicButton label="用英语说" language="en" onText={(text) => onChange((valueRef.current.trim() ? `${valueRef.current.trimEnd()} ${text}` : text).slice(0, OPEN_MAX))} />
                 {value.length} / {OPEN_MAX}
               </div>
             </>

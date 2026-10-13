@@ -44,8 +44,8 @@ test('内部错误：中文说明留下，英文尾巴去掉', () => {
 });
 
 test('AI 服务常见失败给出处理办法', () => {
-  assert.match(toUserMessage('外部服务错误: 401 Unauthorized: invalid api key', 'EXTERNAL_SERVICE_ERROR'), /密钥无效.*设置 → AI 模型/);
-  assert.match(toUserMessage('外部服务错误: 豆包语音合成失败：401', 'EXTERNAL_SERVICE_ERROR'), /语音服务.*设置 → 语音合成/);
+  assert.match(toUserMessage('外部服务错误: 401 Unauthorized: invalid api key', 'EXTERNAL_SERVICE_ERROR'), /密钥无效.*设置 → AI 服务/);
+  assert.match(toUserMessage('外部服务错误: 豆包语音合成失败：401', 'EXTERNAL_SERVICE_ERROR'), /语音服务.*设置 → 语音服务/);
   assert.match(toUserMessage('外部服务错误: 429 Too Many Requests', 'EXTERNAL_SERVICE_ERROR'), /额度/);
   assert.match(toUserMessage('外部服务错误: request timed out', 'EXTERNAL_SERVICE_ERROR'), /超时/);
   assert.equal(

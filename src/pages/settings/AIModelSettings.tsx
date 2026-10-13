@@ -332,7 +332,7 @@ export const AIModelSettings: React.FC = () => {
     }));
   };
 
-  const panelTitle = 'AI 模型';
+  const panelTitle = 'AI 服务';
 
   if (loading) {
     return (

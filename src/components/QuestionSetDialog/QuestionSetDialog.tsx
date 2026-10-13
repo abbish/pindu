@@ -57,7 +57,7 @@ export const QuestionSetDialog: React.FC<QuestionSetDialogProps> = ({ isOpen, on
   const materialSettings = useMaterialSettings();
   useEffect(() => {
     if (!isOpen) return;
-    // 题量按短文水平；难度可在「设置 → 素材」固定
+    // 题量按短文水平；难度可在「设置 → 素材与计划」固定
     const spec = defaultSpec(level);
     const difficulty = materialSettings?.questionDifficulty;
     setSpec(difficulty && difficulty !== 'auto' ? { ...spec, difficulty } : spec);

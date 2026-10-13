@@ -65,7 +65,7 @@ export const AiPlanDialog: React.FC<AiPlanDialogProps> = ({ open, onOpenChange, 
 
   useEffect(() => {
     if (!open) return;
-    // 每段时长默认值来自「设置 → 素材」
+    // 每段时长默认值来自「设置 → 素材与计划」
     void loadMaterialSettings().then((st) => {
       if (st) {
         setMinSec(st.videoMinSeconds);

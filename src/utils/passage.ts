@@ -73,7 +73,7 @@ export const PLAN_SCOPES: { value: PlanWordScope; label: string; description: st
   { value: 'learned', label: '全部已学词', description: '计划中学过的全部单词' },
 ];
 
-/** AI 选词与单词筛选的选项（新建短文与「设置 → 素材」共用） */
+/** AI 选词与单词筛选的选项（新建短文与「设置 → 素材与计划」共用） */
 export const PICK_STATUS_OPTIONS: { value: PickStatus; label: string }[] = [
   { value: 'new', label: '未学习' },
   { value: 'learning', label: '学习中' },

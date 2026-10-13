@@ -98,7 +98,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
   const [books, setBooks] = useState<{ id: number; title: string; words: number }[] | null>(null);
   const [bookIds, setBookIds] = useState<number[]>([]);
   const [aiKeyWords, setAiKeyWords] = useState(true);
-  // 拆篇长度与挑重点词的默认值来自「设置 → 素材」
+  // 拆篇长度与挑重点词的默认值来自「设置 → 素材与计划」
   const materialSettings = useMaterialSettings();
   useEffect(() => {
     if (!materialSettings) return;

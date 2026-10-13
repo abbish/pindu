@@ -20,7 +20,7 @@ export function setCachedMaterialSettings(settings: MaterialSettings) {
   cached = settings;
 }
 
-/** 素材处理的默认值（「设置 → 素材」）；没读到时为 null（页面用自己的内置默认） */
+/** 素材处理的默认值（「设置 → 素材与计划」）；没读到时为 null（页面用自己的内置默认） */
 export function useMaterialSettings(): MaterialSettings | null {
   const [settings, setSettings] = useState<MaterialSettings | null>(cached);
   useEffect(() => {

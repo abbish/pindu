@@ -69,7 +69,7 @@ const DIFFICULTIES = PICK_DIFFICULTY_OPTIONS;
 const FREQUENCIES = PICK_FREQUENCY_OPTIONS;
 
 type PickMode = 'ai' | 'manual';
-/** AI 挑词的条件（默认值来自「设置 → 素材」） */
+/** AI 挑词的条件（默认值来自「设置 → 素材与计划」） */
 interface PickPrefs {
   count: number;
   difficulty: PickDifficulty | 'any';
@@ -387,7 +387,7 @@ export const CreatePassagePage: React.FC<CreatePassagePageProps> = ({ initial, o
     return counts;
   }, [candidates]);
   const updatePrefs = (patch: Partial<PickPrefs>) => setPrefs((prev) => ({ ...prev, ...patch }));
-  // 挑词条件与篇幅的默认值来自「设置 → 素材」
+  // 挑词条件与篇幅的默认值来自「设置 → 素材与计划」
   const materialSettings = useMaterialSettings();
   useEffect(() => {
     if (!materialSettings || resumed) return;

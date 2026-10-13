@@ -59,7 +59,7 @@ export interface WordMaterialCount {
   clips: number;
 }
 
-/** 素材处理的默认值（「设置 → 素材」）；各页面打开时以它为默认，当次仍可修改 */
+/** 素材处理的默认值（「设置 → 素材与计划」）；各页面打开时以它为默认，当次仍可修改 */
 export interface MaterialSettings {
   /** 词汇本：AI 生成单词的数量 */
   wordAiCount: number;

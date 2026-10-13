@@ -40,7 +40,7 @@ export interface TtsStyleSectionProps {
 }
 
 /**
- * 「设置 → 语音合成 → 朗读风格」：句子的语气预设（或自定义）、音调、音量；改了立即保存，可以直接试听。
+ * 「设置 → 朗读与发音」：句子的语气预设（或自定义）、音调、音量；改了立即保存，可以直接试听。
  * 单词发音始终是平稳的示范语气，不受风格影响。
  */
 export const TtsStyleSection: React.FC<TtsStyleSectionProps> = ({ resourceId, canPreview, previewState, onTogglePreview, speechRate, onSpeechRateCommit }) => {

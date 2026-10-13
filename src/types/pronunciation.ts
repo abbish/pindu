@@ -10,7 +10,7 @@ export interface PronunciationStatus {
   settings: PronunciationSettings;
 }
 
-/** 发音评估设置（「设置 → 学习者 → 发音」） */
+/** 发音评估设置（「设置 → 朗读与发音」） */
 export interface PronunciationSettings {
   /** 练习「看 · 说」时跟读并评估 */
   enabled: boolean;
@@ -86,13 +86,15 @@ export interface Assessment {
   voiced: boolean;
 }
 
-/** 说话转文字（复用字幕识别的模型） */
+/** 语音输入（本机把说的话转成文字，中英文都认） */
 export interface DictationStatus {
-  /** 有已下载的识别模型 */
+  /** 模型已下载 */
   ready: boolean;
-  /** 还没有时下载哪个 */
-  modelId: string;
+  /** 模型大小（字节） */
   modelBytes: number;
-  /** 正在下载识别模型的任务 */
+  /** 正在下载的任务 */
   downloadJob: string | null;
 }
+
+/** zh 中文为主（夹着英文单词也认）/ en 英文 */
+export type DictationLanguage = 'zh' | 'en';

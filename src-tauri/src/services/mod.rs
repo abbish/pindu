@@ -31,7 +31,6 @@ pub mod pronunciation;
 pub mod pronunciation_settings;
 pub mod sentence_analysis;
 pub mod sentences;
-pub mod speech_input;
 pub mod srs;
 pub mod statistics;
 pub mod study_plan;

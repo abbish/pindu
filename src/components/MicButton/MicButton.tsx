@@ -5,12 +5,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { useJob } from '@/hooks/useJobs';
 import { useRecorder } from '@/hooks/useRecorder';
-import { pronunciationService } from '@/services/pronunciationService';
-import { videoService } from '@/services/videoService';
+import { dictationService } from '@/services/dictationService';
 import { jobPercent } from '@/components/Jobs';
 import { recordingToPcmBase64 } from '@/utils/audioPcm';
 import { formatBytes } from '@/utils/fileSize';
-import type { DictationStatus } from '@/types/pronunciation';
+import type { DictationLanguage, DictationStatus } from '@/types/pronunciation';
 
 /** 识别模型是否就绪在页面间共用 */
 let cachedReady: boolean | null = null;
@@ -24,13 +23,15 @@ export interface MicButtonProps {
   className?: string;
   /** 按钮旁的提示（默认「说话输入」） */
   label?: string;
+  /** zh 中文为主（夹着英文单词也认）/ en 英文 */
+  language: DictationLanguage;
 }
 
 /**
  * 说话代替打字：点一下开始说，停顿一会儿自动结束（也可以再点结束），在本机转成文字交给 `onText`。
- * 第一次用先下载识别模型（与视频字幕识别共用，约 148MB）。
+ * 第一次用先下载语音输入模型（设置 → 本机模型里也能管理）。
  */
-export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange, disabled, className, label = '说话输入' }) => {
+export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange, disabled, className, label = '说话输入', language }) => {
   const recorder = useRecorder({ silenceStopMs: 1800, maxMs: 60000 });
   const onTextRef = useRef(onText);
   onTextRef.current = onText;
@@ -42,7 +43,7 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void pronunciationService.dictationStatus().then((r) => {
+    void dictationService.status().then((r) => {
       if (!r.success) {
         setReady(false);
         setError(r.error);
@@ -60,7 +61,7 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
       setReady(true);
       setJob(null);
     } else if (downloading?.status === 'failed') {
-      setError('识别模型没有下载成功，请检查网络后再试');
+      setError('语音输入模型没有下载成功，请检查网络后再试');
       setJob(null);
     }
   }, [downloading?.status]);
@@ -83,7 +84,7 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
     setBusy(true);
     void (async () => {
       try {
-        const r = await pronunciationService.transcribe(await recordingToPcmBase64(take.url));
+        const r = await dictationService.transcribe(await recordingToPcmBase64(take.url), language);
         if (stale) return;
         if (!r.success) {
           if (r.code === 'NOT_FOUND') {
@@ -108,8 +109,7 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
     setError(null);
     if (recording) return recorder.stop();
     if (ready === false) {
-      if (!status) return;
-      const r = await videoService.startSpeechModelDownload(status.modelId);
+      const r = await dictationService.startDownload();
       if (r.success) setJob(r.data);
       else setError(r.error);
       return;
@@ -120,9 +120,9 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
   const tip = error
     ? error
     : downloading
-      ? `正在下载识别模型 ${Math.floor(jobPercent(downloading))}%`
+      ? `正在下载语音输入模型 ${Math.floor(jobPercent(downloading))}%`
       : ready === false
-        ? `${label}（先下载识别模型，约 ${formatBytes(status?.modelBytes ?? 0)}）`
+        ? `${label}（先下载语音输入模型 ${formatBytes(status?.modelBytes ?? 0)}）`
         : recording
           ? '在听，说完会自动停'
           : busy

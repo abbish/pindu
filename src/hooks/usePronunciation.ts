@@ -26,7 +26,7 @@ const fresh = () => {
 /**
  * 本机发音评估（单词「看 · 说」、句子跟读共用）：
  * - `ready` 评估模型是否已下载（null = 还在查）；`download()` 开始下载，`downloading` 是下载任务；
- * - `settings` 开关与严格程度（设置 → 学习者 → 发音）；`enabled` 开着；`strictness` 按设置与学习者换算，
+ * - `settings` 开关与严格程度（设置 → 朗读与发音）；`enabled` 开着；`strictness` 按设置与学习者换算，
  *   `showScore` 小学生只看三档、不看分数；
  * - `assess(url, text)` 把一段录音（MediaRecorder 的地址）交给本机评估，结果在 `result`，读不出时 `error`。
  * 文字变化时调用 `reset()` 清掉上一次的结果。

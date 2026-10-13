@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Bot, Database, GraduationCap, Laptop, Library, Search, Settings2, Sparkles, UserRound, Volume2, type LucideIcon } from 'lucide-react';
+import { AudioLines, Bot, Cpu, Database, GraduationCap, Laptop, Library, Mic, Search, Settings2, Sparkles, Stethoscope, UserRound, type LucideIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { NavigateFn } from '../navigation';
@@ -12,13 +12,16 @@ import { GeneralSettings } from './settings/GeneralSettings';
 import { MaterialSettings } from './settings/MaterialSettings';
 import { DataManagementSettings } from './settings/DataManagementSettings';
 import { LanSettings } from './settings/LanSettings';
+import { VoiceSettings } from './settings/VoiceSettings';
+import { LocalModelsSettings } from './settings/LocalModelsSettings';
+import { DiagnosticsSettings } from './settings/DiagnosticsSettings';
 
 export interface SettingsPageProps {
   /** Navigation handler */
   onNavigate?: NavigateFn;
 }
 
-type SettingsKey = 'general' | 'materials' | 'learner' | 'ai-models' | 'agent' | 'tutor' | 'tts' | 'devices' | 'data-management';
+type SettingsKey = 'general' | 'learner' | 'voice' | 'materials' | 'tutor' | 'ai-models' | 'agent' | 'tts' | 'local-models' | 'devices' | 'data-management' | 'diagnostics';
 
 interface NavItem {
   key: SettingsKey;
@@ -30,34 +33,48 @@ interface NavItem {
 
 const STORAGE_KEY = 'settings.activePanel';
 
+/**
+ * 四组：通用；学习偏好（功能怎么表现）；服务与模型（要先配好的基础依赖：AI 服务、语音服务、本机模型）；数据与系统。
+ */
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
-    title: '偏好设置',
+    title: '通用',
+    items: [{ key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '更新', '版本'] }],
+  },
+  {
+    title: '学习偏好',
     items: [
-      { key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '系统日志', '诊断'] },
-      { key: 'learner', label: '学习者', icon: UserRound, keywords: ['小学生', '中学生', '成人', '水平', '讲解语言', '详略', '记忆方法', '音标', '兴趣', '发音', '跟读', '评估模型', '评分'] },
+      { key: 'learner', label: '学习者', icon: UserRound, keywords: ['小学生', '中学生', '成人', '水平', '讲解语言', '详略', '记忆方法', '音标', '兴趣'] },
+      { key: 'voice', label: '朗读与发音', icon: AudioLines, keywords: ['音色', '朗读风格', '语速', '音调', '音量', '试听', '发音', '跟读', '评分'] },
       {
         key: 'materials',
-        label: '素材',
+        label: '素材与计划',
         icon: Library,
-        keywords: ['词汇本', '短文', '视频', '学习计划', '默认', '篇幅', '选词', '拆篇', '阅读理解', '字幕', '每段时长', '每天新词', '间隔', 'ffmpeg', '视频组件', '字幕识别', '语音识别', '识别模型', 'whisper', '下载来源'],
+        keywords: ['词汇本', '短文', '视频', '学习计划', '默认', '篇幅', '选词', '拆篇', '阅读理解', '字幕', '每段时长', '每天新词', '间隔'],
+      },
+      { key: 'tutor', label: 'AI 老师', icon: GraduationCap, keywords: ['人设', '名字', '称呼', '风格', '性格', '幽默', '小问题', '对话', '权限', '删除', '只查看', '推荐'] },
+    ],
+  },
+  {
+    title: '服务与模型',
+    items: [
+      { key: 'ai-models', label: 'AI 服务', icon: Sparkles, keywords: ['AI 模型', '默认模型', '提供商', 'API 密钥', 'key', '模型测试', '思考', 'pi'] },
+      { key: 'agent', label: 'AI 任务', icon: Bot, keywords: ['pi', 'agent', 'AI 助手', '任务模型', '拼读', '批量', '并发', '后台', '重试', '429', '限流', '等待', '超时', '提示词', '补充要求'] },
+      { key: 'tts', label: '语音服务', icon: Mic, keywords: ['语音合成', '豆包', '火山', '连接', '鉴权', '音质', '缓存', 'tts'] },
+      {
+        key: 'local-models',
+        label: '本机模型',
+        icon: Cpu,
+        keywords: ['字幕识别', '语音识别', '识别模型', 'whisper', '下载来源', '发音评估', '评估模型', '语音输入', '说话', 'ffmpeg', '视频组件'],
       },
     ],
   },
   {
-    title: 'AI 与语音',
-    items: [
-      { key: 'ai-models', label: 'AI 模型', icon: Sparkles, keywords: ['默认模型', '提供商', 'API 密钥', 'key', '模型测试', '思考', 'pi'] },
-      { key: 'agent', label: 'AI 任务', icon: Bot, keywords: ['pi', 'agent', 'AI 助手', '任务模型', '拼读', '批量', '并发', '后台', '重试', '429', '限流', '等待', '超时', '提示词', '补充要求'] },
-      { key: 'tutor', label: 'AI 老师', icon: GraduationCap, keywords: ['人设', '名字', '称呼', '风格', '性格', '幽默', '小问题', '对话', '权限', '删除', '只查看', '推荐'] },
-      { key: 'tts', label: '语音合成', icon: Volume2, keywords: ['豆包', '火山', '音色', '发音', '语速', '试听', '缓存', 'tts'] },
-    ],
-  },
-  {
-    title: '数据',
+    title: '数据与系统',
     items: [
       { key: 'devices', label: '附近的设备', icon: Laptop, keywords: ['局域网', '配对', '传送', '互传', '同步', '其他电脑', '设备'] },
       { key: 'data-management', label: '数据管理', icon: Database, keywords: ['数据库', '重置', '删除', '清理', '数据表', '统计'] },
+      { key: 'diagnostics', label: '诊断', icon: Stethoscope, keywords: ['系统日志', '日志级别', '诊断'] },
     ],
   },
 ];
@@ -141,14 +158,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = () => {
       <div className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-10 py-9">
           {active === 'general' && <GeneralSettings />}
-          {active === 'materials' && <MaterialSettings />}
-          {active === 'ai-models' && <AIModelSettings />}
           {active === 'learner' && <LearnerSettings />}
-          {active === 'agent' && <AgentSettings />}
+          {active === 'voice' && <VoiceSettings onOpenService={() => setActive('tts')} />}
+          {active === 'materials' && <MaterialSettings />}
           {active === 'tutor' && <TutorSettings />}
-          {active === 'tts' && <TTSSettings />}
+          {active === 'ai-models' && <AIModelSettings />}
+          {active === 'agent' && <AgentSettings />}
+          {active === 'tts' && <TTSSettings part="service" />}
+          {active === 'local-models' && <LocalModelsSettings />}
           {active === 'devices' && <LanSettings />}
           {active === 'data-management' && <DataManagementSettings />}
+          {active === 'diagnostics' && <DiagnosticsSettings />}
         </div>
       </div>
     </div>

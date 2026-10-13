@@ -115,7 +115,7 @@ pub fn is_image(file_name: &str) -> bool {
 }
 
 /// 开始读取前检查：图片只能看图读，模型不能看图时直接告诉用户换模型，不白跑一趟。
-/// `task_label` 是「设置 → AI 助手」里这项任务的名字
+/// `task_label` 是「设置 → AI 任务」里这项任务的名字
 pub async fn check_can_read(
     paths: &AgentPaths,
     model: &AIModelConfig,

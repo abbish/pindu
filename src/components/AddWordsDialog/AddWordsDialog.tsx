@@ -97,7 +97,7 @@ const errorText = (err: unknown, title: string) => {
 
 /**
  * 添加单词（词汇本详情页唯一入口）：
- * 1 获取单词 —— AI 按描述生成，或从我的材料（粘贴 / 文件）提取（模型按「设置 → AI 助手」）；
+ * 1 获取单词 —— AI 按描述生成，或从我的材料（粘贴 / 文件）提取（模型按「设置 → AI 任务」）；
  * 2 选择单词 —— 已在词汇本中的词标“已存在”且默认不选；
  * 3 分析并保存 —— 后台任务：分批拼读分析，成功的词直接加入词汇本；关掉弹窗也会继续（进度在顶栏任务按钮里）。
  *   有失败或中途停止时显示没完成的词，可以重新分析。
@@ -172,7 +172,7 @@ export const AddWordsDialog: React.FC<AddWordsDialogProps> = ({
     void loadTopics(false);
     // 换词汇本或改了场景时重新给建议
   }, [isOpen, source, topicKey]);
-  // 生成数量与提取方式的默认值来自「设置 → 素材」
+  // 生成数量与提取方式的默认值来自「设置 → 素材与计划」
   const materialSettings = useMaterialSettings();
   useEffect(() => {
     if (!materialSettings) return;

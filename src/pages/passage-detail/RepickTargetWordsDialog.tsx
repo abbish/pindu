@@ -21,7 +21,7 @@ const COUNTS = [5, 8, 10, 15, 20];
 const INSTRUCTION_MAX = 200;
 const segmentItem = 'h-7 rounded-md px-3 text-sm data-[state=on]:bg-background data-[state=on]:shadow-sm';
 
-/** 挑词条件（默认值来自「设置 → 素材」，与新建短文一致） */
+/** 挑词条件（默认值来自「设置 → 素材与计划」，与新建短文一致） */
 interface Conditions {
   count: number;
   difficulty: PickDifficulty | 'any';

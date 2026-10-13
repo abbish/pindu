@@ -88,7 +88,7 @@ const describeExternal = (message: string): string => {
   if (message.startsWith('检查更新失败') || message.startsWith('安装更新失败')) return describeUpdate(message);
   const tts = message.includes('语音合成');
   const service = tts ? '语音服务' : 'AI 服务';
-  const settings = tts ? '「设置 → 语音合成」' : '「设置 → AI 模型」';
+  const settings = tts ? '「设置 → 语音服务」' : '「设置 → AI 服务」';
   const lower = message.toLowerCase();
 
   if (message.startsWith('无法启动 agent')) return '处理没能开始，请重启应用后再试';

@@ -10,7 +10,7 @@ import type { StartWordAnalysisRequest, WordExtractionResult } from '../types/wo
 import type { WordExtractionMode } from '../types/wordbook';
 
 class WordAnalysisService {
-  /** 按学习意图生成单词；传 bookId 时避开词汇本里已有的词，`exclude` 里的词也不再选（换一批）；模型按「设置 → AI 助手」 */
+  /** 按学习意图生成单词；传 bookId 时避开词汇本里已有的词，`exclude` 里的词也不再选（换一批）；模型按「设置 → AI 任务」 */
   async generateWordsFromIntent(intent: string, count: number, bookId?: number, exclude: string[] = []): Promise<ApiResult<WordExtractionResult>> {
     return apiClient.invoke<WordExtractionResult>('generate_words_from_intent', { intent, count, bookId, exclude });
   }
@@ -43,7 +43,7 @@ class WordAnalysisService {
 
   /**
    * 分析单词并加入词汇本（后台任务）：返回任务 id，进度与逐词状态用 useJob 订阅（job.detail: WordAnalysisDetail，
-   * job.result: WordAnalysisOutcome）。关掉弹窗也会继续，完成后成功的词已在词汇本里。每批词数与并发以「设置 → AI 助手」为准。
+   * job.result: WordAnalysisOutcome）。关掉弹窗也会继续，完成后成功的词已在词汇本里。每批词数与并发以「设置 → AI 任务」为准。
    */
   async startWordAnalysis(request: StartWordAnalysisRequest): Promise<ApiResult<string>> {
     return apiClient.invoke<string>('start_word_analysis', { request });

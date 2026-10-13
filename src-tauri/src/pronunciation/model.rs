@@ -4,152 +4,45 @@
 
 use super::fbank;
 use crate::error::{AppError, AppResult};
+use crate::model_download::ModelFile;
 use ort::session::Session;
 use ort::value::Tensor;
-use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
-use tokio::io::AsyncWriteExt;
 
-const FILE: &str = "zipa-small-crctc-500k.int8.onnx";
-pub const BYTES: u64 = 70_677_672;
-const SHA256: &str = "d0e28b68164e8b1fbd6105100c01798828aa0855000ce9bbbd1a2cec233adf13";
-const SOURCES: [&str; 2] = [
-    "https://huggingface.co/anyspeech/zipa-small-crctc-500k/resolve/main/model.int8.onnx",
-    "https://hf-mirror.com/anyspeech/zipa-small-crctc-500k/resolve/main/model.int8.onnx",
-];
+/// 发音模型文件
+pub const FILE: ModelFile = ModelFile {
+    name: "zipa-small-crctc-500k.int8.onnx",
+    bytes: 70_677_672,
+    sha256: "d0e28b68164e8b1fbd6105100c01798828aa0855000ce9bbbd1a2cec233adf13",
+    urls: &[
+        "https://huggingface.co/anyspeech/zipa-small-crctc-500k/resolve/main/model.int8.onnx",
+        "https://hf-mirror.com/anyspeech/zipa-small-crctc-500k/resolve/main/model.int8.onnx",
+    ],
+};
+pub const BYTES: u64 = FILE.bytes;
 
 pub fn path(data_dir: &Path) -> PathBuf {
-    data_dir.join("models").join(FILE)
+    FILE.path(data_dir)
 }
 
 pub fn ready(data_dir: &Path) -> bool {
-    std::fs::metadata(path(data_dir)).is_ok_and(|m| m.len() == BYTES)
+    FILE.ready(data_dir)
 }
-
-/// 一块数据多久没到算断了
-const STALL: Duration = Duration::from_secs(30);
-/// 等数据时多久看一次是否取消
-const CANCEL_POLL: Duration = Duration::from_millis(500);
 
 /// 删掉模型（设置里「删除」）；会话同时卸载（正在评估时等它算完）
 pub fn delete(data_dir: &Path) -> AppResult<()> {
     *session_lock() = None;
-    match std::fs::remove_file(path(data_dir)) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(AppError::InternalError(format!("删除发音模型失败：{e}"))),
-    }
+    FILE.delete(data_dir)
 }
 
-/// 没有就下载（依次试各来源），返回模型路径
+/// 没有就下载，返回模型路径
 pub async fn ensure(
     data_dir: &Path,
-    mut on_progress: impl FnMut(f64),
+    on_progress: impl FnMut(f64),
     cancelled: impl Fn() -> bool,
 ) -> AppResult<PathBuf> {
-    let target = path(data_dir);
-    if ready(data_dir) {
-        return Ok(target);
-    }
-    std::fs::create_dir_all(data_dir.join("models"))
-        .map_err(|e| AppError::InternalError(format!("准备模型目录失败：{e}")))?;
-    let part = target.with_extension("part");
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| AppError::ExternalServiceError(format!("无法下载发音模型：{e}")))?;
-    let mut reasons = Vec::new();
-    for url in SOURCES {
-        match download(&client, url, &part, &mut on_progress, &cancelled).await {
-            Ok(()) => {
-                std::fs::rename(&part, &target)
-                    .map_err(|e| AppError::InternalError(format!("保存发音模型失败：{e}")))?;
-                return Ok(target);
-            }
-            Err(e) if cancelled() => {
-                let _ = std::fs::remove_file(&part);
-                return Err(e);
-            }
-            Err(e) => reasons.push(e.to_string()),
-        }
-    }
-    let _ = std::fs::remove_file(&part);
-    tracing::warn!("发音模型下载失败：{}", reasons.join("；"));
-    Err(AppError::ExternalServiceError(
-        "发音评估模型下载不下来，请检查网络后再试".to_string(),
-    ))
-}
-
-async fn download(
-    client: &reqwest::Client,
-    url: &str,
-    to: &Path,
-    on_progress: &mut impl FnMut(f64),
-    cancelled: &impl Fn() -> bool,
-) -> AppResult<()> {
-    let mut response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| AppError::ExternalServiceError(format!("{url}：{e}")))?;
-    if !response.status().is_success() {
-        return Err(AppError::ExternalServiceError(format!(
-            "{url}：HTTP {}",
-            response.status()
-        )));
-    }
-    let mut file = tokio::fs::File::create(to)
-        .await
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
-    let mut hasher = Sha256::new();
-    let mut got = 0u64;
-    loop {
-        // 边等数据边看是否取消；太久没有数据算断了（不然会一直挂着）
-        let mut waited = Duration::ZERO;
-        let next = loop {
-            if cancelled() {
-                return Err(AppError::ValidationError("已停止下载".to_string()));
-            }
-            match tokio::time::timeout(CANCEL_POLL, response.chunk()).await {
-                Ok(next) => break next,
-                Err(_) => {
-                    waited += CANCEL_POLL;
-                    if waited >= STALL {
-                        return Err(AppError::ExternalServiceError(format!(
-                            "{url}：太久没有收到数据"
-                        )));
-                    }
-                }
-            }
-        };
-        let Some(chunk) =
-            next.map_err(|e| AppError::ExternalServiceError(format!("{url}：{e}")))?
-        else {
-            break;
-        };
-        hasher.update(&chunk);
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| AppError::InternalError(e.to_string()))?;
-        got += chunk.len() as u64;
-        on_progress((got as f64 / BYTES as f64).min(1.0));
-    }
-    file.flush()
-        .await
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
-    let digest: String = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    if digest != SHA256 {
-        return Err(AppError::ExternalServiceError(format!(
-            "{url}：文件校验不对"
-        )));
-    }
-    Ok(())
+    crate::model_download::ensure(data_dir, &FILE, "发音评估模型", on_progress, cancelled).await
 }
 
 static SESSION: Mutex<Option<Session>> = Mutex::new(None);

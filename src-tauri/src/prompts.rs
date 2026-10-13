@@ -328,7 +328,7 @@ pub fn model_test_system() -> &'static str {
 
 // ==================== 任务模板 ====================
 
-/// 使用提示词的 AI 任务（key 与「设置 → AI 助手」的任务一致）
+/// 使用提示词的 AI 任务（key 与「设置 → AI 任务」的任务一致）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptTask {
     Extract,

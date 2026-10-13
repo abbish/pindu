@@ -21,7 +21,7 @@ export interface AutoSplitDialogProps {
 export const AutoSplitDialog: React.FC<AutoSplitDialogProps> = ({ open, onOpenChange, cues, durationMs, hasSegments, onApply }) => {
   const [minSec, setMinSec] = useState(30);
   const [maxSec, setMaxSec] = useState(120);
-  // 每段时长默认值来自「设置 → 素材」
+  // 每段时长默认值来自「设置 → 素材与计划」
   useEffect(() => {
     if (!open) return;
     void loadMaterialSettings().then((st) => {

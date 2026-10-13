@@ -131,7 +131,7 @@ pub struct TtsCacheStats {
     pub stale_days: i64,
 }
 
-/// 朗读偏好（「设置 → 语音合成 → 朗读风格」，存 app_settings 的 `tts.preferences`）
+/// 朗读偏好（「设置 → 朗读与发音」，存 app_settings 的 `tts.preferences`）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TtsPreferences {

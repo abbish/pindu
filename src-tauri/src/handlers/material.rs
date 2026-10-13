@@ -103,7 +103,7 @@ pub async fn set_material_tags(
     super::finish(&logger, "set_material_tags", result)
 }
 
-/// 素材处理的默认值（「设置 → 素材」）
+/// 素材处理的默认值（「设置 → 素材与计划」）
 #[tauri::command]
 pub async fn get_material_settings(
     app: AppHandle,

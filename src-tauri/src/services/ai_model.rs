@@ -55,7 +55,7 @@ impl AIModelService {
                 .await?
                 .ok_or_else(|| {
                     AppError::ValidationError(
-                        "还没有设置默认 AI 模型，请到「设置 → AI 模型」添加模型并设为默认"
+                        "还没有设置默认 AI 模型，请到「设置 → AI 服务」添加模型并设为默认"
                             .to_string(),
                     )
                 })?
@@ -251,7 +251,7 @@ impl AIModelService {
             .await?
             .ok_or_else(|| {
                 AppError::NotFound(format!(
-                    "所选模型（{}）不存在或已停用，请到「设置 → AI 模型」检查",
+                    "所选模型（{}）不存在或已停用，请到「设置 → AI 服务」检查",
                     model_id
                 ))
             })?;

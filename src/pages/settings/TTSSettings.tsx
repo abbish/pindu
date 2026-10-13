@@ -29,9 +29,11 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 const PREVIEW_TEXT = 'The elephant is a very large animal. It can eat 150 kilograms of food a day.';
 
 /**
- * 设置「语音合成」：豆包语音配置（只读设置行 + 编辑弹窗）、试听、缓存清理
+ * 豆包语音合成的两部分设置（共用配置读取与试听播放器）：
+ * - `service`：「服务与模型 → 语音服务」的连接（只读设置行 + 编辑弹窗）与缓存清理，自带面板；
+ * - `voice`：「学习偏好 → 朗读与发音」里的音色与朗读风格，嵌在那一页里；没连接时引导去语音服务。
  */
-export const TTSSettings: React.FC = () => {
+export const TTSSettings: React.FC<{ part: 'service' | 'voice'; onOpenService?: () => void }> = ({ part, onOpenService }) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -188,21 +190,19 @@ export const TTSSettings: React.FC = () => {
     });
   };
 
-  const title = '语音合成';
+  const title = '语音服务';
 
   if (loading || !config) {
-    return (
-      <SettingsPanel title={title}>
-        {!loading && loadError ? (
-          <PageError title="无法加载语音合成配置" message={loadError} onRetry={() => loadData()} />
-        ) : (
-          <>
-            <Skeleton className="h-48 rounded-xl" />
-            <Skeleton className="h-20 rounded-xl" />
-          </>
-        )}
-      </SettingsPanel>
-    );
+    const body =
+      !loading && loadError ? (
+        <PageError title="无法加载语音合成配置" message={loadError} onRetry={() => loadData()} />
+      ) : (
+        <>
+          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-20 rounded-xl" />
+        </>
+      );
+    return part === 'service' ? <SettingsPanel title={title}>{body}</SettingsPanel> : body;
   }
 
   const authText = config.hasApiKey
@@ -234,23 +234,20 @@ export const TTSSettings: React.FC = () => {
     </SettingsSection>
   );
 
-  return (
-    <SettingsPanel
-      title={title}
-      aside={
-        config.configured ? (
-          <Badge variant="outline" className="border-transparent bg-success-soft text-success">
-            <CheckCircle2 /> 已配置
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="border-transparent bg-warning-soft text-warning">
-            <CircleAlert /> 未配置
-          </Badge>
-        )
-      }
-    >
-      {!config.configured && connection}
-
+  if (part === 'voice') {
+    if (!config.configured) {
+      return (
+        <SettingsSection title="朗读">
+          <SettingsRow label="音色与朗读风格" description="未连接">
+            <Button variant="outline" size="sm" onClick={onOpenService}>
+              先连接豆包语音
+            </Button>
+          </SettingsRow>
+        </SettingsSection>
+      );
+    }
+    return (
+      <>
       <SettingsSection
         title="音色"
         actions={
@@ -310,7 +307,26 @@ export const TTSSettings: React.FC = () => {
         onSpeechRateCommit={(rate) => void quickSave({ speechRate: rate }, `语速改为 ${(1 + rate / 100).toFixed(1)}×`)}
       />
 
-      {config.configured && connection}
+      </>
+    );
+  }
+
+  return (
+    <SettingsPanel
+      title={title}
+      aside={
+        config.configured ? (
+          <Badge variant="outline" className="border-transparent bg-success-soft text-success">
+            <CheckCircle2 /> 已配置
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="border-transparent bg-warning-soft text-warning">
+            <CircleAlert /> 未配置
+          </Badge>
+        )
+      }
+    >
+      {connection}
 
       <SettingsSection title="缓存">
         <SettingsRow

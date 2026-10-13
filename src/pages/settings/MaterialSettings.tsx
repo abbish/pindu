@@ -1,7 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { FolderOpen } from 'lucide-react';
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -11,12 +8,9 @@ import { SettingsPanel, SettingsRow, SettingsSection } from '@/components/Settin
 import { PASSAGE_INTERVAL_OPTIONS, intervalLabel } from '@/components/PlanPassagePicker';
 import { setCachedMaterialSettings } from '@/hooks/useMaterialSettings';
 import { tagService } from '@/services/tagService';
-import { videoService } from '@/services/videoService';
 import { DAILY_NEW_WORDS_OPTIONS } from '@/utils/planParams';
 import { PICK_DIFFICULTY_OPTIONS, PICK_FREQUENCY_OPTIONS } from '@/utils/passage';
 import type { MaterialSettings as Settings } from '@/types/material';
-import type { MediaToolsStatus } from '@/types/video';
-import { SpeechModelSection } from './SpeechModelSection';
 
 type Option<T extends string | number> = { value: T; label: string };
 
@@ -69,14 +63,13 @@ function Choice<T extends string | number>({ value, options, onChange, label, wi
 }
 
 /**
- * 设置「素材」：词汇本、短文、视频、学习计划里各种处理参数的默认值（各页面打开时以它为默认，当次仍可修改）；
- * 视频组件（ffmpeg，自带的不可用时才显示）。改了立即保存。
+ * 设置「素材与计划」：词汇本、短文、视频、学习计划里各种处理参数的默认值（各页面打开时以它为默认，当次仍可修改）。
+ * 改了立即保存。视频组件与字幕识别模型在「本机模型」。
  */
 export const MaterialSettings: React.FC = () => {
   const toast = useToast();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [media, setMedia] = useState<MediaToolsStatus | null>(null);
   /** 每段时长的输入（离开输入框再保存） */
   const [seconds, setSeconds] = useState({ min: '', max: '' });
 
@@ -91,7 +84,6 @@ export const MaterialSettings: React.FC = () => {
 
   useEffect(() => {
     void load();
-    videoService.getMediaToolsStatus().then((r) => r.success && setMedia(r.data));
   }, []);
 
 
@@ -110,31 +102,18 @@ export const MaterialSettings: React.FC = () => {
     }
   };
 
-  const pickMediaDir = async () => {
-    const dir = await openFileDialog({ directory: true, multiple: false, title: '选择 ffmpeg 和 ffprobe 所在的文件夹' });
-    if (typeof dir !== 'string') return;
-    const result = await videoService.setFfmpegDir(dir);
-    if (result.success) setMedia(result.data);
-    else toast.showError('无法使用这个文件夹', result.error);
-  };
-  const resetMediaDir = async () => {
-    const result = await videoService.setFfmpegDir(null);
-    if (result.success) setMedia(result.data);
-    else toast.showError('无法改用自带的视频组件', result.error);
-  };
-
   if (error) {
     return (
-      <SettingsPanel title="素材默认值">
+      <SettingsPanel title="素材与计划">
         <PageError title="无法读取设置" message={error} onRetry={load} />
       </SettingsPanel>
     );
   }
-  if (!settings) return <SettingsPanel title="素材默认值">{null}</SettingsPanel>;
+  if (!settings) return <SettingsPanel title="素材与计划">{null}</SettingsPanel>;
   const s = settings;
 
   return (
-    <SettingsPanel title="素材默认值">
+    <SettingsPanel title="素材与计划">
       <SettingsSection title="词汇本">
         <SettingsRow label="AI 生成单词">
           <Choice label="AI 生成单词的数量" value={s.wordAiCount} options={WORD_COUNTS} onChange={(wordAiCount) => update({ wordAiCount })} />
@@ -197,25 +176,7 @@ export const MaterialSettings: React.FC = () => {
             />
           </div>
         </SettingsRow>
-        {/* 自带的能用时不显示；不可用或改用了别的 ffmpeg 时才需要 */}
-        {media && !(media.available && media.builtIn) && (
-          <SettingsRow label="视频组件" description={media.available ? (media.dir ?? undefined) : '没有找到'}>
-            <div className="flex gap-2">
-              {media.available && (
-                <Button variant="ghost" size="sm" onClick={resetMediaDir}>
-                  使用内置组件
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={pickMediaDir}>
-                <FolderOpen />
-                选择文件夹
-              </Button>
-            </div>
-          </SettingsRow>
-        )}
       </SettingsSection>
-
-      <SpeechModelSection />
 
       <SettingsSection title="学习计划">
         <SettingsRow label="每天新词数">

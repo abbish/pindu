@@ -29,7 +29,7 @@ pub(crate) async fn media_tools(app: &AppHandle) -> AppResult<Option<MediaTools>
 async fn require_tools(app: &AppHandle) -> AppResult<MediaTools> {
     media_tools(app).await?.ok_or_else(|| {
         AppError::ValidationError(
-            "视频组件不可用，请重新安装应用，或在「设置 → 通用 → 视频组件」里选择 ffmpeg 所在的文件夹"
+            "视频组件不可用，请重新安装应用，或在「设置 → 本机模型 → 视频组件」里选择 ffmpeg 所在的文件夹"
                 .to_string(),
         )
     })

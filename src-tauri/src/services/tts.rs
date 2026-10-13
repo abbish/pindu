@@ -310,7 +310,7 @@ impl TTSService {
             .find_volcengine_config()
             .await?
             .ok_or_else(|| {
-                AppError::NotFound("还没有语音合成配置，请到「设置 → 语音合成」填写".to_string())
+                AppError::NotFound("还没有语音合成配置，请到「设置 → 语音服务」填写".to_string())
             })
     }
 
@@ -597,7 +597,7 @@ impl TTSService {
         }
         if self.repository.update_volcengine_config(&update).await? == 0 {
             return Err(AppError::NotFound(
-                "还没有语音合成配置，请到「设置 → 语音合成」填写".to_string(),
+                "还没有语音合成配置，请到「设置 → 语音服务」填写".to_string(),
             ));
         }
         Ok(())

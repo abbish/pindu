@@ -55,3 +55,14 @@ WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved. 只取�
 
 ZIPA：Zhu et al., *ZIPA: A family of efficient models for multilingual phone recognition*, ACL 2025。
 打分模型由 speechocean762（Apache-2.0，https://huggingface.co/datasets/mispeech/speechocean762）训练得到。
+
+## 语音输入
+
+对 AI 老师说话、开放题用英语说时，在本机把录音转成文字（录音不上传）。模型第一次使用时下载；推理用上面的 ONNX Runtime。
+
+| 组件 | 版本 | 许可证 | 来源 |
+|---|---|---|---|
+| SenseVoiceSmall 语音识别模型（int8 ONNX，sherpa-onnx 导出） | sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 | FunASR 模型开源许可协议 1.1 | https://huggingface.co/FunAudioLLM/SenseVoiceSmall |
+
+SenseVoiceSmall 由阿里巴巴通义实验室（FunAudioLLM，iic）发布，许可协议见 https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE ；
+ONNX 导出与前后处理参照 sherpa-onnx（Apache-2.0，https://github.com/k2-fsa/sherpa-onnx）。

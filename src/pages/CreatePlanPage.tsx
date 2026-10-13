@@ -58,7 +58,7 @@ export const CreatePlanPage: React.FC<CreatePlanPageProps> = ({ onNavigate }) =>
   const [selectedBooks, setSelectedBooks] = useState<number[]>([]);
   const [dailyNewWords, setDailyNewWords] = useState(DEFAULT_DAILY_NEW_WORDS);
   const [order, setOrder] = useState<OrderMode>('easy');
-  // 每天新词数、短文间隔、AI 排序的默认值来自「设置 → 素材」
+  // 每天新词数、短文间隔、AI 排序的默认值来自「设置 → 素材与计划」
   const materialSettings = useMaterialSettings();
   useEffect(() => {
     if (!materialSettings) return;

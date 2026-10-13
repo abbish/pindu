@@ -151,7 +151,7 @@ pub async fn run_task(
 }
 
 /// 同 `run_task`，可由 `cancelled()` 中止（如规划页的“取消”）。
-/// 等待上限统一取「设置 → AI 助手」（`agent_settings::task_timeout`）
+/// 等待上限统一取「设置 → AI 任务」（`agent_settings::task_timeout`）
 #[allow(clippy::too_many_arguments)]
 pub async fn run_task_cancellable(
     paths: &AgentPaths,

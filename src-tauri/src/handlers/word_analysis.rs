@@ -435,7 +435,7 @@ pub async fn start_word_analysis(
                 .collect(),
         };
         let analyzer = phonics_analyzer(&app, &model_config, profile, context)?;
-        // 每批词数与同时请求数以「设置 → AI 助手」为准
+        // 每批词数与同时请求数以「设置 → AI 任务」为准
         let settings = AgentSettingsService::new(pool_arc.clone(), logger_arc.clone())
             .get()
             .await?;
@@ -535,7 +535,7 @@ async fn get_model_config(
     pool: &SqlitePool,
     logger: &Logger,
 ) -> AppResult<AIModelConfig> {
-    // 显式指定的模型 > 「设置 → AI 助手」里该任务的模型 > 默认模型
+    // 显式指定的模型 > 「设置 → AI 任务」里该任务的模型 > 默认模型
     let config = AgentSettingsService::new(Arc::new(pool.clone()), Arc::new(logger.clone()))
         .model_for(task, model_id)
         .await?;

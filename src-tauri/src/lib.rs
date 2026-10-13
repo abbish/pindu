@@ -1,6 +1,7 @@
 mod agent;
 mod app_paths;
 mod database;
+mod dictation;
 mod error;
 mod handlers;
 mod jobs;
@@ -14,6 +15,7 @@ mod media;
 mod media_server;
 #[cfg(target_os = "macos")]
 mod menu;
+mod model_download;
 mod process;
 mod pronunciation;
 mod repositories;
@@ -446,6 +448,8 @@ pub fn run() {
                 assess_pronunciation,
                 get_pronunciation_overview,
                 get_dictation_status,
+                start_dictation_model_download,
+                delete_dictation_model,
                 transcribe_speech,
                 get_media_tools_status,
                 set_ffmpeg_dir,

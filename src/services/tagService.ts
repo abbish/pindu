@@ -44,7 +44,7 @@ class TagService extends BaseService {
     return notifyOnSuccess(await this.executeWithLoading(() => this.client.invoke<Tag[]>('set_material_tags', { kind, refId, tagIds })));
   }
 
-  /** 素材处理的默认值（「设置 → 素材」） */
+  /** 素材处理的默认值（「设置 → 素材与计划」） */
   async getMaterialSettings(): Promise<ApiResult<MaterialSettings>> {
     return this.executeWithLoading(() => this.client.invoke<MaterialSettings>('get_material_settings'));
   }
