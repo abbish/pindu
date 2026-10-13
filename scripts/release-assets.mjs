@@ -1,4 +1,4 @@
-// 汇总三个系统的构建产物，整理成 GitHub Release 的附件，并生成应用内更新用的 latest.json。
+// 汇总 macOS 与 Windows 的构建产物，整理成 GitHub Release 的附件，并生成应用内更新用的 latest.json。
 //
 // 用法：node scripts/release-assets.mjs <产物目录> <输出目录> [--notes-file <更新说明.md>]
 //   产物目录：各系统 `npm run package` 生成的 release/<版本>-<平台>/（CI 下载后放在一起，可多层嵌套）
@@ -67,11 +67,6 @@ for (const dmg of find(/\.dmg$/)) publish(dmg, `Pindu_${version}_universal.dmg`)
 // Windows：NSIS 安装器即更新包
 platforms['windows-x86_64'] = updaterAsset(one(/-setup\.exe$/, ' Windows 安装器（*-setup.exe）'), `Pindu_${version}_x64-setup.exe`);
 for (const msi of find(/\.msi$/)) publish(msi, `Pindu_${version}_x64.msi`);
-
-// Linux：只有 AppImage 支持应用内更新；deb / rpm 供手动安装
-platforms['linux-x86_64'] = updaterAsset(one(/\.AppImage$/, ' Linux AppImage'), `Pindu_${version}_amd64.AppImage`);
-for (const deb of find(/\.deb$/)) publish(deb, `Pindu_${version}_amd64.deb`);
-for (const rpm of find(/\.rpm$/)) publish(rpm, `Pindu_${version}_x86_64.rpm`);
 
 const notes =
   notesIndex > 0 && process.argv[notesIndex + 1]

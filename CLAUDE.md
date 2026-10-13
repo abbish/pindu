@@ -3,11 +3,12 @@
 > **语言（硬性）**：与用户的所有对话、回复、进度汇报、提问、总结一律用中文（中文为母语来写，不中英夹杂成句）；代码、命令、路径、标识符保持原样。子代理的报告与跨会话消息也用中文。
 >
 > 面向 AI 编码助手与新成员的工程说明。描述的是**当前代码的真实状态**（含已知债务），而非理想设计。
-> 修改架构或规范时请同步更新本文件（流程：`harness-governance` Skill）。上次重建：2026-10-03；局部更新：2026-10-06（B4/B5 分层收口）；2026-10-07（前端 UI 体系选定 shadcn/ui）；2026-10-10（词汇本与词组、词形库 D47、新建短文规划改后台任务、朗读偏好）。
+> 修改架构或规范时请同步更新本文件（流程：`harness-governance` Skill）。上次重建：2026-10-03；局部更新：2026-10-06（B4/B5 分层收口）；2026-10-07（前端 UI 体系选定 shadcn/ui）；2026-10-10（词汇本与词组、词形库 D47、新建短文规划改后台任务、朗读偏好）；2026-10-13（只支持 macOS 与 Windows、随应用分发 ONNX Runtime）。
 
 ## 1. 项目速览
 
 拼读（Pindu.app）是 RedLark 的产品之一：Tauri 2 + React 19 的跨平台桌面英语学习应用，bundle id `com.redlark.pindu-app`。
+**支持的系统**：只支持 macOS 与 Windows（2026-10-13 起放弃 Linux，中期内不考虑）。安装包、更新包与 `latest.json` 只有 darwin-aarch64 / darwin-x86_64（universal 包）与 windows-x86_64；CI 的 `verify` 仍跑在 Ubuntu 上（只做编译检查与测试），所以 `scripts/ffmpeg/`、`scripts/whisper/`、`agent/scripts/build.mjs` 保留 Linux 本机目标，只给 CI 用、不分发。macOS 最低 10.15；发音评估与语音输入依赖的 ONNX Runtime 需要 macOS 13.4 以上、Apple 芯片 14 以上，版本不够时只是这两项不可用。
 **命名**：面向用户的产品名中文「拼读」、英文「Pindu.app」（窗口标题、侧边栏、安装包、README）；RedLark 是出品方（发布者、版权、仓库）。已用于标识、路径与包名的 `redlark`（`redlark-agent`、`redlark_app_lib`、`REDLARK_*` 环境变量、`com.redlark.pindu-app`）保留不改；「自然拼读」只指教学方法，不作产品名。
 核心价值：**把自己身边的英语素材，变成每天能学、能练、能复习的学习资源。** 产品定位与宣传主张以 `docs/product/value-proposition.md` 为共同依据；现有能力与使用条件以 README 和实现为准。AI 是部分素材整理、补充与讲解的实现手段；日程与复习排期由规则执行。资料本地保存，AI / 语音请求会向用户配置的服务商发送相关内容。
 
@@ -18,7 +19,7 @@
 | 后端 | Rust 2021 · tokio · sqlx 0.8 (sqlite, migrate, WAL) · reqwest · thiserror |
 | AI | 内置 agent harness：pi（`@earendil-works/pi-coding-agent`，RPC sidecar `redlark-agent`，bun 单文件） |
 | 数据库 | SQLite，文件 `<数据目录>/vocabulary.db`（数据目录见 §4.3），启动时先备份再跑 `src-tauri/migrations/` |
-| 外部服务 | OpenAI 兼容接口（AI 分析/规划；种子提供商 OpenRouter / MiniMax / 月之暗面 / DeepSeek，均可「同步模型」读取 `/models`）· 火山引擎豆包语音合成（TTS，V3 HTTP 单向流式，带 SHA256 音频缓存）· ffmpeg / ffprobe（视频库：转码、精确切分、波形与缩略图；最小 LGPL 版随应用分发（externalBin，`scripts/ffmpeg/` 从固定版本源码编译），查找顺序见 `media.rs`）· whisper.cpp（视频没有字幕时在本机识别英文语音，`whisper-cli` externalBin，`scripts/whisper/` 用 cmake 从固定版本源码编译；模型（默认 small.en，设置里可选 base.en / medium.en）第一次识别时下载到 `<数据目录>/models/`，D61） |
+| 外部服务 | OpenAI 兼容接口（AI 分析/规划；种子提供商 OpenRouter / MiniMax / 月之暗面 / DeepSeek，均可「同步模型」读取 `/models`）· 火山引擎豆包语音合成（TTS，V3 HTTP 单向流式，带 SHA256 音频缓存）· ffmpeg / ffprobe（视频库：转码、精确切分、波形与缩略图；最小 LGPL 版随应用分发（externalBin，`scripts/ffmpeg/` 从固定版本源码编译），查找顺序见 `media.rs`）· whisper.cpp（视频没有字幕时在本机识别英文语音，`whisper-cli` externalBin，`scripts/whisper/` 用 cmake 从固定版本源码编译；模型（默认 small.en，设置里可选 base.en / medium.en）第一次识别时下载到 `<数据目录>/models/`，D61）· ONNX Runtime（发音评估与语音输入的推理库：`scripts/onnxruntime/` 准备微软官方预编译库，Apple 芯片与 Windows 用 1.28.3，Intel Mac 用 1.23.2，Mac 合成一个通用库；不链接进程序，运行时加载，`src-tauri/src/onnx_runtime.rs`；macOS 打进 Contents/Frameworks（`tauri.macos.conf.json`），Windows 放资源目录（`tauri.windows.conf.json`）） |
 | 包管理 | npm（有 package-lock.json）+ Cargo；工具链版本本地与 CI 一致：Rust 见 `rust-toolchain.toml`，Node 见 `.nvmrc`，升级只改这两处 |
 
 **无路由库、无状态管理库**；UI 组件库唯一选择是 shadcn/ui（源码在 `src/components/ui/`，不引入其它 UI 库）。页面切换靠 `App.tsx` 里的 `currentPage` 字符串 + `pageParams`。
@@ -31,6 +32,7 @@ npm run tauri:dev           # 开发（前端 :1420 + Rust 热编译）
 npm run agent:install       # agent sidecar 依赖（首次）；npm run agent:build 编译当前平台 sidecar（tauri:dev / package 会自动编译）
 npm run ffmpeg:prepare      # 随应用分发的 ffmpeg / ffprobe（缺失或 build.sh / sources.json 变了时下载固定版本源码并编译，需 meson / ninja / pkg-config，x86 需 nasm；tauri:dev / verify / package 会自动调用）
 npm run whisper:prepare     # 随应用分发的 whisper-cli（识别字幕；缺失或配置变了时编译，需 cmake + C/C++ 编译器；tauri:dev / verify / package 会自动调用）
+npm run onnxruntime:prepare # 随应用分发的 ONNX Runtime（发音评估、语音输入；下载固定版本的官方库到 src-tauri/resources/onnxruntime/；tauri:dev / verify / package 会自动调用）
 npm run agent:test          # agent sidecar 工具测试（node --test）
 npm run verify              # 一键验证（= bash scripts/verify.sh）：SQL/IPC/类型/CSS 变量静态检查 + tsc + lint 棘轮 + 前端测试 + cargo fmt/check/clippy/test
 npm run type-check          # tsc --noEmit
@@ -46,7 +48,7 @@ python3 scripts/check-release-invariants.py [--update]  # 升级安全：identif
 python3 scripts/schema-snapshot.py --table <t>   # 迁移终态表结构（不要凭迁移片段猜列）
 cd src-tauri && cargo test  # 后端测试（crate 内 #[cfg(test)]，内存 SQLite）
 npm run package             # 一键构建本机安装包（= ./build.sh / build.cmd → scripts/package.mjs）：环境检查 → 依赖 → sidecar → tauri build → release/<版本>-<triple>/
-npm run package:check       # 只检查构建环境；选项 --target mac-universal|mac-arm|mac-intel|win|win-arm|linux|linux-arm、--bundles、--no-bundle、--debug、--clean
+npm run package:check       # 只检查构建环境；选项 --target mac-universal|mac-arm|mac-intel|win|win-arm、--bundles、--no-bundle、--debug、--clean
                             # 开发者本地打包工具（只能打本机系统的包，macOS ad-hoc 签名）。正式发布走 GitHub Releases：未签名安装包 + 应用内更新，CI 带 TAURI_SIGNING_PRIVATE_KEY 时额外生成签名的更新包（docs/RELEASING.md）
 npm run clean               # 清 dist、target、vite 缓存
 ```
@@ -90,6 +92,7 @@ src-tauri/
 ├── src/mcp/                  拼读的 MCP 服务（给 AI 老师 / pi 用的工具，D55）：只在本机、带令牌，第一次打开 AI 老师对话时启动
 ├── src/lan/                  局域网设备互传唯一 owner（`LanNode`）：UDP 组播发现 `224.0.0.167:53318` + HTTPS 双向证书（自签，身份 = 证书 SHA-256，`<数据目录>/lan/identity.pem`）+ 6 位数字配对（先承诺后揭示，两边都要确认数字一致）；组播只当线索，设备信息一律经钉住证书的 `/register` 确认（已配对设备按最后的地址定期探测）；默认关闭，「设置 → 附近的设备」开启；已配对设备在 `lan_devices`（方案 `.claude/work/lan-pairing/plan.md`）；传送素材在 `lan/transfer.rs`（offer 等接收方确认 → manifest → 逐个文件流式上传、可续传、sha256 校验 → finish 导入，协议 `transfer-protocol.md`），素材包格式 `lan/package.rs`（业务对象、包内引用，不含本机编号），导出 / 导入 `services/lan_export.rs` / `lan_import.rs`（一个事务，每次新建；计划可连同进度原样恢复）
 ├── src/process.rs            子进程创建唯一入口 `process::command`（Windows 上不弹命令行窗口；AI sidecar 与 ffmpeg 都经它，不直接 `Command::new`）
+├── src/onnx_runtime.rs       ONNX Runtime 加载唯一入口（发音评估、语音输入共用）：运行时加载随应用分发的库，加载不了（缺文件、macOS 版本太低）时这两项不可用、其余功能不受影响
 ├── src/dictation.rs          语音输入：SenseVoice-Small（int8 ONNX，`ort`，按需下载到 `<数据目录>/models/sense-voice-small/`；FunASR 模型协议，注明出处、保留模型名），前处理与解码照 sherpa-onnx（fbank 逐值对照 kaldi-native-fbank）
 ├── src/model_download.rs     本机模型文件下载（发音评估、语音输入共用）：多个地址依次试、sha256 校验、30 秒没数据算断、可停止；字幕识别的大模型另有续传与来源选择
 ├── src/pronunciation/        本机发音评估（看 · 说）：fbank（kaldi 80 维，ZIPA / SenseVoice 两套参数）· model（ZIPA small int8 ONNX，`ort`，按需下载到 `<数据目录>/models/`）· dict（CMUdict → IPA）· score（CTC 对齐 + GOP + 内置打分树，speechocean762 训练）；方案与实测在 `.claude/work/pronunciation-spike/`
@@ -101,6 +104,7 @@ src-tauri/
 
 scripts/ffmpeg/                随应用分发的 ffmpeg：sources.json（版本 + sha256）、build.sh（LGPL 最小配置，含文字字幕解码 / srt、wav 输出）、prepare.mjs（→ src-tauri/binaries/ffmpeg-<triple>，`.ffmpeg-<triple>.recipe` 记编译配置指纹）；许可证随包分发在 src-tauri/licenses/
 scripts/whisper/               随应用分发的 whisper-cli：sources.json（whisper.cpp 版本 + sha256）、prepare.mjs（cmake；macOS Metal，其余 CPU → src-tauri/binaries/whisper-cli-<triple>）
+scripts/onnxruntime/           随应用分发的 ONNX Runtime：sources.json（微软官方预编译包版本 + sha256；Apple 芯片与 Windows 1.28.3，Intel Mac 1.23.2）、prepare.mjs（下载、校验，Mac 两个架构合成通用库 → src-tauri/resources/onnxruntime/，不入库）；运行时由 src-tauri/src/onnx_runtime.rs 加载
 shared/lemma/                 词形库（前端与 sidecar 共用）：wordnet.json（scripts/lemma/build.mjs 从官方 WordNet 3.0 生成，入库；许可证随包分发在 src-tauri/licenses/）、morphy.ts（词形还原）、phrase.ts（词组位置）、cases.json（与 Rust 端共用的用例）
 agent/                        agent sidecar 的 TS 工程（pi RPC + RedLark 工具）；npm run agent:build → src-tauri/binaries/redlark-agent-<triple>（不入库）
 docs/agent-harness/           agent harness 设计（DESIGN.md）与决策记录（DECISIONS.md，追加式）
@@ -159,7 +163,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 | `handlers/prompt_profile.rs` | get_prompt_profile / update_prompt_profile / apply_prompt_preset / preview_prompts（学习者档案与各任务补充要求，见 §6） |
 | `handlers/lan.rs` | get_lan_status, update_lan_settings（`request`：enabled / alias，存 `app_settings` 的 `lan.settings`，`services/lan_settings.rs`）, get_nearby_devices, refresh_nearby_devices, add_device_by_address（组播不通时按「IP[:端口]」添加）, start_pairing（返回两边核对的 6 位数，结果经 `lan-pairing-result` 事件）, confirm_pairing（发起方确认数字一致；两边都确认才保存配对）, cancel_pairing, respond_pair_request（别的设备发来的请求经 `lan-pair-request` 弹出 App 级 `components/LanPairRequest`）, get_pending_pair_requests, get_paired_devices, unpair_device（对方在线时一并通知它删除）；变化事件 `lan-nearby-changed` / `lan-paired-changed`；start_lan_transfer（`request`：fingerprint + items（word_book / passage / video / clip / plan）+ includeProgress / includeSourceVideo；后台任务 lan_send，入口是各素材与计划 ⋯ 菜单 / 多选栏的「发送到其他电脑…」，App 级 `components/SendToDevice`）, respond_transfer_offer（收到的发送经 `lan-transfer-offer` 弹出 `LanTransferOffer`，每次都要确认；接收是后台任务 lan_receive，结束事件 `lan-transfer-closed`）, get_pending_transfer |
 | `handlers/system.rs` | get_system_logs, get_log_level / set_log_level（最低记录级别）, open_log_folder, open_data_folder, get_startup_status（启动失败原因，见 §4.3） |
-| `handlers/updater.rs` | check_for_update（读 GitHub Releases 的 latest.json；开发版可用 `PINDU_UPDATE_ENDPOINT` 覆盖地址）, install_update（`on_progress: Channel<UpdateProgress>`，内置公钥验签；有 agent 任务在跑时拒绝，开始安装后 `agent::session` 不再启动新 sidecar；失败可直接重试）, restart_app；Linux 非 AppImage 只提示不安装。前端 `UpdateWatcher`（App 级：自动检查 + 菜单）/ `UpdateBanner`（AppShell 顶栏下与启动错误页） |
+| `handlers/updater.rs` | check_for_update（读 GitHub Releases 的 latest.json；开发版可用 `PINDU_UPDATE_ENDPOINT` 覆盖地址）, install_update（`on_progress: Channel<UpdateProgress>`，内置公钥验签；有 agent 任务在跑时拒绝，开始安装后 `agent::session` 不再启动新 sidecar；失败可直接重试）, restart_app。前端 `UpdateWatcher`（App 级：自动检查 + 菜单）/ `UpdateBanner`（AppShell 顶栏下与启动错误页） |
 | `handlers/video.rs` | get_media_tools_status / set_ffmpeg_dir（视频组件）, find_video_subtitles（选好视频后自动找字幕：旁边的同名字幕文件（含 `.en` / `.chs` 后缀）、视频自带的文字字幕轨道（导出到缓存）；英文建议做字幕、中文做第二字幕，`services/subtitle_discovery.rs`）, start_video_import（后台任务：复制 → 读信息 → 不能直接播放时转 720p 代理 → 波形与缩略图；字幕在命令里先解析；没有字幕时 `recognize`：之后在 media 队列里识别字幕 kind video_recognize，识别完再整理，D61）, start_video_recognition / set_video_subtitles（补上字幕，`replace` 时换掉已有的：重新识别 / 换成字幕文件；识别、整理、规划、切分进行中拒绝）, get_speech_models / set_speech_model / start_speech_model_download / delete_speech_model / import_speech_model（识别模型：base.en / small.en（默认）/ medium.en，选用的存 app_settings `speech.model`，下载是后台任务 speech_model_download，断了接着下（Range），也可从文件导入（校验 sha256），`services/subtitle_recognition.rs`）, set_speech_source / test_speech_sources（模型下载来源：auto 先试 HF 国内镜像、魔搭社区，最后 Hugging Face 官方；存 `speech.source`；测试各来源能否连上与速度）, get_videos, get_video（含字幕条、规划草稿、缩略图、已切出的短片）, get_video_peaks, rename_video, save_video_plan（按 planId 自动保存；规划 / 切分进行中拒绝）, create_video_plan / rename_video_plan / delete_video_plan（一个视频多个规划，删规划保留已切片段）, set_video_subtitle_offset（字幕纠偏）, 整理字幕（AI 断句、补中文）不是用户操作：导入时自动对整部启动（kind video_translate，与转码并行），AI 规划不等整理（还没断句的按标点推断整句，没整理完时另起整理任务接着做），切分任务开始前对还没整理的再补一次（`video_translate::prepare_before`，失败不影响主流程）, get_clips（视频库「片段」）, suggest_video_requirements（AI 读字幕给切分要求建议）, start_video_plan（AI 规划写进 request.planId，后台任务）, start_video_processing（planId：按这个规划精确切分并逐段存成短文，后台任务，按段可续；起止与已有短片相同的不重切）, get_passage_video（短文详情播放短片）, delete_video（连同短片短文，计划还在用时拒绝）, delete_video_source |
 | `handlers/pronunciation.rs` | get_pronunciation_status（含设置）, update_pronunciation_settings（「设置 → 朗读与发音」：开关、评分严格程度 auto / lenient / standard / strict，存 app_settings `pronunciation.settings`，`services/pronunciation_settings.rs`）, start_pronunciation_model_download（后台任务 pronunciation_model）, delete_pronunciation_model, assess_pronunciation（`request`：要读的文字 + 16kHz 单声道 16 位 PCM base64 → 每个词 / 每个音的分数与「听起来像」、明显读成常见读偏的 `likelyConfused`；带 `context`（计划）时同时保存进 `pronunciation_attempts`；模型没下载时 NOT_FOUND）, get_pronunciation_overview（planId：跟读次数、平均分、常读不准的音，计划详情「统计分析 → 发音」））；界面：单词练习「看 · 说」的 `components/SayCheck`（卡片底部的跟读框代替输入框、右边大按钮是「跟读」（回车也是），读过关自动盖住进入「盖 · 写」，连续 3 次没过关才能不读直接写，不自动开麦；三档 / 分数与拼读块标色，换算在 `utils/pronunciation.ts`）；评估状态共用 `hooks/usePronunciation`，句子逐词标色 `components/SayText`（短文朗读「读完一句自动跟读」、场景片段跟读；原文 / 台词每句后面、分析图标左边的「跟读」`useSentenceSay`） |
 | `handlers/dictation.rs` | 语音输入（说话代替打字，`src/dictation.rs`，SenseVoice-Small 本机识别、中英文都认）：get_dictation_status, start_dictation_model_download（后台任务 dictation_model）, delete_dictation_model, transcribe_speech（`request`：录音 + language zh / en；没说话为空字符串，模型没下载时 NOT_FOUND）；前端 `components/MicButton`（AI 老师输入框说话、开放题用英语说） |

@@ -66,7 +66,7 @@ disable-model-invocation: true
 问题：<用户碰到的现象> → 原因：<一句话> → 修复：<改了什么，path>
 准入：迁移 无 | 更新/构建链路 未触达 | 依赖 未升级 | main 无其他未发布改动 / 走 hotfix 分支
 门禁：verify ✓ | CI ✓ | 不变量 ✓ | 回归测试 <名称> ✓ | 手测 <步骤> ✓ | 冒烟 ✓
-构建：mac ✓ win ✓ linux ✓ → 草稿附件 <n> 个 ✓；latest.json ✓
+构建：mac ✓ win ✓ → 草稿附件 <n> 个 ✓；latest.json ✓
 发布：已发布 / 待用户发布；发布后 latest.json ✓
 本次未做：完整回归、更新链路实测、<…>
 ```

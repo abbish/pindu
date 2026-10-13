@@ -31,12 +31,13 @@
 
 ### 系统工具
 
+拼读只支持 macOS 与 Windows（2026-10-13 起不再支持 Linux），请在这两个系统上开发和打包。CI 的检查（`npm run verify`）仍在 Ubuntu 上运行，只做编译检查与测试，不出 Linux 安装包。
+
 | 系统 | 需要安装 |
 |---|---|
 | 全部 | [Git](https://git-scm.com)、[Node.js](https://nodejs.org)（版本见 `.nvmrc`）、[rustup](https://rustup.rs)（Rust 版本见 `rust-toolchain.toml`，首次编译时自动安装）、Python 3、bash |
 | macOS | Xcode 命令行工具：`xcode-select --install` |
 | Windows | [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/)（勾选「使用 C++ 的桌面开发」）、WebView2（Windows 10/11 通常已自带）、Git Bash 或 WSL（用于运行 `npm run verify`） |
-| Linux | WebKitGTK 4.1 等系统库，见下文 |
 
 各工具的用途：
 
@@ -50,18 +51,9 @@
 
 内置 AI 助手由 [Bun](https://bun.sh) 编译为单个可执行文件。Bun 作为 npm 依赖自动下载，无需单独安装。
 
-Linux 系统库：
-
-```bash
-# Debian / Ubuntu
-sudo apt update && sudo apt install -y build-essential curl wget file pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev
-# Fedora
-sudo dnf install -y webkit2gtk4.1-devel openssl-devel curl wget file libxdo-devel librsvg2-devel pkgconf-pkg-config && sudo dnf group install -y "c-development"
-# Arch
-sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl xdotool librsvg pkgconf
-```
-
 视频处理使用随应用分发的 ffmpeg，由 `npm run ffmpeg:prepare` 从固定版本的源码编译（`tauri:dev`、`verify`、`package` 会自动调用）。编译需要 meson、ninja、pkg-config，x86 平台还需要 nasm。
+
+发音评估与语音输入使用随应用分发的 ONNX Runtime，由 `npm run onnxruntime:prepare` 下载固定版本的微软官方预编译库（`tauri:dev`、`verify`、`package` 会自动调用）。在 macOS 上这两项功能需要 13.4 及以上（Apple 芯片需要 14 及以上），系统版本较低时其余功能不受影响。
 
 ### 获取代码并启动
 
@@ -79,11 +71,11 @@ npm run tauri:dev       # 开发模式（会先编译 sidecar）
 
 | 系统 | 命令 |
 |---|---|
-| macOS / Linux | `./build.sh` |
+| macOS | `./build.sh` |
 | Windows | 运行 `build.cmd` |
 | 任意系统 | `npm run package`；`npm run package:check` 只检查环境并列出缺失项 |
 
-脚本依次执行：检查环境 → 安装依赖 → 编译 AI 助手 → 准备 ffmpeg → 构建应用 → 将安装包复制到 `release/<版本>-<平台>/`。首次构建需要编译全部 Rust 依赖，约需 5–15 分钟。
+脚本依次执行：检查环境 → 安装依赖 → 编译 AI 助手 → 准备 ffmpeg、whisper-cli 与 ONNX Runtime → 构建应用 → 将安装包复制到 `release/<版本>-<平台>/`。首次构建需要编译全部 Rust 依赖，约需 5–15 分钟。
 
 - 只能构建当前系统的安装包。
 - 本机构建的安装包可以直接打开；复制到其他电脑时，会被系统视为未签名应用。
@@ -95,8 +87,8 @@ npm run tauri:dev       # 开发模式（会先编译 sidecar）
 
 | 选项 | 作用 |
 |---|---|
-| `--target <平台>` | 目标平台：`mac-universal`（同时支持 Apple 芯片与 Intel）、`mac-arm`、`mac-intel`、`win`、`win-arm`、`linux`、`linux-arm` |
-| `--bundles <格式>` | 安装包格式，逗号分隔：macOS `app,dmg`；Windows `nsis,msi`；Linux `deb,rpm,appimage` |
+| `--target <平台>` | 目标平台：`mac-universal`（同时支持 Apple 芯片与 Intel）、`mac-arm`、`mac-intel`、`win`、`win-arm` |
+| `--bundles <格式>` | 安装包格式，逗号分隔：macOS `app,dmg`；Windows `nsis,msi` |
 | `--no-bundle` | 只编译可执行文件，不生成安装包 |
 | `--debug` | 调试构建：编译更快，带开发者工具，使用独立的 `com.redlark.pindu-app-dev` 数据目录 |
 | `--clean` | 清理编译缓存后重新构建 |
@@ -123,7 +115,7 @@ registry = "sparse+https://rsproxy.cn/index/"
 
 **生成某种安装包失败**
 
-dmg、AppImage 与 Windows 安装器依赖额外工具。失败时可改用其他格式：macOS 使用 `--bundles app`，Linux 使用 `--bundles deb` 或 `rpm`，Windows 使用 `--bundles nsis`。
+dmg 与 Windows 安装器依赖额外工具。失败时可改用其他格式：macOS 使用 `--bundles app`，Windows 使用 `--bundles nsis`。
 
 **编译报错**
 
@@ -213,7 +205,7 @@ docs/           设计文档、发布流程、日志与命名规范、README 截
    ```
    feat(passage): 导入材料支持 epub
    fix(calendar): 并发同步复习时不再报“数据正忙”
-   docs: 补充 Linux 构建依赖
+   docs: 补充 Windows 构建依赖
    ```
 
 5. 修改架构、命令或目录时，同步更新 `CLAUDE.md` 的对应章节。

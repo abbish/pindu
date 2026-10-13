@@ -19,6 +19,7 @@ const BUN_TARGETS = {
   'x86_64-apple-darwin': 'bun-darwin-x64',
   'x86_64-pc-windows-msvc': 'bun-windows-x64',
   'aarch64-pc-windows-msvc': 'bun-windows-arm64',
+  // Linux 只给 CI 的检查（ubuntu 上的 npm run verify）用，不分发
   'x86_64-unknown-linux-gnu': 'bun-linux-x64',
   'aarch64-unknown-linux-gnu': 'bun-linux-arm64',
 };

@@ -28,7 +28,7 @@ body:
     id: os
     attributes:
       label: 系统
-      options: [macOS（Apple 芯片）, macOS（Intel）, Windows, Linux]
+      options: [macOS（Apple 芯片）, macOS（Intel）, Windows]
     validations:
       required: true
   - type: textarea

@@ -6,7 +6,7 @@
 
 Pindu is a desktop English learning tool that turns text, documents, local videos and subtitles into study materials for vocabulary, reading, listening, spelling, shadowing and review.
 
-Available for macOS, Windows and Linux. No account is required. See [usage costs](#usage-costs) for fees and the [installation guide](./INSTALL.md) (Chinese) for setup.
+Available for macOS and Windows. No account is required. See [usage costs](#usage-costs) for fees and the [installation guide](./INSTALL.md) (Chinese) for setup.
 
 > The user interface is currently available in Simplified Chinese only.
 
@@ -85,7 +85,8 @@ Download the installer for your system from [Releases](https://github.com/abbish
 |---|---|
 | macOS | `.dmg` |
 | Windows | `-setup.exe` |
-| Linux | AppImage, deb or rpm |
+
+Requires macOS 10.15 or later, or Windows 10 or later. Pronunciation scoring and voice input need macOS 13.4 or later (macOS 14 or later on Apple silicon Macs); Windows is not affected.
 
 Your system may ask for confirmation the first time you open the app; see the [installation guide](./INSTALL.md#1-下载安装包) (Chinese) for the steps. You can install later versions through in-app updates.
 

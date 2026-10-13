@@ -17,19 +17,17 @@ const HELP = `一键构建安装包（不签名，供在本机构建后使用）
 用法:
   npm run package [-- 选项]
   node scripts/package.mjs [选项]
-  ./build.sh [选项]          (macOS / Linux)
+  ./build.sh [选项]          (macOS)
   build.cmd [选项]           (Windows)
 
 选项:
   --target <目标>     构建目标，默认本机。可选:
                         mac-arm / mac-intel / mac-universal
                         win / win-arm
-                        linux / linux-arm
                       也可直接写 Rust target triple（如 aarch64-apple-darwin）
   --bundles <列表>    安装包格式，逗号分隔。默认:
                         macOS  app,dmg
                         Windows nsis（可加 msi）
-                        Linux  deb,appimage（Fedora 等为 rpm,appimage）
   --no-bundle         只编译可执行文件，不生成安装包
   --check             只检查构建环境，不构建
   --skip-install      跳过 npm 依赖安装
@@ -45,8 +43,6 @@ const TARGET_ALIASES = {
   'mac-universal': 'universal-apple-darwin',
   win: 'x86_64-pc-windows-msvc',
   'win-arm': 'aarch64-pc-windows-msvc',
-  linux: 'x86_64-unknown-linux-gnu',
-  'linux-arm': 'aarch64-unknown-linux-gnu',
 };
 const SUPPORTED_TRIPLES = new Set(Object.values(TARGET_ALIASES));
 
@@ -60,7 +56,7 @@ const red = paint('31');
 const dim = paint('2');
 
 let stepNo = 0;
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 8;
 function step(title) {
   stepNo += 1;
   console.log(`\n${bold(`[${stepNo}/${TOTAL_STEPS}] ${title}`)}`);
@@ -132,7 +128,6 @@ function hostTriple() {
 function osOf(triple) {
   if (triple.includes('apple-darwin')) return 'darwin';
   if (triple.includes('windows')) return 'win32';
-  if (triple.includes('linux')) return 'linux';
   return 'unknown';
 }
 
@@ -144,11 +139,8 @@ function resolveTarget(requested, host) {
   if (osOf(triple) !== platform) {
     fail(
       `不能在当前系统上构建 ${triple}`,
-      '安装包只能在对应的系统上构建：macOS 包在 Mac 上构建，Windows 包在 Windows 上构建，Linux 包在 Linux 上构建。',
+      '安装包只能在对应的系统上构建：macOS 包在 Mac 上构建，Windows 包在 Windows 上构建。',
     );
-  }
-  if (platform === 'linux' && host && triple !== host) {
-    fail(`Linux 不支持跨架构构建（本机 ${host}，目标 ${triple}）`, '请在目标架构的 Linux 机器上构建。');
   }
   return triple;
 }
@@ -158,50 +150,19 @@ function rustTargetsFor(triple) {
   return triple === 'universal-apple-darwin' ? ['aarch64-apple-darwin', 'x86_64-apple-darwin'] : [triple];
 }
 
-function linuxDistro() {
-  try {
-    const text = readFileSync('/etc/os-release', 'utf8');
-    const get = (k) => text.match(new RegExp(`^${k}="?([^"\\n]*)"?`, 'm'))?.[1] ?? '';
-    return `${get('ID')} ${get('ID_LIKE')}`.toLowerCase();
-  } catch {
-    return '';
-  }
-}
-
 function defaultBundles() {
   if (platform === 'darwin') return 'app,dmg';
-  if (platform === 'win32') return 'nsis';
-  const distro = linuxDistro();
-  if (/fedora|rhel|centos|suse|opensuse/.test(distro)) return 'rpm,appimage';
-  if (/debian|ubuntu/.test(distro)) return 'deb,appimage';
-  return 'appimage';
+  return 'nsis';
 }
 
 // ───────────────────────── 环境检查 ─────────────────────────
 const RUST_HINT = `安装 Rust：
-  macOS / Linux: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-  Windows:       https://rustup.rs 下载 rustup-init.exe
+  macOS:   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  Windows: https://rustup.rs 下载 rustup-init.exe
 装好后重新打开终端再运行。`;
 
-function linuxDepsHint() {
-  const distro = linuxDistro();
-  if (/debian|ubuntu/.test(distro)) {
-    return 'sudo apt update && sudo apt install -y build-essential curl wget file pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev';
-  }
-  if (/fedora|rhel|centos/.test(distro)) {
-    return 'sudo dnf install -y webkit2gtk4.1-devel openssl-devel curl wget file libxdo-devel librsvg2-devel pkgconf-pkg-config && sudo dnf group install -y "c-development"';
-  }
-  if (/arch|manjaro/.test(distro)) {
-    return 'sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl xdotool librsvg pkgconf';
-  }
-  if (/suse/.test(distro)) {
-    return 'sudo zypper in webkit2gtk3-devel libopenssl-devel curl wget file librsvg-devel pkg-config && sudo zypper in -t pattern devel_basis';
-  }
-  return '参考 https://v2.tauri.app/start/prerequisites/#linux 安装 WebKitGTK 4.1、OpenSSL、librsvg 开发包';
-}
-
 /** 返回 { problems: [{ title, hint }], warnings: [...] } */
-function checkEnvironment(triple, rustTargets, bundles) {
+function checkEnvironment(triple, rustTargets) {
   const problems = [];
   const warnings = [];
   const ok = (s) => console.log(`  ${green('✓')} ${s}`);
@@ -241,20 +202,6 @@ function checkEnvironment(triple, rustTargets, bundles) {
     else bad('没有安装 Xcode 命令行工具', '运行：xcode-select --install');
   }
 
-  if (platform === 'linux') {
-    const modules = ['webkit2gtk-4.1', 'javascriptcoregtk-4.1', 'libsoup-3.0', 'librsvg-2.0', 'openssl'];
-    if (capture('pkg-config', ['--version']) === null) {
-      bad('没有找到 pkg-config 与系统开发库', linuxDepsHint());
-    } else {
-      const missing = modules.filter((m) => capture('pkg-config', ['--exists', m]) === null);
-      if (missing.length) bad(`缺少系统开发库：${missing.join(', ')}`, linuxDepsHint());
-      else ok('WebKitGTK 4.1 / OpenSSL / librsvg 开发库');
-    }
-    if (bundles?.includes('appimage') && capture('file', ['--version']) === null) {
-      bad('缺少 file 命令（打 AppImage 需要）', linuxDepsHint());
-    }
-  }
-
   if (platform === 'win32') {
     const vswhere = join(process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)', 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
     const component = triple.startsWith('aarch64')
@@ -292,11 +239,9 @@ function checkFfmpeg(triple, rustTargets, ok, bad, warn) {
   if (built) return ok('视频组件 ffmpeg（已编译）');
   if (process.env.FFMPEG_PREBUILT_DIR) return ok(`视频组件 ffmpeg（使用 ${process.env.FFMPEG_PREBUILT_DIR}）`);
   if (platform === 'win32') {
-    return bad('缺少视频组件 ffmpeg', 'Windows 上不能编译 ffmpeg：在 Linux / WSL 上运行\n  node scripts/ffmpeg/prepare.mjs --out <目录> x86_64-pc-windows-msvc\n再设置环境变量 FFMPEG_PREBUILT_DIR=<目录> 后重新构建。');
+    return bad('缺少视频组件 ffmpeg', 'Windows 上不能编译 ffmpeg：在 Linux / WSL 上交叉编译\n  node scripts/ffmpeg/prepare.mjs --out <目录> x86_64-pc-windows-msvc\n再设置环境变量 FFMPEG_PREBUILT_DIR=<目录> 后重新构建。');
   }
-  const hint = platform === 'darwin'
-    ? 'brew install meson ninja pkgconf nasm'
-    : /debian|ubuntu/.test(linuxDistro()) ? 'sudo apt install -y meson ninja-build nasm pkg-config zlib1g-dev' : '安装 meson、ninja、nasm、pkg-config 与 zlib 开发包';
+  const hint = 'brew install meson ninja pkgconf nasm';
   const missing = ['make', 'meson', 'ninja', 'pkg-config'].filter((c) => capture(c, ['--version']) === null);
   if (missing.length) return bad(`编译视频组件 ffmpeg 需要：${missing.join('、')}`, hint);
   ok('视频组件 ffmpeg 编译工具（首次构建时编译，约 2–5 分钟）');
@@ -316,7 +261,7 @@ function checkWhisper(triple, rustTargets, ok, bad) {
   if (capture('cmake', ['--version']) === null) {
     const hint = platform === 'darwin'
       ? 'brew install cmake'
-      : platform === 'win32' ? '安装 Visual Studio 生成工具（勾选「使用 C++ 的桌面开发」，自带 cmake）' : 'sudo apt install -y cmake（或发行版对应的包）';
+      : '安装 Visual Studio 生成工具（勾选「使用 C++ 的桌面开发」，自带 cmake）';
     return bad('编译字幕识别组件 whisper-cli 需要 cmake', hint);
   }
   ok('字幕识别组件 whisper-cli 编译工具（首次构建时编译，约 1–3 分钟）');
@@ -353,7 +298,7 @@ function tauriBuild(triple, opts, bundles) {
   if (platform === 'darwin' && !process.env.APPLE_SIGNING_IDENTITY) {
     config.bundle = { macOS: { signingIdentity: '-' } };
   }
-  // 发布构建（CI 带更新签名私钥）：额外生成带签名的更新包（.app.tar.gz / setup.exe / AppImage + .sig）；
+  // 发布构建（CI 带更新签名私钥）：额外生成带签名的更新包（.app.tar.gz / setup.exe + .sig）；
   // 自己构建时没有私钥，不生成，应用照样能安装官方发布的更新
   if (process.env.TAURI_SIGNING_PRIVATE_KEY && !opts.noBundle) {
     config.bundle = { ...config.bundle, createUpdaterArtifacts: true };
@@ -366,7 +311,6 @@ function tauriBuild(triple, opts, bundles) {
       '向上翻看第一条 error 信息。常见原因：',
       '- 下载依赖超时：网络问题，可配置镜像后重试（见 CONTRIBUTING.md「打包出问题」）',
       platform === 'darwin' ? '- 生成 dmg 失败：改用 --bundles app 只生成 .app' : '',
-      platform === 'linux' ? '- 生成 AppImage 失败（需从 GitHub 下载工具）：改用 --bundles deb 或 rpm' : '',
       platform === 'win32' ? '- 生成 msi 失败：只用 --bundles nsis' : '',
       '- 编译缓存损坏：加 --clean 重试',
     ].filter(Boolean).join('\n'),
@@ -407,7 +351,7 @@ function collectArtifacts(triple, opts, version) {
       const src = join(dir, name);
       const isApp = name.endsWith('.app');
       // 安装包，以及发布构建的更新包与签名（.app.tar.gz / .sig）
-      const isPackage = /\.(dmg|exe|msi|deb|rpm|AppImage|tar\.gz|sig)$/.test(name);
+      const isPackage = /\.(dmg|exe|msi|tar\.gz|sig)$/.test(name);
       if (!isApp && !isPackage) continue;
       const dest = join(outDir, name);
       if (isApp) cpSync(src, dest, { recursive: true, verbatimSymlinks: true });
@@ -425,22 +369,16 @@ function sizeOf(path) {
 }
 const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-function printNextSteps(collected) {
+function printNextSteps() {
   console.log(`\n${bold('如何安装')}`);
   if (platform === 'darwin') {
     console.log(`  打开 .dmg，把「拼读」拖进「应用程序」。本机构建的应用可以直接打开。
   拷到别的 Mac 上时，系统会提示“无法验证开发者”，在那台 Mac 上执行一次：
     xattr -dr com.apple.quarantine "/Applications/拼读.app"
   或在「系统设置 → 隐私与安全性」底部点「仍要打开」。`);
-  } else if (platform === 'win32') {
+  } else {
     console.log(`  双击 *-setup.exe 安装。拷到别的电脑时如果出现 SmartScreen 提示，
   点「更多信息 → 仍要运行」。`);
-  } else {
-    const hasDeb = collected.some((p) => p.endsWith('.deb'));
-    const hasRpm = collected.some((p) => p.endsWith('.rpm'));
-    if (hasDeb) console.log('  sudo apt install ./<文件名>.deb');
-    if (hasRpm) console.log('  sudo dnf install ./<文件名>.rpm');
-    if (collected.some((p) => p.endsWith('.AppImage'))) console.log('  或：chmod +x <文件名>.AppImage 后直接运行');
   }
 }
 
@@ -453,12 +391,12 @@ function main() {
   step('检查构建环境');
   const host = hostTriple();
   // Rust 缺失时先用 Node 推断出的目标完成其余检查，最后统一报错
-  const fallbackHost = { darwin: arch === 'arm64' ? 'mac-arm' : 'mac-intel', win32: arch === 'arm64' ? 'win-arm' : 'win', linux: arch === 'arm64' ? 'linux-arm' : 'linux' }[platform];
-  if (!fallbackHost) fail(`不支持的系统：${platform}`);
+  const fallbackHost = { darwin: arch === 'arm64' ? 'mac-arm' : 'mac-intel', win32: arch === 'arm64' ? 'win-arm' : 'win' }[platform];
+  if (!fallbackHost) fail(`不支持的系统：${platform}`, '拼读只支持在 macOS 与 Windows 上构建。');
   const triple = resolveTarget(opts.target, host ?? TARGET_ALIASES[fallbackHost]);
   const bundles = opts.noBundle ? null : (opts.bundles ?? defaultBundles());
   console.log(`  目标 ${bold(triple)}${bundles ? `，安装包 ${bold(bundles)}` : '，只编译可执行文件'}${opts.debug ? '（调试版）' : ''}`);
-  const { problems } = checkEnvironment(triple, rustTargetsFor(triple), bundles);
+  const { problems } = checkEnvironment(triple, rustTargetsFor(triple));
   if (problems.length) {
     console.error(`\n${red(`构建环境还差 ${problems.length} 项，按下面的提示安装后重新运行：`)}`);
     for (const p of problems) {
@@ -494,6 +432,9 @@ function main() {
   step('准备字幕识别组件（whisper-cli）');
   run(process.execPath, [join(ROOT, 'scripts', 'whisper', 'prepare.mjs'), triple], { failMessage: '字幕识别组件 whisper-cli 准备失败' });
 
+  step('准备发音评估与语音输入组件（ONNX Runtime）');
+  run(process.execPath, [join(ROOT, 'scripts', 'onnxruntime', 'prepare.mjs'), triple], { failMessage: 'ONNX Runtime 准备失败' });
+
   step('构建应用（首次会编译全部 Rust 依赖，约 5–15 分钟）');
   // 清掉上次的安装包，避免把改名前的旧产物一起收集
   rmSync(join(bundleDir(triple, opts.debug), 'bundle'), { recursive: true, force: true });
@@ -506,7 +447,7 @@ function main() {
   if (!collected.length) fail('构建完成，但没有找到产物', `请查看 ${relative(ROOT, bundleDir(triple, opts.debug))}`);
   for (const p of collected) console.log(`  ${green('✓')} ${relative(ROOT, p)}  ${dim(mb(sizeOf(p)))}`);
   console.log(`\n${green('✓ 构建完成')}：${relative(ROOT, outDir)}`);
-  if (!opts.noBundle) printNextSteps(collected);
+  if (!opts.noBundle) printNextSteps();
 }
 
 main();

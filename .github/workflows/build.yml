@@ -1,6 +1,6 @@
 name: Build
 
-# 打 v* 标签：用一键构建脚本（scripts/package.mjs）在三个系统上构建，带更新签名私钥时同时生成签名的更新包；
+# 打 v* 标签：用一键构建脚本（scripts/package.mjs）在 macOS 与 Windows 上构建（2026-10-13 起不再出 Linux 版），带更新签名私钥时同时生成签名的更新包；
 # 全部成功后汇总成 GitHub Release 草稿（安装包 + latest.json），检查无误后在网页上点「发布」。
 # 发布之后，已安装的应用才会通过 releases/latest/download/latest.json 发现这个版本（草稿不会被发现）。
 # 手动触发（workflow_dispatch）只构建、上传构建产物，不建 Release。
@@ -50,9 +50,6 @@ jobs:
             name: macos
             args: --target mac-universal
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-          - os: ubuntu-22.04
-            name: linux
-            args: --bundles deb,rpm,appimage
     runs-on: ${{ matrix.os }}
     env:
       # 应用内更新的签名私钥（仓库 Settings → Secrets）；缺少时只构建安装包、不生成更新包
@@ -75,19 +72,13 @@ jobs:
           if [ -n "${{ matrix.rust-targets }}" ]; then rustup target add $(echo "${{ matrix.rust-targets }}" | tr ',' ' '); fi
           rustc --version
 
-      - name: Install Linux system libraries
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt update
-          sudo apt install -y build-essential curl wget file pkg-config libssl-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev rpm meson ninja-build nasm zlib1g-dev cmake
-
-      # 随应用分发的 ffmpeg：macOS / Linux 在本机编译（scripts/ffmpeg/），Windows 用 ffmpeg-windows 任务的产物
+      # 随应用分发的 ffmpeg：macOS 在本机编译（scripts/ffmpeg/），Windows 用 ffmpeg-windows 任务的产物
       - name: Install ffmpeg build tools (macOS)
         if: runner.os == 'macOS'
         run: brew install meson ninja pkgconf nasm cmake
 
       - name: Cache ffmpeg
-        if: runner.os != 'Windows'
+        if: runner.os == 'macOS'
         uses: actions/cache@v4
         with:
           path: |
@@ -96,7 +87,7 @@ jobs:
             src-tauri/binaries/.ffmpeg-*.recipe
           key: ffmpeg-${{ matrix.name }}-${{ hashFiles('scripts/ffmpeg/**') }}
 
-      # 识别字幕的 whisper-cli：三个系统都在本机用 cmake 编译（scripts/whisper/），源码与脚本不变时复用
+      # 识别字幕的 whisper-cli：两个系统都在本机用 cmake 编译（scripts/whisper/），源码与脚本不变时复用
       - name: Cache whisper-cli
         uses: actions/cache@v4
         with:

@@ -1,7 +1,8 @@
 // 准备随应用分发的 ffmpeg / ffprobe（tauri externalBin）：src-tauri/binaries/{ffmpeg,ffprobe}-<target-triple>[.exe]
 // 已有、且编译配置（build.sh + sources.json）没变就跳过；否则：
 //   - 设了 FFMPEG_PREBUILT_DIR（CI 里由 ffmpeg 任务编好的产物，目录里是 ffmpeg / ffprobe）→ 直接复制；
-//   - 否则按 sources.json 下载源码（校验 sha256）→ build.sh 编译（macOS / Linux；Windows 版在 Linux 上交叉编译）。
+//   - 否则按 sources.json 下载源码（校验 sha256）→ build.sh 编译（macOS 本机编译；Windows 版在 Linux 上交叉编译）。
+// 应用只分发 macOS 与 Windows 版；build.sh / sources.json 里 Linux 本机目标（含 openh264）只给 CI 的检查（ubuntu 上的 npm run verify）用，不分发。
 // 用法：node scripts/ffmpeg/prepare.mjs [target-triple ...]   （默认：rustc 的 host triple；universal-apple-darwin 编两个架构后 lipo 合并）
 //      --out <目录>  只编译到 <目录>/<build.sh 目标>/（CI 的 ffmpeg 任务用），不放进 binaries/；FFMPEG_PREBUILT_DIR 用同样的布局
 import { execFileSync } from 'node:child_process';
@@ -27,6 +28,7 @@ const RECIPE = createHash('sha256')
 const TARGETS = {
   'aarch64-apple-darwin': 'macos-arm64',
   'x86_64-apple-darwin': 'macos-x86_64',
+  // Linux 只给 CI 的检查用，不分发
   'x86_64-unknown-linux-gnu': 'linux-x86_64',
   'aarch64-unknown-linux-gnu': 'linux-arm64',
   'x86_64-pc-windows-msvc': 'windows-x86_64',

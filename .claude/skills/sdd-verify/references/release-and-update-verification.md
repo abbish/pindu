@@ -23,7 +23,7 @@ node scripts/package.mjs --target mac-universal --bundles app,dmg   # universal 
 lipo -info "release/<版本>-universal-apple-darwin/拼读.app/Contents/MacOS/redlark-agent"  # 应同时有 x86_64 arm64
 ```
 
-Windows、Linux 本机打不了，由 CI 的 Build 工作流验证：`gh workflow run Build`（手动触发只构建、不建 Release），用 `gh run download` 下载产物，检查文件名和 `.sig`。
+Windows 包本机打不了，由 CI 的 Build 工作流验证（只支持 macOS 与 Windows，不再出 Linux 包）：`gh workflow run Build`（手动触发只构建、不建 Release），用 `gh run download` 下载产物，检查文件名和 `.sig`。
 
 v0.1.0 发版时踩过的坑（改构建链路时先对照）：
 
@@ -65,5 +65,5 @@ v0.1.0 发版时踩过的坑（改构建链路时先对照）：
 
 ## 4. 不能证明什么
 
-- 本机只能测 macOS 的应用内更新；Windows（NSIS 安装器接管、关闭应用）和 Linux AppImage 的更新安装，要在对应系统上走一遍才算验证，否则写进未验证项。
+- 本机只能测 macOS 的应用内更新；Windows（NSIS 安装器接管、关闭应用）的更新安装，要在 Windows 上走一遍才算验证，否则写进未验证项。
 - 本地 http 加 `dangerousInsecureTransportProtocol` 只用于测试；正式的更新地址是 https，由插件强制。

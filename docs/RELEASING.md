@@ -23,8 +23,8 @@
    git tag -a v0.2.0 -m "拼读 v0.2.0"
    git push origin main v0.2.0
    ```
-6. **等构建**：标签会触发 `.github/workflows/build.yml`。它在 macOS（universal）、Windows、Linux 上各构建一次，用更新私钥给更新包签名，然后汇总成一个 **Release 草稿**，附件包括各系统的安装包、更新包、`.sig` 签名和 `latest.json`。标签和 `package.json` 版本不一致时这一步会失败。
-7. **检查草稿**：在 Releases 页面打开草稿，至少下载一个安装包装上试试。确认附件里有 `latest.json`，内容里三个平台都有 `url` 和 `signature`。
+6. **等构建**：标签会触发 `.github/workflows/build.yml`。它在 macOS（universal）和 Windows 上各构建一次（2026-10-13 起只支持这两个系统，不再出 Linux 版），用更新私钥给更新包签名，然后汇总成一个 **Release 草稿**，附件包括各系统的安装包、更新包、`.sig` 签名和 `latest.json`。标签和 `package.json` 版本不一致时这一步会失败。
+7. **检查草稿**：在 Releases 页面打开草稿，至少下载一个安装包装上试试。确认附件里有 `latest.json`，`platforms` 里 darwin-aarch64、darwin-x86_64、windows-x86_64 三项都有 `url` 和 `signature`（没有 linux-x86_64：已装 Linux 版的用户检查更新时找不到对应的包，不会再收到更新）。
 8. **发布**：点「Publish release」。发布之后，`releases/latest/download/latest.json` 才会指向这个版本，已安装的应用在 24 小时内（或用户手动检查时）就会收到提示。草稿不会被发现。
 9. **清理本机**：删掉本机打包留下的 `release/` 和 `src-tauri/target/**/release/bundle/`，推出挂载的 dmg。它们和正式版用同一个 identifier、版本号也一样，macOS 可能从启动台打开的是这些旧包，看起来就像「新版本还是老界面」。
 

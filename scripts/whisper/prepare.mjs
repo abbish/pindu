@@ -2,7 +2,7 @@
 // 已有、且编译配置（本文件 + sources.json）没变就跳过；否则按 sources.json 下载源码（校验 sha256）→ cmake 编译。
 // macOS 开 Metal（着色器嵌进程序），其余平台只用 CPU；静态链接，只依赖系统库。识别模型不在这里，第一次识别时下载。
 // 用法：node scripts/whisper/prepare.mjs [target-triple ...]   （默认：rustc 的 host triple；universal-apple-darwin 编两个架构后 lipo 合并）
-// 需要：cmake、C/C++ 编译器（macOS Xcode 命令行工具，Windows Visual Studio 生成工具，Linux build-essential）
+// 需要：cmake、C/C++ 编译器（macOS Xcode 命令行工具，Windows Visual Studio 生成工具；Linux build-essential 只在 CI 检查时用）
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -28,6 +28,7 @@ const RECIPE = createHash('sha256')
 const TARGETS = {
   'aarch64-apple-darwin': ['-DCMAKE_OSX_ARCHITECTURES=arm64', '-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON', '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15', '-DGGML_NATIVE=OFF'],
   'x86_64-apple-darwin': ['-DCMAKE_OSX_ARCHITECTURES=x86_64', '-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON', '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15', '-DGGML_NATIVE=OFF'],
+  // Linux 只给 CI 的检查（ubuntu 上的 npm run verify）用，不分发
   'x86_64-unknown-linux-gnu': ['-DGGML_NATIVE=OFF', '-DGGML_OPENMP=OFF'],
   'aarch64-unknown-linux-gnu': ['-DGGML_NATIVE=OFF', '-DGGML_OPENMP=OFF'],
   'x86_64-pc-windows-msvc': ['-DGGML_NATIVE=OFF', '-DGGML_OPENMP=OFF', '-DCMAKE_POLICY_DEFAULT_CMP0091=NEW', '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded'],

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一键构建安装包（macOS / Linux）。参数原样传给 scripts/package.mjs，例如：
+# 一键构建安装包（macOS；Windows 用 build.cmd）。参数原样传给 scripts/package.mjs，例如：
 #   ./build.sh                       # 本机安装包
 #   ./build.sh --target mac-universal
 #   ./build.sh --check               # 只检查环境

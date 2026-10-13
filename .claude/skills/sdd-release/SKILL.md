@@ -38,11 +38,11 @@ disable-model-invocation: true
    - 第 2 步的整理已提交；需要应用内更新端到端的，已实测并留了证据。
 4. **定稿发布说明**：把 `docs/releases/UNRELEASED.md` 的内容整理成 `docs/releases/vX.Y.Z.md`，只写这一版的重点和亮点：按模块分几组、每条一句话，不写操作说明、升级注意事项和细节（不是新版本的说明书），措辞按 `../sdd-work/references/user-facing-writing.md`：不写路径、数据库、签名、组件名、构建与测试过程，发布前逐条自查；然后清空 UNRELEASED.md，只留标题。这份说明会出现在 Release 页面和应用的「更新内容」弹窗里。
 5. **改版本号并提交**：`npm version X.Y.Z --no-git-tag-version`（同时改 `package.json` 和 `package-lock.json`；`tauri.conf.json` 引用 `package.json`，`Cargo.toml` 的版本不影响应用），提交 `release: vX.Y.Z` 并推送 `main`，等这次推送的 CI 变绿。
-6. **打标签**（问用户确认后再执行）：`git tag -a vX.Y.Z -m "拼读 vX.Y.Z" && git push origin vX.Y.Z`。构建会在三个系统上各跑一次，大约 15–20 分钟，用后台任务等结果，不要轮询。
+6. **打标签**（问用户确认后再执行）：`git tag -a vX.Y.Z -m "拼读 vX.Y.Z" && git push origin vX.Y.Z`。构建会在 macOS 和 Windows 上各跑一次（只支持这两个系统），大约 15–20 分钟，用后台任务等结果，不要轮询。
 7. **检查 Release 草稿**：
-   - 三个系统的构建都成功，`release` 任务也成功。有一路失败时不会生成草稿：查日志、修好，先在本机复现验证，再推送修复，最后请用户挪标签（删除远端标签属于破坏性操作，由用户亲自执行）。
-   - `gh release view vX.Y.Z --json assets,isDraft`：确认是草稿，附件齐全（mac `universal.dmg`、`universal.app.tar.gz(.sig)`，win `x64-setup.exe(.sig)`，linux `amd64.AppImage(.sig)`、`.deb`、`.rpm`，以及 `latest.json`）。
-   - 下载 `latest.json`：`version` 不带 v；`platforms` 包含 darwin-aarch64、darwin-x86_64、windows-x86_64、linux-x86_64，每项都有 `url` 和 `signature`；`url` 指向本标签下的附件。
+   - 两个系统的构建都成功，`release` 任务也成功。有一路失败时不会生成草稿：查日志、修好，先在本机复现验证，再推送修复，最后请用户挪标签（删除远端标签属于破坏性操作，由用户亲自执行）。
+   - `gh release view vX.Y.Z --json assets,isDraft`：确认是草稿，附件齐全（mac `universal.dmg`、`universal.app.tar.gz(.sig)`，win `x64-setup.exe(.sig)`，以及 `latest.json`；不应再有 Linux 附件）。
+   - 下载 `latest.json`：`version` 不带 v；`platforms` 恰好是 darwin-aarch64、darwin-x86_64、windows-x86_64 三项，每项都有 `url` 和 `signature`；`url` 指向本标签下的附件。
 8. **交用户发布**：请用户在网页上检查草稿后点「Publish release」。公开发布由用户决定，agent 不代为发布。
 9. **发布后核对**：
    - `curl -sL https://github.com/abbish/pindu/releases/latest/download/latest.json` 能取到新版本。
@@ -69,8 +69,8 @@ disable-model-invocation: true
 发布前整理：文档 ✓ | 截图 重截 <n> 张 / 无变化 | 正式包实测 ✓ | 更新端到端 ✓ / 不涉及
 门禁：CI ✓ | 不变量 ✓ | 迁移 只增 <NNN..MMM> / 无 | 升级路径 ✓ / 不涉及 | 更新链路实测 ✓ / 不涉及
 发布说明：docs/releases/vX.Y.Z.md（来自 UNRELEASED.md，<n> 条）
-构建：mac ✓ win ✓ linux ✓ → Release 草稿 <url>
-草稿检查：附件 <n> 个 ✓；latest.json 平台 4 个、url/signature ✓
+构建：mac ✓ win ✓ → Release 草稿 <url>
+草稿检查：附件 <n> 个 ✓；latest.json 平台 3 个、url/signature ✓
 发布：用户已发布 / 待用户发布
 发布后：latest.json 可取 ✓；旧版检查更新 ✓ / 未验证（原因）；本机旧包已清理 ✓
 未验证项：<…>

@@ -12,9 +12,11 @@
 |---|---|---|
 | macOS（Apple 芯片与 Intel 通用） | `Pindu_<版本>_universal.dmg` | 打开 dmg，将「拼读」拖入「应用程序」 |
 | Windows | `Pindu_<版本>_x64-setup.exe` | 运行安装程序 |
-| Linux | `Pindu_<版本>_amd64.AppImage` | `chmod +x` 后直接运行（支持应用内更新） |
-| Debian / Ubuntu | `Pindu_<版本>_amd64.deb` | `sudo apt install ./Pindu_*.deb` |
-| Fedora 等 | `Pindu_<版本>_x86_64.rpm` | `sudo dnf install ./Pindu_*.rpm` |
+
+系统要求：
+
+- **macOS**：10.15 及以上。跟读评分（发音评估）和语音输入需要 macOS 13.4 及以上，Apple 芯片的 Mac 需要 macOS 14 及以上；系统版本较低时这两项不可用，其他功能正常使用。
+- **Windows**：Windows 10 及以上。
 
 首次打开时，系统可能会要求确认：
 
@@ -75,8 +77,6 @@
 - **手动检查**：「设置 → 通用 → 更新」中的「检查更新」；macOS 菜单中也有「检查更新…」。
 - **关闭自动检查**：同一位置的「自动检查更新」开关。
 
-通过 deb 或 rpm 安装的 Linux 版本不支持应用内更新。出现更新提示后，请从 Releases 下载新的安装包覆盖安装，无需先卸载。
-
 ### 更新后的学习数据
 
 更新后第一次打开可能需要稍等片刻，词汇本与学习记录会保留。
@@ -96,7 +96,6 @@
 |---|---|
 | macOS | `~/Library/Application Support/com.redlark.pindu-app/` |
 | Windows | `%APPDATA%\com.redlark.pindu-app\` |
-| Linux | `~/.local/share/com.redlark.pindu-app/` |
 
 - **备份**：退出应用后，复制整个数据目录。
 - **恢复**：
