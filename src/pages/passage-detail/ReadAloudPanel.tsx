@@ -449,7 +449,7 @@ export const ReadAloudPanel: React.FC<{
             {say.enabled && (
               <div className="flex items-center justify-between gap-3">
                 <Label htmlFor="ra-shadow" className="text-sm font-normal">
-                  每句跟读
+                  读完一句自动跟读
                 </Label>
                 {say.ready === false ? (
                   say.downloading ? (
