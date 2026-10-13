@@ -27,6 +27,11 @@ import type { HintLevel } from '../utils/practiceReveal';
 import { type ExampleDisplayMode } from '../components/ExamplePanel';
 import { WordSidePanel, type WordSideTab } from '../components/WordSidePanel';
 import { PracticeFeedback, type PracticeFeedbackData } from '../components/PracticeFeedback';
+import { SayCheck, type SayCheckResult } from '../components/SayCheck';
+import { promptProfileService } from '../services/promptProfileService';
+import { strictnessFor } from '../utils/pronunciation';
+import { pronunciationService } from '../services/pronunciationService';
+import type { PronunciationSettings } from '../types/pronunciation';
 
 /** 一次答对后的停留时间（按 Enter 可立即继续）；纠正改对后不自动继续 */
 const FEEDBACK_MS = { correct: 700 };
@@ -216,6 +221,15 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const [playingExample, setPlayingExample] = useState<number | null>(null);
   /** 右栏页签（换词时保持） */
   const [sideTab, setSideTab] = useState<WordSideTab>('examples');
+  /** 看·说的「说」：播完原音后自动开麦（每次换值触发一次）、跟读结果（标出拼读块）、学习者档案（宽严与是否显示分数） */
+  const [sayAutoKey, setSayAutoKey] = useState<string | null>(null);
+  const [sayResult, setSayResult] = useState<SayCheckResult | null>(null);
+  const [learner, setLearner] = useState<string | undefined>(undefined);
+  const [saySettings, setSaySettings] = useState<PronunciationSettings | null>(null);
+  useEffect(() => {
+    void promptProfileService.getProfile().then((r) => r.success && setLearner(r.data.learner));
+    void pronunciationService.status().then((r) => r.success && setSaySettings(r.data.settings));
+  }, []);
   const examples = currentWord?.examples ?? [];
   const writing = stage === 'write';
 
@@ -296,8 +310,11 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       },
     })
       .then(() => {
+        if (controller.signal.aborted) return;
+        // 看·说：读完原音后开麦跟读
+        if (autoPlayKey.endsWith(':look')) setSayAutoKey(`${autoPlayKey}:${Date.now()}`);
         // 本轮读完后预取下一题的单词
-        if (!controller.signal.aborted && nextWordText) preload(nextWordText);
+        if (nextWordText) preload(nextWordText);
       })
       .catch(() => {
         // 生成/播放失败已由 useAudioPlayer 提示
@@ -791,6 +808,20 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
                 onContinue={handleContinue}
                 marks={marks}
                 activeChunk={activeChunk}
+                segmentMarks={sayResult?.segmentMarks}
+                sayCheck={
+                  saySettings?.enabled ? (
+                    <SayCheck
+                      text={currentWord!.word}
+                      segments={currentWord!.phonicsSegments ?? []}
+                      strictness={strictnessFor(learner, saySettings.strictness)}
+                      showScore={learner !== undefined && learner !== 'primary'}
+                      autoStartKey={sayAutoKey}
+                      disabled={isPaused || stage !== 'look'}
+                      onResult={setSayResult}
+                    />
+                  ) : undefined
+                }
               />
             </div>
             <WordSidePanel

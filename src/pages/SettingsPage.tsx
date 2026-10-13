@@ -35,7 +35,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: '偏好设置',
     items: [
       { key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '系统日志', '诊断'] },
-      { key: 'learner', label: '学习者', icon: UserRound, keywords: ['小学生', '中学生', '成人', '水平', '讲解语言', '详略', '记忆方法', '音标', '兴趣'] },
+      { key: 'learner', label: '学习者', icon: UserRound, keywords: ['小学生', '中学生', '成人', '水平', '讲解语言', '详略', '记忆方法', '音标', '兴趣', '发音', '跟读', '评估模型', '评分'] },
       {
         key: 'materials',
         label: '素材',

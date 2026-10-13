@@ -59,6 +59,10 @@ export interface PracticeWordCardProps {
   onSubmitAnswer: (userInput: string) => void;
   /** 看·说结束：盖住单词开始写 */
   onCover?: () => void;
+  /** 看·说的「说」：跟读与发音评估（页面给出，只在 look 时显示） */
+  sayCheck?: React.ReactNode;
+  /** 跟读后每个拼读块的标记：读得不准的块标出来 */
+  segmentMarks?: ('good' | 'close' | 'retry' | null)[];
   /** 播放发音回调（播放中再点是停止） */
   onPlayPronunciation?: () => void;
   /** 单词发音的状态（自动朗读时也会变化） */
@@ -141,6 +145,8 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
   onContinue,
   marks,
   activeChunk = null,
+  sayCheck,
+  segmentMarks,
   disabled = false,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -289,6 +295,8 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
           )}
         </div>
 
+        {stage === 'look' && sayCheck}
+
         <div className="grid w-full grid-cols-2 gap-2 text-sm">
           <InfoRow label="音标">{renderValue(reveal.ipa, <span>{word.ipa || '—'}</span>, null)}</InfoRow>
           <InfoRow label="音节">
@@ -318,7 +326,13 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
                       key={index}
                       className={cn(
                         'rounded-md px-2 py-0.5 font-mono text-base font-semibold transition-colors',
-                        activeChunk === index ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground'
+                        activeChunk === index
+                          ? 'bg-primary text-primary-foreground'
+                          : stage === 'look' && segmentMarks?.[index] === 'retry'
+                            ? 'bg-warning-soft text-warning ring-2 ring-warning/60'
+                            : stage === 'look' && segmentMarks?.[index] === 'close'
+                              ? 'bg-warning-soft text-warning'
+                              : 'bg-accent text-accent-foreground'
                       )}
                     >
                       {segment}

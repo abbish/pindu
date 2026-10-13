@@ -5,8 +5,12 @@ use crate::handlers::finish;
 use crate::jobs::{JobSpec, Jobs, Lane};
 use crate::logger::Logger;
 use crate::pronunciation::{self, model, Assessment};
+use crate::services::pronunciation_settings::{
+    PronunciationSettings, PronunciationSettingsService,
+};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Serialize)]
@@ -18,6 +22,8 @@ pub struct PronunciationStatus {
     pub model_bytes: u64,
     /// 正在下载的任务
     pub download_job: Option<String>,
+    /// 开不开、多严格（「设置 → 学习者 → 发音」）
+    pub settings: PronunciationSettings,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,12 +53,33 @@ fn running_download(app: &AppHandle) -> Option<String> {
 pub async fn get_pronunciation_status(app: AppHandle) -> AppResult<PronunciationStatus> {
     let logger = app.state::<Logger>();
     logger.api_request("get_pronunciation_status", None);
-    let status = PronunciationStatus {
-        ready: model::ready(&data_dir(&app)),
-        model_bytes: model::BYTES,
-        download_job: running_download(&app),
-    };
-    finish(&logger, "get_pronunciation_status", Ok(status))
+    let result = PronunciationSettingsService::get(&app.state::<SqlitePool>())
+        .await
+        .map(|settings| PronunciationStatus {
+            ready: model::ready(&data_dir(&app)),
+            model_bytes: model::BYTES,
+            download_job: running_download(&app),
+            settings,
+        });
+    finish(&logger, "get_pronunciation_status", result)
+}
+
+/// 保存发音评估设置；返回保存的值
+#[tauri::command]
+pub async fn update_pronunciation_settings(
+    app: AppHandle,
+    request: PronunciationSettings,
+) -> AppResult<PronunciationSettings> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "update_pronunciation_settings",
+        Some(&format!(
+            "enabled: {}, strictness: {}",
+            request.enabled, request.strictness
+        )),
+    );
+    let result = PronunciationSettingsService::save(&app.state::<SqlitePool>(), request).await;
+    finish(&logger, "update_pronunciation_settings", result)
 }
 
 /// 下载发音模型（后台任务）；已经在下载时返回那个任务

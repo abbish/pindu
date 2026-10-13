@@ -224,6 +224,47 @@ fn lenient(phone: &str, alt: &str) -> bool {
         .any(|g| g.contains(&phone) && g.contains(&alt) && phone != alt)
 }
 
+/// 学习者常见的读偏（th→s、v→w、r/l、前后鼻音、æ/ɛ、长短 i…）：标准读法 → 读偏成
+const CONFUSIONS: [(&str, &str); 26] = [
+    ("θ", "s"),
+    ("θ", "f"),
+    ("θ", "t"),
+    ("ð", "d"),
+    ("ð", "z"),
+    ("v", "w"),
+    ("v", "f"),
+    ("w", "v"),
+    ("ɹ", "l"),
+    ("ɹ", "w"),
+    ("l", "n"),
+    ("l", "ɹ"),
+    ("n", "ŋ"),
+    ("n", "l"),
+    ("ŋ", "n"),
+    ("æ", "ɛ"),
+    ("æ", "ʌ"),
+    ("i", "ɪ"),
+    ("ɪ", "i"),
+    ("ʃ", "s"),
+    ("s", "ʃ"),
+    ("z", "s"),
+    ("dʒ", "tʃ"),
+    ("eɪ", "ɛ"),
+    ("oʊ", "ɔ"),
+    ("aɪ", "æ"),
+];
+/// 最像的读法是常见读偏、且明显比标准读法更像（GOP 低于这个值）：可以提醒一句（不改分数——
+/// speechocean762 上人工对这类音大多仍判「可以接受」，只当提示，见 evidence.md）
+const CONFUSION_GOP: f64 = -4.0;
+
+/// 明显读成了常见的读偏
+pub fn likely_confused(phone: &str, f: &PhoneFeatures) -> bool {
+    f.gop < CONFUSION_GOP
+        && f.closest
+            .as_deref()
+            .is_some_and(|c| CONFUSIONS.iter().any(|&(a, b)| a == phone && b == c))
+}
+
 /// 一个音的打分特征，以及最像的别的读法（"" 表示像是没读出来）
 pub struct PhoneFeatures {
     pub gop: f64,

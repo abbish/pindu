@@ -439,6 +439,7 @@ pub fn run() {
                 clear_finished_jobs,
                 quit_app,
                 get_pronunciation_status,
+                update_pronunciation_settings,
                 start_pronunciation_model_download,
                 delete_pronunciation_model,
                 assess_pronunciation,

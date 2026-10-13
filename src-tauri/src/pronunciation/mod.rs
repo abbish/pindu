@@ -27,6 +27,8 @@ pub struct PhoneAssessment {
     pub score: u32,
     /// 不准时最像的读法（IPA；空字符串表示像是没读出来）
     pub heard_as: Option<String>,
+    /// 明显读成了常见的读偏（如 th 读成 s）：分数照人工口径不变，界面可以提醒一句
+    pub likely_confused: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -113,10 +115,14 @@ pub fn assess_log_probs(lp: &LogProbs, words: &[String]) -> Assessment {
         .collect();
     for ((ph, f), &i) in phones.iter().zip(&feats).zip(&owner) {
         let s = (score::phone_score(ph, f) * SCALE).round() as u32;
+        let confused = score::likely_confused(ph, f);
         out[i].phones.push(PhoneAssessment {
             ipa: ph.clone(),
             score: s,
-            heard_as: (s < EXPLAIN_BELOW).then(|| f.closest.clone()).flatten(),
+            heard_as: (s < EXPLAIN_BELOW || confused)
+                .then(|| f.closest.clone())
+                .flatten(),
+            likely_confused: confused,
         });
     }
     for w in &mut out {

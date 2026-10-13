@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SettingsPanel, SettingsRow, SettingsSection } from '@/components/SettingsLayout/SettingsLayout';
 import { PageError } from '@/components/PageError';
 import { OptionSelect, usePromptProfile, type Option } from './promptProfileShared';
+import { PronunciationSection } from './PronunciationSection';
 
 const PRESETS: Option[] = [
   { value: 'primary', label: '小学生' },
@@ -116,6 +117,8 @@ export const LearnerSettings: React.FC = () => {
           <OptionSelect label="音标" value={profile.ipa} options={IPAS} disabled={saving} onChange={(v) => save({ ipa: v })} className="w-32" />
         </SettingsRow>
       </SettingsSection>
+
+      <PronunciationSection />
     </SettingsPanel>
   );
 };
