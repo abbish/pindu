@@ -140,7 +140,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = () => {
                   onClick={() => setActive(key)}
                   aria-current={active === key ? 'page' : undefined}
                   className={cn(
-                    'flex h-8 items-center gap-2 rounded-md px-2 text-sm outline-none transition-colors hover:bg-accent/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-4 [&_svg]:text-muted-foreground',
+                    'ml-2 flex h-8 items-center gap-2 rounded-md px-2 text-sm outline-none transition-colors hover:bg-accent/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-4 [&_svg]:text-muted-foreground',
                     active === key && 'bg-accent font-medium text-accent-foreground hover:bg-accent [&_svg]:text-accent-foreground'
                   )}
                 >
