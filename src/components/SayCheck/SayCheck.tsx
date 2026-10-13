@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Loader2, Mic, Play, RotateCcw, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { useRecorder } from '@/hooks/useRecorder';
@@ -12,6 +13,8 @@ import { BAND_LABEL, BAND_STYLE, bandOf, flaggedPhones, phoneSegments, phoneTip,
 
 /** 一个词最多自动开麦几次（之后不再自动，学习者可以自己点） */
 const MAX_AUTO_TRIES = 3;
+/** 读过关后停多久再往下走（看清结果） */
+const PASS_DELAY_MS = 1500;
 
 export interface SayCheckResult {
   band: Band;
@@ -41,26 +44,51 @@ export interface SayCheckProps {
   context?: PronunciationContext;
   /** 开始 / 结束录音（录音时页面不要放声音，免得录进去） */
   onRecordingChange?: (recording: boolean) => void;
+  /**
+   * row：一行按钮（播放发音 · 跟读 · 听我的）+ 一行反馈；
+   * bar：卡片底部的跟读框（点框开麦，结果、再读、听我的都在框里），右边放 `trailing`
+   */
+  variant?: 'row' | 'bar';
+  /** bar 时框右边的按钮（盖住，开始写） */
+  trailing?: React.ReactNode;
+  /** bar 时读过关（不是「再试试」）后自动调用：进入下一环节；学习者在这期间又点了框里的操作就不走 */
+  onPass?: () => void;
 }
 
 /**
- * 看 · 说 的「说」：播完原音后自动开麦，学习者跟读一遍，本机评估后告诉他读得怎样、哪个音不准（对到拼读块上）。
+ * 看 · 说 的「说」：播完原音后自动开麦，读过关后自动进入下一环节（bar），学习者跟读一遍，本机评估后告诉他读得怎样、哪个音不准（对到拼读块上）。
  * 第一次使用先下载评估模型；录音与评估都在本机，不上传。读不好可以再读，最多自动开麦 3 次，不挡着往下走。
  * 录音带着这个词：录到一半换了词，录完的不评估。
  */
-export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, strictness, showScore, autoStartKey, disabled, onResult, context, onRecordingChange }) => {
+export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, strictness, showScore, autoStartKey, disabled, onResult, context, onRecordingChange, variant = 'row', trailing, onPass }) => {
   const recorder = useRecorder({ silenceStopMs: 700, maxMs: 4000 });
   const { ready, modelBytes, downloading: job, download, assessing, result, error, assess, reset } = usePronunciation(context);
   const tries = useRef(0);
   /** 挂载时已有的开麦信号不算（离开看 · 说再回来时那是上一个词的） */
   const seenKey = useRef(autoStartKey);
   const player = useRef<HTMLAudioElement | null>(null);
+  const [playingMine, setPlayingMine] = useState(false);
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
+  const onPassRef = useRef(variant === 'bar' ? onPass : undefined);
+  onPassRef.current = variant === 'bar' ? onPass : undefined;
+  const passTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelPass = useCallback(() => {
+    if (passTimer.current) clearTimeout(passTimer.current);
+    passTimer.current = null;
+  }, []);
 
-  // 换词：停掉录音，清掉上一个词的结果
+  const stopMine = useCallback(() => {
+    player.current?.pause();
+    player.current = null;
+    setPlayingMine(false);
+  }, []);
+
+  // 换词：停掉录音与回放，清掉上一个词的结果
   useEffect(() => {
     tries.current = 0;
+    cancelPass();
+    stopMine();
     recorder.stop();
     reset();
     recorder.clear();
@@ -69,8 +97,10 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
 
   const start = useCallback(() => {
     if (!ready || disabled || recorder.state !== 'idle' || assessing) return;
+    cancelPass();
+    stopMine();
     void recorder.start(text);
-  }, [ready, disabled, recorder, assessing, text]);
+  }, [ready, disabled, recorder, assessing, text, cancelPass, stopMine]);
 
   // 播完原音后自动开麦（每个词最多几次）
   useEffect(() => {
@@ -89,8 +119,16 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
   }, [recording]);
 
   useEffect(() => {
-    if (disabled && recorder.state !== 'idle') recorder.stop();
+    if (!disabled) return;
+    cancelPass();
+    stopMine();
+    if (recorder.state !== 'idle') recorder.stop();
   }, [disabled, recorder]);
+
+  useEffect(() => () => {
+    cancelPass();
+    player.current?.pause();
+  }, []);
 
   // 录完：本机评估，不准的音标在它的拼读块上（分低的标「再试试」色，只是有点像常见读偏的标「还差一点」色）
   const take = recorder.take;
@@ -110,21 +148,139 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
           if (seg !== null && seg !== undefined) marks[seg] = p.score >= 60 ? (marks[seg] ?? 'close') : 'retry';
         }
       }
-      onResultRef.current?.({ band: bandOf(r.score, strictness), score: r.score, segmentMarks: marks });
+      const band = bandOf(r.score, strictness);
+      onResultRef.current?.({ band, score: r.score, segmentMarks: marks });
+      if (band !== 'retry' && onPassRef.current) {
+        cancelPass();
+        passTimer.current = setTimeout(() => {
+          passTimer.current = null;
+          onPassRef.current?.();
+        }, PASS_DELAY_MS);
+      }
     });
   }, [take]);
 
-  const playMine = () => {
+  /** 听我的：播放中再点是停止 */
+  const toggleMine = () => {
+    cancelPass();
+    if (playingMine) {
+      stopMine();
+      return;
+    }
     if (!take) return;
     player.current?.pause();
-    player.current = new Audio(take.url);
-    void player.current.play();
+    const audio = new Audio(take.url);
+    player.current = audio;
+    const done = () => {
+      if (player.current === audio) stopMine();
+    };
+    audio.onended = done;
+    audio.onerror = done;
+    setPlayingMine(true);
+    void audio.play().catch(done);
   };
 
   const word = result?.words[0];
   const band = result?.score != null ? bandOf(result.score, strictness) : null;
   const tips = word && band ? flaggedPhones(word, strictness).map(phoneTip) : [];
   const problem = error ?? recorder.error;
+
+  const scoreChip = band ? (
+    <span className={cn('shrink-0 rounded-full px-2.5 py-0.5 text-sm font-semibold', BAND_STYLE[band])}>
+      {BAND_LABEL[band]}
+      {showScore && result?.score != null ? ` · ${result.score}` : ''}
+    </span>
+  ) : null;
+
+  if (variant === 'bar') {
+    const iconAction = (label: string, icon: React.ReactNode, onClick: () => void) => (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" onClick={onClick} disabled={disabled || assessing} aria-label={label}>
+            {icon}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    );
+    /** 框里的主体：点它开麦 / 停止；有结果时显示结果 */
+    const bodyClass = 'flex h-full min-w-0 flex-1 items-center gap-3 text-left text-sm text-muted-foreground';
+    let body: React.ReactNode;
+    let extras: React.ReactNode = null;
+    if (ready === null) {
+      body = <span className={bodyClass}>{hint}</span>;
+    } else if (!ready) {
+      body = (
+        <span className={bodyClass}>
+          {job ? (
+            <>
+              正在下载评估模型
+              <Progress value={jobPercent(job)} className="h-1.5 w-40" aria-label="下载进度" />
+            </>
+          ) : (
+            (problem ?? (modelBytes ? `跟读评分需要先下载 ${formatBytes(modelBytes)}` : null))
+          )}
+        </span>
+      );
+      extras = job ? null : (
+        <Button variant="outline" size="sm" onClick={() => void download()}>
+          <Download />
+          下载
+        </Button>
+      );
+    } else if (recording) {
+      body = (
+        <button type="button" className={bodyClass} onClick={recorder.stop} aria-label="停止录音">
+          <Square className="size-5 shrink-0 fill-current text-destructive" />
+          <span className="flex h-5 items-end gap-0.5" aria-hidden>
+            {recorder.live.slice(-16).map((v, i) => (
+              <span key={i} className="w-0.5 rounded-full bg-primary" style={{ height: `${Math.max(2, v * 20)}px` }} />
+            ))}
+          </span>
+          {recorder.state === 'arming' ? '准备…' : '在听…'}
+        </button>
+      );
+    } else if (assessing) {
+      body = (
+        <span className={bodyClass}>
+          <Loader2 className="size-5 shrink-0 animate-spin" />
+          正在评分…
+        </span>
+      );
+    } else if (band) {
+      body = (
+        <span className={cn(bodyClass, 'gap-x-3 overflow-hidden')}>
+          {scoreChip}
+          <span className="truncate">{tips.join('　')}</span>
+        </span>
+      );
+      extras = (
+        <>
+          {take && iconAction('听我的', playingMine ? <Square className="fill-current" /> : <Play />, toggleMine)}
+          {iconAction('再读一遍', <RotateCcw />, start)}
+        </>
+      );
+    } else {
+      body = (
+        <button type="button" className={bodyClass} onClick={start} disabled={disabled}>
+          <Mic className="size-5 shrink-0" />
+          {problem ?? hint ?? '跟读'}
+        </button>
+      );
+    }
+    return (
+      <div className="flex items-center gap-3">
+        <div
+          className={cn('flex h-14 min-w-0 flex-1 items-center gap-1 rounded-xl border-2 bg-background pr-2 pl-3 transition-colors', recording && 'border-primary')}
+          aria-live="polite"
+        >
+          {body}
+          {extras}
+        </div>
+        {trailing}
+      </div>
+    );
+  }
 
   // 一行按钮（播放发音 · 跟读 · 听我的）+ 一行反馈（提示 / 正在听 / 结果）；反馈行占住高度，换状态时不跳
   let action: React.ReactNode;
@@ -170,10 +326,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
       '正在评分…'
     ) : band ? (
       <span className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-        <span className={cn('rounded-full px-2.5 py-0.5 text-sm font-semibold', BAND_STYLE[band])}>
-          {BAND_LABEL[band]}
-          {showScore && result?.score != null ? ` · ${result.score}` : ''}
-        </span>
+        {scoreChip}
         {tips.map((t) => (
           <span key={t}>{t}</span>
         ))}
@@ -189,8 +342,8 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
         {play}
         {action}
         {ready && take && !recording && (
-          <Button variant="outline" size="lg" onClick={playMine} disabled={assessing}>
-            <Play />
+          <Button variant="outline" size="lg" onClick={toggleMine} disabled={assessing}>
+            {playingMine ? <Square className="fill-current" /> : <Play />}
             听我的
           </Button>
         )}

@@ -59,8 +59,11 @@ export interface PracticeWordCardProps {
   onSubmitAnswer: (userInput: string) => void;
   /** 看·说结束：盖住单词开始写 */
   onCover?: () => void;
-  /** 看·说的「说」：跟读与发音评估（页面给出，只在 look 时显示）；拿到播放按钮与跟读提示，排成同一行按钮 + 一行反馈 */
-  renderSay?: (slots: { play: React.ReactNode; hint: React.ReactNode }) => React.ReactNode;
+  /**
+   * 「说」：跟读与发音评估（页面给出）。看 · 说时是底部的跟读框（variant bar，右边是「盖住，开始写」，读过关自动盖住）；
+   * 其余环节是一行按钮（播放发音 · 跟读 · 听我的）+ 一行反馈
+   */
+  renderSay?: (slots: { play: React.ReactNode; hint: React.ReactNode; variant: 'row' | 'bar'; trailing?: React.ReactNode }) => React.ReactNode;
   /** 哪些环节显示跟读（默认只在看 · 说；复习词写对后也可以读一遍） */
   sayStages?: PracticeStage[];
   /** 跟读后每个拼读块的标记：读得不准的块标出来 */
@@ -222,6 +225,26 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
   const renderValue = (level: RevealLevel, full: React.ReactNode, hint: React.ReactNode) =>
     level === 'show' ? full : level === 'hint' ? hint : <Locked />;
 
+  const play = <SpeakButton variant="outline" size="lg" status={pronunciationStatus} onClick={() => onPlayPronunciation?.()} label="播放发音" title="播放发音（空格）" text="播放发音" aria-keyshortcuts="Space" />;
+  const followText = segments.length > 0 ? `跟着读：${segments.join(' - ')}` : null;
+  const coverButton = (
+    <Button
+      size="lg"
+      className="h-14 px-6"
+      onClick={onCover}
+      // 按住 Enter 的连发不算盖住（防止从上一题带过来）
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && e.repeat) e.preventDefault();
+      }}
+    >
+      <EyeOff />
+      盖住，开始写
+    </Button>
+  );
+  /** 看 · 说且开了跟读：底部输入框换成跟读框 */
+  const sayBar =
+    stage === 'look' && sayStages.includes('look') && renderSay ? renderSay({ play, hint: followText, variant: 'bar', trailing: coverButton }) : null;
+
   const currentOrder = STAGE_ORDER.indexOf(stage === 'correction' ? 'feedback' : stage);
 
   return (
@@ -290,14 +313,14 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
         </div>
 
         {(() => {
-          const play = <SpeakButton variant="outline" size="lg" status={pronunciationStatus} onClick={() => onPlayPronunciation?.()} label="播放发音" title="播放发音（空格）" text="播放发音" aria-keyshortcuts="Space" />;
+          if (sayBar) return <div className="flex items-center gap-3">{play}</div>;
           const hint =
             stage === 'look' && segments.length > 0 ? (
               <span className="inline-flex items-center gap-1.5">
-                <MessageSquareText className="size-4" /> 跟着读：{segments.join(' - ')}
+                <MessageSquareText className="size-4" /> {followText}
               </span>
             ) : null;
-          if (sayStages.includes(stage) && renderSay) return renderSay({ play, hint });
+          if (sayStages.includes(stage) && renderSay) return renderSay({ play, hint, variant: 'row' });
           return (
             <div className="flex items-center gap-3">
               {play}
@@ -361,7 +384,10 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
         </div>
       </div>
 
-      {/* 输入区域：输入框与操作按钮同一行 */}
+      {/* 输入区域：输入框与操作按钮同一行（看 · 说开了跟读时是跟读框） */}
+      {sayBar ? (
+        <div className="border-t pt-5">{sayBar}</div>
+      ) : (
       <div className="space-y-2 border-t pt-5">
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
@@ -395,18 +421,7 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
           </div>
 
           {stage === 'look' ? (
-            <Button
-              size="lg"
-              className="h-14 px-6"
-              onClick={onCover}
-              // 按住 Enter 的连发不算盖住（防止从上一题带过来）
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.repeat) e.preventDefault();
-              }}
-            >
-              <EyeOff />
-              盖住，开始写
-            </Button>
+            coverButton
           ) : stage === 'feedback' ? (
             <Button size="lg" className="h-14 px-6" onClick={onContinue}>
               下一题
@@ -425,6 +440,7 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
           </span>
         )}
       </div>
+      )}
     </Card>
   );
 };

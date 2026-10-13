@@ -816,10 +816,13 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
                 sayStages={sayStages}
                 renderSay={
                   saySettings?.enabled
-                    ? ({ play, hint }) => (
+                    ? ({ play, hint, variant, trailing }) => (
                         <SayCheck
                           play={play}
                           hint={hint}
+                          variant={variant}
+                          trailing={trailing}
+                          onPass={handleCover}
                           text={currentWord!.word}
                           segments={currentWord!.phonicsSegments ?? []}
                           strictness={strictnessFor(learner, saySettings.strictness)}
