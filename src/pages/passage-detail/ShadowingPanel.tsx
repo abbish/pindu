@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, EyeOff, Loader2, Mic, Pause, Play, Repeat, Square, Volume2, Wand2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Mic, Pause, Play, Repeat, Square, Volume2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Toggle } from '@/components/ui/toggle';
@@ -8,10 +8,6 @@ import { useRecorder } from '@/hooks/useRecorder';
 import { usePronunciation } from '@/hooks/usePronunciation';
 import { SayText, SayVerdict } from '@/components/SayText';
 import type { PronunciationContext } from '@/types/pronunciation';
-import { pronunciationService } from '@/services/pronunciationService';
-import { videoService } from '@/services/videoService';
-import { recordingToPcmBase64 } from '@/utils/audioPcm';
-import { retellDiff } from '@/utils/pronunciation';
 import { cn } from '@/lib/utils';
 import type { PassageSentence } from '@/types/passage';
 
@@ -34,8 +30,6 @@ export interface ShadowingPanelProps {
   onGo: (index: number) => void;
   /** 学习计划里跟读时带上：发音结果保存进计划的统计 */
   pronunciationContext?: PronunciationContext;
-  /** 复述开着：画面上不显示字幕（先不看原句） */
-  onRetellChange?: (on: boolean) => void;
 }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} 秒`;
@@ -74,7 +68,6 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
   originalEnded,
   onGo,
   pronunciationContext,
-  onRetellChange,
 }) => {
   const originalMs = sentence ? Math.max(0, (sentence.endMs ?? 0) - (sentence.startMs ?? 0)) : 0;
   const recorder = useRecorder({ silenceStopMs: 1500, maxMs: Math.max(6000, originalMs * 3) });
@@ -83,9 +76,6 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
   // 发音评估（设置里开着、模型已下载时）：录完逐词标色
   const say = usePronunciation(pronunciationContext);
   const sayOn = say.enabled && say.ready === true;
-  // 听后复述：先不看这句，听完说出来，转成文字后逐词对照（说完才显示原句）
-  const [retell, setRetell] = useState(false);
-  const [retold, setRetold] = useState<{ text: string } | { error: string; download?: string } | 'working' | null>(null);
 
   // 进入跟读就打开麦克风，点录音不用再等
   useEffect(() => {
@@ -98,7 +88,6 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
     recorder.stop();
     recorder.clear();
     say.reset();
-    setRetold(null);
     mine.current?.pause();
     setMineProgress(null);
   }, [index, recorder.clear, say.reset]);
@@ -106,41 +95,8 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
   const take = recorder.take;
   const text = sentence?.en ?? '';
   useEffect(() => {
-    if (!take || !text || take.tag !== String(index)) return;
-    if (sayOn && !retell) void say.assess(take.url, text);
-    if (!retell) return;
-    let stale = false;
-    setRetold('working');
-    void (async () => {
-      try {
-        const r = await pronunciationService.transcribe(await recordingToPcmBase64(take.url));
-        if (stale) return;
-        if (r.success) setRetold(r.data ? { text: r.data } : { error: '没有听到声音，再说一遍' });
-        else if (r.code === 'NOT_FOUND') {
-          const status = await pronunciationService.dictationStatus();
-          setRetold({ error: '复述要先下载识别模型', download: status.success ? status.data.modelId : undefined });
-        } else setRetold({ error: r.error });
-      } catch {
-        if (!stale) setRetold({ error: '录音读不出来，再说一遍' });
-      }
-    })();
-    return () => {
-      stale = true;
-    };
+    if (take && text && take.tag === String(index) && sayOn) void say.assess(take.url, text);
   }, [take]);
-
-  const toggleRetell = (on: boolean) => {
-    setRetell(on);
-    onRetellChange?.(on);
-    setRetold(null);
-    recorder.clear();
-    say.reset();
-  };
-
-  const downloadSpeechModel = async (modelId: string) => {
-    const r = await videoService.startSpeechModelDownload(modelId);
-    setRetold(r.success ? { error: '正在下载识别模型，下载好后再说一遍' } : { error: r.error });
-  };
 
   // 播完原声自动录音（循环时不自动录）
   const lastEnded = useRef(originalEnded);
@@ -189,10 +145,6 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
             <Wand2 />
             自动录音
           </Toggle>
-          <Toggle size="sm" pressed={retell} onPressedChange={toggleRetell} aria-label="复述">
-            <EyeOff />
-            复述
-          </Toggle>
           <Toggle size="sm" pressed={loop} onPressedChange={onLoopChange} aria-label="单句循环">
             <Repeat />
             循环
@@ -200,54 +152,10 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
         </div>
       </div>
 
-      {retell ? (
-        <div>
-          {retold && typeof retold === 'object' && 'text' in retold ? (
-            (() => {
-              const diff = retellDiff(sentence.en, retold.text);
-              return (
-                <>
-                  <div className="text-xl leading-snug font-medium">
-                    {diff.pieces.map((p, i) => (
-                      <span key={i} className={p.hit === false ? 'rounded bg-warning-soft text-warning' : undefined}>
-                        {p.text}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    说对 {diff.hits} / {diff.total} 个词 · 你说的：{retold.text}
-                  </div>
-                </>
-              );
-            })()
-          ) : (
-            <div className="flex h-14 items-center text-sm text-muted-foreground">
-              {retold === 'working' ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin" />
-                  正在听你说的…
-                </span>
-              ) : retold && 'error' in retold ? (
-                <span className="flex items-center gap-2">
-                  {retold.error}
-                  {retold.download && (
-                    <Button variant="link" size="sm" className="h-auto p-0" onClick={() => void downloadSpeechModel(retold.download!)}>
-                      下载
-                    </Button>
-                  )}
-                </span>
-              ) : (
-                '先听原声，再把这句说出来'
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div>
-          <SayText text={sentence.en} result={say.result} strictness={say.strictness} className="block text-xl leading-snug font-medium" />
-          {sentence.zh && <div className="mt-1 text-sm text-muted-foreground">{sentence.zh}</div>}
-        </div>
-      )}
+      <div>
+        <SayText text={sentence.en} result={say.result} strictness={say.strictness} className="block text-xl leading-snug font-medium" />
+        {sentence.zh && <div className="mt-1 text-sm text-muted-foreground">{sentence.zh}</div>}
+      </div>
 
       {/* 录音状态与声波 */}
       <div
@@ -328,8 +236,8 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
           <Progress value={(mineProgress ?? 0) * 100} className={cn('h-1', mineProgress === null && 'invisible')} />
         </div>
       </div>
-      {sayOn && !retell && say.result && !recording && <SayVerdict result={say.result} strictness={say.strictness} showScore={say.showScore} />}
-      {sayOn && !retell && say.error && !recording && <div className="text-sm text-muted-foreground">{say.error}</div>}
+      {sayOn && say.result && !recording && <SayVerdict result={say.result} strictness={say.strictness} showScore={say.showScore} />}
+      {sayOn && say.error && !recording && <div className="text-sm text-muted-foreground">{say.error}</div>}
       {recorder.error && <InlineError>{recorder.error}</InlineError>}
 
       <div className="flex justify-between">
