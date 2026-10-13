@@ -42,3 +42,16 @@ WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved. 只取�
 | Whisper small.en 模型（ggml 格式） | — | MIT（OpenAI Whisper） | https://huggingface.co/ggerganov/whisper.cpp |
 
 编译方式见 https://github.com/abbish/pindu/tree/main/scripts/whisper （`prepare.mjs`、`sources.json`）。
+
+## 发音评估
+
+单词练习「看 · 说」等处在本机评估发音（录音不上传）。评估模型第一次使用时下载，其余内置在应用中。
+
+| 组件 | 版本 | 许可证 | 来源 |
+|---|---|---|---|
+| ONNX Runtime | 1.28.0（经 ort 2.0.0-rc.13 静态链接） | MIT（`onnxruntime-MIT.txt`） | https://github.com/microsoft/onnxruntime |
+| ZIPA small CTC 音素识别模型（int8 ONNX） | zipa-small-crctc-500k | CC-BY-4.0 | https://huggingface.co/anyspeech/zipa-small-crctc-500k |
+| CMU 发音词典 | cmudict（2015 版起） | BSD-2-Clause（`cmudict-BSD-2-Clause.txt`） | https://github.com/cmusphinx/cmudict |
+
+ZIPA：Zhu et al., *ZIPA: A family of efficient models for multilingual phone recognition*, ACL 2025。
+打分模型由 speechocean762（Apache-2.0，https://huggingface.co/datasets/mispeech/speechocean762）训练得到。

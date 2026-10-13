@@ -15,6 +15,7 @@ mod media_server;
 #[cfg(target_os = "macos")]
 mod menu;
 mod process;
+mod pronunciation;
 mod repositories;
 mod services;
 mod startup;
@@ -437,6 +438,10 @@ pub fn run() {
                 remove_job,
                 clear_finished_jobs,
                 quit_app,
+                get_pronunciation_status,
+                start_pronunciation_model_download,
+                delete_pronunciation_model,
+                assess_pronunciation,
                 get_media_tools_status,
                 set_ffmpeg_dir,
                 start_video_import,
