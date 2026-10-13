@@ -223,8 +223,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const [playingExample, setPlayingExample] = useState<number | null>(null);
   /** 右栏页签（换词时保持） */
   const [sideTab, setSideTab] = useState<WordSideTab>('examples');
-  /** 看·说的「说」：播完原音后自动开麦（每次换值触发一次）、跟读结果（标出拼读块）、学习者档案（宽严与是否显示分数） */
-  const [sayAutoKey, setSayAutoKey] = useState<string | null>(null);
+  /** 看·说的「说」：跟读结果（标出拼读块）、学习者档案（宽严与是否显示分数） */
   /** 正在跟读录音：这时不放单词原音（会被录进去） */
   const sayRecording = useRef(false);
   const [sayResult, setSayResult] = useState<SayCheckResult | null>(null);
@@ -315,8 +314,6 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
     })
       .then(() => {
         if (controller.signal.aborted) return;
-        // 看·说：读完原音后开麦跟读
-        if (autoPlayKey.endsWith(':look')) setSayAutoKey(`${autoPlayKey}:${Date.now()}`);
         // 本轮读完后预取下一题的单词
         if (nextWordText) preload(nextWordText);
       })
@@ -822,12 +819,12 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
                           hint={hint}
                           variant={variant}
                           trailing={trailing}
+                          onSkip={handleCover}
                           onPass={handleCover}
                           text={currentWord!.word}
                           segments={currentWord!.phonicsSegments ?? []}
                           strictness={strictnessFor(learner, saySettings.strictness)}
                           showScore={learner !== undefined && learner !== 'primary'}
-                          autoStartKey={sayAutoKey}
                           disabled={isPaused || !sayStages.includes(stage)}
                           onResult={setSayResult}
                           onRecordingChange={(on) => (sayRecording.current = on)}
