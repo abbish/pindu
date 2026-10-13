@@ -33,7 +33,7 @@ interface NavItem {
 const STORAGE_KEY = 'settings.activePanel';
 
 /**
- * 四组：学习偏好（功能怎么表现）；服务与模型（要先配好的基础依赖：AI 服务、语音服务、本机模型）；数据与系统；通用（外观、更新、诊断，放最后）。
+ * 四组：学习偏好（功能怎么表现）；服务与模型（要先配好的基础依赖：AI 服务、语音服务、本机模型）；数据与设备；通用（外观、更新、诊断，放最后）。
  */
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
@@ -65,10 +65,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: '数据与系统',
+    title: '数据与设备',
     items: [
-      { key: 'devices', label: '附近的设备', icon: Laptop, keywords: ['局域网', '配对', '传送', '互传', '同步', '其他电脑', '设备'] },
       { key: 'data-management', label: '数据管理', icon: Database, keywords: ['数据库', '重置', '删除', '清理', '数据表', '统计'] },
+      { key: 'devices', label: '附近的设备', icon: Laptop, keywords: ['局域网', '配对', '传送', '互传', '同步', '其他电脑', '设备'] },
     ],
   },
   {
