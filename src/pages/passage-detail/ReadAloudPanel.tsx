@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, ChevronLeft, ChevronRight, EyeOff, Loader2, Mic, Pause, Play, Settings2, Square } from 'lucide-react';
+import { Brain, ChevronLeft, ChevronRight, EyeOff, Languages, Loader2, Mic, Pause, Play, Settings2, Snail, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
+import { Toggle } from '@/components/ui/toggle';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PassageReader, type TranslationMode } from '@/components/PassageReader';
@@ -31,6 +32,8 @@ interface ReadAloudPrefs {
   /** 句间停顿（毫秒） */
   pauseMs: number;
   translation: TranslationMode;
+  /** 工具栏打开译文时显示哪些：当前句 / 全部 */
+  translationMode: 'current' | 'all';
   /** 标出目标词 */
   highlight: boolean;
   /** 听后回忆：读完含目标词的句子后，把目标词挖空让学生选 */
@@ -42,13 +45,18 @@ interface ReadAloudPrefs {
 }
 
 const PREFS_KEY = 'passage.readAloud.v2';
-const DEFAULT_PREFS: ReadAloudPrefs = { speed: 'normal', repeat: 1, pauseMs: 0, translation: 'off', highlight: true, recall: false, focusBlur: true, shadow: false };
+const DEFAULT_PREFS: ReadAloudPrefs = { speed: 'normal', repeat: 1, pauseMs: 0, translation: 'off', translationMode: 'current', highlight: true, recall: false, focusBlur: true, shadow: false };
 const segmentItem = 'h-7 rounded-md px-2.5 text-xs data-[state=on]:bg-background data-[state=on]:shadow-sm';
 
 function readPrefs(): ReadAloudPrefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
-    if (raw) return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = { ...DEFAULT_PREFS, ...JSON.parse(raw) } as ReadAloudPrefs;
+      // 旧偏好只有 translation：开着时沿用它的显示方式
+      if (!JSON.parse(raw).translationMode && saved.translation !== 'off') saved.translationMode = saved.translation;
+      return saved;
+    }
   } catch {
     // 存储不可用时用默认值
   }
@@ -88,7 +96,8 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ la
 /**
  * 短文朗读面板（短文详情「原文」页签）：
  * 朗读全文 / 单句，逐词高亮并在读到目标词时放大提示；点目标词看单词卡片；
- * 设置：慢速、每句读几遍、句间停顿（跟读）、翻译显示（不显示 / 当前句 / 全部）、听后回忆、标出目标词；盲听（先听再看原文）。
+ * 工具栏上随手切：慢速、译文、跟读（读完一句自动开麦）、盲听（先听再看原文）；⚙ 里设一次就不动的：每句读几遍、句间停顿、
+ * 译文显示当前句还是全部、听后回忆、聚焦当前句、标出目标词。
  */
 /** 选中的文字是一个英文单词（可以加成目标词） */
 /** 选中的文字是一个英文单词或 2–6 个词的词组（可以加成目标词） */
@@ -384,33 +393,53 @@ export const ReadAloudPanel: React.FC<{
         {player.loading && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="正在生成语音" />}
         <span className="min-w-0 truncate text-xs text-muted-foreground">{status}</span>
         <div className="flex-1" />
+        {/* 读的时候随手切的开关；设一次就不动的在 ⚙ 里 */}
+        <Toggle size="sm" pressed={prefs.speed === 'slow'} onPressedChange={(on) => updatePrefs({ speed: on ? 'slow' : 'normal' })} aria-label="慢速">
+          <Snail />
+          慢速
+        </Toggle>
+        <Toggle size="sm" pressed={prefs.translation !== 'off'} onPressedChange={(on) => updatePrefs({ translation: on ? prefs.translationMode : 'off' })} aria-label="译文" disabled={blind}>
+          <Languages />
+          译文
+        </Toggle>
+        {say.enabled && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Toggle
+                size="sm"
+                pressed={prefs.shadow && say.ready === true}
+                onPressedChange={(on) => (say.ready === false ? void say.download() : updatePrefs({ shadow: on }))}
+                disabled={Boolean(say.downloading)}
+                aria-label="跟读"
+              >
+                {say.downloading ? <Loader2 className="animate-spin" /> : <Mic />}
+                跟读
+              </Toggle>
+            </TooltipTrigger>
+            <TooltipContent>{say.ready === false ? (say.downloading ? '正在下载评估模型' : '先下载评估模型') : '读完一句自动跟读'}</TooltipContent>
+          </Tooltip>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant={blind ? 'secondary' : 'ghost'} size="sm" onClick={toggleBlind} aria-pressed={blind}>
+            <Toggle size="sm" pressed={blind} onPressedChange={toggleBlind} aria-label="盲听">
               <EyeOff />
               盲听
-            </Button>
+            </Toggle>
           </TooltipTrigger>
           <TooltipContent>隐藏原文，朗读结束后显示</TooltipContent>
         </Tooltip>
         <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm">
-              <Settings2 />
-              朗读设置
-            </Button>
-          </PopoverTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8" aria-label="朗读设置">
+                  <Settings2 />
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>朗读设置</TooltipContent>
+          </Tooltip>
           <PopoverContent align="end" className="flex w-80 flex-col gap-3">
-            <SettingRow label="语速">
-              <ToggleGroup type="single" value={prefs.speed} onValueChange={(v) => v && updatePrefs({ speed: v as SpeechSpeed })} className="rounded-lg bg-muted p-0.5">
-                <ToggleGroupItem value="normal" className={segmentItem}>
-                  常速
-                </ToggleGroupItem>
-                <ToggleGroupItem value="slow" className={segmentItem}>
-                  慢速
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </SettingRow>
             <SettingRow label="每句重复">
               <ToggleGroup type="single" value={String(prefs.repeat)} onValueChange={(v) => v && updatePrefs({ repeat: Number(v) })} className="rounded-lg bg-muted p-0.5">
                 {[1, 2, 3].map((n) => (
@@ -421,7 +450,14 @@ export const ReadAloudPanel: React.FC<{
               </ToggleGroup>
             </SettingRow>
             <SettingRow label="句间停顿">
-              <ToggleGroup type="single" value={String(prefs.pauseMs)} onValueChange={(v) => v && updatePrefs({ pauseMs: Number(v) })} className="rounded-lg bg-muted p-0.5">
+              <ToggleGroup
+                type="single"
+                value={String(prefs.pauseMs)}
+                onValueChange={(v) => v && updatePrefs({ pauseMs: Number(v) })}
+                disabled={shadowOn}
+                title={shadowOn ? '开着跟读时，读完一句会等你跟读' : undefined}
+                className="rounded-lg bg-muted p-0.5"
+              >
                 {[
                   [0, '不暂停'],
                   [2000, '2 秒'],
@@ -433,10 +469,18 @@ export const ReadAloudPanel: React.FC<{
                 ))}
               </ToggleGroup>
             </SettingRow>
-            <SettingRow label="译文">
-              <ToggleGroup type="single" value={prefs.translation} onValueChange={(v) => v && updatePrefs({ translation: v as TranslationMode })} className="rounded-lg bg-muted p-0.5">
+            <SettingRow label="译文显示">
+              <ToggleGroup
+                type="single"
+                value={prefs.translationMode}
+                onValueChange={(v) => {
+                  if (!v) return;
+                  const mode = v as ReadAloudPrefs['translationMode'];
+                  updatePrefs({ translationMode: mode, translation: prefs.translation === 'off' ? 'off' : mode });
+                }}
+                className="rounded-lg bg-muted p-0.5"
+              >
                 {[
-                  ['off', '不显示'],
                   ['current', '当前句'],
                   ['all', '全部'],
                 ].map(([v, label]) => (
@@ -446,24 +490,6 @@ export const ReadAloudPanel: React.FC<{
                 ))}
               </ToggleGroup>
             </SettingRow>
-            {say.enabled && (
-              <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="ra-shadow" className="text-sm font-normal">
-                  读完一句自动跟读
-                </Label>
-                {say.ready === false ? (
-                  say.downloading ? (
-                    <span className="text-xs text-muted-foreground">正在下载评估模型…</span>
-                  ) : (
-                    <Button variant="outline" size="sm" className="h-7" onClick={() => void say.download()}>
-                      下载评估模型
-                    </Button>
-                  )
-                ) : (
-                  <Switch id="ra-shadow" checked={prefs.shadow} onCheckedChange={(v) => updatePrefs({ shadow: v })} />
-                )}
-              </div>
-            )}
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="ra-recall" className="text-sm font-normal">
                 朗读后回忆词汇
