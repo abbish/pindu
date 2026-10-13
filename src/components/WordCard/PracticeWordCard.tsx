@@ -59,8 +59,8 @@ export interface PracticeWordCardProps {
   onSubmitAnswer: (userInput: string) => void;
   /** 看·说结束：盖住单词开始写 */
   onCover?: () => void;
-  /** 看·说的「说」：跟读与发音评估（页面给出，只在 look 时显示） */
-  sayCheck?: React.ReactNode;
+  /** 看·说的「说」：跟读与发音评估（页面给出，只在 look 时显示）；拿到播放按钮与跟读提示，排成同一行按钮 + 一行反馈 */
+  renderSay?: (slots: { play: React.ReactNode; hint: React.ReactNode }) => React.ReactNode;
   /** 跟读后每个拼读块的标记：读得不准的块标出来 */
   segmentMarks?: ('good' | 'close' | 'retry' | null)[];
   /** 播放发音回调（播放中再点是停止） */
@@ -145,7 +145,7 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
   onContinue,
   marks,
   activeChunk = null,
-  sayCheck,
+  renderSay,
   segmentMarks,
   disabled = false,
 }) => {
@@ -286,16 +286,22 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <SpeakButton variant="outline" size="lg" status={pronunciationStatus} onClick={() => onPlayPronunciation?.()} label="播放发音" title="播放发音（空格）" text="播放发音" aria-keyshortcuts="Space" />
-          {stage === 'look' && segments.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-              <MessageSquareText className="size-4" /> 跟着读：{segments.join(' - ')}
-            </span>
-          )}
-        </div>
-
-        {stage === 'look' && sayCheck}
+        {(() => {
+          const play = <SpeakButton variant="outline" size="lg" status={pronunciationStatus} onClick={() => onPlayPronunciation?.()} label="播放发音" title="播放发音（空格）" text="播放发音" aria-keyshortcuts="Space" />;
+          const hint =
+            stage === 'look' && segments.length > 0 ? (
+              <span className="inline-flex items-center gap-1.5">
+                <MessageSquareText className="size-4" /> 跟着读：{segments.join(' - ')}
+              </span>
+            ) : null;
+          if (stage === 'look' && renderSay) return renderSay({ play, hint });
+          return (
+            <div className="flex items-center gap-3">
+              {play}
+              {hint && <span className="text-sm text-muted-foreground">{hint}</span>}
+            </div>
+          );
+        })()}
 
         <div className="grid w-full grid-cols-2 gap-2 text-sm">
           <InfoRow label="音标">{renderValue(reveal.ipa, <span>{word.ipa || '—'}</span>, null)}</InfoRow>

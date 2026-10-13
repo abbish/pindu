@@ -61,7 +61,7 @@ export const PronunciationSection: React.FC = () => {
   };
 
   return (
-    <SettingsSection title="发音" description="在本机评估，录音不上传">
+    <SettingsSection title="发音">
       <SettingsRow label="跟读评估" htmlFor="pron-enabled">
         <Switch id="pron-enabled" checked={data.settings.enabled} onCheckedChange={(enabled) => void save({ enabled })} />
       </SettingsRow>

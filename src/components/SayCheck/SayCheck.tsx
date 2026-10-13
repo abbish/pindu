@@ -25,6 +25,10 @@ export interface SayCheckResult {
 }
 
 export interface SayCheckProps {
+  /** 卡片的「播放发音」按钮：和跟读按钮排在同一行 */
+  play: React.ReactNode;
+  /** 还没跟读时反馈行显示的提示（跟着读：th - ree） */
+  hint: React.ReactNode;
   /** 要读的单词 */
   text: string;
   /** 自然拼读拆分（标出不准的音在哪一块） */
@@ -49,7 +53,7 @@ const BAND_STYLE: Record<Band, string> = {
  * 看 · 说 的「说」：播完原音后自动开麦，学习者跟读一遍，本机评估后告诉他读得怎样、哪个音不准（对到拼读块上）。
  * 第一次使用先下载评估模型（约 71MB）；录音与评估都在本机，不上传。读不好可以再读，最多自动开麦 3 次，不挡着往下走。
  */
-export const SayCheck: React.FC<SayCheckProps> = ({ text, segments, strictness, showScore, autoStartKey, disabled, onResult }) => {
+export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, strictness, showScore, autoStartKey, disabled, onResult }) => {
   const recorder = useRecorder({ silenceStopMs: 700, maxMs: 4000 });
   const [ready, setReady] = useState<boolean | null>(modelReady);
   const [downloadJob, setDownloadJob] = useState<string | null>(null);
@@ -173,77 +177,84 @@ export const SayCheck: React.FC<SayCheckProps> = ({ text, segments, strictness, 
     else setError(r.error);
   };
 
-  if (ready === null) return null;
-
-  if (!ready) {
-    return (
-      <div className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed p-3 text-center text-sm">
-        {job ? (
-          <>
-            <span className="text-muted-foreground">正在下载发音评估模型…</span>
-            <Progress value={jobPercent(job)} className="h-1.5 w-56" aria-label="下载进度" />
-          </>
-        ) : (
-          <>
-            <span className="text-muted-foreground">跟读后可以听听自己读得准不准。评估在你的电脑上进行，录音不会上传。</span>
-            <Button variant="outline" size="sm" onClick={() => void download()}>
-              <Download />
-              开启发音评估（首次下载约 71MB）
-            </Button>
-          </>
-        )}
-        {error && <span className="text-xs text-destructive">{error}</span>}
-      </div>
-    );
-  }
-
+  const recording = recorder.state !== 'idle';
   const word = result?.words[0];
   const band = result?.score != null ? bandOf(result.score, strictness) : null;
   const tips = word && band ? flaggedPhones(word, strictness).map(phoneTip) : [];
-  const recording = recorder.state !== 'idle';
+  const problem = error ?? recorder.error;
+
+  // 一行按钮（播放发音 · 跟读 · 听我的）+ 一行反馈（提示 / 正在听 / 结果）；反馈行占住高度，换状态时不跳
+  let action: React.ReactNode;
+  let feedback: React.ReactNode;
+  if (ready === null) {
+    action = null;
+    feedback = hint;
+  } else if (!ready) {
+    action = job ? null : (
+      <Button variant="outline" size="lg" onClick={() => void download()}>
+        <Download />
+        开启跟读评估
+      </Button>
+    );
+    feedback = job ? (
+      <span className="flex items-center gap-2">
+        正在下载评估模型
+        <Progress value={jobPercent(job)} className="h-1.5 w-40" aria-label="下载进度" />
+      </span>
+    ) : (
+      (problem ?? '首次使用需下载约 71MB')
+    );
+  } else {
+    action = recording ? (
+      <Button variant="outline" size="lg" onClick={recorder.stop} aria-label="停止录音">
+        <Square className="text-destructive" />
+        {recorder.state === 'arming' ? '准备…' : '停止'}
+        <span className="flex h-4 items-end gap-0.5" aria-hidden>
+          {recorder.live.slice(-8).map((v, i) => (
+            <span key={i} className="w-0.5 rounded-full bg-primary" style={{ height: `${Math.max(2, v * 16)}px` }} />
+          ))}
+        </span>
+      </Button>
+    ) : (
+      <Button variant="outline" size="lg" onClick={start} disabled={disabled || assessing}>
+        {assessing ? <Loader2 className="animate-spin" /> : band ? <RotateCcw /> : <Mic />}
+        {band ? '再读一遍' : '跟读'}
+      </Button>
+    );
+    feedback = recording ? (
+      '在听，读完会自动停'
+    ) : assessing ? (
+      '正在听…'
+    ) : band ? (
+      <span className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+        <span className={cn('rounded-full px-2.5 py-0.5 text-sm font-semibold', BAND_STYLE[band])}>
+          {BAND_LABEL[band]}
+          {showScore && result?.score != null ? ` · ${result.score}` : ''}
+        </span>
+        {tips.map((t) => (
+          <span key={t}>{t}</span>
+        ))}
+      </span>
+    ) : (
+      (problem ?? hint)
+    );
+  }
 
   return (
-    <div className="flex w-full flex-col items-center gap-2" aria-live="polite">
-      <div className="flex items-center gap-2">
-        {recording ? (
-          <Button variant="outline" size="lg" onClick={recorder.stop} aria-label="停止录音">
-            <Square className="text-destructive" />
-            {recorder.state === 'arming' ? '准备…' : '在听，读完会自动停'}
-          </Button>
-        ) : (
-          <Button variant={band ? 'ghost' : 'outline'} size="lg" onClick={start} disabled={disabled || assessing}>
-            {assessing ? <Loader2 className="animate-spin" /> : band ? <RotateCcw /> : <Mic />}
-            {assessing ? '正在听…' : band ? '再读一遍' : '跟读一遍'}
-          </Button>
-        )}
-        {recording && (
-          <span className="flex h-6 items-end gap-0.5" aria-hidden>
-            {recorder.live.slice(-16).map((v, i) => (
-              <span key={i} className="w-1 rounded-full bg-primary" style={{ height: `${Math.max(3, v * 24)}px` }} />
-            ))}
-          </span>
-        )}
-        {band && take && !recording && (
-          <Button variant="ghost" size="lg" onClick={playMine}>
+    <div className="flex w-full flex-col items-center gap-2">
+      <div className="flex items-center gap-3">
+        {play}
+        {action}
+        {ready && take && !recording && (
+          <Button variant="outline" size="lg" onClick={playMine} disabled={assessing}>
             <Play />
             听我的
           </Button>
         )}
       </div>
-      {band && (
-        <div className="flex flex-col items-center gap-1 text-center">
-          <span className={cn('rounded-full px-3 py-1 text-sm font-semibold', BAND_STYLE[band])}>
-            {BAND_LABEL[band]}
-            {showScore && result?.score != null ? ` · ${result.score}` : ''}
-          </span>
-          {tips.map((t) => (
-            <span key={t} className="text-sm text-muted-foreground">
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
-      {(error || recorder.error) && <span className="text-sm text-muted-foreground">{error ?? recorder.error}</span>}
+      <div className="flex min-h-7 items-center justify-center text-center text-sm text-muted-foreground" aria-live="polite">
+        {feedback}
+      </div>
     </div>
   );
 };

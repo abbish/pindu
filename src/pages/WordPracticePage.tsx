@@ -809,18 +809,22 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
                 marks={marks}
                 activeChunk={activeChunk}
                 segmentMarks={sayResult?.segmentMarks}
-                sayCheck={
-                  saySettings?.enabled ? (
-                    <SayCheck
-                      text={currentWord!.word}
-                      segments={currentWord!.phonicsSegments ?? []}
-                      strictness={strictnessFor(learner, saySettings.strictness)}
-                      showScore={learner !== undefined && learner !== 'primary'}
-                      autoStartKey={sayAutoKey}
-                      disabled={isPaused || stage !== 'look'}
-                      onResult={setSayResult}
-                    />
-                  ) : undefined
+                renderSay={
+                  saySettings?.enabled
+                    ? ({ play, hint }) => (
+                        <SayCheck
+                          play={play}
+                          hint={hint}
+                          text={currentWord!.word}
+                          segments={currentWord!.phonicsSegments ?? []}
+                          strictness={strictnessFor(learner, saySettings.strictness)}
+                          showScore={learner !== undefined && learner !== 'primary'}
+                          autoStartKey={sayAutoKey}
+                          disabled={isPaused || stage !== 'look'}
+                          onResult={setSayResult}
+                        />
+                      )
+                    : undefined
                 }
               />
             </div>
