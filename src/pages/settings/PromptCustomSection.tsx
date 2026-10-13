@@ -19,9 +19,16 @@ const CUSTOM_TASKS: Option[] = [
   { value: 'extract', label: '提取单词' },
   { value: 'generate', label: '按意图生成单词' },
   { value: 'plan', label: '学习计划排序' },
+  { value: 'sentence_analyze', label: '句子分析' },
+  { value: 'passage_plan', label: '短文：内容规划' },
   { value: 'passage', label: '短文：生成短文' },
+  { value: 'passage_target_words', label: '短文：挑选词汇' },
   { value: 'passage_questions', label: '短文：生成题组' },
   { value: 'passage_grade', label: '短文：开放题评分' },
+  { value: 'passage_translate', label: '短文：导入材料翻译' },
+  { value: 'material_read', label: '读取 PDF / 图片材料' },
+  { value: 'video_plan', label: '视频：规划切分' },
+  { value: 'subtitle_prepare', label: '视频：整理字幕' },
 ];
 
 /**

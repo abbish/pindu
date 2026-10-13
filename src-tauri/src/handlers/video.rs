@@ -880,8 +880,14 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
             },
             move |ctx| job.run(ctx),
         );
-        // 字幕还没整理完（导入时的整理没做完或关掉了）：另起后台任务接着整理，规划不等它（先提交规划，空闲名额先给规划）
-        if crate::services::video_translate::needs_prepare(&row.cues())
+        // 字幕还没整理完（导入时的整理没做完）：另起后台任务接着整理，规划不等它（先提交规划，空闲名额先给规划）。
+        // 「设置 → 素材与计划 → 导入时整理字幕」关掉时不自动整理（切分前仍会补上没整理的字幕）
+        let auto_prepare = crate::services::material_settings::load(pool.inner())
+            .await
+            .map(|s| s.video_auto_prepare)
+            .unwrap_or(true);
+        if auto_prepare
+            && crate::services::video_translate::needs_prepare(&row.cues())
             && !running(&app, request.video_id, &["video_translate"])
         {
             if let Err(e) = spawn_translate(&app, request.video_id, &row.title, None).await {
