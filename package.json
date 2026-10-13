@@ -9,6 +9,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "clean": "npm run clean:dist && npm run clean:target && npm run clean:cache",
+    "clean:release": "node scripts/release-cleanup.mjs",
     "clean:all": "npm run clean && npm run clean:deps",
     "clean:dist": "rimraf dist",
     "clean:target": "rimraf src-tauri/target",

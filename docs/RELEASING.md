@@ -26,7 +26,7 @@
 6. **等构建**：标签会触发 `.github/workflows/build.yml`。它在 macOS（universal）和 Windows 上各构建一次（2026-10-13 起只支持这两个系统，不再出 Linux 版），用更新私钥给更新包签名，然后汇总成一个 **Release 草稿**，附件包括各系统的安装包、更新包、`.sig` 签名和 `latest.json`。标签和 `package.json` 版本不一致时这一步会失败。
 7. **检查草稿**：在 Releases 页面打开草稿，至少下载一个安装包装上试试。确认附件里有 `latest.json`，`platforms` 里 darwin-aarch64、darwin-x86_64、windows-x86_64 三项都有 `url` 和 `signature`（没有 linux-x86_64：已装 Linux 版的用户检查更新时找不到对应的包，不会再收到更新）。
 8. **发布**：点「Publish release」。发布之后，`releases/latest/download/latest.json` 才会指向这个版本，已安装的应用在 24 小时内（或用户手动检查时）就会收到提示。草稿不会被发现。
-9. **清理本机**：删掉本机打包留下的 `release/` 和 `src-tauri/target/**/release/bundle/`，推出挂载的 dmg。它们和正式版用同一个 identifier、版本号也一样，macOS 可能从启动台打开的是这些旧包，看起来就像「新版本还是老界面」。
+9. **清理本机**：运行 `npm run clean:release` 看看能清什么（只列出、不删），确认后 `node scripts/release-cleanup.mjs --apply`，再推出挂载的 dmg。会清掉本机打包留下的安装包、正式包的编译缓存、临时编译目录和回归测试留下的测试包与运行数据，正在用的会自动跳过。测试包和正式版用同一个 identifier、版本号也一样，不清的话 macOS 可能从启动台打开的是这些旧包，看起来就像「新版本还是老界面」。开发编译缓存 `src-tauri/target/debug` 会越积越大（上百 G），开发窗口都关掉后可以加 `--debug` 一起清，下次启动开发版重编 5–10 分钟。
 
 ## 更新签名私钥
 

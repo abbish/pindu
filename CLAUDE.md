@@ -51,6 +51,7 @@ npm run package             # 一键构建本机安装包（= ./build.sh / build
 npm run package:check       # 只检查构建环境；选项 --target mac-universal|mac-arm|mac-intel|win|win-arm、--bundles、--no-bundle、--debug、--clean
                             # 开发者本地打包工具（只能打本机系统的包，macOS ad-hoc 签名）。正式发布走 GitHub Releases：未签名安装包 + 应用内更新，CI 带 TAURI_SIGNING_PRIVATE_KEY 时额外生成签名的更新包（docs/RELEASING.md）
 npm run clean               # 清 dist、target、vite 缓存
+npm run clean:release       # 发版后清本机（只列出；--apply 才删）：打包产物、正式包编译缓存、散落的编译目录、回归测试留下的测试包与运行数据；--debug 另清开发编译缓存；有程序在用的自动跳过
 ```
 
 后端测试写在 crate 内（`#[cfg(test)] mod tests`），内存库与种子数据用 `src-tauri/src/test_support.rs`；规范见 `.claude/skills/deliver-backend-rust/references/rust-test-standard.md`。

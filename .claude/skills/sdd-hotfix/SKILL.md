@@ -39,7 +39,7 @@ disable-model-invocation: true
    - 针对性手测：在开发版或本机打的包里，按用户报告的步骤确认问题已经消失；再做一次冒烟（应用能启动、首页与受影响的页面能打开、相关的一个主流程能走通）。需要点击时请用户来点。
 4. **更新说明**：在 `docs/releases/vX.Y.Z.md` 写一两条，只写用户碰到的现象现在怎样了，按 `user-facing-writing.md` 自查；`UNRELEASED.md` 里属于这次修复的条目移过去，其余保留。
 5. **改版本号、提交、打标签、发布**：同 `sdd-release` 第 4–8 步——`npm version X.Y.Z --no-git-tag-version`，提交 `release: vX.Y.Z` 并推送、等 CI 绿；打标签前问用户；三平台构建成功后检查草稿附件与 `latest.json`（这一步不能省，它保证已安装的用户能收到这个修复）；公开发布前问用户（用户已明确说直接发布的除外）。
-6. **发布后**：`latest.json` 能取到新版本；按 `sdd-release` 第 9 步清理本机打包产物，通知其他会话。
+6. **发布后**：`latest.json` 能取到新版本；按 `sdd-release` 第 10 步清理本机（`npm run clean:release`），通知其他会话。
 
 ## 分支
 

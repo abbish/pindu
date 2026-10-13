@@ -48,7 +48,9 @@ disable-model-invocation: true
    - `curl -sL https://github.com/abbish/pindu/releases/latest/download/latest.json` 能取到新版本。
    - 用上一版的已安装应用「检查更新」，能看到提示（条件不允许时在交付物里写明未验证）。
 10. **发布后清理**（本机留下的同 identifier 旧包会被访达 / 启动台选中，用户打开的就不是刚发布的版本）：
-   - 删除本机打包产物 `release/` 和 `src-tauri/target/**/release/bundle/`（编译缓存保留），删除前用 `lsregister -u <app>` 从启动服务里注销。
+   - 先运行 `npm run clean:release`（只列出、不删）：打包产物（`release/`、`bundle/`）、正式包编译缓存（`target/release`、各 triple 目录）、散落的编译目录（临时 `CARGO_TARGET_DIR`）、`.claude/work` 里回归测试留下的 `.app` / `runtime*` / `ci-*`，以及合计大小；有程序在用的（开发窗口、测试实例、正在跑的回归测试）自动跳过。把清单给用户看，确认后 `node scripts/release-cleanup.mjs --apply`（脚本删 `.app` 前会先 `lsregister -u`，最后 `git gc` 清临时包）。
+   - 开发编译缓存 `target/debug`（常年累积到上百 G：依赖升级、换编译选项后的旧产物 cargo 不会自己清）只在其他会话的开发窗口都关掉、用户同意后加 `--debug` 清；下次 `tauri:dev` 重编约 5–10 分钟。
+   - 第三方组件缓存（`target/{ffmpeg,ffmpeg-docker,whisper,onnxruntime,wordnet}`）保留，清了下次要重下重编。
    - 推出挂载的 dmg，结束测试实例和本地 http 服务；`mdfind "kMDItemCFBundleIdentifier == 'com.redlark.*'"` 只应剩 `/Applications/拼读.app`。
    - 不碰用户的数据目录、下载目录里的安装包和其他分支；更新端到端测试用的临时目录在 scratchpad 里，随会话清掉。
    - 通知其他会话：版本已发布，下一个迁移序号、`UNRELEASED.md` 从空开始。
