@@ -10,6 +10,7 @@ use crate::repositories::lan_package_repository::{
     LanPackageRepository as Repo, NewVideo, RestoredPlan,
 };
 use crate::repositories::passage_repository::{NewPassage, NewQuestionSet, PassageRepository};
+use crate::repositories::pronunciation_repository::{NewAttempt, PronunciationRepository};
 use crate::repositories::tag_repository::TagRepository;
 use crate::repositories::video_repository::VideoRepository;
 use crate::repositories::word_repository::WordRepository;
@@ -640,8 +641,10 @@ async fn restore_plan(
         plan_word.insert(state.word_ref.as_str(), id);
     }
 
+    let mut session_ids: Vec<String> = Vec::with_capacity(pr.sessions.len());
     for s in &pr.sessions {
         let session_id = uuid::Uuid::new_v4().to_string();
+        session_ids.push(session_id.clone());
         Repo::insert_session_conn(&mut *tx, &session_id, plan_id, schedule_of_day[&s.day], s)
             .await?;
         for pause in &s.pauses {
@@ -700,6 +703,33 @@ async fn restore_plan(
     }
     for h in &pr.history {
         Repo::insert_history_conn(&mut *tx, plan_id, h).await?;
+    }
+    for a in &pr.pronunciation {
+        PronunciationRepository::insert_restored_conn(
+            &mut *tx,
+            &NewAttempt {
+                plan_id,
+                session_id: a
+                    .session
+                    .and_then(|i| session_ids.get(i))
+                    .map(String::as_str),
+                source: &a.source,
+                word_id: a
+                    .word_ref
+                    .as_deref()
+                    .and_then(|r| words.get(r))
+                    .map(|w| w.id),
+                passage_id: a
+                    .passage_ref
+                    .as_deref()
+                    .and_then(|r| passages.get(r).copied()),
+                text: &a.text,
+                score: a.score,
+                detail: &a.detail,
+            },
+            &a.created_at,
+        )
+        .await?;
     }
     Ok(plan_id)
 }

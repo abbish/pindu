@@ -351,6 +351,27 @@ pub struct PkgProgress {
     pub attempts: Vec<PkgAttempt>,
     #[serde(default)]
     pub history: Vec<PkgStatusChange>,
+    /// 计划里的跟读评估（pronunciation_attempts）
+    #[serde(default)]
+    pub pronunciation: Vec<PkgPronunciation>,
+}
+
+/// 一次跟读评估：单词 / 短文按包内引用，会话按 `sessions` 里的序号
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PkgPronunciation {
+    #[serde(default)]
+    pub session: Option<usize>,
+    pub source: String,
+    #[serde(default)]
+    pub word_ref: Option<String>,
+    #[serde(default)]
+    pub passage_ref: Option<String>,
+    pub text: String,
+    pub score: i64,
+    /// 逐词逐音 JSON（不含编号）
+    pub detail: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

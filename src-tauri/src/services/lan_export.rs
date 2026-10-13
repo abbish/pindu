@@ -6,6 +6,7 @@
 use crate::error::{AppError, AppResult};
 use crate::lan::package::*;
 use crate::repositories::lan_package_repository::LanPackageRepository as Repo;
+use crate::repositories::pronunciation_repository::PronunciationRepository;
 use crate::repositories::sentence_analysis_repository::SentenceAnalysisRepository;
 use crate::repositories::tag_repository::TagRepository;
 use crate::repositories::video_repository::VideoRepository;
@@ -703,12 +704,15 @@ async fn progress_of(b: &mut Builder, pool: &Arc<SqlitePool>, id: Id) -> AppResu
             created_at: r.created_at.unwrap_or_default(),
         });
     }
-    let sessions = Repo::sessions(pool, id)
+    let mut session_index: HashMap<String, usize> = HashMap::new();
+    let sessions: Vec<PkgSession> = Repo::sessions(pool, id)
         .await?
         .into_iter()
         .filter_map(|s| {
+            let day = *day_of.get(&s.schedule_id)?;
+            session_index.insert(s.id.clone(), session_index.len());
             Some(PkgSession {
-                day: *day_of.get(&s.schedule_id)?,
+                day,
                 pauses: pauses.remove(&s.id).unwrap_or_default(),
                 records: records.remove(&s.id).unwrap_or_default(),
                 schedule_date: s.schedule_date,
@@ -803,6 +807,25 @@ async fn progress_of(b: &mut Builder, pool: &Arc<SqlitePool>, id: Id) -> AppResu
         })
         .collect();
 
+    // 跟读评估：单词不在包里的不带编号（统计照样用逐音记录）
+    let pronunciation = PronunciationRepository::list_full_by_plan(pool, id)
+        .await?
+        .into_iter()
+        .map(|a| PkgPronunciation {
+            session: a
+                .session_id
+                .as_ref()
+                .and_then(|s| session_index.get(s).copied()),
+            source: a.source,
+            word_ref: a.word_id.and_then(|w| b.words.get(&w).cloned()),
+            passage_ref: a.passage_id.and_then(|p| b.passages.get(&p).cloned()),
+            text: a.text,
+            score: a.score,
+            detail: a.detail,
+            created_at: a.created_at,
+        })
+        .collect();
+
     let ai_plan_data = state.ai_plan_data.as_deref().and_then(|raw| {
         remap_plan_data(
             raw,
@@ -842,6 +865,7 @@ async fn progress_of(b: &mut Builder, pool: &Arc<SqlitePool>, id: Id) -> AppResu
         passage_tasks,
         attempts,
         history,
+        pronunciation,
     })
 }
 

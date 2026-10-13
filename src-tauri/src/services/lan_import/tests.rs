@@ -861,6 +861,20 @@ async fn practice_some(src: &Source) {
         .execute(pool)
         .await
         .unwrap();
+    // 跟读评估：单词（属于会话）与短文（不属于会话）各一次
+    sqlx::query(
+        "INSERT INTO pronunciation_attempts (plan_id, session_id, source, word_id, passage_id, text, score, detail, created_at)
+         VALUES (?, 'sess-1', 'word', ?, NULL, 'gate', 88, '[]', ?), (?, NULL, 'sentence', NULL, ?, 'Here we are.', 76, '[]', ?)",
+    )
+    .bind(src.plan_id)
+    .bind(word_id)
+    .bind(&now)
+    .bind(src.plan_id)
+    .bind(passage_id)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .unwrap();
     sqlx::query("INSERT INTO study_plan_status_history (plan_id, from_status, to_status, reason, created_at) VALUES (?, 'Pending', 'Active', '第一次练习', ?)")
         .bind(src.plan_id)
         .bind(&now)
@@ -888,6 +902,12 @@ async fn plan_with_progress_is_restored_as_is() {
     assert_eq!(progress.status, "Active");
     assert_eq!((progress.sessions.len(), progress.attempts.len()), (1, 1));
     assert_eq!(progress.passage_tasks[0].attempt, Some(0));
+    assert_eq!(progress.pronunciation.len(), 2);
+    assert_eq!(progress.pronunciation[0].session, Some(0));
+    assert!(
+        progress.pronunciation[0].word_ref.is_some()
+            && progress.pronunciation[1].passage_ref.is_some()
+    );
     // 作答里的题目编号换成了顺序
     assert_eq!(
         progress.attempts[0].answers.as_ref().unwrap()["questionResults"][0]["questionId"],
@@ -949,5 +969,15 @@ async fn plan_with_progress_is_restored_as_is() {
     .await
     .unwrap();
     assert_eq!(srs, 2);
+    // 跟读评估指向新库的单词与会话
+    let (word, linked): (String, i64) = sqlx::query_as(
+        "SELECT w.word, (SELECT COUNT(*) FROM practice_sessions s WHERE s.id = a.session_id)
+         FROM pronunciation_attempts a JOIN words w ON w.id = a.word_id WHERE a.plan_id = ?",
+    )
+    .bind(plan)
+    .fetch_one(dst.as_ref())
+    .await
+    .unwrap();
+    assert_eq!((word.as_str(), linked), ("gate", 1));
     crate::time::assert_instants_canonical(&dst).await;
 }
