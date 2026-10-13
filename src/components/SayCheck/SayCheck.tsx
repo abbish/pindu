@@ -13,6 +13,10 @@ import { BAND_LABEL, BAND_STYLE, bandOf, flaggedPhones, phoneSegments, phoneTip,
 
 /** 读过关后停多久再往下走（看清结果） */
 const PASS_DELAY_MS = 1500;
+/** 连续几次没读过关后，才给「不读了，往下写」的出口（免得卡在一个词上） */
+const SKIP_AFTER_TRIES = 3;
+/** 自己会响应回车的控件：焦点在上面时不接管回车 */
+const INTERACTIVE_SELECTOR = 'button, a[href], input, textarea, select, [contenteditable="true"], [role="button"], [role="dialog"], [role="alertdialog"]';
 
 export interface SayCheckResult {
   band: Band;
@@ -47,15 +51,15 @@ export interface SayCheckProps {
   variant?: 'row' | 'bar';
   /** bar 时评估模型还没准备好，框右边放的按钮（盖住，开始写） */
   trailing?: React.ReactNode;
-  /** bar 时不跟读、直接往下走（框里的小图标） */
+  /** bar 时连续几次没读过关后，不读了直接往下走（框里的小图标） */
   onSkip?: () => void;
   /** bar 时读过关（不是「再试试」）后自动调用：进入下一环节；学习者在这期间又点了框里的操作就不走 */
   onPass?: () => void;
 }
 
 /**
- * 看 · 说 的「说」：播完原音后自动开麦，读过关后自动进入下一环节（bar），学习者跟读一遍，本机评估后告诉他读得怎样、哪个音不准（对到拼读块上）。
- * 第一次使用先下载评估模型；录音与评估都在本机，不上传。读不好可以再读，最多自动开麦 3 次，不挡着往下走。
+ * 看 · 说 的「说」：读过关后自动进入下一环节（bar：回车是跟读，连续 3 次没过关才能不读直接写），学习者跟读一遍，本机评估后告诉他读得怎样、哪个音不准（对到拼读块上）。
+ * 第一次使用先下载评估模型；录音与评估都在本机，不上传。读不好可以再读；模型没准备好时不挡着往下走。
  * 录音带着这个词：录到一半换了词，录完的不评估。
  */
 export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, strictness, showScore, disabled, onResult, context, onRecordingChange, variant = 'row', trailing, onSkip, onPass }) => {
@@ -63,6 +67,8 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
   const { ready, modelBytes, downloading: job, download, assessing, result, error, assess, reset } = usePronunciation(context);
   const player = useRef<HTMLAudioElement | null>(null);
   const [playingMine, setPlayingMine] = useState(false);
+  /** 这个词连续没读过关的次数 */
+  const [misses, setMisses] = useState(0);
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
   const onPassRef = useRef(variant === 'bar' ? onPass : undefined);
@@ -81,6 +87,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
 
   // 换词：停掉录音与回放，清掉上一个词的结果
   useEffect(() => {
+    setMisses(0);
     cancelPass();
     stopMine();
     recorder.stop();
@@ -122,6 +129,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
     void assess(take.url, text).then((r) => {
       if (!r || r.score === null) {
         onResultRef.current?.(null);
+        setMisses((n) => n + 1);
         return;
       }
       const word = r.words[0];
@@ -135,6 +143,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
       }
       const band = bandOf(r.score, strictness);
       onResultRef.current?.({ band, score: r.score, segmentMarks: marks });
+      setMisses((n) => (band === 'retry' ? n + 1 : 0));
       if (band !== 'retry' && onPassRef.current) {
         cancelPass();
         passTimer.current = setTimeout(() => {
@@ -144,6 +153,25 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
       }
     });
   }, [take]);
+
+  // 跟读框（模型已准备好）：回车是跟读（开始 / 停止），不是盖住——这一步要先读；在捕获阶段先于页面的快捷键处理
+  const barActive = variant === 'bar' && ready === true && !disabled;
+  const enterRef = useRef<() => void>(() => {});
+  enterRef.current = () => {
+    if (recorder.state !== 'idle') recorder.stop();
+    else start();
+  };
+  useEffect(() => {
+    if (!barActive) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof Element && e.target.closest(INTERACTIVE_SELECTOR)) return;
+      e.preventDefault();
+      if (!e.repeat) enterRef.current();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [barActive]);
 
   /** 听我的：播放中再点是停止 */
   const toggleMine = () => {
@@ -251,7 +279,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
       extras = (
         <>
           {take && !recording && iconAction('听我的', playingMine ? <Square className="fill-current" /> : <Play />, toggleMine)}
-          {onSkip && !recording && iconAction('不读了，盖住开始写', <EyeOff />, () => {
+          {onSkip && !recording && !assessing && misses >= SKIP_AFTER_TRIES && iconAction('不读了，盖住开始写', <EyeOff />, () => {
             cancelPass();
             onSkip();
           })}
@@ -263,7 +291,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
           停止
         </Button>
       ) : (
-        <Button size="lg" className="h-14 px-6" onClick={start} disabled={disabled || assessing}>
+        <Button size="lg" className="h-14 px-6" onClick={start} disabled={disabled || assessing} aria-keyshortcuts="Enter">
           {band ? <RotateCcw /> : <Mic />}
           {band ? '再读一遍' : '跟读'}
         </Button>
