@@ -37,7 +37,8 @@ const OFFER_WAIT: Duration = Duration::from_secs(100);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// 导入的等待上限（发送方等 finish）
 const IMPORT_WAIT: Duration = Duration::from_secs(30 * 60);
-const RETRIES: usize = 3;
+/// 一个文件传送中断后，最多重试多久（按时间退避：2、4、8、16、30 秒…）
+const RETRY_WINDOW: Duration = Duration::from_secs(120);
 const CHUNK: usize = 256 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,6 +72,24 @@ pub struct FinishResponse {
 
 // ==================== 接收方 ====================
 
+/// 接收结束后保留的结果（发送方 finish 断线后来问）
+pub(super) struct Finished {
+    pub peer: String,
+    pub result: Result<ImportResult, String>,
+    pub at: Instant,
+}
+
+/// `transfer/{id}/result`：importing / done（带结果）/ failed（带原因）
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultResponse {
+    pub state: String,
+    #[serde(default)]
+    pub result: Option<ImportResult>,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
 pub(super) enum Signal {
     Finish(oneshot::Sender<Result<ImportResult, String>>),
     Cancel(String),
@@ -93,6 +112,9 @@ pub(super) struct Inbound {
     pub job_id: Option<String>,
     /// 正在写的文件：同一个文件同时只接受一个上传（发送方超时重试时旧连接可能还在写）
     pub uploading: std::collections::HashSet<String>,
+    pub created: Instant,
+    /// 正在导入：这时取消 / 关闭互传 / 取消配对都不打断（导入完自己结束）
+    pub importing: bool,
 }
 
 /// 占住一个正在写的文件，离开作用域时放开
@@ -192,6 +214,27 @@ impl Shared {
         }
         let (tx, rx) = oneshot::channel();
         let dir = self.incoming_dir(&req.transfer_id);
+        // 同一台设备又发来（上次断了、它重新发）：结束旧的，接这一次；别的设备在发就请它等
+        let replaced = {
+            let st = self.lock();
+            match &st.inbound {
+                Some(i) if i.peer == peer && !i.importing => {
+                    Some((i.transfer_id.clone(), i.job_id.clone()))
+                }
+                Some(_) => return Err(err(StatusCode::CONFLICT, "正在接收别的内容")),
+                None => None,
+            }
+        };
+        if let Some((old, job)) = replaced {
+            self.logger.info(
+                "LAN",
+                &format!("「{alias}」重新发送，结束上一次没完成的传送 {old}"),
+            );
+            self.end_inbound(&old, "canceled");
+            if let Some(job) = job {
+                self.jobs.cancel(&job);
+            }
+        }
         {
             let mut st = self.lock();
             if st.inbound.is_some() {
@@ -211,6 +254,8 @@ impl Shared {
                 signals: None,
                 job_id: None,
                 uploading: Default::default(),
+                created: Instant::now(),
+                importing: false,
             });
         }
         self.logger.info(
@@ -312,10 +357,18 @@ impl Shared {
                             Some(Signal::Finish(reply)) => {
                                 ctx.stage("正在导入");
                                 let result = shared.import_inbound(&transfer_id).await;
-                                let _ = reply.send(match &result {
+                                let outcome = match &result {
                                     Ok(r) => Ok(r.clone()),
                                     Err(e) => Err(e.to_string()),
-                                });
+                                };
+                                let peer = shared.lock().inbound.as_ref().map(|i| i.peer.clone());
+                                if let Some(peer) = peer {
+                                    shared.lock().finished.insert(
+                                        transfer_id.clone(),
+                                        Finished { peer, result: outcome.clone(), at: Instant::now() },
+                                    );
+                                }
+                                let _ = reply.send(outcome);
                                 shared.end_inbound(&transfer_id, if result.is_ok() { "done" } else { "failed" });
                                 if let Some(link) = result.as_ref().ok().and_then(link_of) {
                                     ctx.set_link(link);
@@ -369,6 +422,15 @@ impl Shared {
     pub(super) fn end_inbound(&self, transfer_id: &str, reason: &str) {
         let ended = {
             let mut st = self.lock();
+            let importing = st
+                .inbound
+                .as_ref()
+                .is_some_and(|i| i.transfer_id == transfer_id && i.importing);
+            if importing && reason != "done" && reason != "failed" {
+                // 正在导入：不打断，导入完由接收任务结束（否则发送方以为失败、重发会多一份）
+                tracing::info!(component = "LAN", %transfer_id, reason, "正在导入，导入完再结束");
+                return;
+            }
             if st
                 .inbound
                 .as_ref()
@@ -548,6 +610,14 @@ impl Shared {
             .as_ref()
             .and_then(|i| i.signals.clone())
             .ok_or_else(|| err(StatusCode::GONE, "传送已经结束"))?;
+        if let Some(i) = self
+            .lock()
+            .inbound
+            .as_mut()
+            .filter(|i| i.transfer_id == transfer_id)
+        {
+            i.importing = true;
+        }
         let (tx, rx) = oneshot::channel();
         signals
             .send(Signal::Finish(tx))
@@ -559,11 +629,43 @@ impl Shared {
         }
     }
 
+    /// 发送方 finish 断线后问结果
+    pub(crate) fn on_result(&self, peer: &str, transfer_id: &str) -> Reply<ResultResponse> {
+        let st = self.lock();
+        if st
+            .inbound
+            .as_ref()
+            .is_some_and(|i| i.transfer_id == transfer_id && i.peer == peer)
+        {
+            return Ok(ResultResponse {
+                state: "importing".into(),
+                result: None,
+                message: None,
+            });
+        }
+        match st.finished.get(transfer_id).filter(|f| f.peer == peer) {
+            Some(f) => Ok(match &f.result {
+                Ok(r) => ResultResponse {
+                    state: "done".into(),
+                    result: Some(r.clone()),
+                    message: None,
+                },
+                Err(e) => ResultResponse {
+                    state: "failed".into(),
+                    result: None,
+                    message: Some(e.clone()),
+                },
+            }),
+            None => Err(err(StatusCode::NOT_FOUND, "没有这次传送")),
+        }
+    }
+
     pub(crate) fn on_transfer_cancel(&self, peer: &str, transfer_id: &str) {
         let (mine, job) = {
             let st = self.lock();
             match &st.inbound {
-                Some(i) if i.transfer_id == transfer_id && i.peer == peer => {
+                // 正在导入时不打断（导入完由接收任务结束）
+                Some(i) if i.transfer_id == transfer_id && i.peer == peer && !i.importing => {
                     (true, i.job_id.clone())
                 }
                 _ => (false, None),
@@ -593,7 +695,11 @@ impl LanNode {
             .and_then(|i| i.decision.take());
         match sender {
             Some(tx) => {
-                let _ = tx.send(accept);
+                if tx.send(accept).is_err() {
+                    // 发送方已经断开：立刻放开接收位置
+                    self.shared.end_inbound(transfer_id, "canceled");
+                    return Err(AppError::NotFound("对方已经取消了发送".into()));
+                }
                 Ok(())
             }
             None => Err(AppError::NotFound("这个传送请求已经结束了".into())),
@@ -685,6 +791,11 @@ impl LanNode {
                     ClientError::Status(s, body) if s == StatusCode::UPGRADE_REQUIRED => {
                         AppError::ExternalServiceError(body)
                     }
+                    ClientError::Status(s, _) if s == StatusCode::CONFLICT => {
+                        AppError::ExternalServiceError(format!(
+                            "「{alias}」正在接收别的内容，请稍后再试"
+                        ))
+                    }
                     other => user_error(&other, &alias),
                 })?;
         let token = match (resp.accepted, resp.token) {
@@ -696,6 +807,7 @@ impl LanNode {
             }
         };
 
+        let finish_sent = std::sync::atomic::AtomicBool::new(false);
         let result = self
             .upload(
                 ctx,
@@ -707,9 +819,11 @@ impl LanNode {
                 &exported,
                 manifest,
                 total,
+                &finish_sent,
             )
             .await;
-        if result.is_err() {
+        // 已经请对方导入（finish 发出去了）就不能再取消：对方可能正在导入或已经导入完
+        if result.is_err() && !finish_sent.load(Ordering::SeqCst) {
             // 取消或失败：告诉对方停止接收（尽力而为）
             let path = format!("/transfer/{transfer_id}/cancel");
             let _ = client::send(
@@ -738,6 +852,7 @@ impl LanNode {
         exported: &lan_export::ExportedPackage,
         manifest: Bytes,
         total: u64,
+        finish_sent: &std::sync::atomic::AtomicBool,
     ) -> AppResult<ImportResult> {
         let headers = |extra: Option<u64>| {
             let mut h = vec![(TOKEN_HEADER, token.to_string())];
@@ -769,7 +884,8 @@ impl LanNode {
 
         for file in &exported.package.files {
             let path = &exported.files[&file.id];
-            let mut attempts = 0;
+            // 这个文件第一次中断的时间（传成功一段后重新计时）
+            let mut failing_since: Option<Instant> = None;
             loop {
                 if ctx.is_cancelled() {
                     return Err(AppError::InternalError(
@@ -824,7 +940,6 @@ impl LanNode {
                         break;
                     }
                     Err(e) => {
-                        attempts += 1;
                         if ctx.is_cancelled() {
                             return Err(AppError::InternalError(
                                 crate::agent::session::CANCELLED.into(),
@@ -837,7 +952,8 @@ impl LanNode {
                                 | ClientError::Status(StatusCode::CONFLICT, _)
                                 | ClientError::Status(StatusCode::UNPROCESSABLE_ENTITY, _)
                         );
-                        if !retryable || attempts > RETRIES {
+                        let since = *failing_since.get_or_insert_with(Instant::now);
+                        if !retryable || since.elapsed() > RETRY_WINDOW {
                             return Err(match e {
                                 ClientError::Status(StatusCode::INSUFFICIENT_STORAGE, _) => {
                                     AppError::ExternalServiceError(format!(
@@ -847,21 +963,23 @@ impl LanNode {
                                 other => user_error(&other, alias),
                             });
                         }
-                        tracing::warn!(component = "LAN", error = %e, attempt = attempts, "传送文件中断，接着传");
-                        // 问对方收到了多少，从那里接着传（问的时候网络也可能还没恢复：一起算在重试次数里）
-                        let mut asked = None;
-                        while attempts <= RETRIES {
-                            tokio::time::sleep(Duration::from_secs(2)).await;
-                            match put_manifest().await {
-                                Ok(r) => {
-                                    asked = Some(r.received);
-                                    break;
-                                }
-                                Err(e) if attempts >= RETRIES => return Err(e),
-                                Err(_) => attempts += 1,
+                        tracing::warn!(component = "LAN", error = %e, "传送文件中断，接着传");
+                        // 问对方收到了多少，从那里接着传（问的时候网络也可能还没恢复：一起算在重试时间里）
+                        let mut delay = Duration::from_secs(2);
+                        let asked = loop {
+                            tokio::time::sleep(delay).await;
+                            if ctx.is_cancelled() {
+                                return Err(AppError::InternalError(
+                                    crate::agent::session::CANCELLED.into(),
+                                ));
                             }
-                        }
-                        received = asked.ok_or_else(|| user_error(&e, alias))?;
+                            match put_manifest().await {
+                                Ok(r) => break r.received,
+                                Err(e) if since.elapsed() > RETRY_WINDOW => return Err(e),
+                                Err(_) => delay = (delay * 2).min(Duration::from_secs(30)),
+                            }
+                        };
+                        received = asked;
                     }
                 }
             }
@@ -869,7 +987,8 @@ impl LanNode {
         ctx.progress(total, total);
 
         ctx.stage(format!("「{alias}」正在导入"));
-        let (_, bytes) = client::send(
+        finish_sent.store(true, Ordering::SeqCst);
+        let finished = client::send(
             id,
             target,
             Method::POST,
@@ -880,17 +999,67 @@ impl LanNode {
         )
         .await
         .map_err(|e| match e {
-            ClientError::Status(_, body) if !body.is_empty() => {
-                AppError::ExternalServiceError(format!("「{alias}」没能导入：{body}"))
-            }
-            other => user_error(&other, alias),
-        })?;
+            // 断线或等太久：对方可能已经导入完了，先问结果（不能直接当失败：重发会多一份）
+            ClientError::Unreachable(_) | ClientError::Timeout => None,
+            ClientError::Status(_, body) if !body.is_empty() => Some(
+                AppError::ExternalServiceError(format!("「{alias}」没能导入：{body}")),
+            ),
+            other => Some(user_error(&other, alias)),
+        });
+        let bytes = match finished {
+            Ok((_, bytes)) => bytes,
+            Err(Some(e)) => return Err(e),
+            Err(None) => return self.wait_for_result(id, target, alias, transfer_id).await,
+        };
         let resp: FinishResponse = serde_json::from_slice(&bytes)
             .map_err(|e| AppError::ExternalServiceError(format!("对方的回应格式不对：{e}")))?;
         self.shared
             .logger
             .info("LAN", &format!("已发送到「{alias}」（传送 {transfer_id}）"));
         Ok(resp.result)
+    }
+}
+
+impl LanNode {
+    /// finish 断线后：每 5 秒问一次对方的导入结果，直到有结果或超时
+    async fn wait_for_result(
+        &self,
+        id: &super::identity::Identity,
+        target: &Target,
+        alias: &str,
+        transfer_id: &str,
+    ) -> AppResult<ImportResult> {
+        let deadline = Instant::now() + IMPORT_WAIT;
+        while Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            let asked: Result<(String, ResultResponse), ClientError> = client::post_json(
+                id,
+                target,
+                &format!("/transfer/{transfer_id}/result"),
+                &serde_json::json!({}),
+                Duration::from_secs(15),
+            )
+            .await;
+            match asked {
+                Ok((_, r)) if r.state == "done" => {
+                    if let Some(result) = r.result {
+                        return Ok(result);
+                    }
+                }
+                Ok((_, r)) if r.state == "failed" => {
+                    return Err(AppError::ExternalServiceError(format!(
+                        "「{alias}」没能导入：{}",
+                        r.message.unwrap_or_default()
+                    )))
+                }
+                // 还在导入 / 暂时连不上：接着等
+                Ok(_) | Err(ClientError::Unreachable(_)) | Err(ClientError::Timeout) => {}
+                Err(e) => return Err(user_error(&e, alias)),
+            }
+        }
+        Err(AppError::ExternalServiceError(format!(
+            "不确定「{alias}」有没有导入成功，请在对方电脑上看一下"
+        )))
     }
 }
 

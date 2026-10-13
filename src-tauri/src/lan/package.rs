@@ -21,6 +21,9 @@ pub const VERSION: u32 = 1;
 pub const MAX_MANIFEST_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_FILES: usize = 10_000;
 pub const MAX_OBJECTS: usize = 200_000;
+/// 单个文件与全部文件的大小上限（一次传送；原始视频可能很大）
+pub const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024 * 1024;
+pub const MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -615,7 +618,11 @@ impl Package {
             plans: self.plans.len(),
             with_progress: self.plans.iter().any(|p| p.progress.is_some()),
             with_source_video: self.videos.iter().any(|v| v.source_file.is_some()),
-            total_bytes: self.files.iter().map(|f| f.size).sum(),
+            // 校验过的包不会溢出（单个文件与总量都有上限）；没校验的也不会因为溢出崩溃
+            total_bytes: self
+                .files
+                .iter()
+                .fold(0u64, |n, f| n.saturating_add(f.size)),
             file_count: self.files.len(),
             titles,
         }
@@ -664,9 +671,21 @@ impl Package {
             + self.videos.len()
             + self.plans.len()
             + self.word_cards.len()
-            + self.sentence_analyses.len();
+            + self.sentence_analyses.len()
+            + self
+                .plans
+                .iter()
+                .map(|p| p.words.len() + p.progress.as_ref().map_or(0, progress_entries))
+                .sum::<usize>();
         if objects > MAX_OBJECTS || self.files.len() > MAX_FILES {
             return Err("素材包太大，请分几次传送".into());
+        }
+        let mut total = 0u64;
+        for f in &self.files {
+            total = total
+                .checked_add(f.size)
+                .filter(|t| f.size <= MAX_FILE_BYTES && *t <= MAX_TOTAL_BYTES)
+                .ok_or("素材包里的文件太大，请分几次传送")?;
         }
 
         let mut refs = HashSet::new();
@@ -875,6 +894,21 @@ impl Package {
         }
         Ok(())
     }
+}
+
+/// 学习进度里的条目数（计入素材包的对象上限）
+fn progress_entries(p: &PkgProgress) -> usize {
+    p.schedules.iter().map(|s| s.words.len() + 1).sum::<usize>()
+        + p.word_states.len()
+        + p.sessions
+            .iter()
+            .map(|s| s.records.len() + s.pauses.len() + 1)
+            .sum::<usize>()
+        + p.study_records.len()
+        + p.passage_tasks.len()
+        + p.attempts.len()
+        + p.history.len()
+        + p.pronunciation.len()
 }
 
 /// 文件编号：接收方直接拿它当临时文件名，只允许字母、数字、- 和 _（不能带路径）

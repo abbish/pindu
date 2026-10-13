@@ -386,6 +386,26 @@ async fn send_plan_and_video_to_a_paired_device() {
         })
         .await;
     assert_eq!(closed, "done");
+    // 发送方 finish 断线时来问结果：已导入（结果与 finish 返回的一致）
+    {
+        let id = a.node.shared.identity().unwrap();
+        let target = Target {
+            address: "127.0.0.1".parse().unwrap(),
+            port: b.node.status().port.unwrap(),
+            fingerprint: Some(b.fingerprint()),
+        };
+        let (_, asked): (String, transfer::ResultResponse) = client::post_json(
+            &id,
+            &target,
+            &format!("/transfer/{}/result", offer.transfer_id),
+            &serde_json::json!({}),
+            REQUEST_WAIT,
+        )
+        .await
+        .unwrap();
+        assert_eq!(asked.state, "done");
+        assert_eq!(asked.result.as_ref(), Some(&result));
+    }
     assert!(!b
         .node
         .shared
@@ -795,4 +815,98 @@ async fn spoofed_announcements_cannot_rename_or_remove_a_device() {
     assert_eq!(still.address, real.address);
     assert_eq!(paired_with(&a).await, vec![real.alias.clone()]);
     let _ = &mut b;
+}
+
+#[tokio::test]
+async fn pair_start_is_rate_limited_per_address() {
+    let a = node("A").await;
+    let b = node("B").await;
+    a.node.add_by_address(&b.address()).await.unwrap();
+    let id = a.node.shared.identity().unwrap();
+    let target = Target {
+        address: "127.0.0.1".parse().unwrap(),
+        port: b.node.status().port.unwrap(),
+        fingerprint: Some(b.fingerprint()),
+    };
+    let own = a.node.shared.own_info().unwrap();
+    // 只交承诺、不揭示（离线试配对码的做法）：同一地址一分钟 3 次，第 4 次被拒绝
+    let mut statuses = Vec::new();
+    for _ in 0..4 {
+        let req = PairStartRequest {
+            info: own.clone(),
+            commit: commitment(&new_nonce()),
+        };
+        let r = client::post_json::<_, PairStartResponse>(
+            &id,
+            &target,
+            "/pair/start",
+            &req,
+            REQUEST_WAIT,
+        )
+        .await;
+        statuses.push(match r {
+            Ok(_) => 200,
+            Err(ClientError::Status(s, _)) => s.as_u16(),
+            Err(e) => panic!("{e}"),
+        });
+    }
+    assert_eq!(statuses, vec![200, 200, 200, 429]);
+}
+
+/// A 向 B 提议一次传送，返回（发起请求的任务, 传送编号）
+async fn offer(
+    a: &TestNode,
+    b: &TestNode,
+    transfer_id: &str,
+    summary: crate::lan::package::PackageSummary,
+) -> tokio::task::JoinHandle<Result<(String, transfer::OfferResponse), ClientError>> {
+    let id = a.node.shared.identity().unwrap();
+    let target = Target {
+        address: "127.0.0.1".parse().unwrap(),
+        port: b.node.status().port.unwrap(),
+        fingerprint: Some(b.fingerprint()),
+    };
+    let req = transfer::OfferRequest {
+        transfer_id: transfer_id.into(),
+        package_version: 1,
+        summary,
+    };
+    tokio::spawn(async move {
+        client::post_json(&id, &target, "/transfer/offer", &req, REQUEST_WAIT).await
+    })
+}
+
+#[tokio::test]
+async fn inbound_slot_is_freed_when_the_sender_goes_away_or_resends() {
+    let mut a = node("A").await;
+    let mut b = node("B").await;
+    pair(&mut a, &mut b).await;
+    // 发送方断开后，接收方再点接收：告诉用户对方已取消，位置立刻放开
+    let first = offer(&a, &b, "t-gone", Default::default()).await;
+    b.wait(|e| matches!(e, LanEvent::TransferOffer(_)).then_some(()))
+        .await;
+    first.abort();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let err = b.node.respond_transfer("t-gone", true).unwrap_err();
+    assert!(err.to_string().contains("取消"), "{err}");
+    assert!(b.node.pending_transfer().is_none());
+
+    // 同一台设备重新发：旧的（已接收、没传完）被替换，新的照常确认
+    let second = offer(&a, &b, "t-old", Default::default()).await;
+    b.wait(|e| matches!(e, LanEvent::TransferOffer(o) if o.transfer_id == "t-old").then_some(()))
+        .await;
+    b.node.respond_transfer("t-old", true).unwrap();
+    assert!(second.await.unwrap().unwrap().1.accepted);
+    let third = offer(&a, &b, "t-new", Default::default()).await;
+    let closed = b
+        .wait(|e| match e {
+            LanEvent::TransferClosed(c) if c.transfer_id == "t-old" => Some(c.reason.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(closed, "canceled");
+    b.wait(|e| matches!(e, LanEvent::TransferOffer(o) if o.transfer_id == "t-new").then_some(()))
+        .await;
+    b.node.respond_transfer("t-new", false).unwrap();
+    assert!(!third.await.unwrap().unwrap().1.accepted);
 }

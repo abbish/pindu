@@ -121,6 +121,34 @@ struct State {
     inbound: Option<transfer::Inbound>,
     /// 最近一次用 TLS 确认某台设备的时间（节流）
     verifying: HashMap<String, Instant>,
+    /// 已配对设备的编号（附近列表淘汰时不挤掉它们；开启时从库里读，配对 / 取消配对时更新）
+    paired: HashSet<String>,
+    /// 最近一分钟的配对请求与未配对设备的注册（按地址限频：防止反复试配对码、刷附近列表）
+    pair_starts: std::collections::VecDeque<(Instant, IpAddr)>,
+    registers: std::collections::VecDeque<(Instant, IpAddr)>,
+    /// 接收结束后保留一会儿的结果（发送方 finish 断线后来问）
+    finished: HashMap<String, transfer::Finished>,
+}
+
+/// 限频：最近一分钟里同一地址最多 `per_address` 次、总共最多 `total` 次
+fn allow(
+    log: &mut std::collections::VecDeque<(Instant, IpAddr)>,
+    address: IpAddr,
+    per_address: usize,
+    total: usize,
+) -> bool {
+    let now = Instant::now();
+    while log
+        .front()
+        .is_some_and(|(t, _)| now.duration_since(*t) > Duration::from_secs(60))
+    {
+        log.pop_front();
+    }
+    if log.len() >= total || log.iter().filter(|(_, a)| *a == address).count() >= per_address {
+        return false;
+    }
+    log.push_back((now, address));
+    true
 }
 
 struct Running {
@@ -157,6 +185,7 @@ struct Outgoing {
     confirmed: bool,
     /// 对方已同意、等本机用户确认（确认后才保存）
     accepted: Option<LanDeviceRow>,
+    created: Instant,
 }
 
 fn current_os() -> String {
@@ -388,6 +417,7 @@ impl LanNode {
                 task: None,
                 confirmed: false,
                 accepted: None,
+                created: Instant::now(),
             },
         );
         let shared = self.shared.clone();
@@ -525,6 +555,7 @@ impl LanNode {
             .await?
             .ok_or_else(|| AppError::NotFound("没有和这台设备配对".into()))?;
         LanRepository::delete(&self.shared.pool, fingerprint).await?;
+        self.shared.lock().paired.remove(fingerprint);
         self.shared.end_inbound_from(fingerprint);
         self.shared
             .logger
@@ -691,7 +722,21 @@ impl Shared {
     }
 
     async fn start_inner(self: &Arc<Self>) -> AppResult<()> {
+        // 上次没收完的传送（退出或崩溃时留下）：临时文件没用了，清掉
+        let incoming = self.dir.join("incoming");
+        if incoming.exists() && self.lock().inbound.is_none() {
+            if let Err(e) = std::fs::remove_dir_all(&incoming) {
+                self.logger
+                    .warn("LAN", "清理上次没收完的临时文件失败", Some(&e.to_string()));
+            }
+        }
         let id = self.load_identity()?;
+        let paired: HashSet<String> = LanRepository::list(&self.pool)
+            .await?
+            .into_iter()
+            .map(|r| r.fingerprint)
+            .collect();
+        self.lock().paired = paired;
         let preferred = self.options.preferred_port;
         let listener = match tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, preferred)).await
         {
@@ -776,10 +821,12 @@ impl Shared {
                 std::mem::take(&mut st.outgoing),
             )
         };
+        // 正在导入的不打断（导入完由接收任务结束）
         let inbound = self
             .lock()
             .inbound
             .as_ref()
+            .filter(|i| !i.importing)
             .map(|i| (i.transfer_id.clone(), i.job_id.clone()));
         if let Some((transfer_id, job)) = inbound {
             self.end_inbound(&transfer_id, "canceled");
@@ -838,7 +885,7 @@ impl Shared {
                         let oldest = st
                             .nearby
                             .iter()
-                            .min_by_key(|(_, n)| (n.sticky, n.last_seen))
+                            .min_by_key(|(k, n)| (st.paired.contains(*k), n.sticky, n.last_seen))
                             .map(|(k, _)| k.clone());
                         if let Some(k) = oldest {
                             st.nearby.remove(&k);
@@ -947,6 +994,50 @@ impl Shared {
     fn tick(self: &Arc<Self>) {
         self.announce(false);
         self.probe_paired();
+        // 发起后一直没有结果的配对（离开设置页没点取消等）：3 分钟后清掉；对方已同意的请它取消配对
+        let stale: Vec<Outgoing> = {
+            let mut st = self.lock();
+            let ids: Vec<String> = st
+                .outgoing
+                .iter()
+                .filter(|(_, o)| o.created.elapsed() > Duration::from_secs(180))
+                .map(|(k, _)| k.clone())
+                .collect();
+            ids.into_iter()
+                .filter_map(|k| st.outgoing.remove(&k))
+                .collect()
+        };
+        for mut o in stale {
+            if let Some(task) = o.task.take() {
+                task.abort();
+            }
+            if let (Some(_), Some(id)) = (o.accepted.take(), self.identity()) {
+                tokio::spawn(async move {
+                    let _ = client::post_json::<_, serde_json::Value>(
+                        &id,
+                        &o.target,
+                        "/unpair",
+                        &serde_json::json!({}),
+                        REQUEST_WAIT,
+                    )
+                    .await;
+                });
+            }
+        }
+        // 接收结束后保留的结果：1 小时后丢掉
+        self.lock()
+            .finished
+            .retain(|_, f| f.at.elapsed() < Duration::from_secs(3600));
+        // 既没在等确认、也没被接收的传送请求（决定发出去时发送方已断开）：放开位置
+        let orphan = self.lock().inbound.as_ref().and_then(|i| {
+            (i.decision.is_none()
+                && i.token.is_none()
+                && i.created.elapsed() > Duration::from_secs(120))
+            .then(|| i.transfer_id.clone())
+        });
+        if let Some(id) = orphan {
+            self.end_inbound(&id, "canceled");
+        }
         // 接收任务已经结束（还没开始就被取消等），接收位置也要放开
         let finished_job = self.lock().inbound.as_ref().and_then(|i| {
             let job = i.job_id.as_ref()?;
@@ -1088,6 +1179,7 @@ impl Shared {
         let alias = row.alias.clone();
         let (outcome, message) = match LanRepository::upsert_paired(&self.pool, &row).await {
             Ok(()) => {
+                self.lock().paired.insert(row.fingerprint.clone());
                 self.logger.info(
                     "LAN",
                     &format!("已和「{alias}」配对（pairing {pairing_id}）"),
@@ -1119,7 +1211,7 @@ impl Shared {
             .lock()
             .inbound
             .as_ref()
-            .filter(|i| i.peer == fingerprint)
+            .filter(|i| i.peer == fingerprint && !i.importing)
             .map(|i| (i.transfer_id.clone(), i.job_id.clone()));
         if let Some((transfer_id, job)) = found {
             self.end_inbound(&transfer_id, "canceled");
@@ -1234,6 +1326,12 @@ impl Shared {
         let own = self
             .own_info()
             .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, e.to_string()))?;
+        {
+            let st = &mut *self.lock();
+            if !st.paired.contains(peer_fp) && !allow(&mut st.registers, address, 20, 120) {
+                return Err((StatusCode::TOO_MANY_REQUESTS, "请求太频繁".into()));
+            }
+        }
         self.remember_nearby(info, address, true);
         let paired = LanRepository::get(&self.pool, peer_fp)
             .await
@@ -1251,6 +1349,11 @@ impl Shared {
         Self::check_info(peer_fp, &mut req.info)?;
         if !is_fingerprint(&req.commit) {
             return Err(bad("配对请求格式不对"));
+        }
+        // 限频：不揭示随机数就放弃的请求可以拿来离线试配对码，每分钟同一地址 3 次、总共 10 次
+        if !allow(&mut self.lock().pair_starts, address, 3, 10) {
+            tracing::warn!(component = "LAN", %address, "配对请求太频繁，拒绝");
+            return Err((StatusCode::TOO_MANY_REQUESTS, "配对请求太频繁".into()));
         }
         let own = self
             .own_info()
@@ -1375,6 +1478,7 @@ impl Shared {
                     .error("LAN", "保存配对失败", Some(&e.to_string()));
                 return Err((StatusCode::INTERNAL_SERVER_ERROR, "保存配对失败".into()));
             }
+            self.lock().paired.insert(peer_fp.to_string());
             self.logger
                 .info("LAN", &format!("已和「{}」配对", info.alias));
             (self.emit)(LanEvent::PairedChanged);
@@ -1427,6 +1531,7 @@ impl Shared {
             LanRepository::delete(&self.pool, peer_fp)
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            self.lock().paired.remove(peer_fp);
             self.end_inbound_from(peer_fp);
             self.logger
                 .info("LAN", &format!("「{}」取消了和本机的配对", row.alias));

@@ -5,7 +5,8 @@ use super::identity::fingerprint_of;
 use super::package::MAX_MANIFEST_BYTES;
 use super::protocol::*;
 use super::transfer::{
-    FinishResponse, OfferRequest, OfferResponse, ReceivedFiles, OFFSET_HEADER, TOKEN_HEADER,
+    FinishResponse, OfferRequest, OfferResponse, ReceivedFiles, ResultResponse, OFFSET_HEADER,
+    TOKEN_HEADER,
 };
 use super::Shared;
 use axum::body::{Body, Bytes};
@@ -128,6 +129,10 @@ pub(super) async fn serve(
         .route(
             &format!("{API}/transfer/{{id}}/cancel"),
             post(transfer_cancel),
+        )
+        .route(
+            &format!("{API}/transfer/{{id}}/result"),
+            post(transfer_result),
         )
         .layer(axum::middleware::from_fn(read_body_in_time))
         .with_state(shared);
@@ -294,4 +299,12 @@ async fn transfer_cancel(
 ) -> Json<serde_json::Value> {
     s.on_transfer_cancel(&peer.fingerprint, &id);
     Json(serde_json::json!({}))
+}
+
+async fn transfer_result(
+    State(s): State<Arc<Shared>>,
+    Extension(peer): Extension<Peer>,
+    Path(id): Path<String>,
+) -> Reply<ResultResponse> {
+    s.on_result(&peer.fingerprint, &id).map(Json)
 }

@@ -362,11 +362,10 @@ async fn import_inner(
 
         let dir = video_dir(data_dir, video_id);
         if dir.exists() {
-            // 编号被重用而旧目录还在（删除视频时没删干净）：不覆盖
-            return Err(AppError::InternalError(format!(
-                "视频目录已存在：{}",
-                dir.display()
-            )));
+            // 编号刚分配，库里没有别的记录用它：这是以前删除没删干净、或导入中途退出留下的目录，清掉
+            tracing::warn!(component = "LAN", dir = %dir.display(), "清理没有记录的旧视频目录");
+            std::fs::remove_dir_all(&dir)
+                .map_err(|e| AppError::InternalError(format!("无法清理旧的视频目录：{e}")))?;
         }
         created.dirs.push(dir.clone());
         for f in &v.files {
@@ -561,6 +560,28 @@ fn canonical_instants(pr: &PkgProgress) -> PkgProgress {
         fix_opt(&mut t.completed_at);
     }
     pr.history.iter_mut().for_each(|h| fix(&mut h.at));
+    pr.pronunciation
+        .iter_mut()
+        .for_each(|a| fix(&mut a.created_at));
+    // 记忆等级的日期按日历日期核对；旧的时刻列（last_studied / next_review）能解析的统一格式，解析不了的保留原样
+    let date = |s: &mut Option<String>| {
+        if s.as_deref()
+            .is_some_and(|v| crate::time::parse_date(v).is_none())
+        {
+            *s = None;
+        }
+    };
+    let soft = |s: &mut Option<String>| {
+        if let Some(t) = s.as_deref().and_then(parse_instant) {
+            *s = Some(format_instant(t));
+        }
+    };
+    for w in &mut pr.word_states {
+        date(&mut w.srs_due);
+        date(&mut w.srs_last);
+        soft(&mut w.last_studied);
+        soft(&mut w.next_review);
+    }
     pr
 }
 
@@ -623,10 +644,11 @@ async fn restore_plan(
     // 计划单词与记忆等级（没有记录的按初始状态）
     // 按原来的顺序写，计划里没有状态记录的词按初始状态补上
     let mut plan_word: HashMap<&str, Id> = HashMap::new();
+    let has_state: HashSet<&str> = pr.word_states.iter().map(|s| s.word_ref.as_str()).collect();
     let fresh: Vec<PkgWordState> = p
         .words
         .iter()
-        .filter(|w| !pr.word_states.iter().any(|s| s.word_ref == w.word_ref))
+        .filter(|w| !has_state.contains(w.word_ref.as_str()))
         .map(|w| PkgWordState {
             word_ref: w.word_ref.clone(),
             ..Default::default()

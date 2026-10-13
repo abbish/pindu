@@ -62,9 +62,10 @@ export const LanSettings: React.FC = () => {
   // 本机发起的配对有了结果
   const pairingRef = useRef<PairingStarted | null>(null);
   pairingRef.current = pairing;
-  useEffect(() => {
-    const off = listen<PairingResult>(LAN_EVENTS.pairingResult, ({ payload }) => {
-      if (pairingRef.current?.pairingId !== payload.pairingId) return;
+  /** 弹窗登记之前就到了的结果（对方很快回应时，事件可能早于 startPairing 返回）：登记后补上 */
+  const earlyResults = useRef(new Map<string, PairingResult>());
+  const handleResult = useRef<(payload: PairingResult) => void>(() => {});
+  handleResult.current = (payload: PairingResult) => {
       if (payload.outcome === 'remote_accepted') {
         setPairingState((s) => ({ ...s, remoteAccepted: true }));
         return;
@@ -73,9 +74,17 @@ export const LanSettings: React.FC = () => {
       if (payload.outcome === 'accepted') toast.showSuccess(`已和「${payload.alias}」配对`);
       else if (payload.outcome === 'rejected') toast.showInfo(`「${payload.alias}」没有同意配对`);
       else if (payload.outcome === 'failed') toast.showError('配对没有完成', payload.message ?? undefined);
+  };
+  useEffect(() => {
+    const off = listen<PairingResult>(LAN_EVENTS.pairingResult, ({ payload }) => {
+      if (pairingRef.current?.pairingId !== payload.pairingId) {
+        earlyResults.current.set(payload.pairingId, payload);
+        return;
+      }
+      handleResult.current(payload);
     });
     return () => void off.then((f) => f());
-  }, [toast]);
+  }, []);
 
   const save = async (enabled: boolean, nextAlias: string) => {
     setSaving(true);
@@ -103,6 +112,10 @@ export const LanSettings: React.FC = () => {
     if (r.success) {
       setPairingState({ confirmed: false, remoteAccepted: false });
       setPairing(r.data);
+      pairingRef.current = r.data;
+      const early = earlyResults.current.get(r.data.pairingId);
+      earlyResults.current.clear();
+      if (early) handleResult.current(early);
     } else toast.showError('无法配对', r.error);
   };
 
