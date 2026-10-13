@@ -7,6 +7,8 @@ export interface Take {
   durationMs: number;
   /** 录音的音量轮廓（0–1，约每 50ms 一个），画成静态波形 */
   peaks: number[];
+  /** 开始录音时给的标记（录的是哪个词 / 哪一句）：录完时内容已经换了，调用方据此丢掉 */
+  tag?: string;
 }
 
 export interface RecorderOptions {
@@ -26,7 +28,8 @@ const PEAK_MS = 50;
  * - `open()` 预先打开麦克风并保持（进入跟读时调用），点录音立刻开始，开头不丢；
  * - `start()` 后先短暂 `arming`，录音器真正开始后才进入 `recording`（界面据此提示「开始说」）；
  * - `level` 实时音量（0–1）、`live` 最近的音量轮廓，用来画实时声波；`heard` 是否已经检测到说话；
- * - 说完静音 `silenceStopMs` 或到 `maxMs` 自动停止；停止后得到 `take`（地址、时长、音量轮廓）。
+ * - 说完静音 `silenceStopMs` 或到 `maxMs` 自动停止；停止后得到 `take`（地址、时长、音量轮廓、`start(tag)` 的标记）；
+ * - `ended` 每结束一次录音加 1（太短没有 `take`、麦克风打不开也算），等着录音结束的流程据此往下走。
  */
 export function useRecorder(options: RecorderOptions = {}) {
   const [state, setState] = useState<RecorderState>('idle');
@@ -36,6 +39,7 @@ export function useRecorder(options: RecorderOptions = {}) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [take, setTake] = useState<Take | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ended, setEnded] = useState(0);
 
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -90,12 +94,14 @@ export function useRecorder(options: RecorderOptions = {}) {
     if (rec && rec.state === 'recording') rec.stop();
   }, []);
 
-  const start = useCallback(async () => {
-    if (recorderRef.current) return;
+  /** 开始录音；麦克风打不开时返回 false */
+  const start = useCallback(async (tag?: string): Promise<boolean> => {
+    if (recorderRef.current) return false;
     setState('arming');
     if (!(await open())) {
       setState('idle');
-      return;
+      setEnded((n) => n + 1);
+      return false;
     }
     const stream = streamRef.current!;
     const analyser = analyserRef.current!;
@@ -118,8 +124,9 @@ export function useRecorder(options: RecorderOptions = {}) {
       setLevel(0);
       const durationMs = begun ? performance.now() - begun : 0;
       if (chunks.length > 0 && durationMs > 300) {
-        setTake({ url: URL.createObjectURL(new Blob(chunks, { type: rec.mimeType })), durationMs, peaks });
+        setTake({ url: URL.createObjectURL(new Blob(chunks, { type: rec.mimeType })), durationMs, peaks, tag });
       }
+      setEnded((n) => n + 1);
     };
     rec.onstart = () => {
       begun = performance.now();
@@ -158,9 +165,10 @@ export function useRecorder(options: RecorderOptions = {}) {
       frameRef.current = requestAnimationFrame(tick);
     };
     rec.start(100);
+    return true;
   }, [open]);
 
   const clear = useCallback(() => setTake(null), []);
 
-  return { state, level, live, heard, elapsedMs, take, error, open, close, start, stop, clear };
+  return { state, level, live, heard, elapsedMs, take, ended, error, open, close, start, stop, clear };
 }

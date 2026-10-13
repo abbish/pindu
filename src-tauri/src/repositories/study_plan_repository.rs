@@ -888,6 +888,8 @@ impl StudyPlanRepository {
             // 短文：任务回到未完成；作答记录保留为自由练习（短文统计不受影响）
             "UPDATE study_plan_passages SET completed_at = NULL, attempt_id = NULL WHERE plan_id = ?",
             "UPDATE passage_attempts SET plan_id = NULL WHERE plan_id = ?",
+            // 发音统计跟着这一轮练习重新开始
+            "DELETE FROM pronunciation_attempts WHERE plan_id = ?",
         ] {
             sqlx::query(sql).bind(plan_id).execute(&mut *conn).await?;
         }

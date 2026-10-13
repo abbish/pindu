@@ -37,7 +37,7 @@ interface ReadAloudPrefs {
   recall: boolean;
   /** 聚焦朗读：当前句最清晰，上下文逐渐模糊 */
   focusBlur: boolean;
-  /** 跟读评估：每句读完后开麦跟读，本机评估后逐词标色 */
+  /** 每句跟读：每句读完后开麦跟读，本机评估后逐词标色 */
   shadow: boolean;
 }
 
@@ -148,7 +148,7 @@ export const ReadAloudPanel: React.FC<{
     if (!shadowRef.current) return;
     return new Promise<void>((resolve) => {
       setShadowing({ index, resolve });
-      void recorder.start();
+      void recorder.start(String(index));
     });
   }, [recorder]);
   const afterSentence = useCallback(
@@ -167,26 +167,26 @@ export const ReadAloudPanel: React.FC<{
     [texts, targets, forms, shadowStep]
   );
 
-  // 跟读录完：评估这句，结果留在句子下面，稍停后接着朗读下一句
-  const take = recorder.take;
+  // 一次跟读录音结束：录到了就评估这句（结果留在句子下面，稍停一下），没录到（太短、麦克风打不开）直接接着朗读
   useEffect(() => {
-    if (!take || !shadowing) return;
+    if (!shadowing) return;
     const current = shadowing;
-    void say.assess(take.url, texts[current.index]).then((r) => {
-      if (r) setSayResults((m) => new Map(m).set(current.index, r));
+    const take = recorder.take;
+    const finish = (delay: number) =>
       setTimeout(() => {
         setShadowing((s) => (s === current ? null : s));
         current.resolve();
-      }, r ? 1200 : 600);
-    });
-  }, [take]);
-  // 麦克风打不开：不卡住朗读
-  useEffect(() => {
-    if (recorder.error && shadowing) {
-      shadowing.resolve();
-      setShadowing(null);
+      }, delay);
+    if (!take || take.tag !== String(current.index)) {
+      finish(0);
+      return;
     }
-  }, [recorder.error]);
+    void say.assess(take.url, texts[current.index]).then((r) => {
+      if (r) setSayResults((m) => new Map(m).set(current.index, r));
+      finish(r ? 1200 : 600);
+    });
+  }, [recorder.ended]);
+
 
   const player = useSentencePlayer(texts, {
     speed: prefs.speed,
@@ -202,12 +202,18 @@ export const ReadAloudPanel: React.FC<{
     },
   });
 
+  // 朗读停下来以后关掉麦克风（指示灯不一直亮着）
+  useEffect(() => {
+    if (!player.playing && !shadowing) recorder.close();
+  }, [player.playing, shadowing]);
+
   // 播放中改语速：当前这句立刻用新语速从头读（遍数、停顿、听后回忆从这句之后生效）
   const speedRef = useRef(prefs.speed);
   useEffect(() => {
     if (speedRef.current === prefs.speed) return;
     speedRef.current = prefs.speed;
-    if (player.playing && !recall && player.current != null) player.play(player.current);
+    // 跟读录音时不重读（会被录进去），从下一句开始生效
+    if (player.playing && !recall && !shadowing && player.current != null) player.play(player.current);
     // 只响应语速变化
   }, [prefs.speed]);
 
@@ -258,7 +264,7 @@ export const ReadAloudPanel: React.FC<{
   };
 
   const status = (() => {
-    if (shadowing) return recorder.state === 'recording' ? '请跟读这句，读完会自动停' : say.assessing ? '正在听…' : '准备跟读…';
+    if (shadowing) return recorder.state === 'recording' ? '请跟读' : say.assessing ? '正在评分…' : '准备跟读…';
     if (recall) return '回忆词汇';
     if (player.pausing) return '停顿中，请跟读';
     // 盲听只是隐藏原文，不会自己开始播放：没在播时不显示状态，播放按钮写明「开始盲听」
@@ -320,7 +326,7 @@ export const ReadAloudPanel: React.FC<{
         ) : active && say.assessing ? (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            正在听…
+            正在评分…
           </div>
         ) : result ? (
           <>
@@ -438,7 +444,7 @@ export const ReadAloudPanel: React.FC<{
             {say.enabled && (
               <div className="flex items-center justify-between gap-3">
                 <Label htmlFor="ra-shadow" className="text-sm font-normal">
-                  每句跟读并评估
+                  每句跟读
                 </Label>
                 {say.ready === false ? (
                   say.downloading ? (

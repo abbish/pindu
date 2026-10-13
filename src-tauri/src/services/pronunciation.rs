@@ -58,14 +58,14 @@ fn is_weak(score: u32, likely_confused: bool) -> bool {
 pub struct PronunciationService;
 
 impl PronunciationService {
-    /// 保存一次评估（没有能评分的词时不存）
+    /// 保存一次评估（没听到说话、没有能评分的词时不存）
     pub async fn record(
         pool: &SqlitePool,
         text: &str,
         assessment: &Assessment,
         context: &PronunciationContext,
     ) -> AppResult<()> {
-        let Some(score) = assessment.score else {
+        let Some(score) = assessment.score.filter(|_| assessment.voiced) else {
             return Ok(());
         };
         let words: Vec<&WordAssessment> = assessment.words.iter().filter(|w| w.known).collect();
@@ -241,6 +241,14 @@ mod tests {
             passage_id: None,
         };
         PronunciationService::record(&pool, "think", &assessment, &context)
+            .await
+            .unwrap();
+        // 没听到说话（静音也会给每个音打分）不存
+        let silent = Assessment {
+            voiced: false,
+            ..assessment.clone()
+        };
+        PronunciationService::record(&pool, "think", &silent, &context)
             .await
             .unwrap();
         let unscored = Assessment {

@@ -74,3 +74,8 @@ test('听后复述逐词对照：不分大小写、标点与撇号，漏说的�
   assert.equal(r.hits, 5);
   assert.equal(r.total, 6);
 });
+
+test('复述对照：识别出的阿拉伯数字按英文算', () => {
+  const r = retellDiff('I have two cats.', 'I have 2 cats');
+  assert.equal(r.hits, 4);
+});

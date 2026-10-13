@@ -16,6 +16,8 @@ const MAX_SOUNDS = 8;
 export const PlanPronunciationView: React.FC<{ planId: number }> = ({ planId }) => {
   const [data, setData] = useState<PronunciationOverview | null>(null);
   const [drill, setDrill] = useState<SoundStat | null>(null);
+  /** 练完关掉弹窗后重新统计 */
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let stale = false;
@@ -25,7 +27,7 @@ export const PlanPronunciationView: React.FC<{ planId: number }> = ({ planId }) 
     return () => {
       stale = true;
     };
-  }, [planId]);
+  }, [planId, reloadKey]);
 
   if (!data || data.attempts === 0) return null;
   const sounds = data.sounds.slice(0, MAX_SOUNDS);
@@ -68,7 +70,14 @@ export const PlanPronunciationView: React.FC<{ planId: number }> = ({ planId }) 
           <div className="text-sm text-muted-foreground">没有常读不准的音</div>
         )}
       </Card>
-      <SoundDrillDialog sound={drill} planId={planId} onClose={() => setDrill(null)} />
+      <SoundDrillDialog
+        sound={drill}
+        planId={planId}
+        onClose={() => {
+          setDrill(null);
+          setReloadKey((k) => k + 1);
+        }}
+      />
     </section>
   );
 };

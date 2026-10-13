@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Mic, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -16,7 +16,7 @@ import type { DictationStatus } from '@/types/pronunciation';
 let cachedReady: boolean | null = null;
 
 export interface MicButtonProps {
-  /** 说完、转成文字后 */
+  /** 说完、转成文字后（转文字要一两秒，调用方按那时最新的内容拼接） */
   onText: (text: string) => void;
   /** 开始 / 结束说话（调用方可以暂停别的声音） */
   onRecordingChange?: (recording: boolean) => void;
@@ -32,6 +32,8 @@ export interface MicButtonProps {
  */
 export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange, disabled, className, label = '说话输入' }) => {
   const recorder = useRecorder({ silenceStopMs: 1800, maxMs: 60000 });
+  const onTextRef = useRef(onText);
+  onTextRef.current = onText;
   const [status, setStatus] = useState<DictationStatus | null>(null);
   const [ready, setReady] = useState<boolean | null>(cachedReady);
   const [job, setJob] = useState<string | null>(null);
@@ -41,7 +43,11 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
 
   useEffect(() => {
     void pronunciationService.dictationStatus().then((r) => {
-      if (!r.success) return;
+      if (!r.success) {
+        setReady(false);
+        setError(r.error);
+        return;
+      }
       setStatus(r.data);
       cachedReady = r.data.ready;
       setReady(r.data.ready);
@@ -72,6 +78,7 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
   const take = recorder.take;
   useEffect(() => {
     if (!take) return;
+    recorder.close();
     let stale = false;
     setBusy(true);
     void (async () => {
@@ -84,7 +91,7 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
             setReady(false);
           }
           setError(r.error);
-        } else if (r.data) onText(r.data);
+        } else if (r.data) onTextRef.current(r.data);
         else setError('没有听到声音');
       } catch {
         if (!stale) setError('录音读不出来，再说一遍');

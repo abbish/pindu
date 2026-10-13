@@ -14,7 +14,7 @@ pub const DOWNLOAD_FIRST: &str = "base.en";
 /// 低于这个音量（RMS）当作没说话：whisper 对静音会编出「Thank you.」之类
 const SILENCE_RMS: f32 = 0.005;
 /// 最长 60 秒
-const MAX_SECONDS: usize = 60;
+pub const MAX_SECONDS: usize = 60;
 
 /// 已下载、最适合短录音的模型
 pub fn model_for_dictation(data_dir: &Path) -> Option<&'static SpeechModel> {
@@ -36,6 +36,23 @@ fn rms(samples: &[i16]) -> f32 {
         })
         .sum();
     (sum / samples.len() as f64).sqrt() as f32
+}
+
+/// 去掉开头结尾的静音（留 0.2 秒余量）：长段空白容易让识别编出「Thank you.」之类
+fn trim_silence(samples: &[i16]) -> &[i16] {
+    const FRAME: usize = 320; // 20ms
+    const PAD: usize = 3200; // 0.2s
+    let voiced = |f: &[i16]| rms(f) >= SILENCE_RMS * 2.0;
+    let frames: Vec<&[i16]> = samples.chunks(FRAME).collect();
+    let (Some(first), Some(last)) = (
+        frames.iter().position(|f| voiced(f)),
+        frames.iter().rposition(|f| voiced(f)),
+    ) else {
+        return &samples[..0];
+    };
+    let start = (first * FRAME).saturating_sub(PAD);
+    let end = ((last + 1) * FRAME + PAD).min(samples.len());
+    &samples[start..end]
 }
 
 /// 16kHz 单声道 16 位 PCM 写成 wav
@@ -73,15 +90,18 @@ pub async fn transcribe(data_dir: &Path, work_dir: &Path, samples: &[i16]) -> Ap
     if samples.len() > MAX_SECONDS * 16000 {
         return Err(AppError::ValidationError("一次最多说 60 秒".to_string()));
     }
-    if rms(samples) < SILENCE_RMS {
+    let samples = trim_silence(samples);
+    if samples.is_empty() || rms(samples) < SILENCE_RMS {
         return Ok(String::new());
     }
+    // 先找到识别程序再写临时录音（找不到时不留文件）
+    let cli = subtitle_recognition::whisper_cli()?;
     std::fs::create_dir_all(work_dir)
         .map_err(|e| AppError::InternalError(format!("无法创建临时目录：{e}")))?;
     let stem: PathBuf = work_dir.join(format!("speech-{}", uuid::Uuid::new_v4()));
     let wav = stem.with_extension("wav");
     write_wav(&wav, samples)?;
-    let output = crate::process::command(subtitle_recognition::whisper_cli()?)
+    let output = crate::process::command(cli)
         .arg("-m")
         .arg(model.path(data_dir))
         .arg("-f")
@@ -119,6 +139,17 @@ mod tests {
         );
         assert!(rms(&[0; 1600]) < SILENCE_RMS);
         assert!(rms(&[3000, -3000, 3000, -3000]) > SILENCE_RMS);
+    }
+
+    #[test]
+    fn trims_leading_and_trailing_silence() {
+        let mut samples = vec![0i16; 16_000];
+        samples.extend(std::iter::repeat_n([3000i16, -3000], 800).flatten());
+        samples.extend(vec![0i16; 32_000]);
+        let trimmed = trim_silence(&samples);
+        // 说话 0.1 秒 + 两头各 0.2 秒余量
+        assert_eq!(trimmed.len(), 1600 + 2 * 3200);
+        assert!(trim_silence(&[0; 16_000]).is_empty());
     }
 
     #[test]

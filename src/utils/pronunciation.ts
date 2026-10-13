@@ -184,7 +184,7 @@ export function sentencePieces(text: string, words: WordAssessment[], strictness
   let last = 0;
   let index = 0;
   for (const m of text.matchAll(WORD_RE)) {
-    if (!/\p{L}/u.test(m[0])) continue;
+    if (!/\p{Alphabetic}/u.test(m[0])) continue;
     const at = m.index ?? 0;
     if (at > last) pieces.push({ text: text.slice(last, at), word: null, band: null });
     const w = words[index];
@@ -214,14 +214,21 @@ export interface RetellPiece {
   hit: boolean | null;
 }
 
+const NUMBER_WORDS: Record<string, string> = Object.fromEntries(
+  'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty'
+    .split(' ')
+    .map((w, i) => [String(i), w])
+);
+
 /** 比较用：小写、去掉撇号（where's 与 wheres 算同一个） */
 const norm = (w: string) => w.toLowerCase().replace(/['’]/g, '');
 
 /** 原句与说出的话逐词对照（最长公共子序列，不分大小写、忽略标点与撇号）；hits / total 是说对的词数 */
 export function retellDiff(original: string, said: string): { pieces: RetellPiece[]; hits: number; total: number } {
-  const tokens = [...original.matchAll(WORD_RE)].filter((m) => /\p{L}/u.test(m[0]));
+  const tokens = [...original.matchAll(WORD_RE)].filter((m) => /\p{Alphabetic}/u.test(m[0]));
   const a = tokens.map((m) => norm(m[0]));
-  const b = [...said.matchAll(WORD_RE)].map((m) => norm(m[0])).filter(Boolean);
+  // 识别结果常把数字写成阿拉伯数字（two → 2），换回英文再比
+  const b = [...said.matchAll(WORD_RE)].map((m) => NUMBER_WORDS[m[0]] ?? norm(m[0])).filter(Boolean);
   const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
   for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
   const hit = new Array<boolean>(a.length).fill(false);

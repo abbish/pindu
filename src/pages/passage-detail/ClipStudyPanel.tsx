@@ -137,7 +137,9 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   const active = sentences.findIndex((s) => startOf(s) <= now && now < endOf(s));
   const line = active >= 0 ? sentences[active] : null;
   // 听力：没拼好的句子不显示字幕；跟读 / 场景学习按设置
-  const shown: Subtitles = mode === 'listen' ? (active >= 0 && solved.has(active) ? 'both' : 'none') : prefs.subtitles;
+  // 复述时画面上先不显示字幕
+  const [retelling, setRetelling] = useState(false);
+  const shown: Subtitles = mode === 'listen' ? (active >= 0 && solved.has(active) ? 'both' : 'none') : mode === 'shadow' && retelling ? 'none' : prefs.subtitles;
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = rate;
@@ -365,6 +367,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
           <div className="min-h-0 flex-1 overflow-y-auto">
           <ShadowingPanel
             pronunciationContext={pronunciationContext}
+            onRetellChange={setRetelling}
             sentence={sentences[current]}
             index={current}
             total={sentences.length}

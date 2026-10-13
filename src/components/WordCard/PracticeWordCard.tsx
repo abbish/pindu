@@ -338,9 +338,9 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
                         activeChunk === index
                           ? 'bg-primary text-primary-foreground'
                           : sayStages.includes(stage) && segmentMarks?.[index] === 'retry'
-                            ? 'bg-warning-soft text-warning ring-2 ring-warning/60'
+                            ? 'bg-warning-soft text-warning'
                             : sayStages.includes(stage) && segmentMarks?.[index] === 'close'
-                              ? 'bg-warning-soft text-warning'
+                              ? 'bg-accent text-accent-foreground underline decoration-warning decoration-2 underline-offset-4'
                               : 'bg-accent text-accent-foreground'
                       )}
                     >

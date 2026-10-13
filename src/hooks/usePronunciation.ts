@@ -7,10 +7,15 @@ import { recordingToPcmBase64 } from '@/utils/audioPcm';
 import { strictnessFor } from '@/utils/pronunciation';
 
 /** 模型状态与设置在页面间共用：下载好以后不用每次再查 */
-let cached: { ready: boolean; settings: PronunciationSettings } | null = null;
+let cached: { ready: boolean; settings: PronunciationSettings; modelBytes: number } | null = null;
 let cachedLearner: string | undefined;
 /** 同一时间很多个一起挂载时（练一练的一组词）只查一次 */
 let loading: { at: number; status: ReturnType<typeof pronunciationService.status>; profile: ReturnType<typeof promptProfileService.getProfile> } | null = null;
+/** 设置里改了开关 / 宽严、下载或删除了模型后调用：下次挂载重新查 */
+export function invalidatePronunciationCache() {
+  loading = null;
+  cached = null;
+}
 const fresh = () => {
   if (!loading || Date.now() - loading.at > 3000) {
     loading = { at: Date.now(), status: pronunciationService.status(), profile: promptProfileService.getProfile() };
@@ -43,7 +48,7 @@ export function usePronunciation(context?: PronunciationContext) {
     const { status, profile } = fresh();
     void status.then((r) => {
       if (!r.success) return;
-      cached = { ready: r.data.ready, settings: r.data.settings };
+      cached = { ready: r.data.ready, settings: r.data.settings, modelBytes: r.data.modelBytes };
       setReady(r.data.ready);
       setSettings(r.data.settings);
       if (r.data.downloadJob) setDownloadJob(r.data.downloadJob);
@@ -116,5 +121,6 @@ export function usePronunciation(context?: PronunciationContext) {
   const enabled = settings?.enabled ?? false;
   const strictness = strictnessFor(learner, settings?.strictness);
   const showScore = learner !== undefined && learner !== 'primary';
-  return { ready, settings, enabled, strictness, showScore, downloading, download, assessing, result, error, assess, reset };
+  const modelBytes = cached?.modelBytes ?? 0;
+  return { ready, settings, modelBytes, enabled, strictness, showScore, downloading, download, assessing, result, error, assess, reset };
 }

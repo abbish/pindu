@@ -282,6 +282,9 @@ const QuestionItem: React.FC<{
   id?: string;
 }> = ({ index, question, value, onChange, result, missing, id }) => {
   const done = Boolean(result);
+  /** 说话转文字要一两秒：拼到那时的答案后面 */
+  const valueRef = useRef(value);
+  valueRef.current = value;
   const badge =
     result?.correct === true ? (
       <Badge className="bg-success-soft text-success">
@@ -360,12 +363,12 @@ const QuestionItem: React.FC<{
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 maxLength={OPEN_MAX}
-                placeholder="用英文回答（也可以点麦克风说出来）"
+                placeholder="用英文回答"
                 className="min-h-24 resize-none"
                 aria-invalid={missing || undefined}
               />
               <div className="mt-1 flex items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums">
-                <MicButton label="用英语说" onText={(text) => onChange((value.trim() ? `${value.trimEnd()} ${text}` : text).slice(0, OPEN_MAX))} />
+                <MicButton label="用英语说" onText={(text) => onChange((valueRef.current.trim() ? `${valueRef.current.trimEnd()} ${text}` : text).slice(0, OPEN_MAX))} />
                 {value.length} / {OPEN_MAX}
               </div>
             </>

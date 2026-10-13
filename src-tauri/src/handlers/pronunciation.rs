@@ -43,6 +43,13 @@ pub struct AssessPronunciationRequest {
 }
 
 const DOWNLOAD_KIND: &str = "pronunciation_model";
+/// 一次评估最长录音（秒）与最多词数：再长评估会很慢（每个音都要试几十种读法）
+const MAX_ASSESS_SECONDS: usize = 30;
+const MAX_ASSESS_WORDS: usize = 40;
+/// base64 的录音最长多少字（16kHz × 2 字节，base64 放大 4/3）
+const fn max_audio_chars(seconds: usize) -> usize {
+    seconds * 16_000 * 2 * 4 / 3 + 4
+}
 
 /// 录音：base64 的 16kHz 单声道 16 位小端 PCM
 fn decode_pcm(audio: &str) -> AppResult<Vec<i16>> {
@@ -139,7 +146,17 @@ pub async fn start_pronunciation_model_download(app: AppHandle) -> AppResult<Str
 pub async fn delete_pronunciation_model(app: AppHandle) -> AppResult<()> {
     let logger = app.state::<Logger>();
     logger.api_request("delete_pronunciation_model", None);
-    let result = model::delete(&data_dir(&app));
+    let result = if running_download(&app).is_some() {
+        Err(AppError::ValidationError(
+            "评估模型正在下载，先停止下载再删除".to_string(),
+        ))
+    } else {
+        let dir = data_dir(&app);
+        tokio::task::spawn_blocking(move || model::delete(&dir))
+            .await
+            .map_err(|e| AppError::InternalError(format!("删除评估模型中断：{e}")))
+            .and_then(|r| r)
+    };
     finish(&logger, "delete_pronunciation_model", result)
 }
 
@@ -162,6 +179,16 @@ pub async fn assess_pronunciation(
         let dir = data_dir(&app);
         if !model::ready(&dir) {
             return Err(AppError::NotFound("发音评估模型还没有下载".to_string()));
+        }
+        if request.audio.len() > max_audio_chars(MAX_ASSESS_SECONDS) {
+            return Err(AppError::ValidationError(format!(
+                "一次最多读 {MAX_ASSESS_SECONDS} 秒"
+            )));
+        }
+        if pronunciation::words_of(&request.text).len() > MAX_ASSESS_WORDS {
+            return Err(AppError::ValidationError(
+                "这句太长了，没法评估".to_string(),
+            ));
         }
         let samples: Vec<f32> = decode_pcm(&request.audio)?
             .into_iter()
@@ -268,6 +295,12 @@ pub async fn transcribe_speech(
         Some(&format!("audio: {} chars", request.audio.len())),
     );
     let result = async {
+        if request.audio.len() > max_audio_chars(speech_input::MAX_SECONDS) {
+            return Err(AppError::ValidationError(format!(
+                "一次最多说 {} 秒",
+                speech_input::MAX_SECONDS
+            )));
+        }
         let samples = decode_pcm(&request.audio)?;
         let dirs = crate::app_paths::dirs(&app);
         speech_input::transcribe(&dirs.data, &dirs.cache.join("speech"), &samples).await

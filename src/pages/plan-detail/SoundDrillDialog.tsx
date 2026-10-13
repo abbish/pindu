@@ -9,8 +9,8 @@ import { MINIMAL_PAIRS, soundLabel } from '@/utils/pronunciation';
 type Speak = ReturnType<typeof useAudioPlayer>['speak'];
 
 /** 一个词：听 · 读一读（读完标色、给档） */
-const DrillWord: React.FC<{ word: string; planId: number; speak: Speak }> = ({ word, planId, speak }) => {
-  const say = useQuickSay(word, { planId });
+const DrillWord: React.FC<{ word: string; planId?: number; speak: Speak }> = ({ word, planId, speak }) => {
+  const say = useQuickSay(word, planId ? { planId } : undefined);
   return (
     <div className="flex flex-col gap-1 rounded-lg border px-3 py-2">
       <div className="flex items-center gap-2">
@@ -25,7 +25,7 @@ const DrillWord: React.FC<{ word: string; planId: number; speak: Speak }> = ({ w
 
 /**
  * 专项练音（计划统计「发音」里常读不准的音）：读错过的词 + 只差这个音的成对词（think / sink），
- * 先听再读，读完本机评估。结果记进这个计划的发音统计，不进复习安排。
+ * 先听再读，读完本机评估。读错过的词（计划里的）记进这个计划的发音统计，成对词不记；都不进复习安排。
  */
 export const SoundDrillDialog: React.FC<{ sound: SoundStat | null; planId: number; onClose: () => void }> = ({ sound, planId, onClose }) => {
   const audio = useAudioPlayer();
@@ -55,8 +55,8 @@ export const SoundDrillDialog: React.FC<{ sound: SoundStat | null; planId: numbe
                 <div className="flex flex-col gap-2">
                   {pairs.map(([a, b]) => (
                     <div key={`${a}-${b}`} className="grid grid-cols-2 gap-2">
-                      <DrillWord word={a} planId={planId} speak={audio.speak} />
-                      <DrillWord word={b} planId={planId} speak={audio.speak} />
+                      <DrillWord word={a} speak={audio.speak} />
+                      <DrillWord word={b} speak={audio.speak} />
                     </div>
                   ))}
                 </div>

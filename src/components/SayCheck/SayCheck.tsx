@@ -7,6 +7,7 @@ import { useRecorder } from '@/hooks/useRecorder';
 import { usePronunciation } from '@/hooks/usePronunciation';
 import type { PronunciationContext } from '@/types/pronunciation';
 import { jobPercent } from '@/components/Jobs';
+import { formatBytes } from '@/utils/fileSize';
 import { BAND_LABEL, BAND_STYLE, bandOf, flaggedPhones, phoneSegments, phoneTip, type Band, type Strictness } from '@/utils/pronunciation';
 
 /** 一个词最多自动开麦几次（之后不再自动，学习者可以自己点） */
@@ -38,23 +39,29 @@ export interface SayCheckProps {
   onResult?: (result: SayCheckResult | null) => void;
   /** 学习计划里练习时带上：结果保存进计划的发音统计 */
   context?: PronunciationContext;
+  /** 开始 / 结束录音（录音时页面不要放声音，免得录进去） */
+  onRecordingChange?: (recording: boolean) => void;
 }
 
 /**
  * 看 · 说 的「说」：播完原音后自动开麦，学习者跟读一遍，本机评估后告诉他读得怎样、哪个音不准（对到拼读块上）。
- * 第一次使用先下载评估模型（约 71MB）；录音与评估都在本机，不上传。读不好可以再读，最多自动开麦 3 次，不挡着往下走。
+ * 第一次使用先下载评估模型；录音与评估都在本机，不上传。读不好可以再读，最多自动开麦 3 次，不挡着往下走。
+ * 录音带着这个词：录到一半换了词，录完的不评估。
  */
-export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, strictness, showScore, autoStartKey, disabled, onResult, context }) => {
+export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, strictness, showScore, autoStartKey, disabled, onResult, context, onRecordingChange }) => {
   const recorder = useRecorder({ silenceStopMs: 700, maxMs: 4000 });
-  const { ready, downloading: job, download, assessing, result, error, assess, reset } = usePronunciation(context);
+  const { ready, modelBytes, downloading: job, download, assessing, result, error, assess, reset } = usePronunciation(context);
   const tries = useRef(0);
+  /** 挂载时已有的开麦信号不算（离开看 · 说再回来时那是上一个词的） */
+  const seenKey = useRef(autoStartKey);
   const player = useRef<HTMLAudioElement | null>(null);
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
 
-  // 换词：清掉上一个词的结果
+  // 换词：停掉录音，清掉上一个词的结果
   useEffect(() => {
     tries.current = 0;
+    recorder.stop();
     reset();
     recorder.clear();
     onResultRef.current?.(null);
@@ -62,15 +69,22 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
 
   const start = useCallback(() => {
     if (!ready || disabled || recorder.state !== 'idle' || assessing) return;
-    void recorder.start();
-  }, [ready, disabled, recorder, assessing]);
+    void recorder.start(text);
+  }, [ready, disabled, recorder, assessing, text]);
 
   // 播完原音后自动开麦（每个词最多几次）
   useEffect(() => {
-    if (!autoStartKey || !ready || disabled || tries.current >= MAX_AUTO_TRIES) return;
+    if (!autoStartKey || autoStartKey === seenKey.current) return;
+    seenKey.current = autoStartKey;
+    if (!ready || disabled || tries.current >= MAX_AUTO_TRIES) return;
     tries.current += 1;
     start();
   }, [autoStartKey, ready]);
+
+  const recording = recorder.state !== 'idle';
+  const onRecordingRef = useRef(onRecordingChange);
+  onRecordingRef.current = onRecordingChange;
+  useEffect(() => onRecordingRef.current?.(recording), [recording]);
 
   useEffect(() => {
     if (disabled && recorder.state !== 'idle') recorder.stop();
@@ -79,7 +93,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
   // 录完：本机评估，不准的音标在它的拼读块上（分低的标「再试试」色，只是有点像常见读偏的标「还差一点」色）
   const take = recorder.take;
   useEffect(() => {
-    if (!take) return;
+    if (!take || take.tag !== text) return;
     void assess(take.url, text).then((r) => {
       if (!r || r.score === null) {
         onResultRef.current?.(null);
@@ -105,7 +119,6 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
     void player.current.play();
   };
 
-  const recording = recorder.state !== 'idle';
   const word = result?.words[0];
   const band = result?.score != null ? bandOf(result.score, strictness) : null;
   const tips = word && band ? flaggedPhones(word, strictness).map(phoneTip) : [];
@@ -121,7 +134,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
     action = job ? null : (
       <Button variant="outline" size="lg" onClick={() => void download()}>
         <Download />
-        开启跟读评估
+        下载评估模型
       </Button>
     );
     feedback = job ? (
@@ -130,7 +143,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
         <Progress value={jobPercent(job)} className="h-1.5 w-40" aria-label="下载进度" />
       </span>
     ) : (
-      (problem ?? '首次使用需下载约 71MB')
+      (problem ?? (modelBytes ? `跟读评分需要先下载 ${formatBytes(modelBytes)}` : null))
     );
   } else {
     action = recording ? (
@@ -150,9 +163,9 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
       </Button>
     );
     feedback = recording ? (
-      '在听，读完会自动停'
+      '在听…'
     ) : assessing ? (
-      '正在听…'
+      '正在评分…'
     ) : band ? (
       <span className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
         <span className={cn('rounded-full px-2.5 py-0.5 text-sm font-semibold', BAND_STYLE[band])}>

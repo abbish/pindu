@@ -34,6 +34,8 @@ export interface ShadowingPanelProps {
   onGo: (index: number) => void;
   /** 学习计划里跟读时带上：发音结果保存进计划的统计 */
   pronunciationContext?: PronunciationContext;
+  /** 复述开着：画面上不显示字幕（先不看原句） */
+  onRetellChange?: (on: boolean) => void;
 }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} 秒`;
@@ -72,6 +74,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
   originalEnded,
   onGo,
   pronunciationContext,
+  onRetellChange,
 }) => {
   const originalMs = sentence ? Math.max(0, (sentence.endMs ?? 0) - (sentence.startMs ?? 0)) : 0;
   const recorder = useRecorder({ silenceStopMs: 1500, maxMs: Math.max(6000, originalMs * 3) });
@@ -90,8 +93,9 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
     // 只在挂载时打开；卸载时 useRecorder 自己关闭
   }, [recorder.open]);
 
-  // 换句：丢掉上一句的录音
+  // 换句：停掉录音、丢掉上一句的（录到一半的不评估）
   useEffect(() => {
+    recorder.stop();
     recorder.clear();
     say.reset();
     setRetold(null);
@@ -102,7 +106,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
   const take = recorder.take;
   const text = sentence?.en ?? '';
   useEffect(() => {
-    if (!take || !text) return;
+    if (!take || !text || take.tag !== String(index)) return;
     if (sayOn && !retell) void say.assess(take.url, text);
     if (!retell) return;
     let stale = false;
@@ -127,6 +131,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
 
   const toggleRetell = (on: boolean) => {
     setRetell(on);
+    onRetellChange?.(on);
     setRetold(null);
     recorder.clear();
     say.reset();
@@ -142,14 +147,14 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
   useEffect(() => {
     if (originalEnded !== lastEnded.current) {
       lastEnded.current = originalEnded;
-      if (autoRecord && !loop && recorder.state === 'idle') void recorder.start();
+      if (autoRecord && !loop && recorder.state === 'idle') void recorder.start(String(index));
     }
   }, [originalEnded, autoRecord, loop, recorder]);
 
   const record = () => {
     onStopOriginal();
     mine.current?.pause();
-    void recorder.start();
+    void recorder.start(String(index));
   };
 
   const playMine = () => {
@@ -184,7 +189,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
             <Wand2 />
             自动录音
           </Toggle>
-          <Toggle size="sm" pressed={retell} onPressedChange={toggleRetell} aria-label="听后复述" title="先不看原句，听完说出来再对照">
+          <Toggle size="sm" pressed={retell} onPressedChange={toggleRetell} aria-label="复述">
             <EyeOff />
             复述
           </Toggle>

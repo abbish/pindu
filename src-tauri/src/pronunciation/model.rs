@@ -28,11 +28,14 @@ pub fn ready(data_dir: &Path) -> bool {
     std::fs::metadata(path(data_dir)).is_ok_and(|m| m.len() == BYTES)
 }
 
-/// 删掉模型（设置里「删除」）；会话同时卸载
+/// 一块数据多久没到算断了
+const STALL: Duration = Duration::from_secs(30);
+/// 等数据时多久看一次是否取消
+const CANCEL_POLL: Duration = Duration::from_millis(500);
+
+/// 删掉模型（设置里「删除」）；会话同时卸载（正在评估时等它算完）
 pub fn delete(data_dir: &Path) -> AppResult<()> {
-    if let Ok(mut s) = SESSION.lock() {
-        *s = None;
-    }
+    *session_lock() = None;
     match std::fs::remove_file(path(data_dir)) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -102,14 +105,30 @@ async fn download(
         .map_err(|e| AppError::InternalError(e.to_string()))?;
     let mut hasher = Sha256::new();
     let mut got = 0u64;
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|e| AppError::ExternalServiceError(format!("{url}：{e}")))?
-    {
-        if cancelled() {
-            return Err(AppError::ValidationError("已停止下载".to_string()));
-        }
+    loop {
+        // 边等数据边看是否取消；太久没有数据算断了（不然会一直挂着）
+        let mut waited = Duration::ZERO;
+        let next = loop {
+            if cancelled() {
+                return Err(AppError::ValidationError("已停止下载".to_string()));
+            }
+            match tokio::time::timeout(CANCEL_POLL, response.chunk()).await {
+                Ok(next) => break next,
+                Err(_) => {
+                    waited += CANCEL_POLL;
+                    if waited >= STALL {
+                        return Err(AppError::ExternalServiceError(format!(
+                            "{url}：太久没有收到数据"
+                        )));
+                    }
+                }
+            }
+        };
+        let Some(chunk) =
+            next.map_err(|e| AppError::ExternalServiceError(format!("{url}：{e}")))?
+        else {
+            break;
+        };
         hasher.update(&chunk);
         file.write_all(&chunk)
             .await
@@ -135,6 +154,11 @@ async fn download(
 
 static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 
+/// 会话锁；上次推理出错（锁中毒）时接着用，不至于要重启
+fn session_lock() -> std::sync::MutexGuard<'static, Option<Session>> {
+    SESSION.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// 16kHz 单声道采样 → 每帧每个字符的对数概率（帧数，字表大小，数据）
 pub fn log_probs(model: &Path, samples: &[f32]) -> AppResult<(usize, usize, Vec<f32>)> {
     let feats = fbank::fbank(samples);
@@ -142,9 +166,7 @@ pub fn log_probs(model: &Path, samples: &[f32]) -> AppResult<(usize, usize, Vec<
     if frames == 0 {
         return Err(AppError::ValidationError("录音太短了".to_string()));
     }
-    let mut guard = SESSION
-        .lock()
-        .map_err(|_| AppError::InternalError("发音模型不可用".to_string()))?;
+    let mut guard = session_lock();
     if guard.is_none() {
         let load = |e: String| AppError::InternalError(format!("加载发音模型失败：{e}"));
         let session = Session::builder()

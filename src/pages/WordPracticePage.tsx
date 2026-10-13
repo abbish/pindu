@@ -225,6 +225,8 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   const [sideTab, setSideTab] = useState<WordSideTab>('examples');
   /** 看·说的「说」：播完原音后自动开麦（每次换值触发一次）、跟读结果（标出拼读块）、学习者档案（宽严与是否显示分数） */
   const [sayAutoKey, setSayAutoKey] = useState<string | null>(null);
+  /** 正在跟读录音：这时不放单词原音（会被录进去） */
+  const sayRecording = useRef(false);
   const [sayResult, setSayResult] = useState<SayCheckResult | null>(null);
   const [learner, setLearner] = useState<string | undefined>(undefined);
   const [saySettings, setSaySettings] = useState<PronunciationSettings | null>(null);
@@ -627,7 +629,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
   // 手动点喇叭：结束本轮自动朗读，只读一遍单词
   const pronunciationStatus = currentWord?.word ? audioPlayer.statusOf(currentWord.word, wordStyle(currentWord.word)) : 'idle';
   const handlePlayPronunciation = useCallback(() => {
-    if (!currentWord?.word) return;
+    if (!currentWord?.word || sayRecording.current) return;
     clearAutoPlay();
     // 正在读这个词：再点是停止
     if (pronunciationStatus !== 'idle') {
@@ -825,6 +827,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
                           autoStartKey={sayAutoKey}
                           disabled={isPaused || !sayStages.includes(stage)}
                           onResult={setSayResult}
+                          onRecordingChange={(on) => (sayRecording.current = on)}
                           context={session ? { planId: session.planId, sessionId: session.sessionId, wordId: currentWord!.id } : undefined}
                         />
                       )

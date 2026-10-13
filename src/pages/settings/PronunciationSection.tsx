@@ -8,6 +8,7 @@ import { jobErrorText, jobPercent } from '@/components/Jobs';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { jobService } from '@/services/jobService';
 import { pronunciationService } from '@/services/pronunciationService';
+import { invalidatePronunciationCache } from '@/hooks/usePronunciation';
 import { isJobActive } from '@/types/job';
 import type { PronunciationSettings, PronunciationStatus } from '@/types/pronunciation';
 import { formatBytes } from '@/utils/fileSize';
@@ -38,6 +39,7 @@ export const PronunciationSection: React.FC = () => {
   }, [load]);
   useOnJobFinished((job) => {
     if (job.kind !== 'pronunciation_model') return;
+    invalidatePronunciationCache();
     void load();
     if (job.status === 'failed') toast.showError('评估模型没有下载完', jobErrorText(job));
   });
@@ -47,6 +49,7 @@ export const PronunciationSection: React.FC = () => {
 
   const save = async (patch: Partial<PronunciationSettings>) => {
     const r = await pronunciationService.updateSettings({ ...data.settings, ...patch });
+    invalidatePronunciationCache();
     if (r.success) setData((d) => (d ? { ...d, settings: r.data } : d));
     else toast.showError('无法保存发音设置', r.error);
   };
@@ -56,6 +59,7 @@ export const PronunciationSection: React.FC = () => {
   };
   const remove = async () => {
     const r = await pronunciationService.deleteModel();
+    invalidatePronunciationCache();
     if (r.success) void load();
     else toast.showError('无法删除评估模型', r.error);
   };

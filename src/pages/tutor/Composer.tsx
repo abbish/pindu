@@ -43,6 +43,9 @@ export const Composer: React.FC<{
   const picker = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const canSend = draft.trim().length > 0 || attachments.length > 0;
+  /** 说话转文字要一两秒：拼到那时的草稿后面 */
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
   useEffect(() => {
     const el = textarea.current;
@@ -218,7 +221,7 @@ export const Composer: React.FC<{
             rows={1}
             className="max-h-60 min-h-8 flex-1 resize-none border-0 px-1 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
-          <MicButton className="shrink-0" label="用英语说" onText={(text) => onDraft(draft.trim() ? `${draft.trimEnd()} ${text}` : text)} />
+          <MicButton className="shrink-0" label="用英语说" onText={(text) => onDraft(draftRef.current.trim() ? `${draftRef.current.trimEnd()} ${text}` : text)} />
           {running && !canSend ? (
             <Button size="icon" className="size-8 shrink-0" onClick={onStop} aria-label="停止" title="停止">
               <Square className="size-3.5 fill-current" />
