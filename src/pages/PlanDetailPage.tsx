@@ -45,7 +45,6 @@ import { calculateTimeProgress, getActionConfig, groupPlanActions } from './plan
 import { PlanOverviewView } from './plan-detail/PlanOverviewView';
 import { PlanScheduleView } from './plan-detail/PlanScheduleView';
 import { PlanWordsView } from './plan-detail/PlanWordsView';
-import { PlanPronunciationView } from './plan-detail/PlanPronunciationView';
 import { PlanStatisticsView } from './plan-detail/PlanStatisticsView';
 import { PlanLogsView } from './plan-detail/PlanLogsView';
 import { PlanPassagesView } from './plan-detail/PlanPassagesView';
@@ -506,13 +505,20 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
                   <Info className="size-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-64">
-                  {!withWords ? '完成的短文 / 全部短文' : '练过的单词 / 全部单词。复习时隔 7 天还能写对，算已掌握'}
+                  {!withWords ? '完成的短文 / 全部短文' : '练过的单词 / 全部单词（浅色）。隔 7 天还能写对算已掌握（深色），全部掌握后计划自动完成'}
                 </TooltipContent>
               </Tooltip>
             </h2>
             <span className="text-xl font-semibold text-primary tabular-nums">{Math.round(learnProgress)}%</span>
           </div>
-          <PlanProgressBar learnProgress={learnProgress} timeProgress={timeProgress} status={status} className="h-2" />
+          <PlanProgressBar
+            learnProgress={learnProgress}
+            masteredProgress={withWords && plan.total_words > 0 ? ((statistics?.completed_words ?? 0) / plan.total_words) * 100 : undefined}
+            timeProgress={timeProgress}
+            overdueDays={statistics?.overdue_days}
+            status={status}
+            className="h-2"
+          />
           {withWords && memory && memoryTotal > 0 && (
             <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-label="单词掌握情况">
               {memorySegments.map((seg) =>
@@ -628,8 +634,17 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
           />
         </TabsContent>
         <TabsContent value="statistics" className="flex flex-col gap-6">
-          <PlanStatisticsView statistics={statistics} planWords={planWords} partOfSpeechStats={posStats} />
-          <PlanPronunciationView planId={planId} />
+          <PlanStatisticsView
+            planId={planId}
+            statistics={statistics}
+            planWords={planWords}
+            partOfSpeechStats={posStats}
+            timeProgress={timeProgress}
+            withWords={withWords}
+            withPassages={withPassages}
+            completedPassages={plan.completed_passages}
+            totalPassages={plan.total_passages}
+          />
           <section className="space-y-3">
             <h3 className="text-base font-semibold">练习记录</h3>
             <PlanLogsView practiceSessions={sessions ?? []} loading={sessionsLoading || sessions === null} onNavigate={onNavigate} canPractice={canPractice} />

@@ -1,6 +1,6 @@
 /**
  * 计划时间进度的唯一前端实现。口径：截至今天开始时已过去的自然日 / 总天数（含首尾），
- * 与后端 statistics_repository 的 time_progress_percentage 一致（第 k 天 = (k-1)/n）。
+ * 第 k 天 = (k-1)/n。
  * 起止日期是本地日历日期，按本地日解析（不能 new Date('YYYY-MM-DD')：那是 UTC 零点，西半球会差一天）。
  */
 import { localDaysBetween, parseLocalDate } from './datetime.ts';

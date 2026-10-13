@@ -178,7 +178,7 @@ Repository ── sqlx 查询、Row → 类型映射、批量查询（已修过�
 
 **单词本生命周期**：状态只有 `normal`（正式）/ `draft`（草稿，不能用于计划）；删除为软删除（`deleted_at`），在列表“已删除”里可恢复（`restore_word_book`）。被草稿 / 待开始 / 进行中 / 已暂停的计划使用时不能删除或转草稿。列表的单词数与关联计划数在查询时实时计算。删除单词会在同一事务里把它从所有计划移除并重算日程计数（`services/word.rs::delete_word`）。
 
-**练习统计口径**（唯一 owner：`repositories/practice_metrics.rs`）：正确率只看每步首次 learn 作答；“当次通过” = 某已完成会话中首答全对（新词三步、复习词只考第三步），用于日程完成数与每日学习量；“掌握” = 记忆等级 `study_plan_words.srs_box ≥ 4`（自适应复习，见下）；“已学” = `srs_box ≥ 1`（完成过一次含该词的练习；首页总学习单词与计划卡进度）；时长用 `active_time`（不含暂停）；日期按本地日期（`DATE(x, 'localtime')`、前端 `utils/datetime.ts::localToday`；时间约定见 §7.5）。日程 `status = 'completed'` 表示**练完**（有已完成会话），掌握数是 `completed_words_count`；“该练哪个日程”统一用 `pickPracticeSchedule`。
+**练习统计口径**（唯一 owner：`repositories/practice_metrics.rs`）：一次答对率只看每步首次 learn 作答；“本次通过” = 某已完成会话中首答全对（新词三步、复习词只考第三步）且当轮小测第一次没写错，结果页、日程完成数、日历、热力图同一口径；“掌握” = 记忆等级 `study_plan_words.srs_box ≥ 4`（自适应复习，见下），决定计划自动完成；“已学” = `srs_box ≥ 1`（练过一次；进度条浅色段、首页已学单词），进度条深色段是掌握；学习活动（`ACTIVITY_CTE`：单词练习 + 计划里的短文作答 / 只朗读）决定学习日、连续学习、练习时长与热力图；时长用有效时长（不含暂停）；计划周期每天一格（`get_study_plan_statistics.days`：开始到结束的自然日，含巩固期，一天的单词与短文任务都完成才算练完）；日期按本地日期（`DATE(x, 'localtime')`、前端 `utils/datetime.ts::localToday`；时间约定见 §7.5）。日程 `status = 'completed'` 表示**练完**（有已完成会话），本次通过数是 `completed_words_count`；“该练哪个日程”统一用 `pickPracticeSchedule`。
 
 **学习计划排程与复习**（D20，规则 owner：`services/study_planning.rs` 新词排程、`services/srs.rs` 记忆等级）：用户只选每天新词数 + 开始日期；预排日程只有新词日，周期 = 学新词天数 + 11 天巩固。复习按 Leitner 记忆等级（间隔 1/3/7/14/30 天，答对升级、答错回 1 级，以实际练习日期为基准）每天动态放进**今天**的日程（`srs::sync_today`，在开始练习、今日日程、日历、计划日程列表前调用；过期未练的复习条目自动清理）；复习词只做第三步。全部单词掌握时计划自动完成。
 

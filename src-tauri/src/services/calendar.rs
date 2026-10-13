@@ -13,7 +13,6 @@ use crate::types::study::{
     CalendarStudyPlan, CalendarStudySession, StudyPlanLifecycleStatus, TodayStudySchedule,
 };
 use chrono::{Datelike, Duration, NaiveDate};
-use std::collections::HashSet;
 
 /// 日历视图服务
 ///
@@ -364,34 +363,8 @@ fn build_month_with_passages(
         })
         .collect();
 
-    let accuracies: Vec<f64> = current_month_days
-        .iter()
-        .filter_map(|d| d.study_sessions.as_ref())
-        .flatten()
-        .map(|s| s.accuracy_rate)
-        .collect();
-    let average_accuracy = if accuracies.is_empty() {
-        0.0
-    } else {
-        accuracies.iter().sum::<f64>() / accuracies.len() as f64
-    };
-
     // 连续学习天数：与首页统计同一口径（practice_metrics::streak_days，按实际学习日）
     let streak_days = streak_days(study_dates, today);
-
-    // 本月涉及的进行中计划
-    let active_plan_ids: HashSet<i64> = current_month_days
-        .iter()
-        .filter_map(|d| d.study_plans.as_ref())
-        .flatten()
-        .filter(|p| {
-            matches!(
-                p.unified_status,
-                StudyPlanLifecycleStatus::Active | StudyPlanLifecycleStatus::Pending
-            )
-        })
-        .map(|p| p.plan_id)
-        .collect();
 
     let monthly_stats = CalendarMonthlyStats {
         total_days: current_month_days.len() as i32,
@@ -404,21 +377,11 @@ fn build_month_with_passages(
                         .is_ok_and(|date| study_dates.contains(&date))
             })
             .count() as i32,
-        completed_days: current_month_days
-            .iter()
-            .filter(|d| d.status == "completed")
-            .count() as i32,
         total_words_learned: current_month_days
             .iter()
             .map(|d| d.completed_words_count)
             .sum(),
-        total_study_minutes: current_month_days
-            .iter()
-            .filter_map(|d| d.study_time_minutes)
-            .sum(),
-        average_accuracy,
         streak_days,
-        active_plans_count: active_plan_ids.len() as i32,
     };
 
     CalendarMonthResponse {
@@ -567,11 +530,7 @@ mod tests {
 
         assert_eq!(stats.total_days, 31);
         assert_eq!(stats.study_days, 1);
-        assert_eq!(stats.completed_days, 1);
         assert_eq!(stats.total_words_learned, 5);
-        assert_eq!(stats.total_study_minutes, 20);
-        assert_eq!(stats.average_accuracy, 60.0);
-        assert_eq!(stats.active_plans_count, 1);
     }
 
     #[test]
@@ -682,9 +641,8 @@ mod tests {
         // 练了一半：进行中
         assert_eq!(day(&r, "2026-10-08").status, "in-progress");
         assert_eq!(day(&r, "2026-10-20").status, "completed");
-        // 学习天数是实际练过的天数；进行中计划只算 Active / Pending
+        // 学习天数是实际练过的天数
         assert_eq!(r.monthly_stats.study_days, 1);
-        assert_eq!(r.monthly_stats.active_plans_count, 1);
     }
 
     /// 前端 `src/types/study.ts` 按这些 snake_case 键读取；改 serde 属性须同步 TS 类型
@@ -709,7 +667,6 @@ mod tests {
             "study_days",
             "total_words_learned",
             "streak_days",
-            "active_plans_count",
         ] {
             assert!(
                 v["monthly_stats"].get(key).is_some(),

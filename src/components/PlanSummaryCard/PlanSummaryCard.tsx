@@ -19,10 +19,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { calculateTimeProgress } from '@/utils/timeProgress';
-import { formatDate, localDaysBetween, parseLocalDate } from '@/utils/datetime';
+import { formatDate, parseLocalDate } from '@/utils/datetime';
 import { useToday } from '@/hooks/useToday';
 import { PLAN_STATUS } from '@/types/study';
 import type { StudyPlanStatistics, StudyPlanWithProgress, TodayStudySchedule, UnifiedStudyPlanStatus } from '@/types';
+import type { PlanDay, PlanDayStatus } from '@/types/study';
 import type { TodayPassageTask } from '@/types/passage';
 import { todayLine } from '@/utils/planToday';
 import { scheduleLabel } from '@/utils/incompletePractice';
@@ -56,21 +57,37 @@ function actionLabel(status: UnifiedStudyPlanStatus): string | null {
   return null;
 }
 
-/** 按日期算“第几天”：开始前 / 进行中 / 已过结束日 */
-function dayPosition(startDate: string | undefined, totalDays: number, today: string): string {
-  const start = parseLocalDate(startDate?.slice(0, 10));
-  const todayDate = parseLocalDate(today);
-  if (!start || !todayDate || totalDays <= 0) return '';
-  const diff = localDaysBetween(start, todayDate);
-  if (diff < 0) return `${formatDate(start)}开始`;
-  if (diff >= totalDays) return '已过结束日期';
-  return `第 ${diff + 1} / ${totalDays} 天`;
+/** 按计划周期算“第几天”：开始前 / 进行中 / 已过结束日 */
+function dayPosition(days: PlanDay[], today: string): string {
+  if (days.length === 0) return '';
+  const index = days.findIndex((d) => d.date === today);
+  if (index >= 0) return `第 ${index + 1} / ${days.length} 天`;
+  if (today < days[0].date) return `${formatDate(days[0].date)}开始 · ${days.length} 天`;
+  return `已过结束日期 · ${days.length} 天`;
 }
+
+/** 日程格：每天一格，按日期 */
+const DAY_CLASS: Record<PlanDayStatus, string> = {
+  done: 'bg-brand',
+  missed: 'bg-overdue',
+  today: 'bg-muted ring-2 ring-brand ring-inset',
+  upcoming: 'bg-muted',
+  skipped: 'bg-muted',
+  rest: 'bg-muted/40',
+};
+const DAY_LABEL: Record<PlanDayStatus, string> = {
+  done: '练完',
+  missed: '没练',
+  today: '今天',
+  upcoming: '要练',
+  skipped: '没练',
+  rest: '没有任务',
+};
 
 /**
  * 学习计划摘要（shadcn，整行卡片），首页与学习计划页共用。
  * 每张卡自行拉取 get_study_plan_statistics。右键与 ⋯ 菜单为同一组操作。
- * 四栏：计划（名称 / 状态 / 参数）→ 单词进度（已学 / 总数、进度条 + 时间刻度、正确率）→ 日程（第几天、日程方块）→ 主操作。
+ * 四栏：计划（名称 / 状态 / 参数）→ 进度（已学 / 总数、已学 + 掌握两段进度条与时间刻度、一次答对率）→ 日程（计划周期第几天、每天一格）→ 主操作。
  */
 export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, onAction, todaySchedule, todayPassages = [], select }) => {
   const [statistics, setStatistics] = useState<StudyPlanStatistics | null>(null);
@@ -98,30 +115,34 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
     () => calculateTimeProgress(plan.start_date, plan.end_date, parseLocalDate(today) ?? new Date()),
     [plan.start_date, plan.end_date, today]
   );
-  // 首页看「已学」（练过一次）：掌握要间隔 7 天后仍写对，计划前十来天都是 0；掌握数放在下方说明里
-  // 只练短文的计划：进度与日程都按短文篇数
+  // 进度条：浅色已学（练过一次），深色已掌握（隔 7 天还能写对，决定计划完成）；只练短文按篇数
   const passagesOnly = plan.practice_content === 'passages';
   const learnedWords = statistics?.learned_words ?? 0;
-  const learnProgress = passagesOnly
-    ? plan.total_passages > 0 ? (plan.completed_passages / plan.total_passages) * 100 : 0
-    : plan.total_words > 0 ? (learnedWords / plan.total_words) * 100 : 0;
+  const pct = (n: number, total: number) => (total > 0 ? (n / total) * 100 : 0);
+  const learnProgress = passagesOnly ? pct(plan.completed_passages, plan.total_passages) : pct(learnedWords, plan.total_words);
+  const masteredProgress = passagesOnly ? undefined : pct(statistics?.completed_words ?? 0, plan.total_words);
 
-  const passageDays = plan.total_passages > 0 ? (plan.total_passages - 1) * plan.passage_interval_days + 1 : 0;
-  const totalDays = passagesOnly ? plan.total_passages : statistics?.total_days || plan.study_period_days || 0;
-  const completedDays = passagesOnly ? plan.completed_passages : statistics?.completed_days ?? 0;
-  const overdueDays = passagesOnly ? 0 : statistics?.overdue_days ?? 0;
-  const upcomingDays = Math.max(0, totalDays - completedDays - overdueDays);
-  const blocks = Array.from({ length: totalDays }, (_, i) =>
-    i < completedDays ? 'done' : i < completedDays + overdueDays ? 'overdue' : 'upcoming'
-  );
+  // 日程：计划周期每天一格（按日期；巩固期没有任务的日子浅色）
+  const days = statistics?.days ?? [];
+  const completedDays = statistics?.completed_days ?? 0;
+  const overdueDays = statistics?.overdue_days ?? 0;
 
   const meta = [
-    passagesOnly ? intervalLabel(plan.passage_interval_days) : `周期 ${plan.study_period_days || 0} 天`,
+    passagesOnly ? intervalLabel(plan.passage_interval_days) : `每天 ${plan.daily_new_words || 0} 个新词`,
     plan.start_date || plan.end_date ? `${formatDate(plan.start_date) || '—'} – ${formatDate(plan.end_date) || '—'}` : '',
     plan.practice_content === 'both' ? `${plan.total_passages} 篇短文` : '',
   ].filter(Boolean).join(' · ');
 
   const accuracy = learnedWords > 0 ? `${Math.round(statistics?.average_accuracy_rate || 0)}%` : '—';
+  const caption = passagesOnly
+    ? '只练短文'
+    : statisticsLoading
+      ? '一次答对率 …'
+      : [
+          `一次答对率 ${accuracy}`,
+          `掌握 ${statistics?.completed_words ?? 0}`,
+          plan.practice_content === 'both' ? `短文 ${plan.completed_passages}/${plan.total_passages}` : '',
+        ].filter(Boolean).join(' · ');
 
   const action = actionLabel(status);
   /** 新建后在后台按从易到难排学习顺序：排好前不开始练习（否则先学到的是词汇本顺序） */
@@ -189,31 +210,26 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
             )}
             <PlanProgressBar
               learnProgress={learnProgress}
+              masteredProgress={masteredProgress}
               timeProgress={timeProgress}
+              overdueDays={statisticsLoading ? undefined : overdueDays}
               status={status}
-              caption={passagesOnly ? '只练短文' : statisticsLoading ? '正确率 …' : `正确率 ${accuracy} · 掌握 ${statistics?.completed_words ?? 0}`}
+              caption={caption}
             />
           </div>
 
           {/* 日程 */}
           <div className="min-w-0 space-y-2">
             <div className="flex items-baseline justify-between gap-2 text-sm">
-              <span className="font-medium">{dayPosition(plan.start_date, passagesOnly ? passageDays : totalDays, today) || (passagesOnly ? '短文' : '日程')}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {statisticsLoading && !passagesOnly ? '…' : `完成 ${completedDays}/${totalDays}${passagesOnly ? ' 篇' : ''}`}
-              </span>
+              <span className="font-medium">{dayPosition(days, today) || '日程'}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{statisticsLoading ? '…' : `练完 ${completedDays} 天`}</span>
             </div>
-            <div className="flex flex-wrap gap-[3px]" aria-label={`日程：完成 ${completedDays}，延期 ${overdueDays}，未开始 ${upcomingDays}`}>
-              {blocks.map((kind, i) => (
+            <div className="flex flex-wrap gap-[3px]" aria-label={`日程：练完 ${completedDays} 天，没练 ${overdueDays} 天，共 ${days.length} 天`}>
+              {days.map((d) => (
                 <span
-                  key={i}
-                  className={cn(
-                    'h-3 min-w-2 flex-1 rounded-[3px]',
-                    blocks.length > 14 && 'max-w-3',
-                    kind === 'done' && 'bg-brand',
-                    kind === 'overdue' && 'bg-overdue',
-                    kind === 'upcoming' && 'bg-muted'
-                  )}
+                  key={d.date}
+                  title={`${formatDate(d.date)} · ${DAY_LABEL[d.status]}`}
+                  className={cn('h-3 min-w-2 flex-1 rounded-[3px]', days.length > 14 && 'max-w-3', DAY_CLASS[d.status])}
                 />
               ))}
             </div>
@@ -225,11 +241,10 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, onOpen, 
               </div>
             ) : (
               <div className="flex gap-3 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-brand" />完成 {completedDays}</span>
+                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-brand" />练完 {completedDays}</span>
                 {overdueDays > 0 && (
-                  <span className="inline-flex items-center gap-1 text-warning"><span className="size-2 rounded-full bg-overdue" />延期 {overdueDays}</span>
+                  <span className="inline-flex items-center gap-1 text-warning"><span className="size-2 rounded-full bg-overdue" />没练 {overdueDays}</span>
                 )}
-                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-muted-foreground/30" />未开始 {upcomingDays}</span>
               </div>
             )}
           </div>

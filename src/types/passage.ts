@@ -382,6 +382,18 @@ export interface PassageStatistics {
   passages: number;
   reading: PassageModeStatistics;
   listening: PassageModeStatistics;
+  /** 各题型的答对情况（只在按计划统计时给出） */
+  byKind: PassageKindStatistics[];
+}
+
+/** 一种题型的答对情况 */
+export interface PassageKindStatistics {
+  /** cloze / choice / true_false / open */
+  kind: string;
+  /** 作答的题数（开放题只算评了分的） */
+  answered: number;
+  /** 答对率 0–100（开放题为得分率） */
+  rate: number;
 }
 
 // ==================== 学习计划里的短文（C4） ====================

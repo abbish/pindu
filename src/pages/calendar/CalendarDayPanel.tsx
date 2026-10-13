@@ -183,7 +183,7 @@ export const CalendarDayPanel: React.FC<CalendarDayPanelProps> = ({
                     <div key={`${s.session_id}-${i}`} className="flex justify-between gap-2 text-xs">
                       <span className="truncate">{s.plan_name}</span>
                       <span className="shrink-0 text-muted-foreground tabular-nums">
-                        {s.words_studied} 词 · 正确率 {Math.round(s.accuracy_rate)}% · {s.study_time_minutes} 分钟
+                        {s.words_studied} 词 · 通过率 {Math.round(s.accuracy_rate)}% · {s.study_time_minutes} 分钟
                       </span>
                     </div>
                   ))}

@@ -989,7 +989,7 @@ mod tests {
         assert!((global.average_accuracy - 500.0 / 6.0).abs() < 1e-6);
         let plan = repo.get_study_plan_statistics(fx.plan_id).await.unwrap();
         assert_eq!((plan.completed_words, plan.learned_words), (1, 2));
-        assert_eq!((plan.total_study_minutes, plan.completed_days), (5, 1));
+        assert_eq!(plan.completed_days, 1);
         assert_eq!(plan.total_active_ms, 300_000);
     }
 

@@ -2202,6 +2202,24 @@ pub(crate) mod tests {
         assert_eq!(done.question_results.len(), 3);
         assert!(service.submit_attempt(&request, &paths).await.is_err());
 
+        // 计划的统计按题型汇总：填空 1/2、选择 1/1、判断 0/1；开放题没评上分不算
+        let fx = crate::test_support::seed_schedule(&pool, 1).await;
+        sqlx::query("UPDATE passage_attempts SET plan_id = ? WHERE id = ?")
+            .bind(fx.plan_id)
+            .bind(attempt.id)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        let by_kind = service.statistics(Some(fx.plan_id)).await.unwrap().by_kind;
+        let summary: Vec<(&str, i64, i64)> = by_kind
+            .iter()
+            .map(|k| (k.kind.as_str(), k.answered, k.rate.round() as i64))
+            .collect();
+        assert_eq!(
+            summary,
+            [("cloze", 2, 50), ("choice", 1, 100), ("true_false", 1, 0)]
+        );
+
         // 阅读题组不能拿来做听力：听力有自己的题组
         assert!(service
             .start_attempt(set_id, "listening", None)

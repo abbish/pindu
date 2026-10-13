@@ -831,24 +831,27 @@ mod tests {
     #[test]
     fn plan_statistics_wire_shape_is_snake_case() {
         let stats = StudyPlanStatistics {
-            average_daily_study_minutes: 1,
-            time_progress_percentage: 0.0,
+            average_daily_active_ms: 60_000,
             actual_progress_percentage: 0.0,
             average_accuracy_rate: 0.0,
-            overdue_ratio: 0.0,
             streak_days: 3,
             total_days: 0,
+            task_days: 0,
             completed_days: 0,
             overdue_days: 0,
+            days: vec![PlanDay {
+                date: "2026-10-05".into(),
+                status: "done".into(),
+            }],
             total_words: 0,
             completed_words: 0,
             learned_words: 0,
-            total_study_minutes: 90,
             total_active_ms: 5_400_000,
         };
         let v = serde_json::to_value(&stats).unwrap();
         assert_eq!(v["streak_days"], 3);
-        assert_eq!(v["total_study_minutes"], 90);
+        assert_eq!(v["average_daily_active_ms"], 60_000);
+        assert_eq!(v["days"][0]["status"], "done");
         assert_eq!(v["total_active_ms"], 5_400_000);
         assert!(v.get("streakDays").is_none());
     }

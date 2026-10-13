@@ -106,11 +106,14 @@ pub enum StudyPlanLifecycleStatus {
 /// 学习统计
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StudyStatistics {
+    /// 已学的单词（练过一次，按单词去重）
     pub total_words_learned: i32,
+    /// 已掌握的单词（隔 7 天还能写对，按单词去重）
+    pub words_mastered: i32,
+    /// 一次答对率（%）
     pub average_accuracy: f64,
+    /// 连续学习天数（单词练习 + 短文）
     pub streak_days: i32,
-    pub completion_rate: f64,
-    pub weekly_progress: Vec<i32>,
 }
 
 /// 某个本地日期的学习量（首页学习热力图；只返回有学习的日期）
@@ -602,44 +605,53 @@ pub struct CalendarMonthResponse {
 /// 日历月度统计
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CalendarMonthlyStats {
+    /// 当月天数
     pub total_days: i32,
+    /// 有学习活动的天数（单词练习 + 短文）
     pub study_days: i32,
-    pub completed_days: i32,
+    /// 当月日程里本次通过的单词数
     pub total_words_learned: i32,
-    pub total_study_minutes: i32,
-    pub average_accuracy: f64,
     pub streak_days: i32,
-    pub active_plans_count: i32,
 }
 
 /// 学习计划统计数据
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StudyPlanStatistics {
-    // 时间相关
-    pub average_daily_study_minutes: i64,
-    pub time_progress_percentage: f64, // 时间进度 (已过天数/总天数)
-    pub actual_progress_percentage: f64, // 实际完成进度 (已完成单词/总单词)
-
-    // 学习效果
-    pub average_accuracy_rate: f64, // 平均练习正确率
-    pub overdue_ratio: f64,         // 逾期比率 (逾期日程数/日程数)
-    pub streak_days: i32,           // 该计划的连续练习天数
-
-    // 详细数据
-    /// 日程天数（学习日）；没有日程时为计划的自然天数
+    /// 平均每个学习日的练习时长（毫秒，不含暂停）
+    pub average_daily_active_ms: i64,
+    /// 单词掌握进度：已掌握 / 全部单词（%）
+    pub actual_progress_percentage: f64,
+    /// 一次答对率：每步第一次作答答对的比例（%）
+    pub average_accuracy_rate: f64,
+    /// 该计划的连续学习天数（单词练习 + 短文）
+    pub streak_days: i32,
+    /// 计划周期（开始到结束的自然日，含巩固期）
     pub total_days: i64,
-    /// 已练完的日程数（与日历“完成”同一口径）
+    /// 目前有任务的日子（单词日程 + 短文任务；巩固期的复习日到当天才安排）
+    pub task_days: i64,
+    /// 任务都完成了的日子
     pub completed_days: i64,
-    /// 逾期日程数：日期已过、没练，且计划仍在进行（进行中 / 待开始）
+    /// 没练的日子：日期已过、任务没完成，且计划仍在进行（进行中 / 待开始）
     pub overdue_days: i64,
+    /// 周期里每天一格（按日期）
+    pub days: Vec<PlanDay>,
     pub total_words: i64,
     /// 已掌握的单词数（记忆等级 ≥ 4）
     pub completed_words: i64,
     /// 已学的单词数（完成过一次含该词的练习，记忆等级 ≥ 1）
     pub learned_words: i64,
-    pub total_study_minutes: i64,
-    /// 累计练习时长（毫秒，不含暂停）；界面显示用它，不满一分钟的也算上
+    /// 累计练习时长（毫秒，不含暂停；单词练习 + 短文作答）
     pub total_active_ms: i64,
+}
+
+/// 计划周期里的一天
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanDay {
+    /// 本地日期 `YYYY-MM-DD`
+    pub date: String,
+    /// done 任务都完成 / missed 没练（计划进行中） / today 今天还有任务 / upcoming 以后的任务 /
+    /// skipped 没练（计划已暂停或结束） / rest 没有任务
+    pub status: String,
 }
 
 // ==================== 状态管理相关类型 ====================

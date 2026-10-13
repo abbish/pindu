@@ -52,7 +52,7 @@ impl StatisticsRepository {
         Self { pool, logger }
     }
 
-    /// 获取学习统计（口径见 `practice_metrics`：首答正确率、三步首答全对才算学会、本地日期、连续天数）
+    /// 首页学习统计（口径见 `practice_metrics`）：已学单词、已掌握单词、一次答对率、连续学习天数
     pub async fn get_study_statistics(&self) -> AppResult<StudyStatistics> {
         let db_err = |e: sqlx::Error| {
             self.logger
@@ -86,43 +86,16 @@ impl StatisticsRepository {
         let today = crate::time::local_today();
         let streak_days = streak_days(&study_dates, today);
 
-        // 3. 计划完成率：已完成 / 有效计划（不含草稿与已删除）
-        let completion_rate: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(
-                 SUM(CASE WHEN unified_status = 'Completed' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0),
-                 0.0)
-             FROM study_plans
-             WHERE deleted_at IS NULL AND unified_status NOT IN ('Draft', 'Deleted')",
-        )
+        // 3. 已掌握的单词数（隔 7 天还能写对，按单词去重）
+        let words_mastered: i64 = sqlx::query_scalar(&format!(
+            "SELECT COUNT(DISTINCT spw.word_id) FROM study_plan_words spw
+             JOIN study_plans sp ON sp.id = spw.plan_id
+             WHERE sp.deleted_at IS NULL AND spw.srs_box >= {}",
+            SRS_MASTERED_BOX
+        ))
         .fetch_one(self.pool.as_ref())
         .await
         .map_err(db_err)?;
-
-        // 4. 最近 7 天（本地日期）每天学会的单词数
-        let weekly_query = format!(
-            "WITH {}, {}
-             SELECT DATE(end_time, 'localtime') AS study_date, COUNT(DISTINCT word_id) AS words
-             FROM mastered
-             WHERE DATE(end_time, 'localtime') >= ?
-             GROUP BY study_date",
-            FIRST_LEARN_CTE, MASTERED_CTE
-        );
-        let mut weekly_progress = vec![0; 7];
-        for row in sqlx::query(&weekly_query)
-            .bind(crate::time::format_date(today - chrono::Duration::days(6)))
-            .fetch_all(self.pool.as_ref())
-            .await
-            .map_err(db_err)?
-        {
-            let date: String = row.get("study_date");
-            let words: i64 = row.get("words");
-            if let Ok(date) = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d") {
-                let days_ago = (today - date).num_days();
-                if (0..7).contains(&days_ago) {
-                    weekly_progress[(6 - days_ago) as usize] = words as i32;
-                }
-            }
-        }
 
         self.logger.database_operation(
             "SELECT",
@@ -133,10 +106,9 @@ impl StatisticsRepository {
 
         Ok(StudyStatistics {
             total_words_learned: total_words_learned as i32,
+            words_mastered: words_mastered as i32,
             average_accuracy,
             streak_days,
-            completion_rate,
-            weekly_progress,
         })
     }
 
@@ -555,7 +527,7 @@ impl StatisticsRepository {
     pub async fn get_study_plan_statistics(&self, plan_id: Id) -> AppResult<StudyPlanStatistics> {
         // 1. 获取基本计划信息
         let plan_query = r#"
-            SELECT start_date, end_date, total_words
+            SELECT start_date, end_date, total_words, unified_status
             FROM study_plans
             WHERE id = ? AND deleted_at IS NULL
         "#;
@@ -574,11 +546,12 @@ impl StatisticsRepository {
                 AppError::DatabaseError(e.to_string())
             })?;
 
-        let (start_date, end_date, total_words) = match plan_row {
+        let (start_date, end_date, total_words, unified_status) = match plan_row {
             Some(row) => (
                 row.get::<Option<String>, _>("start_date"),
                 row.get::<Option<String>, _>("end_date"),
                 row.get::<i64, _>("total_words"),
+                row.get::<String, _>("unified_status"),
             ),
             None => {
                 return Err(AppError::NotFound(
@@ -589,19 +562,6 @@ impl StatisticsRepository {
 
         // 本次统计的“今天”（本地日期，只取一次）
         let today = crate::time::local_today();
-
-        // 2. 计算时间相关统计
-        let (total_days, time_progress_percentage) =
-            if let (Some(start), Some(end)) = (&start_date, &end_date) {
-                let start_date = chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d")
-                    .map_err(|_| AppError::ValidationError("无效的开始日期格式".to_string()))?;
-                let end_date = chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d")
-                    .map_err(|_| AppError::ValidationError("无效的结束日期格式".to_string()))?;
-
-                time_progress(start_date, end_date, today)
-            } else {
-                (0, 0.0)
-            };
 
         let db_err = |e: sqlx::Error| {
             self.logger.database_operation(
@@ -648,33 +608,40 @@ impl StatisticsRepository {
         .map_err(db_err)?;
         let total_active_time: i64 = time_row.get("active_ms");
         let study_days: i64 = time_row.get("study_days");
-        let total_minutes = total_active_time / (1000 * 60);
 
-        // 6. 日程天数：练完（status = completed，与日历同一口径）/ 逾期（日期已过、没练，且计划仍在进行）
-        let today_str = crate::time::format_date(today);
-        let schedule_row = sqlx::query(
-            "SELECT
-                 COUNT(*) AS schedules,
-                 COALESCE(SUM(CASE WHEN sps.status = 'completed' THEN 1 ELSE 0 END), 0) AS practiced,
-                 COALESCE(SUM(CASE WHEN COALESCE(sps.status, '') != 'completed' AND sps.schedule_date < ?2
-                                    AND sp.unified_status IN ('Active', 'Pending') THEN 1 ELSE 0 END), 0) AS overdue
-             FROM study_plan_schedules sps
-             JOIN study_plans sp ON sp.id = sps.plan_id
-             WHERE sps.plan_id = ?1 AND sps.total_words_count > 0",
+        // 6. 周期里每天的任务：单词日程（有单词的）+ 短文任务；一天的任务都完成才算练完
+        let tasks: Vec<(String, bool)> = sqlx::query_as(
+            "SELECT schedule_date, COALESCE(status, '') = 'completed' FROM study_plan_schedules
+             WHERE plan_id = ?1 AND total_words_count > 0
+             UNION ALL
+             SELECT scheduled_date, completed_at IS NOT NULL FROM study_plan_passages
+             WHERE plan_id = ?1",
         )
         .bind(plan_id)
-        .bind(&today_str)
-        .fetch_one(self.pool.as_ref())
+        .fetch_all(self.pool.as_ref())
         .await
         .map_err(db_err)?;
-        let schedule_days: i64 = schedule_row.get("schedules");
-        let practiced_days: i64 = schedule_row.get("practiced");
-        let overdue_days: i64 = schedule_row.get("overdue");
-        let overdue_ratio = if schedule_days > 0 {
-            overdue_days as f64 / schedule_days as f64 * 100.0
-        } else {
-            0.0
+        let parse = |d: &Option<String>| {
+            d.as_deref()
+                .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
         };
+        let days = plan_days(
+            parse(&start_date),
+            parse(&end_date),
+            today,
+            &tasks
+                .iter()
+                .filter_map(|(d, done)| {
+                    chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                        .ok()
+                        .map(|d| (d, *done))
+                })
+                .collect::<Vec<_>>(),
+            matches!(unified_status.as_str(), "Active" | "Pending"),
+        );
+        let count = |status: &str| days.iter().filter(|d| d.status == status).count() as i64;
+        let task_days = days.iter().filter(|d| d.status != "rest").count() as i64;
+        let (completed_days, overdue_days) = (count("done"), count("missed"));
 
         // 7. 连续学习天数（该计划，本地日期，含短文）
         let plan_dates = study_dates(self.pool.as_ref(), Some(plan_id))
@@ -691,54 +658,79 @@ impl StatisticsRepository {
 
         Ok(StudyPlanStatistics {
             // 按学习天数平均（不是按会话数）
-            average_daily_study_minutes: if study_days > 0 {
-                total_minutes / study_days
+            average_daily_active_ms: if study_days > 0 {
+                total_active_time / study_days
             } else {
                 0
             },
-            time_progress_percentage,
             actual_progress_percentage: if total_words > 0 {
                 (completed_words as f64 / total_words as f64) * 100.0
             } else {
                 0.0
             },
             average_accuracy_rate: avg_accuracy,
-            overdue_ratio,
             streak_days: plan_streak_days,
-            // 日程天数（学习日）；没有日程时退回计划的自然天数
-            total_days: if schedule_days > 0 {
-                schedule_days
-            } else {
-                total_days
-            },
-            completed_days: practiced_days,
+            total_days: days.len() as i64,
+            task_days,
+            completed_days,
             overdue_days,
+            days,
             total_words,
             completed_words,
             learned_words,
-            total_study_minutes: total_minutes,
             total_active_ms: total_active_time,
         })
     }
 }
 
-/// 计划时间进度：返回 (总天数, 百分比)。口径与前端 `src/utils/timeProgress.ts` 一致：
-/// 截至今天开始时已过去的自然日 / 总天数（含首尾），即第 k 天为 (k-1)/n；开始前 0，结束日之后 100。
-/// 使用本地日期（原实现用 UTC，在 UTC+8 的 0–8 点会少算一天）。
-fn time_progress(
-    start: chrono::NaiveDate,
-    end: chrono::NaiveDate,
+/// 计划周期最多显示多少天（防止异常日期拉出几千格）
+const MAX_PLAN_DAYS: i64 = 400;
+
+/// 计划周期里每天一格：开始日到结束日（有超出的任务时扩到任务日期）；
+/// 一天的任务都完成 → done；过去没完成 → 计划进行中为 missed，暂停 / 结束为 skipped；
+/// 今天没完成 → today；以后的 → upcoming；没有任务 → rest
+fn plan_days(
+    start: Option<chrono::NaiveDate>,
+    end: Option<chrono::NaiveDate>,
     today: chrono::NaiveDate,
-) -> (i64, f64) {
-    let total_days = (end - start).num_days() + 1;
-    let pct = if today < start {
-        0.0
-    } else if today > end {
-        100.0
-    } else {
-        (today - start).num_days() as f64 / total_days as f64 * 100.0
+    tasks: &[(chrono::NaiveDate, bool)],
+    can_be_overdue: bool,
+) -> Vec<PlanDay> {
+    use std::collections::BTreeMap;
+    let mut by_day: BTreeMap<chrono::NaiveDate, bool> = BTreeMap::new();
+    for (date, done) in tasks {
+        let all_done = by_day.entry(*date).or_insert(true);
+        *all_done &= *done;
+    }
+    let first = [start, by_day.keys().next().copied()]
+        .into_iter()
+        .flatten()
+        .min();
+    let last = [end, by_day.keys().next_back().copied()]
+        .into_iter()
+        .flatten()
+        .max();
+    let (Some(first), Some(last)) = (first, last) else {
+        return Vec::new();
     };
-    (total_days, pct)
+    let span = (last - first).num_days().clamp(-1, MAX_PLAN_DAYS - 1);
+    (0..=span)
+        .map(|i| {
+            let date = first + chrono::Duration::days(i);
+            let status = match by_day.get(&date) {
+                None => "rest",
+                Some(true) => "done",
+                Some(false) if date > today => "upcoming",
+                Some(false) if date == today => "today",
+                Some(false) if can_be_overdue => "missed",
+                Some(false) => "skipped",
+            };
+            PlanDay {
+                date: crate::time::format_date(date),
+                status: status.to_string(),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -867,16 +859,53 @@ mod tests {
     }
 
     #[test]
-    fn time_progress_counts_days_before_today() {
+    fn plan_days_follow_the_calendar_from_start_to_end() {
         let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
-        let (start, end) = (d("2026-10-05"), d("2026-10-07"));
-        let pct = |today: &str| time_progress(start, end, d(today)).1.round();
-        assert_eq!(time_progress(start, end, d("2026-10-05")).0, 3);
-        assert_eq!(pct("2026-10-04"), 0.0);
-        assert_eq!(pct("2026-10-05"), 0.0);
-        assert_eq!(pct("2026-10-06"), 33.0);
-        assert_eq!(pct("2026-10-07"), 67.0);
-        assert_eq!(pct("2026-10-08"), 100.0);
+        let statuses = |days: Vec<PlanDay>| days.into_iter().map(|d| d.status).collect::<Vec<_>>();
+        let tasks = [
+            (d("2026-10-05"), true),
+            (d("2026-10-06"), false),
+            // 同一天单词练完了、短文没读：不算练完
+            (d("2026-10-08"), true),
+            (d("2026-10-08"), false),
+            (d("2026-10-09"), false),
+            (d("2026-10-10"), false),
+        ];
+        let today = d("2026-10-09");
+        assert_eq!(
+            statuses(plan_days(
+                Some(d("2026-10-05")),
+                Some(d("2026-10-11")),
+                today,
+                &tasks,
+                true
+            )),
+            ["done", "missed", "rest", "missed", "today", "upcoming", "rest"]
+        );
+        // 暂停 / 结束的计划：没练的不算逾期
+        assert_eq!(
+            statuses(plan_days(
+                Some(d("2026-10-05")),
+                Some(d("2026-10-06")),
+                today,
+                &tasks,
+                false
+            ))[1],
+            "skipped"
+        );
+        // 任务超出了结束日（短文排得更晚）：扩到任务那天
+        assert_eq!(
+            plan_days(
+                Some(d("2026-10-05")),
+                Some(d("2026-10-07")),
+                today,
+                &tasks,
+                true
+            )
+            .len(),
+            6
+        );
+        assert!(plan_days(None, None, today, &[], true).is_empty());
     }
 
     #[tokio::test]

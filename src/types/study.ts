@@ -62,11 +62,14 @@ export type IntensityLevel = 'easy' | 'normal' | 'intensive';
 
 /// 学习统计
 export interface StudyStatistics {
+  /** 已学的单词（练过一次，按单词去重） */
   total_words_learned: number;
+  /** 已掌握的单词（隔 7 天还能写对） */
+  words_mastered: number;
+  /** 一次答对率（%） */
   average_accuracy: number;
+  /** 连续学习天数（单词练习 + 短文） */
   streak_days: number;
-  completion_rate: number;
-  weekly_progress: number[];
 }
 
 /// 某个本地日期的学习量（首页学习热力图；后端只返回有学习的日期）
@@ -411,41 +414,53 @@ export interface CalendarMonthResponse {
 
 /// 日历月度统计（对应 Rust `CalendarMonthlyStats`，只统计当月日期）
 export interface CalendarMonthlyStats {
+  /** 当月天数 */
   total_days: number;
+  /** 有学习活动的天数（单词练习 + 短文） */
   study_days: number;
-  completed_days: number;
+  /** 当月日程里本次通过的单词数 */
   total_words_learned: number;
-  total_study_minutes: number;
-  average_accuracy: number;
   streak_days: number;
-  active_plans_count: number;
 }
 
 /// 学习计划统计数据
 /** 对应 Rust `StudyPlanStatistics`（无 rename_all，字段为 snake_case） */
 export interface StudyPlanStatistics {
-  // 时间相关
-  average_daily_study_minutes: number;
-  time_progress_percentage: number;    // 时间进度 (已过天数/总天数)
-  actual_progress_percentage: number;  // 实际完成进度 (已完成单词/总单词)
-
-  // 学习效果
-  average_accuracy_rate: number;       // 平均练习正确率
-  overdue_ratio: number;               // 逾期比率 (逾期天数/总天数)
-  streak_days: number;                 // 该计划的连续练习天数
-
-  // 详细数据
+  /** 平均每个学习日的练习时长（毫秒，不含暂停） */
+  average_daily_active_ms: number;
+  /** 单词掌握进度：已掌握 / 全部单词（%） */
+  actual_progress_percentage: number;
+  /** 一次答对率：每步第一次作答答对的比例（%） */
+  average_accuracy_rate: number;
+  /** 该计划的连续学习天数（单词练习 + 短文） */
+  streak_days: number;
+  /** 计划周期（开始到结束的自然日，含巩固期） */
   total_days: number;
+  /** 目前有任务的日子（巩固期的复习日到当天才安排） */
+  task_days: number;
+  /** 任务都完成了的日子 */
   completed_days: number;
+  /** 没练的日子（日期已过、任务没完成，计划仍在进行） */
   overdue_days: number;
+  /** 周期里每天一格（按日期） */
+  days: PlanDay[];
   total_words: number;
   /** 已掌握的单词数（记忆等级 ≥ 4） */
   completed_words: number;
   /** 已学的单词数（完成过一次含该词的练习） */
   learned_words: number;
-  total_study_minutes: number;
-  /** 累计练习时长（毫秒，不含暂停）；不满一分钟的也算上 */
+  /** 累计练习时长（毫秒，不含暂停；单词练习 + 短文作答） */
   total_active_ms: number;
+}
+
+/** 计划周期里一天的状态 */
+export type PlanDayStatus = 'done' | 'missed' | 'today' | 'upcoming' | 'skipped' | 'rest';
+
+/** 计划周期里的一天 */
+export interface PlanDay {
+  /** 本地日期 YYYY-MM-DD */
+  date: string;
+  status: PlanDayStatus;
 }
 
 /// 创建带AI规划的学习计划请求

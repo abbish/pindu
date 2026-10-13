@@ -7,9 +7,10 @@ use crate::services::passage_rules::{self, GeneratedPassage, GeneratedQuestionSe
 use crate::types::common::Id;
 use crate::types::material::MaterialKind;
 use crate::types::passage::{
-    ClozeResult, Passage, PassageAttempt, PassageAttemptBrief, PassageModeStatistics,
-    PassageQuestion, PassageSentence, PassageSource, PassageStatistics, PassageSummary,
-    PassageTargetWord, QuestionResult, QuestionSet, QuestionSetSpec, QuestionSetSummary,
+    ClozeResult, Passage, PassageAttempt, PassageAttemptBrief, PassageKindStatistics,
+    PassageModeStatistics, PassageQuestion, PassageSentence, PassageSource, PassageStatistics,
+    PassageSummary, PassageTargetWord, QuestionResult, QuestionSet, QuestionSetSpec,
+    QuestionSetSummary,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqliteRow;
@@ -964,6 +965,80 @@ impl PassageRepository {
                 _ => stats.reading = mode_stats,
             }
         }
+        if let Some(plan_id) = plan_id {
+            stats.by_kind = self.kind_statistics(plan_id).await?;
+        }
         Ok(stats)
+    }
+
+    /// 计划里完成的作答按题型汇总：客观题答对率，开放题得分率
+    async fn kind_statistics(&self, plan_id: Id) -> AppResult<Vec<PassageKindStatistics>> {
+        let answers: Vec<Option<String>> = sqlx::query_scalar(
+            "SELECT answers FROM passage_attempts WHERE status = 'completed' AND plan_id = ?",
+        )
+        .bind(plan_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        // 题目编号 → (答对 / 得分, 满分)
+        let mut results: Vec<(Id, i64, i64)> = Vec::new();
+        for raw in answers.iter().flatten() {
+            let stored: StoredAnswers = serde_json::from_str(raw).unwrap_or_default();
+            results.extend(
+                stored
+                    .cloze_results
+                    .iter()
+                    .map(|r| (r.question_id, r.correct as i64, 1)),
+            );
+            for r in &stored.question_results {
+                match (r.correct, r.score) {
+                    (Some(correct), _) => results.push((r.question_id, correct as i64, 1)),
+                    (None, Some(score)) => {
+                        results.push((r.question_id, score, passage_rules::OPEN_MAX_SCORE))
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if results.is_empty() {
+            return Ok(Vec::new());
+        }
+        let kinds: HashMap<Id, String> =
+            sqlx::query_as::<_, (Id, String)>(
+                "SELECT q.id, q.kind FROM passage_questions q
+                 WHERE q.set_id IN (SELECT set_id FROM passage_attempts WHERE status = 'completed' AND plan_id = ?)",
+            )
+            .bind(plan_id)
+            .fetch_all(self.pool.as_ref())
+            .await?
+            .into_iter()
+            .collect();
+        let mut by_kind: Vec<(String, i64, i64, i64)> = Vec::new();
+        for (question_id, got, full) in results {
+            let Some(kind) = kinds.get(&question_id) else {
+                continue;
+            };
+            match by_kind.iter_mut().find(|(k, ..)| k == kind) {
+                Some(entry) => {
+                    entry.1 += 1;
+                    entry.2 += got;
+                    entry.3 += full;
+                }
+                None => by_kind.push((kind.clone(), 1, got, full)),
+            }
+        }
+        const ORDER: [&str; 4] = ["cloze", "choice", "true_false", "open"];
+        by_kind.sort_by_key(|(k, ..)| ORDER.iter().position(|o| o == k).unwrap_or(ORDER.len()));
+        Ok(by_kind
+            .into_iter()
+            .map(|(kind, answered, got, full)| PassageKindStatistics {
+                kind,
+                answered,
+                rate: if full > 0 {
+                    got as f64 * 100.0 / full as f64
+                } else {
+                    0.0
+                },
+            })
+            .collect())
     }
 }

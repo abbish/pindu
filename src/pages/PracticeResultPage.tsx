@@ -137,8 +137,8 @@ export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({ result, 
         </div>
         <div className={cn('grid gap-8 text-center', say ? 'grid-cols-4' : 'grid-cols-3')}>
           {[
-            { label: '本次通过', value: `${r.passedWords} / ${r.totalWords}`, title: '新词三步首答全对，复习词写对' },
-            { label: '正确率', value: `${r.wordAccuracy.toFixed(1)}%` },
+            { label: '本次通过', value: `${r.passedWords} / ${r.totalWords}`, title: '每一步第一次就写对，小测也没写错' },
+            { label: '通过率', value: `${r.wordAccuracy.toFixed(1)}%` },
             ...(say ? [{ label: '跟读过关', value: `${say.passed} / ${say.read}`, title: '读得很好或还差一点' }] : []),
             { label: '练习时间', value: formatDuration(r.activeTime) },
           ].map((s) => (
@@ -153,7 +153,7 @@ export const PracticeResultPage: React.FC<PracticeResultPageProps> = ({ result, 
       <section className="space-y-3">
         <h2 className="text-base font-semibold">详细统计</h2>
         <div className={cn('grid gap-3', say ? 'grid-cols-5' : 'grid-cols-4')}>
-          <MetricCard label="步骤正确率" value={r.stepAccuracy.toFixed(1)} unit="%" icon={Target} />
+          <MetricCard label="一次答对率" value={r.stepAccuracy.toFixed(1)} unit="%" icon={Target} tip="每一步第一次作答就写对的比例" />
           <MetricCard label="平均用时" value={Math.round(r.averageTimePerWord / 1000)} unit="秒/词" icon={Clock} />
           <MetricCard label="暂停次数" value={r.pauseCount} unit="次" icon={PauseCircle} />
           <MetricCard label="需要复习" value={r.difficultWords.length} unit="个" icon={TriangleAlert} />

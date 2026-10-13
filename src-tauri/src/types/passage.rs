@@ -520,6 +520,20 @@ pub struct PassageStatistics {
     pub passages: i64,
     pub reading: PassageModeStatistics,
     pub listening: PassageModeStatistics,
+    /// 各题型的答对情况（只在按计划统计时给出）
+    #[serde(default)]
+    pub by_kind: Vec<PassageKindStatistics>,
+}
+
+/// 一种题型的答对情况。kind：cloze / choice / true_false / open
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PassageKindStatistics {
+    pub kind: String,
+    /// 作答的题数（开放题只算评了分的）
+    pub answered: i64,
+    /// 答对率 0–100（开放题为得分率）
+    pub rate: f64,
 }
 
 // ==================== 学习计划里的短文（C4） ====================

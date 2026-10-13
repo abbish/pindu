@@ -115,10 +115,9 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
   );
   const statistics = data?.statistics || {
     total_words_learned: 0,
+    words_mastered: 0,
     average_accuracy: 0,
     streak_days: 0,
-    completion_rate: 0,
-    weekly_progress: [],
   };
 
   const handlePlanClick = (planId: number) => {
@@ -159,10 +158,10 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
   const errors = data?.errors ?? [];
 
   const stats = [
-    { label: '总学习单词', value: String(statistics.total_words_learned || 0), unit: '个', icon: CircleCheckBig },
-    { label: '平均正确率', value: (statistics.average_accuracy || 0).toFixed(0), unit: '%', icon: Target },
+    { label: '已学单词', value: String(statistics.total_words_learned || 0), unit: '个', icon: CircleCheckBig, tip: '练过一次的单词' },
+    { label: '已掌握单词', value: String(statistics.words_mastered || 0), unit: '个', icon: Trophy, tip: '隔 7 天还能写对的单词' },
+    { label: '一次答对率', value: (statistics.average_accuracy || 0).toFixed(0), unit: '%', icon: Target, tip: '每一步第一次作答就写对的比例' },
     { label: '连续学习', value: String(statistics.streak_days || 0), unit: '天', icon: Flame },
-    { label: '计划完成率', value: (statistics.completion_rate || 0).toFixed(0), unit: '%', icon: Trophy },
   ];
   const activity = data?.activity ?? [];
 
