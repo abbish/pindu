@@ -309,17 +309,7 @@ pub struct VideoPlanJob {
 
 impl VideoPlanJob {
     pub async fn run(self, ctx: JobCtx) -> AppResult<Value> {
-        // 先把还没整理的字幕整理好（断句让片段边界落在整句上）
-        crate::services::video_translate::prepare_before(
-            &self.pool,
-            &self.logger,
-            &self.paths,
-            &self.model,
-            &self.profile,
-            self.video_id,
-            &ctx,
-        )
-        .await;
+        // 不等整部字幕整理完（长视频要十几分钟）：还没断句的按标点推断整句；整理在另一个后台任务里接着做（start_video_plan 提交）
         let row = VideoRepository::get(&self.pool, self.video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;

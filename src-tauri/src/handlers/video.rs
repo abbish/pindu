@@ -866,7 +866,7 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
                 .known_names()
                 .await?,
         };
-        Ok(app.state::<Jobs>().spawn(
+        let id = app.state::<Jobs>().spawn(
             JobSpec {
                 kind: "video_plan",
                 module: Some(JobModule::Videos),
@@ -879,7 +879,20 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
                 )),
             },
             move |ctx| job.run(ctx),
-        ))
+        );
+        // 字幕还没整理完（导入时的整理没做完或关掉了）：另起后台任务接着整理，规划不等它（先提交规划，空闲名额先给规划）
+        if crate::services::video_translate::needs_prepare(&row.cues())
+            && !running(&app, request.video_id, &["video_translate"])
+        {
+            if let Err(e) = spawn_translate(&app, request.video_id, &row.title, None).await {
+                logger.warn(
+                    "VIDEO",
+                    &format!("视频 {} 没有开始整理字幕", request.video_id),
+                    Some(&e.to_string()),
+                );
+            }
+        }
+        Ok(id)
     }
     .await;
     super::finish(&logger, "start_video_plan", result)

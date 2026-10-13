@@ -59,7 +59,12 @@ pub fn work_chunks(cues: &[Cue], range: Option<(i64, i64)>) -> Vec<std::ops::Ran
     chunks
 }
 
-/// 在 AI 规划、切分之前顺带整理还没整理的字幕（导入时的整理没做完或失败时补上）。
+/// 还有没整理的字幕（没断句或没有中文）
+pub fn needs_prepare(cues: &[Cue]) -> bool {
+    !work_chunks(cues, None).is_empty()
+}
+
+/// 在切分之前顺带整理还没整理的字幕（导入时的整理没做完或失败时补上）。
 /// 失败不影响主流程：没断过句的按标点推断，缺的中文切分时再补。
 pub async fn prepare_before(
     pool: &Arc<SqlitePool>,
