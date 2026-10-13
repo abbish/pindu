@@ -641,10 +641,10 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       .finally(() => setSpeakingWord(false));
   }, [currentWord?.word, playWord, clearAutoPlay, pronunciationStatus, audioPlayer]);
 
-  // 点击右栏例句：结束本轮自动朗读，朗读该句
+  // 点击右栏例句：结束本轮自动朗读，朗读该句（跟读录音时不放）
   const handlePlayExample = useCallback((index: number) => {
     const sentence = examples[index]?.sentence;
-    if (!sentence) return;
+    if (!sentence || sayRecording.current) return;
     clearAutoPlay();
     setPlayingExample(index);
     playSentence(sentence)
@@ -653,6 +653,15 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
       })
       .finally(() => setPlayingExample(current => (current === index ? null : current)));
   }, [examples, playSentence, clearAutoPlay]);
+
+  // 开始跟读：停掉一切正在放的朗读（这一轮自动朗读里还没放的例句也不再放），免得录进去、和跟读重叠
+  const handleSayRecording = useCallback((on: boolean) => {
+    sayRecording.current = on;
+    if (!on) return;
+    clearAutoPlay();
+    audioPlayer.stop();
+    setPlayingExample(null);
+  }, [clearAutoPlay, audioPlayer]);
 
   // 换题时清除例句高亮
   useEffect(() => {
@@ -827,7 +836,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
                           showScore={learner !== undefined && learner !== 'primary'}
                           disabled={isPaused || !sayStages.includes(stage)}
                           onResult={setSayResult}
-                          onRecordingChange={(on) => (sayRecording.current = on)}
+                          onRecordingChange={handleSayRecording}
                           context={session ? { planId: session.planId, sessionId: session.sessionId, wordId: currentWord!.id } : undefined}
                         />
                       )

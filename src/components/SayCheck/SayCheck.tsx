@@ -96,16 +96,18 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
     onResultRef.current?.(null);
   }, [text]);
 
+  const onRecordingRef = useRef(onRecordingChange);
+  onRecordingRef.current = onRecordingChange;
   const start = useCallback(() => {
     if (!ready || disabled || recorder.state !== 'idle' || assessing) return;
     cancelPass();
     stopMine();
+    // 开麦前先让页面停掉正在放的朗读
+    onRecordingRef.current?.(true);
     void recorder.start(text);
   }, [ready, disabled, recorder, assessing, text, cancelPass, stopMine]);
 
   const recording = recorder.state !== 'idle';
-  const onRecordingRef = useRef(onRecordingChange);
-  onRecordingRef.current = onRecordingChange;
   useEffect(() => {
     onRecordingRef.current?.(recording);
   }, [recording]);
