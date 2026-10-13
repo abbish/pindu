@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import type { Word } from '@/types';
 import type { SpeakStatus } from '@/hooks/useAudioPlayer';
 import { SpeakButton } from '@/components/SpeakButton';
+import { useQuickSay } from '@/components/SayText';
 
 export interface TargetWordProps {
   /** 原文中的写法（可能是变形，如 tickets） */
@@ -41,43 +42,55 @@ export const TargetWord: React.FC<TargetWordProps> = ({ text, target, active, wo
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 select-text">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="text-xl font-semibold">{word?.word ?? target}</div>
-            {word?.ipa && <div className="text-sm text-muted-foreground">{word.ipa}</div>}
-          </div>
-          <SpeakButton variant="outline" size="icon" className="size-8" label="朗读单词" {...speak(word?.word ?? target, false)} />
-          <SpeakButton variant="outline" size="icon" className="size-8" label="慢速朗读单词" slow {...speak(word?.word ?? target, true)} />
-        </div>
-        {word ? (
-          <div className="mt-3 flex flex-col gap-2 text-sm">
-            <div>
-              {(word.pos_chinese || word.part_of_speech) && <span className="mr-1.5 text-muted-foreground">{word.pos_chinese || word.part_of_speech}</span>}
-              {word.meaning}
-            </div>
-            {(word.syllables || word.phonics_rule) && (
-              <div className="flex flex-wrap items-center gap-2">
-                {word.syllables && <span className="rounded-md bg-muted px-2 py-0.5 font-medium tracking-wide">{word.syllables}</span>}
-                {word.phonics_rule && <span className="text-xs text-muted-foreground">{word.phonics_rule}</span>}
-              </div>
-            )}
-            {word.analysis_explanation && <p className="text-muted-foreground">{word.analysis_explanation}</p>}
-            {example && (
-              <div className="rounded-md bg-muted/50 px-2.5 py-1.5">
-                <div>{example.sentence}</div>
-                <div className="text-xs text-muted-foreground">{example.translation}</div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="mt-3 text-sm text-muted-foreground">单词卡生成中</p>
-        )}
-        {onOpenCard && (
-          <Button variant="link" size="sm" className="mt-1 h-auto px-0" onClick={onOpenCard}>
-            查看单词卡
-          </Button>
-        )}
+        <TargetWordCard target={target} word={word} speak={speak} example={example} onOpenCard={onOpenCard} />
       </PopoverContent>
     </Popover>
+  );
+};
+
+/** 卡片内容（打开弹窗时才挂载：读一读的麦克风不在正文里每个词上各开一份） */
+const TargetWordCard: React.FC<Pick<TargetWordProps, 'target' | 'word' | 'speak' | 'onOpenCard'> & { example: NonNullable<Word['examples']>[number] | undefined }> = ({ target, word, speak, example, onOpenCard }) => {
+  const say = useQuickSay(word?.word ?? target);
+  return (
+    <>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-xl font-semibold">{word?.word ?? target}</div>
+          {word?.ipa && <div className="text-sm text-muted-foreground">{word.ipa}</div>}
+        </div>
+        <SpeakButton variant="outline" size="icon" className="size-8" label="朗读单词" {...speak(word?.word ?? target, false)} />
+        <SpeakButton variant="outline" size="icon" className="size-8" label="慢速朗读单词" slow {...speak(word?.word ?? target, true)} />
+        {say.button}
+      </div>
+      {say.verdict && <div className="mt-2">{say.verdict}</div>}
+      {word ? (
+        <div className="mt-3 flex flex-col gap-2 text-sm">
+          <div>
+            {(word.pos_chinese || word.part_of_speech) && <span className="mr-1.5 text-muted-foreground">{word.pos_chinese || word.part_of_speech}</span>}
+            {word.meaning}
+          </div>
+          {(word.syllables || word.phonics_rule) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {word.syllables && <span className="rounded-md bg-muted px-2 py-0.5 font-medium tracking-wide">{word.syllables}</span>}
+              {word.phonics_rule && <span className="text-xs text-muted-foreground">{word.phonics_rule}</span>}
+            </div>
+          )}
+          {word.analysis_explanation && <p className="text-muted-foreground">{word.analysis_explanation}</p>}
+          {example && (
+            <div className="rounded-md bg-muted/50 px-2.5 py-1.5">
+              <div>{example.sentence}</div>
+              <div className="text-xs text-muted-foreground">{example.translation}</div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">单词卡生成中</p>
+      )}
+      {onOpenCard && (
+        <Button variant="link" size="sm" className="mt-1 h-auto px-0" onClick={onOpenCard}>
+          查看单词卡
+        </Button>
+      )}
+    </>
   );
 };

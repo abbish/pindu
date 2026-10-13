@@ -61,6 +61,8 @@ export interface PracticeWordCardProps {
   onCover?: () => void;
   /** 看·说的「说」：跟读与发音评估（页面给出，只在 look 时显示）；拿到播放按钮与跟读提示，排成同一行按钮 + 一行反馈 */
   renderSay?: (slots: { play: React.ReactNode; hint: React.ReactNode }) => React.ReactNode;
+  /** 哪些环节显示跟读（默认只在看 · 说；复习词写对后也可以读一遍） */
+  sayStages?: PracticeStage[];
   /** 跟读后每个拼读块的标记：读得不准的块标出来 */
   segmentMarks?: ('good' | 'close' | 'retry' | null)[];
   /** 播放发音回调（播放中再点是停止） */
@@ -146,6 +148,7 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
   marks,
   activeChunk = null,
   renderSay,
+  sayStages = ['look'],
   segmentMarks,
   disabled = false,
 }) => {
@@ -294,7 +297,7 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
                 <MessageSquareText className="size-4" /> 跟着读：{segments.join(' - ')}
               </span>
             ) : null;
-          if (stage === 'look' && renderSay) return renderSay({ play, hint });
+          if (sayStages.includes(stage) && renderSay) return renderSay({ play, hint });
           return (
             <div className="flex items-center gap-3">
               {play}
@@ -334,9 +337,9 @@ export const PracticeWordCard: React.FC<PracticeWordCardProps> = ({
                         'rounded-md px-2 py-0.5 font-mono text-base font-semibold transition-colors',
                         activeChunk === index
                           ? 'bg-primary text-primary-foreground'
-                          : stage === 'look' && segmentMarks?.[index] === 'retry'
+                          : sayStages.includes(stage) && segmentMarks?.[index] === 'retry'
                             ? 'bg-warning-soft text-warning ring-2 ring-warning/60'
-                            : stage === 'look' && segmentMarks?.[index] === 'close'
+                            : sayStages.includes(stage) && segmentMarks?.[index] === 'close'
                               ? 'bg-warning-soft text-warning'
                               : 'bg-accent text-accent-foreground'
                       )}

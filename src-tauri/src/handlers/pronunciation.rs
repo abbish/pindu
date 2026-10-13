@@ -5,6 +5,9 @@ use crate::handlers::finish;
 use crate::jobs::{JobSpec, Jobs, Lane};
 use crate::logger::Logger;
 use crate::pronunciation::{self, model, Assessment};
+use crate::services::pronunciation::{
+    PronunciationContext, PronunciationOverview, PronunciationService,
+};
 use crate::services::pronunciation_settings::{
     PronunciationSettings, PronunciationSettingsService,
 };
@@ -33,6 +36,8 @@ pub struct AssessPronunciationRequest {
     pub text: String,
     /// 录音：16kHz 单声道 16 位小端 PCM，base64
     pub audio: String,
+    /// 学习计划里的跟读：带上时保存结果（给计划的发音统计）
+    pub context: Option<PronunciationContext>,
 }
 
 const DOWNLOAD_KIND: &str = "pronunciation_model";
@@ -158,11 +163,45 @@ pub async fn assess_pronunciation(
             ));
         }
         let path = model::path(&dir);
-        let text = request.text;
-        tokio::task::spawn_blocking(move || pronunciation::assess(&path, &text, &samples))
+        let text = request.text.clone();
+        let assessment =
+            tokio::task::spawn_blocking(move || pronunciation::assess(&path, &text, &samples))
+                .await
+                .map_err(|e| AppError::InternalError(format!("发音评估中断：{e}")))??;
+        if let Some(context) = &request.context {
+            // 保存失败不影响这次的结果，只记一条警告
+            if let Err(e) = PronunciationService::record(
+                &app.state::<SqlitePool>(),
+                &request.text,
+                &assessment,
+                context,
+            )
             .await
-            .map_err(|e| AppError::InternalError(format!("发音评估中断：{e}")))?
+            {
+                logger.warn(
+                    "PRONUNCIATION",
+                    "保存发音评估结果失败",
+                    Some(&e.to_string()),
+                );
+            }
+        }
+        Ok(assessment)
     }
     .await;
     finish(&logger, "assess_pronunciation", result)
+}
+
+/// 学习计划的发音统计：跟读次数、平均分、常错的音
+#[tauri::command]
+pub async fn get_pronunciation_overview(
+    app: AppHandle,
+    plan_id: i64,
+) -> AppResult<PronunciationOverview> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "get_pronunciation_overview",
+        Some(&format!("plan_id: {plan_id}")),
+    );
+    let result = PronunciationService::overview(&app.state::<SqlitePool>(), plan_id).await;
+    finish(&logger, "get_pronunciation_overview", result)
 }

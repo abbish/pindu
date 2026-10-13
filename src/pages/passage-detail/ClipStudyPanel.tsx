@@ -18,6 +18,7 @@ import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
 import type { Passage, PassageSentence } from '@/types/passage';
 import type { PassageVideo } from '@/types/video';
 import { ListenBuildPanel } from './ListenBuildPanel';
+import type { PronunciationContext } from '@/types/pronunciation';
 import { ShadowingPanel } from './ShadowingPanel';
 
 type Mode = 'study' | 'shadow' | 'listen';
@@ -67,6 +68,8 @@ export interface ClipStudyPanelProps {
   onEditTranslation?: (index: number, zh: string) => Promise<string | null>;
   /** 有阅读理解题时「做听力题」 */
   onPractice?: () => void;
+  /** 学习计划里跟读时带上：发音结果保存进计划的统计 */
+  pronunciationContext?: PronunciationContext;
 }
 
 /** 句子在短片里的时间（没有时间的句子按 0） */
@@ -83,7 +86,7 @@ const endOf = (s: PassageSentence | undefined) => s?.endMs ?? startOf(s);
 /** 选中的文字是一个英文单词（可以加成目标词） */
 /** 选中的文字是一个英文单词或 2–6 个词的词组（可以加成目标词） */
 
-export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences, passage, onAddTarget, onOpenWord, onEditTranslation, onPractice }) => {
+export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences, passage, onAddTarget, onOpenWord, onEditTranslation, onPractice, pronunciationContext }) => {
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
   /** 目标词组在台词里的写法 */
   const forms = useMemo(() => formsOf(passage.targetWords), [passage.targetWords]);
@@ -361,6 +364,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
         {mode === 'shadow' && (
           <div className="min-h-0 flex-1 overflow-y-auto">
           <ShadowingPanel
+            pronunciationContext={pronunciationContext}
             sentence={sentences[current]}
             index={current}
             total={sentences.length}

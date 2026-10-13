@@ -185,6 +185,8 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
   const isClip = Boolean(openedAsClip) || passage?.origin === 'video';
   /** 从学习计划进来：是在学、完成计划任务，不在这里准备或改动素材（不生成题组、不编辑、不改词汇与译文） */
   const studying = Boolean(fromPlan);
+  /** 从计划打开时，跟读评估的结果记进这个计划的发音统计（素材上的自由跟读不记） */
+  const sayContext = fromPlan && passageId ? { planId: fromPlan.planId, passageId } : undefined;
   /** 用到这篇的学习计划（「关联计划」页签；在计划里学习时不显示） */
   const { plans: linkedPlans, error: linkedPlansError, reload: reloadLinkedPlans } = useLinkedPlans('passage', studying ? null : passageId);
   const [showGenerate, setShowGenerate] = useState(false);
@@ -494,13 +496,13 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         {clip && (
           <TabsContent value="video">
-            <ClipStudyPanel video={clip} sentences={passage.sentences} passage={passage} onAddTarget={studying ? undefined : addTarget} onOpenWord={openWord} onEditTranslation={studying ? undefined : editTranslation} onPractice={studying ? undefined : () => setTab('listening')} />
+            <ClipStudyPanel video={clip} sentences={passage.sentences} passage={passage} onAddTarget={studying ? undefined : addTarget} onOpenWord={openWord} onEditTranslation={studying ? undefined : editTranslation} onPractice={studying ? undefined : () => setTab('listening')} pronunciationContext={sayContext} />
           </TabsContent>
         )}
 
         <TabsContent value="text">
           <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6">
-            <ReadAloudPanel passage={passage} onAddTarget={studying ? undefined : addTarget} onOpenWord={openWord} onEditTranslation={studying ? undefined : editTranslation} />
+            <ReadAloudPanel passage={passage} onAddTarget={studying ? undefined : addTarget} onOpenWord={openWord} onEditTranslation={studying ? undefined : editTranslation} pronunciationContext={sayContext} />
 
             <aside className="flex flex-col gap-4">
               <Card className="gap-3 px-5 py-4">

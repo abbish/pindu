@@ -5,6 +5,9 @@ import { Progress } from '@/components/ui/progress';
 import { Toggle } from '@/components/ui/toggle';
 import { InlineError } from '@/components/InlineError';
 import { useRecorder } from '@/hooks/useRecorder';
+import { usePronunciation } from '@/hooks/usePronunciation';
+import { SayText, SayVerdict } from '@/components/SayText';
+import type { PronunciationContext } from '@/types/pronunciation';
 import { cn } from '@/lib/utils';
 import type { PassageSentence } from '@/types/passage';
 
@@ -25,6 +28,8 @@ export interface ShadowingPanelProps {
   /** 每播完一次这一句原声加 1（自动录音用） */
   originalEnded: number;
   onGo: (index: number) => void;
+  /** 学习计划里跟读时带上：发音结果保存进计划的统计 */
+  pronunciationContext?: PronunciationContext;
 }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} 秒`;
@@ -62,11 +67,15 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
   originalProgress,
   originalEnded,
   onGo,
+  pronunciationContext,
 }) => {
   const originalMs = sentence ? Math.max(0, (sentence.endMs ?? 0) - (sentence.startMs ?? 0)) : 0;
   const recorder = useRecorder({ silenceStopMs: 1500, maxMs: Math.max(6000, originalMs * 3) });
   const [mineProgress, setMineProgress] = useState<number | null>(null);
   const mine = useRef<HTMLAudioElement | null>(null);
+  // 发音评估（设置里开着、模型已下载时）：录完逐词标色
+  const say = usePronunciation(pronunciationContext);
+  const sayOn = say.enabled && say.ready === true;
 
   // 进入跟读就打开麦克风，点录音不用再等
   useEffect(() => {
@@ -77,9 +86,16 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
   // 换句：丢掉上一句的录音
   useEffect(() => {
     recorder.clear();
+    say.reset();
     mine.current?.pause();
     setMineProgress(null);
-  }, [index, recorder.clear]);
+  }, [index, recorder.clear, say.reset]);
+
+  const take = recorder.take;
+  const text = sentence?.en ?? '';
+  useEffect(() => {
+    if (take && sayOn && text) void say.assess(take.url, text);
+  }, [take]);
 
   // 播完原声自动录音（循环时不自动录）
   const lastEnded = useRef(originalEnded);
@@ -136,7 +152,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
       </div>
 
       <div>
-        <div className="text-xl leading-snug font-medium">{sentence.en}</div>
+        <SayText text={sentence.en} result={say.result} strictness={say.strictness} className="block text-xl leading-snug font-medium" />
         {sentence.zh && <div className="mt-1 text-sm text-muted-foreground">{sentence.zh}</div>}
       </div>
 
@@ -166,6 +182,7 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
           <>
             <div className="flex items-center gap-2 text-xs">
               我的录音
+              {say.assessing && <Loader2 className="size-3.5 animate-spin" aria-label="正在评估" />}
               <span className="ml-auto tabular-nums">
                 原声 {seconds(originalMs)} · 我的录音 {seconds(recorder.take.durationMs)}
               </span>
@@ -173,7 +190,18 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
             <Bars values={squeeze(recorder.take.peaks)} className="text-primary" />
           </>
         ) : (
-          <div className="text-xs">{autoRecord ? '原声播放结束后自动录音' : '播放原声后点击「录音」跟读'}</div>
+          <div className="flex items-center gap-2 text-xs">
+            {autoRecord ? '原声播放结束后自动录音' : '播放原声后点击「录音」跟读'}
+            {say.enabled && say.ready === false && (
+              say.downloading ? (
+                <span className="ml-auto">正在下载评估模型…</span>
+              ) : (
+                <Button variant="link" size="sm" className="ml-auto h-auto p-0 text-xs" onClick={() => void say.download()}>
+                  开启跟读评估（约 71MB）
+                </Button>
+              )
+            )}
+          </div>
         )}
       </div>
 
@@ -207,6 +235,8 @@ export const ShadowingPanel: React.FC<ShadowingPanelProps> = ({
           <Progress value={(mineProgress ?? 0) * 100} className={cn('h-1', mineProgress === null && 'invisible')} />
         </div>
       </div>
+      {sayOn && say.result && !recording && <SayVerdict result={say.result} strictness={say.strictness} showScore={say.showScore} />}
+      {sayOn && say.error && !recording && <div className="text-sm text-muted-foreground">{say.error}</div>}
       {recorder.error && <InlineError>{recorder.error}</InlineError>}
 
       <div className="flex justify-between">

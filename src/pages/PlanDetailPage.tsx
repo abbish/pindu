@@ -45,6 +45,7 @@ import { calculateTimeProgress, getActionConfig, groupPlanActions } from './plan
 import { PlanOverviewView } from './plan-detail/PlanOverviewView';
 import { PlanScheduleView } from './plan-detail/PlanScheduleView';
 import { PlanWordsView } from './plan-detail/PlanWordsView';
+import { PlanPronunciationView } from './plan-detail/PlanPronunciationView';
 import { PlanStatisticsView } from './plan-detail/PlanStatisticsView';
 import { PlanLogsView } from './plan-detail/PlanLogsView';
 import { PlanPassagesView } from './plan-detail/PlanPassagesView';
@@ -628,6 +629,7 @@ export const PlanDetailPage: React.FC<PlanDetailPageProps> = ({ planId, initialT
         </TabsContent>
         <TabsContent value="statistics" className="flex flex-col gap-6">
           <PlanStatisticsView statistics={statistics} planWords={planWords} partOfSpeechStats={posStats} />
+          <PlanPronunciationView planId={planId} />
           <section className="space-y-3">
             <h3 className="text-base font-semibold">练习记录</h3>
             <PlanLogsView practiceSessions={sessions ?? []} loading={sessionsLoading || sessions === null} onNavigate={onNavigate} canPractice={canPractice} />

@@ -444,6 +444,7 @@ pub fn run() {
                 start_pronunciation_model_download,
                 delete_pronunciation_model,
                 assess_pronunciation,
+                get_pronunciation_overview,
                 get_media_tools_status,
                 set_ffmpeg_dir,
                 start_video_import,

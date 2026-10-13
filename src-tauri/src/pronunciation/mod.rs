@@ -11,7 +11,7 @@ pub mod score;
 
 use crate::error::{AppError, AppResult};
 use score::LogProbs;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// 分数换算：模型给 0–2，界面用 0–100
@@ -19,7 +19,7 @@ const SCALE: f64 = 50.0;
 /// 低于这个分数时说明「听起来像什么」
 const EXPLAIN_BELOW: u32 = 60;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PhoneAssessment {
     /// 标准读法里的这个音（IPA）
@@ -31,7 +31,7 @@ pub struct PhoneAssessment {
     pub likely_confused: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WordAssessment {
     pub word: String,

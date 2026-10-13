@@ -19,6 +19,12 @@ const THRESHOLDS: Record<Strictness, [number, number]> = {
 const PHONE_FLAG: Record<Strictness, number> = { lenient: 50, standard: 60, strict: 70 };
 
 export const BAND_LABEL: Record<Band, string> = { good: '读得很好', close: '还差一点', retry: '再试试' };
+/** 三档的颜色（标签、逐词标色共用） */
+export const BAND_STYLE: Record<Band, string> = {
+  good: 'bg-success-soft text-success',
+  close: 'bg-warning-soft text-warning',
+  retry: 'bg-muted text-foreground',
+};
 
 /** 严格程度：设置里选了就用选的；「自动」时小学生宽松，其余标准 */
 export function strictnessFor(learner: string | undefined, setting: Strictness | 'auto' = 'auto'): Strictness {
@@ -160,4 +166,43 @@ export function flaggedPhones(word: WordAssessment, strictness: Strictness): (Ph
     .filter((p) => p.score < PHONE_FLAG[strictness] || (p.likelyConfused && strictness !== 'lenient'))
     .sort((a, b) => a.score - b.score)
     .slice(0, 2);
+}
+
+/** 一句话按评估结果切开：词带它的档（不能评分的词为 null），词之间的空格与标点原样保留 */
+export interface SentencePiece {
+  text: string;
+  /** 是词时为它在评估结果里的序号 */
+  word: number | null;
+  band: Band | null;
+}
+
+/** 与后端拆词一致（pronunciation::words_of）：字母、数字、撇号连在一起，含字母的才算词 */
+const WORD_RE = /[\p{L}\p{N}'’]+/gu;
+
+export function sentencePieces(text: string, words: WordAssessment[], strictness: Strictness): SentencePiece[] {
+  const pieces: SentencePiece[] = [];
+  let last = 0;
+  let index = 0;
+  for (const m of text.matchAll(WORD_RE)) {
+    if (!/\p{L}/u.test(m[0])) continue;
+    const at = m.index ?? 0;
+    if (at > last) pieces.push({ text: text.slice(last, at), word: null, band: null });
+    const w = words[index];
+    pieces.push({ text: m[0], word: index, band: w?.score != null ? bandOf(w.score, strictness) : null });
+    index += 1;
+    last = at + m[0].length;
+  }
+  if (last < text.length) pieces.push({ text: text.slice(last), word: null, band: null });
+  return pieces;
+}
+
+/** 一句话里最该练的词（分最低、有指出的音），最多 `max` 个，每个带一句提示 */
+export function sentenceTips(words: WordAssessment[], strictness: Strictness, max = 2): { word: string; tip: string }[] {
+  return words
+    .filter((w) => w.score !== null && bandOf(w.score, strictness) !== 'good')
+    .map((w) => ({ w, flagged: flaggedPhones(w, strictness) }))
+    .filter((x) => x.flagged.length > 0)
+    .sort((a, b) => (a.w.score ?? 0) - (b.w.score ?? 0))
+    .slice(0, max)
+    .map(({ w, flagged }) => ({ word: w.word, tip: phoneTip(flagged[0]) }));
 }

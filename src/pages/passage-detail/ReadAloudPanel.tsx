@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, ChevronLeft, ChevronRight, EyeOff, Loader2, Pause, Play, Settings2 } from 'lucide-react';
+import { Brain, ChevronLeft, ChevronRight, EyeOff, Loader2, Mic, Pause, Play, Settings2, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,10 @@ import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { SelectionAction } from '@/components/SelectionAction';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
+import { useRecorder } from '@/hooks/useRecorder';
+import { usePronunciation } from '@/hooks/usePronunciation';
+import { SayText, SayVerdict } from '@/components/SayText';
+import type { Assessment, PronunciationContext } from '@/types/pronunciation';
 import { cn } from '@/lib/utils';
 import { canAddTarget, formsOf, recallBlanks } from '@/utils/passage';
 import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
@@ -33,10 +37,12 @@ interface ReadAloudPrefs {
   recall: boolean;
   /** 聚焦朗读：当前句最清晰，上下文逐渐模糊 */
   focusBlur: boolean;
+  /** 跟读评估：每句读完后开麦跟读，本机评估后逐词标色 */
+  shadow: boolean;
 }
 
 const PREFS_KEY = 'passage.readAloud.v2';
-const DEFAULT_PREFS: ReadAloudPrefs = { speed: 'normal', repeat: 1, pauseMs: 0, translation: 'off', highlight: true, recall: false, focusBlur: true };
+const DEFAULT_PREFS: ReadAloudPrefs = { speed: 'normal', repeat: 1, pauseMs: 0, translation: 'off', highlight: true, recall: false, focusBlur: true, shadow: false };
 const segmentItem = 'h-7 rounded-md px-2.5 text-xs data-[state=on]:bg-background data-[state=on]:shadow-sm';
 
 function readPrefs(): ReadAloudPrefs {
@@ -94,7 +100,9 @@ export const ReadAloudPanel: React.FC<{
   onOpenWord?: (word: string) => void;
   /** 句子分析里改译文；失败时返回原因 */
   onEditTranslation?: (index: number, zh: string) => Promise<string | null>;
-}> = ({ passage, onAddTarget, onOpenWord, onEditTranslation }) => {
+  /** 学习计划里朗读时带上：跟读评估的结果保存进计划的发音统计 */
+  pronunciationContext?: PronunciationContext;
+}> = ({ passage, onAddTarget, onOpenWord, onEditTranslation, pronunciationContext }) => {
   const [prefs, setPrefs] = useState<ReadAloudPrefs>(readPrefs);
   const [blind, setBlind] = useState(false);
   const [blindDone, setBlindDone] = useState(false);
@@ -108,6 +116,15 @@ export const ReadAloudPanel: React.FC<{
   const texts = useMemo(() => passage.sentences.map((s) => s.en), [passage]);
   /** 正在看分析的句子 */
   const [analyzing, setAnalyzing] = useState<number | null>(null);
+
+  // 跟读评估：朗读完一句 → 开麦 → 学习者跟读 → 本机评估，结果留在这句下面
+  const say = usePronunciation(pronunciationContext);
+  const recorder = useRecorder({ silenceStopMs: 900, maxMs: 15000 });
+  const [shadowing, setShadowing] = useState<{ index: number; resolve: () => void } | null>(null);
+  const [sayResults, setSayResults] = useState<Map<number, Assessment>>(new Map());
+  const shadowOn = prefs.shadow && say.enabled && say.ready === true;
+  const shadowRef = useRef(shadowOn);
+  shadowRef.current = shadowOn && !blind;
 
 
   const updatePrefs = (patch: Partial<ReadAloudPrefs>) => {
@@ -127,8 +144,16 @@ export const ReadAloudPanel: React.FC<{
   }, [blind, prefs.recall]);
   const recallRef = useRef(prefs.recall);
   recallRef.current = prefs.recall && !blind;
+  const shadowStep = useCallback((index: number) => {
+    if (!shadowRef.current) return;
+    return new Promise<void>((resolve) => {
+      setShadowing({ index, resolve });
+      void recorder.start();
+    });
+  }, [recorder]);
   const afterSentence = useCallback(
-    (index: number) => {
+    async (index: number) => {
+      await shadowStep(index);
       if (!recallRef.current) return;
       const blanks = recallBlanks(texts[index], targets, forms).flatMap((p) => (p.kind === 'blank' ? [p] : []));
       const answers = blanks.map((b) => b.answer);
@@ -139,8 +164,29 @@ export const ReadAloudPanel: React.FC<{
         setRecall({ index, answers, filled: [], bank: shuffle([...new Set(answers), ...distractors]), wrong: null, revealed: false, resolve });
       });
     },
-    [texts, targets, forms]
+    [texts, targets, forms, shadowStep]
   );
+
+  // 跟读录完：评估这句，结果留在句子下面，稍停后接着朗读下一句
+  const take = recorder.take;
+  useEffect(() => {
+    if (!take || !shadowing) return;
+    const current = shadowing;
+    void say.assess(take.url, texts[current.index]).then((r) => {
+      if (r) setSayResults((m) => new Map(m).set(current.index, r));
+      setTimeout(() => {
+        setShadowing((s) => (s === current ? null : s));
+        current.resolve();
+      }, r ? 1200 : 600);
+    });
+  }, [take]);
+  // 麦克风打不开：不卡住朗读
+  useEffect(() => {
+    if (recorder.error && shadowing) {
+      shadowing.resolve();
+      setShadowing(null);
+    }
+  }, [recorder.error]);
 
   const player = useSentencePlayer(texts, {
     speed: prefs.speed,
@@ -197,6 +243,11 @@ export const ReadAloudPanel: React.FC<{
       recall.resolve();
       setRecall(null);
     }
+    if (shadowing) {
+      if (recorder.state !== 'idle') recorder.stop();
+      shadowing.resolve();
+      setShadowing(null);
+    }
     player.stop();
   };
 
@@ -207,6 +258,7 @@ export const ReadAloudPanel: React.FC<{
   };
 
   const status = (() => {
+    if (shadowing) return recorder.state === 'recording' ? '请跟读这句，读完会自动停' : say.assessing ? '正在听…' : '准备跟读…';
     if (recall) return '回忆词汇';
     if (player.pausing) return '停顿中，请跟读';
     // 盲听只是隐藏原文，不会自己开始播放：没在播时不显示状态，播放按钮写明「开始盲听」
@@ -241,6 +293,45 @@ export const ReadAloudPanel: React.FC<{
         </span>
       );
     });
+  };
+
+  /** 句子下面：跟读中的状态，或这句跟读的结果（逐词标色 + 三档 + 怎么读） */
+  const shadowPanel = (index: number) => {
+    const result = sayResults.get(index);
+    const active = shadowing?.index === index;
+    if (!active && !result) return null;
+    const recording = active && recorder.state !== 'idle';
+    return (
+      <div className="mt-2 flex flex-col gap-1.5 rounded-lg border bg-background px-3 py-2 text-sm select-none" aria-live="polite">
+        {recording ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Mic className="size-4 text-destructive" />
+            {recorder.heard ? '在听…' : '请跟读'}
+            <span className="flex h-4 items-end gap-0.5" aria-hidden>
+              {recorder.live.slice(-12).map((v, i) => (
+                <span key={i} className="w-0.5 rounded-full bg-primary" style={{ height: `${Math.max(2, v * 16)}px` }} />
+              ))}
+            </span>
+            <Button variant="ghost" size="sm" className="ml-auto h-7" onClick={recorder.stop}>
+              <Square />
+              读完了
+            </Button>
+          </div>
+        ) : active && say.assessing ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            正在听…
+          </div>
+        ) : result ? (
+          <>
+            <SayText text={texts[index]} result={result} strictness={say.strictness} />
+            <SayVerdict result={result} strictness={say.strictness} showScore={say.showScore} />
+          </>
+        ) : (
+          active && say.error && <div className="text-muted-foreground">{say.error}</div>
+        )}
+      </div>
+    );
   };
 
   const recallPanel = (index: number) => {
@@ -344,6 +435,24 @@ export const ReadAloudPanel: React.FC<{
                 ))}
               </ToggleGroup>
             </SettingRow>
+            {say.enabled && (
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="ra-shadow" className="text-sm font-normal">
+                  每句跟读并评估
+                </Label>
+                {say.ready === false ? (
+                  say.downloading ? (
+                    <span className="text-xs text-muted-foreground">正在下载评估模型…</span>
+                  ) : (
+                    <Button variant="outline" size="sm" className="h-7" onClick={() => void say.download()}>
+                      下载评估模型
+                    </Button>
+                  )
+                ) : (
+                  <Switch id="ra-shadow" checked={prefs.shadow} onCheckedChange={(v) => updatePrefs({ shadow: v })} />
+                )}
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="ra-recall" className="text-sm font-normal">
                 朗读后回忆词汇
@@ -389,7 +498,12 @@ export const ReadAloudPanel: React.FC<{
         hidden={blind}
         focusBlur={prefs.focusBlur}
         renderSentence={renderRecallSentence}
-        below={recallPanel}
+        below={(i) => (
+          <>
+            {shadowPanel(i)}
+            {recallPanel(i)}
+          </>
+        )}
         onAnalyzeSentence={blind || prefs.recall ? undefined : setAnalyzing}
         analyzing={analyzing}
         renderTarget={(text, target, active) => (

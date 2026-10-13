@@ -23,6 +23,38 @@ export interface AssessPronunciationRequest {
   text: string;
   /** 录音：16kHz 单声道 16 位小端 PCM，base64 */
   audio: string;
+  /** 学习计划里的跟读：带上时保存结果（给计划的发音统计） */
+  context?: PronunciationContext;
+}
+
+export interface PronunciationContext {
+  planId: number;
+  sessionId?: string;
+  wordId?: number;
+  passageId?: number;
+}
+
+/** 计划的发音统计里的一个音 */
+export interface SoundStat {
+  /** 这个音（IPA） */
+  ipa: string;
+  /** 读过几次 */
+  times: number;
+  /** 其中读得不准的次数 */
+  weak: number;
+  /** 最常听成的音（空字符串 = 常没读出来） */
+  heardAs: string | null;
+  /** 读错过的词 */
+  words: string[];
+}
+
+export interface PronunciationOverview {
+  /** 跟读了几次 */
+  attempts: number;
+  /** 平均分 */
+  average: number | null;
+  /** 常错的音，不准的比例高的在前 */
+  sounds: SoundStat[];
 }
 
 export interface PhoneAssessment {

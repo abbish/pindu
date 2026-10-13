@@ -12,6 +12,7 @@ pub mod plan_pace_repository;
 pub mod plan_passage_repository;
 pub mod practice_metrics;
 pub mod practice_repository;
+pub mod pronunciation_repository;
 pub mod sentence_analysis_repository;
 pub mod settings_repository;
 pub mod srs_repository;

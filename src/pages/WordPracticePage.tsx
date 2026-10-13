@@ -169,6 +169,8 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
 
   const hintLevel: HintLevel = task ? hintLevelOf(task) : 1;
   const copy = task ? taskCopy(task, stage, !!currentWordState?.isReview) : { title: '', description: '' };
+  /** 跟读：新词在看 · 说；复习词跳过了看 · 说，写对后可以读一遍（不自动开麦） */
+  const sayStages: PracticeStage[] = currentWordState?.isReview ? ['look', 'feedback'] : ['look'];
 
   /** 新任务的起始环节：第一步的首次学习从「看·说」开始，其余直接「盖·写」 */
   const startStageOf = (t: PracticeTask | undefined): PracticeStage =>
@@ -809,6 +811,7 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
                 marks={marks}
                 activeChunk={activeChunk}
                 segmentMarks={sayResult?.segmentMarks}
+                sayStages={sayStages}
                 renderSay={
                   saySettings?.enabled
                     ? ({ play, hint }) => (
@@ -820,8 +823,9 @@ export const WordPracticePage: React.FC<WordPracticePageProps> = ({
                           strictness={strictnessFor(learner, saySettings.strictness)}
                           showScore={learner !== undefined && learner !== 'primary'}
                           autoStartKey={sayAutoKey}
-                          disabled={isPaused || stage !== 'look'}
+                          disabled={isPaused || !sayStages.includes(stage)}
                           onResult={setSayResult}
+                          context={session ? { planId: session.planId, sessionId: session.sessionId, wordId: currentWord!.id } : undefined}
                         />
                       )
                     : undefined
