@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, ChevronLeft, ChevronRight, EyeOff, Languages, Loader2, Mic, Pause, Play, Settings2, Snail, Square, X } from 'lucide-react';
+import { Brain, ChevronLeft, ChevronRight, EyeOff, Languages, Loader2, Mic, Pause, Play, Settings2, Snail, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -18,7 +18,6 @@ import { useRecorder } from '@/hooks/useRecorder';
 import { usePronunciation } from '@/hooks/usePronunciation';
 import { SayText, SayVerdict, useSentenceSay } from '@/components/SayText';
 import type { Assessment, PronunciationContext } from '@/types/pronunciation';
-import { bandOf, type Strictness } from '@/utils/pronunciation';
 import { cn } from '@/lib/utils';
 import { canAddTarget, formsOf, recallBlanks } from '@/utils/passage';
 import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
@@ -92,32 +91,6 @@ const shuffle = <T,>(list: T[]) => {
   return copy;
 };
 
-/** 一遍朗读的跟读小结：跟读了几句、平均分、最该多练的几个词（分最低、不是「读得很好」的） */
-interface RoundSummary {
-  count: number;
-  average: number | null;
-  weak: string[];
-}
-
-function roundSummary(results: Map<number, Assessment>, strictness: Strictness): RoundSummary {
-  const scored = [...results.values()].filter((r) => r.score !== null);
-  const words = scored
-    .flatMap((r) => r.words)
-    .filter((w) => w.score !== null && bandOf(w.score, strictness) !== 'good')
-    .sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
-  const weak: string[] = [];
-  for (const w of words) {
-    const word = w.word.toLowerCase();
-    if (!weak.includes(word)) weak.push(word);
-    if (weak.length === 3) break;
-  }
-  return {
-    count: results.size,
-    average: scored.length ? Math.round(scored.reduce((n, r) => n + (r.score ?? 0), 0) / scored.length) : null,
-    weak,
-  };
-}
-
 /** 工具栏上的图标开关：悬停显示名字，开着时图标变主题色并带浅底（按 aria-pressed 上色：外面的 Tooltip 会覆盖 data-state） */
 const IconToggle: React.FC<{ label: string; pressed: boolean; onPressedChange: (on: boolean) => void; disabled?: boolean; children: React.ReactNode }> = ({ label, pressed, onPressedChange, disabled, children }) => (
   <Tooltip>
@@ -178,7 +151,6 @@ export const ReadAloudPanel: React.FC<{
   const [sayResults, setSayResults] = useState<Map<number, Assessment>>(new Map());
   /** 读完一遍（onFinish 里只置位，effect 里收尾：那时 player 已经有了） */
   const [roundDone, setRoundDone] = useState(false);
-  const [summary, setSummary] = useState<RoundSummary | null>(null);
   // 原文每句后面的跟读（点一句跟读一句）：开始前停掉朗读
   const stopRef = useRef<() => void>(() => {});
   const sentenceSay = useSentenceSay(texts, pronunciationContext, () => stopRef.current());
@@ -263,21 +235,17 @@ export const ReadAloudPanel: React.FC<{
     },
   });
 
-  // 读完一遍：主按钮回到「朗读全文」；开着跟读时给一行小结
+  // 读完一遍：主按钮回到「朗读全文」
   useEffect(() => {
     if (!roundDone) return;
     setRoundDone(false);
     player.setCurrent(null);
-    if (sayResults.size > 0) setSummary(roundSummary(sayResults, say.strictness));
   }, [roundDone]);
 
-  /** 主按钮：没在读时从停下的那句接着读；从头读是新的一遍，清掉上一遍的跟读结果与小结 */
+  /** 主按钮：没在读时从停下的那句接着读；从头读是新的一遍，清掉上一遍的跟读结果 */
   const playOrPause = () => {
     if (player.playing) return stopAll();
-    if (player.current == null) {
-      setSayResults(new Map());
-      setSummary(null);
-    }
+    if (player.current == null) setSayResults(new Map());
     void player.play(player.current ?? 0);
   };
 
@@ -574,17 +542,6 @@ export const ReadAloudPanel: React.FC<{
         </Popover>
       </div>
 
-      {summary && (
-        <div className="-mt-1 flex items-center gap-2 rounded-md bg-accent/50 px-3 py-1.5 text-sm text-accent-foreground select-none" aria-live="polite">
-          <span className="min-w-0 flex-1">
-            这遍跟读了 {summary.count} 句{say.showScore && summary.average !== null ? `，平均 ${summary.average} 分` : ''}
-            {summary.weak.length > 0 ? ` · 要多练：${summary.weak.join('、')}` : ' · 都读得不错'}
-          </span>
-          <Button variant="ghost" size="icon" className="size-6 shrink-0" aria-label="关闭小结" onClick={() => setSummary(null)}>
-            <X />
-          </Button>
-        </div>
-      )}
       {blindDone && !blind && <p className="-mt-1 rounded-md bg-accent/50 px-3 py-1.5 text-xs text-accent-foreground select-none">盲听结束，已显示原文</p>}
 
       <SelectionAction
