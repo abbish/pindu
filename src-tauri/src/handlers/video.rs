@@ -832,6 +832,7 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
                 "这个视频正在处理，等它完成后再规划".to_string(),
             ));
         }
+        recognizing_check(&app, request.video_id)?;
         let row = VideoRepository::get(pool.inner(), request.video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
@@ -888,7 +889,11 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
             .unwrap_or(true);
         if auto_prepare
             && crate::services::video_translate::needs_prepare(&row.cues())
-            && !running(&app, request.video_id, &["video_translate"])
+            && !running(
+                &app,
+                request.video_id,
+                &["video_translate", "video_recognize"],
+            )
         {
             if let Err(e) = spawn_translate(&app, request.video_id, &row.title, None).await {
                 logger.warn(
@@ -921,6 +926,7 @@ pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<S
                 "这个视频已经有任务在进行".to_string(),
             ));
         }
+        recognizing_check(&app, video_id)?;
         let row = VideoRepository::get(pool.inner(), video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
@@ -946,6 +952,7 @@ pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<S
             pool: pool_arc,
             logger: logger_arc,
             video_id,
+            skip_prepare: running(&app, video_id, &["video_translate"]),
             plan_id,
         };
         Ok(app.state::<Jobs>().spawn(
@@ -1134,6 +1141,16 @@ fn busy(app: &AppHandle, video_id: i64) -> bool {
         video_id,
         &["video_import", "video_plan", "video_process"],
     )
+}
+
+/// 正在识别（或重新识别）字幕时不能规划、切分：字幕还要被换掉。规划草稿只记时间范围，照样能编辑保存
+fn recognizing_check(app: &AppHandle, video_id: i64) -> AppResult<()> {
+    if running(app, video_id, &["video_recognize"]) {
+        return Err(AppError::ValidationError(
+            "正在识别字幕，识别完再规划或切分".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// 能不能删这个视频（或它的原视频文件）：除了 `busy`，识别字幕也在读原视频

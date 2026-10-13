@@ -295,6 +295,15 @@ pub async fn ensure_model(
         .map_err(|e| AppError::InternalError(format!("准备模型目录失败：{e}")))?;
     let client = http_client()?;
     let part = model.part_path(data_dir);
+    // 上次已经下完、没来得及改名就退出了：校验通过直接用，不再重下
+    if std::fs::metadata(&part).is_ok_and(|m| m.len() == model.bytes) {
+        if sha256_file_async(&part).await? == model.sha256 {
+            std::fs::rename(&part, &target)
+                .map_err(|e| AppError::InternalError(format!("保存识别模型失败：{e}")))?;
+            return Ok(target);
+        }
+        let _ = std::fs::remove_file(&part);
+    }
     let mut reasons = Vec::new();
     for source in sources_to_try(source) {
         let url = source.url_of(model);
@@ -308,7 +317,7 @@ pub async fn ensure_model(
         )
         .await
         {
-            Ok(()) => match sha256_file(&part) {
+            Ok(()) => match sha256_file_async(&part).await {
                 Ok(hash) if hash == model.sha256 => {
                     std::fs::rename(&part, &target)
                         .map_err(|e| AppError::InternalError(format!("保存识别模型失败：{e}")))?;
@@ -487,19 +496,31 @@ pub fn import_model_file(data_dir: &Path, model: &SpeechModel, file: &Path) -> A
     if size != model.bytes {
         return Err(wrong());
     }
-    if sha256_file(file)? != model.sha256 {
-        return Err(wrong());
-    }
     std::fs::create_dir_all(models_dir(data_dir))
         .map_err(|e| AppError::InternalError(format!("准备模型目录失败：{e}")))?;
-    let part = model.part_path(data_dir);
-    std::fs::copy(file, &part).map_err(|e| match Failure::from_io(&e) {
-        Failure::Disk(text) => AppError::ExternalServiceError(format!("没能导入模型：{text}")),
-        _ => AppError::InternalError(format!("没能导入模型：{e}")),
-    })?;
-    std::fs::rename(&part, model.path(data_dir))
-        .map_err(|e| AppError::InternalError(format!("没能导入模型：{e}")))?;
-    Ok(())
+    // 复制到导入专用的临时文件（不和下载续传的 .part 混用），校验复制好的那份再放到位
+    let temp = models_dir(data_dir).join(format!("{}.import", model.file()));
+    let result = (|| {
+        std::fs::copy(file, &temp).map_err(|e| match Failure::from_io(&e) {
+            Failure::Disk(text) => AppError::ExternalServiceError(format!("没能导入模型：{text}")),
+            _ => AppError::InternalError(format!("没能导入模型：{e}")),
+        })?;
+        if sha256_file(&temp)? != model.sha256 {
+            return Err(wrong());
+        }
+        std::fs::rename(&temp, model.path(data_dir))
+            .map_err(|e| AppError::InternalError(format!("没能导入模型：{e}")))
+    })();
+    let _ = std::fs::remove_file(&temp);
+    result
+}
+
+/// 在后台线程算 sha256（模型最大 1.5GB，不占用异步任务的线程）
+async fn sha256_file_async(path: &Path) -> AppResult<String> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || sha256_file(&path))
+        .await
+        .map_err(|e| AppError::InternalError(format!("校验识别模型失败：{e}")))?
 }
 
 fn sha256_file(path: &Path) -> AppResult<String> {

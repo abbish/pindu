@@ -20,14 +20,18 @@ const RECIPE = createHash('sha256')
   .update(readFileSync(join(HERE, 'sources.json')))
   .digest('hex');
 
-/** 支持的 triple → cmake 额外参数 */
+/**
+ * 支持的 triple → cmake 额外参数。
+ * - GGML_NATIVE=OFF：不按编译机的 CPU 优化（否则在新芯片上编出的程序到旧机器上会因非法指令崩溃）；
+ * - Windows / Linux 关 OpenMP：否则要用户机器装有 VC++ 运行库（vcomp140.dll）/ libgomp，ggml 自带线程池够用。
+ */
 const TARGETS = {
-  'aarch64-apple-darwin': ['-DCMAKE_OSX_ARCHITECTURES=arm64', '-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON', '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15'],
+  'aarch64-apple-darwin': ['-DCMAKE_OSX_ARCHITECTURES=arm64', '-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON', '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15', '-DGGML_NATIVE=OFF'],
   'x86_64-apple-darwin': ['-DCMAKE_OSX_ARCHITECTURES=x86_64', '-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON', '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15', '-DGGML_NATIVE=OFF'],
-  'x86_64-unknown-linux-gnu': ['-DGGML_NATIVE=OFF'],
-  'aarch64-unknown-linux-gnu': ['-DGGML_NATIVE=OFF'],
-  'x86_64-pc-windows-msvc': ['-DGGML_NATIVE=OFF', '-DCMAKE_POLICY_DEFAULT_CMP0091=NEW', '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded'],
-  'aarch64-pc-windows-msvc': ['-DGGML_NATIVE=OFF', '-DCMAKE_POLICY_DEFAULT_CMP0091=NEW', '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded', '-A', 'ARM64'],
+  'x86_64-unknown-linux-gnu': ['-DGGML_NATIVE=OFF', '-DGGML_OPENMP=OFF'],
+  'aarch64-unknown-linux-gnu': ['-DGGML_NATIVE=OFF', '-DGGML_OPENMP=OFF'],
+  'x86_64-pc-windows-msvc': ['-DGGML_NATIVE=OFF', '-DGGML_OPENMP=OFF', '-DCMAKE_POLICY_DEFAULT_CMP0091=NEW', '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded'],
+  'aarch64-pc-windows-msvc': ['-DGGML_NATIVE=OFF', '-DGGML_OPENMP=OFF', '-DCMAKE_POLICY_DEFAULT_CMP0091=NEW', '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded', '-A', 'ARM64'],
 };
 
 const ext = (triple) => (triple.includes('windows') ? '.exe' : '');

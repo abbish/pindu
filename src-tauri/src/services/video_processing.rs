@@ -37,6 +37,8 @@ pub struct VideoProcessJob {
     pub video_id: i64,
     /// 按哪个规划切
     pub plan_id: i64,
+    /// 已经有整理字幕的任务在跑：切分前不再整理（避免同一批字幕重复交给模型；缺的中文切分时逐段补）
+    pub skip_prepare: bool,
 }
 
 /// 片段里的字幕 → 短文句子：被断行拆开的一句合并回完整的句子（`sentences::group_cues`），
@@ -88,17 +90,32 @@ impl VideoProcessJob {
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
         let before = row.status.clone();
         VideoRepository::set_status(&self.pool, self.video_id, "processing", None).await?;
-        // 先把还没整理的字幕整理好（短文按整句、有中文）
-        crate::services::video_translate::prepare_before(
-            &self.pool,
-            &self.logger,
-            &self.paths,
-            &self.model,
-            &self.profile,
-            self.video_id,
-            &ctx,
-        )
-        .await;
+        // 先把要切的片段里还没整理的字幕整理好（短文按整句、有中文）；只整理这些片段所在的范围
+        let span = VideoRepository::get_plan(&self.pool, self.plan_id)
+            .await?
+            .map(|p| p.plan().segments)
+            .unwrap_or_default()
+            .iter()
+            .fold(None, |acc: Option<(i64, i64)>, s| {
+                Some(acc.map_or((s.start_ms, s.end_ms), |(a, b)| {
+                    (a.min(s.start_ms), b.max(s.end_ms))
+                }))
+            });
+        if !self.skip_prepare {
+            if let Some(span) = span {
+                crate::services::video_translate::prepare_before(
+                    &self.pool,
+                    &self.logger,
+                    &self.paths,
+                    &self.model,
+                    &self.profile,
+                    self.video_id,
+                    Some(span),
+                    &ctx,
+                )
+                .await;
+            }
+        }
         let row = VideoRepository::get(&self.pool, self.video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
@@ -611,6 +628,7 @@ mod real_tests {
         let make = || {
             VideoProcessJob {
             plan_id,
+            skip_prepare: false,
             pool: pool.clone(),
             logger: logger.clone(),
             tools: tools.clone(),

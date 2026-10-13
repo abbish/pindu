@@ -66,6 +66,8 @@ pub fn needs_prepare(cues: &[Cue]) -> bool {
 
 /// 在切分之前顺带整理还没整理的字幕（导入时的整理没做完或失败时补上）。
 /// 失败不影响主流程：没断过句的按标点推断，缺的中文切分时再补。
+/// `range`：只整理这段时间里的（切分时传要切的片段所在的范围）
+#[allow(clippy::too_many_arguments)]
 pub async fn prepare_before(
     pool: &Arc<SqlitePool>,
     logger: &Arc<Logger>,
@@ -73,6 +75,7 @@ pub async fn prepare_before(
     model: &AIModelConfig,
     profile: &crate::prompts::PromptProfile,
     video_id: i64,
+    range: Option<(i64, i64)>,
     ctx: &JobCtx,
 ) {
     let job = VideoTranslateJob {
@@ -82,7 +85,7 @@ pub async fn prepare_before(
         model: model.clone(),
         profile: profile.clone(),
         video_id,
-        range: None,
+        range,
     };
     if let Err(e) = job.prepare(ctx, "正在读字幕").await {
         if !ctx.is_cancelled() {
@@ -164,7 +167,11 @@ impl VideoTranslateJob {
             done += 1;
             ctx.progress(done, total);
             match result {
-                Ok(items) => translated += self.write_back(chunk.start, items).await?,
+                Ok(items) => {
+                    let sent: Vec<String> =
+                        raw[chunk.clone()].iter().map(|c| c.en.clone()).collect();
+                    translated += self.write_back(chunk.start, &sent, items).await?
+                }
                 Err(e) => {
                     failed += chunk.len();
                     last_error = Some(e);
@@ -189,8 +196,14 @@ impl VideoTranslateJob {
         Ok(serde_json::json!({ "translated": translated, "failed": failed }))
     }
 
-    /// 重新读一次再写：断句只补没断过的、中文只补空的，别覆盖别处写入的；返回补了几条中文
-    async fn write_back(&self, start: usize, items: Vec<(bool, String)>) -> AppResult<usize> {
+    /// 重新读一次再写：断句只补没断过的、中文只补空的，别覆盖别处写入的；返回补了几条中文。
+    /// `sent` 是交给模型时这几条的英文：期间字幕被换掉（换文件、重新识别）时对不上的不写，免得旧字幕的中文写进新字幕
+    async fn write_back(
+        &self,
+        start: usize,
+        sent: &[String],
+        items: Vec<(bool, String)>,
+    ) -> AppResult<usize> {
         let _guard = WRITE_LOCK.lock().await;
         let Some(row) = VideoRepository::get(&self.pool, self.video_id).await? else {
             return Ok(0);
@@ -200,6 +213,9 @@ impl VideoTranslateJob {
         for (k, (join, zh)) in items.into_iter().enumerate() {
             let i = start + k;
             let Some(c) = cues.get_mut(i) else { break };
+            if sent.get(k) != Some(&c.en) {
+                continue;
+            }
             if c.join.is_none() {
                 // 第一条没有上一条可接
                 c.join = Some(join && i > 0);

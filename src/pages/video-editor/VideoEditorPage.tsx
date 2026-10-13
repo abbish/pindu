@@ -169,6 +169,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
   /** 规划 / 切分进行中：编辑器锁住，弹窗显示进度 */
   const busyJob = planJob ?? processJob;
   const locked = busyJob !== undefined;
+  /** 字幕还没有或正在识别：不能规划、切分（片段仍可在时间轴上编辑） */
+  const noPlanning = locked || recognizeJob !== undefined || (detail?.cues.length ?? 0) === 0;
   const [tagNames, setTagNames] = useState<string[]>([]);
   /** 连续编辑同一字段只记一次撤销 */
   const lastEditKey = useRef<string | null>(null);
@@ -724,7 +726,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
               onDelete={deletePlan}
               onViewClips={() => onNavigate?.('videos', { tab: 'clips', videoId: detail.video.id })}
             />
-            <Button size="sm" onClick={startProcessing} disabled={locked || pendingCount === 0 || saveState === 'saving'}>
+            <Button size="sm" onClick={startProcessing} disabled={locked || recognizeJob !== undefined || pendingCount === 0 || saveState === 'saving'}>
               <Scissors />
               {pendingCount === 0 && segments.length > 0 ? '已全部切分' : `开始切分（${pendingCount} 段）`}
             </Button>
@@ -739,10 +741,10 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
                 {detail.plans.length > 1 && <span className="font-medium text-foreground">{currentPlan?.name} · </span>}
                 {segments.length} 段 · 共 {formatClock(totalMs, false)}
               </span>
-              <ToolButton label="AI 规划" onClick={() => setAiPlanOpen(true)} disabled={locked || cues.length === 0}>
+              <ToolButton label="AI 规划" onClick={() => setAiPlanOpen(true)} disabled={noPlanning}>
                 <Sparkles />
               </ToolButton>
-              <ToolButton label="按字幕自动切分" onClick={() => setAutoSplitOpen(true)} disabled={locked || cues.length === 0}>
+              <ToolButton label="按字幕自动切分" onClick={() => setAutoSplitOpen(true)} disabled={noPlanning}>
                 <Wand2 />
               </ToolButton>
               {problemCount > 0 && (
@@ -755,11 +757,11 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
             <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
               {segments.length === 0 ? (
                 <div className="flex flex-col gap-2 px-2 py-6">
-                  <Button onClick={() => setAiPlanOpen(true)} disabled={locked}>
+                  <Button onClick={() => setAiPlanOpen(true)} disabled={noPlanning}>
                     <Sparkles />
                     AI 规划
                   </Button>
-                  <Button variant="outline" onClick={() => setAutoSplitOpen(true)} disabled={locked}>
+                  <Button variant="outline" onClick={() => setAutoSplitOpen(true)} disabled={noPlanning}>
                     <Wand2 />
                     按字幕自动切分
                   </Button>

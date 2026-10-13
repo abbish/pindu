@@ -138,6 +138,8 @@ pub fn suggest(candidates: &[SubtitleCandidate]) -> (Option<usize>, Option<usize
     )
 }
 
+/// 导出视频自带字幕最多等多久（要读完整个文件；网络盘上的大文件可能很慢），超时就当没有，用户可以自己选字幕
+const EXPORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 /// 导出的字幕在缓存里留几天（导入时已经读进数据库，留着只为同一个视频再选时不用重新导出）
 const EXPORT_KEEP: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
 
@@ -214,13 +216,26 @@ pub async fn discover(
             .iter()
             .map(|t| (t.index, dir.join(format!("track-{}.srt", t.index))))
             .collect();
-        let missing: Vec<(i64, PathBuf)> = outputs
+        // 先导出到临时文件，全部成功才改名：中途失败或超时留下的半截不会被当成完整字幕复用
+        let missing: Vec<(i64, PathBuf, PathBuf)> = outputs
             .iter()
             .filter(|(_, p)| !p.is_file())
-            .cloned()
+            .map(|(i, p)| (*i, p.clone(), p.with_extension("srt.part")))
             .collect();
-        if let Err(e) = tools.extract_subtitles(video, &missing).await {
-            logger.warn("VIDEO", "导出视频里的字幕失败", Some(&e.to_string()));
+        let temps: Vec<(i64, PathBuf)> = missing.iter().map(|(i, _, t)| (*i, t.clone())).collect();
+        let exported =
+            tokio::time::timeout(EXPORT_TIMEOUT, tools.extract_subtitles(video, &temps)).await;
+        match exported {
+            Ok(Ok(())) => {
+                for (_, path, temp) in &missing {
+                    let _ = std::fs::rename(temp, path);
+                }
+            }
+            Ok(Err(e)) => logger.warn("VIDEO", "导出视频里的字幕失败", Some(&e.to_string())),
+            Err(_) => logger.warn("VIDEO", "导出视频里的字幕超时，跳过", None),
+        }
+        for (_, _, temp) in &missing {
+            let _ = std::fs::remove_file(temp);
         }
         for (track, (_, path)) in text_tracks.iter().zip(&outputs) {
             if path.is_file() {
