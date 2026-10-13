@@ -34,13 +34,9 @@ interface NavItem {
 const STORAGE_KEY = 'settings.activePanel';
 
 /**
- * 四组：通用；学习偏好（功能怎么表现）；服务与模型（要先配好的基础依赖：AI 服务、语音服务、本机模型）；数据与系统。
+ * 四组：学习偏好（功能怎么表现）；服务与模型（要先配好的基础依赖：AI 服务、语音服务、本机模型）；数据与系统；通用（放最后）。
  */
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
-  {
-    title: '通用',
-    items: [{ key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '更新', '版本'] }],
-  },
   {
     title: '学习偏好',
     items: [
@@ -77,6 +73,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: 'diagnostics', label: '诊断', icon: Stethoscope, keywords: ['系统日志', '日志级别', '诊断'] },
     ],
   },
+  {
+    title: '通用',
+    items: [{ key: 'general', label: '通用', icon: Settings2, keywords: ['外观', '主题', '深色', '浅色', '暗色', '更新', '版本'] }],
+  },
 ];
 
 /**
@@ -92,7 +92,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = () => {
     } catch {
       // 存储不可用时用默认分类
     }
-    return 'general';
+    return 'learner';
   });
   const setActive = (key: SettingsKey) => {
     setActiveState(key);
