@@ -396,8 +396,8 @@ export const ReadAloudPanel: React.FC<{
 
   return (
     <Card className="gap-4 px-6 py-5">
-      {/* 朗读工具栏 */}
-      <div className="flex items-center gap-2 border-b pb-4 select-none">
+      {/* 朗读工具栏：往下读、工具栏移出视线时吸在内容区顶部，随时能暂停、换句、切开关 */}
+      <div className="sticky top-0 z-20 -mx-6 -mt-5 flex items-center gap-2 rounded-t-xl border-b bg-card px-6 pt-5 pb-4 select-none">
         <Button onClick={() => (player.playing ? stopAll() : player.play(player.current ?? 0))}>
           {player.playing && player.loading ? <Loader2 className="animate-spin" /> : player.playing ? <Pause /> : <Play />}
           {player.playing ? '暂停' : player.current ? '从这句继续' : blind ? '开始盲听' : '朗读全文'}
