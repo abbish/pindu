@@ -34,6 +34,8 @@ interface ReadAloudPrefs {
   translation: TranslationMode;
   /** 工具栏打开译文时显示哪些：当前句 / 全部 */
   translationMode: 'current' | 'all';
+  /** 已按工具栏开关的版本整理过（见 readPrefs） */
+  toolbar?: boolean;
   /** 标出目标词 */
   highlight: boolean;
   /** 听后回忆：读完含目标词的句子后，把目标词挖空让学生选 */
@@ -45,7 +47,7 @@ interface ReadAloudPrefs {
 }
 
 const PREFS_KEY = 'passage.readAloud.v2';
-const DEFAULT_PREFS: ReadAloudPrefs = { speed: 'normal', repeat: 1, pauseMs: 0, translation: 'off', translationMode: 'current', highlight: true, recall: false, focusBlur: true, shadow: false };
+const DEFAULT_PREFS: ReadAloudPrefs = { speed: 'normal', repeat: 1, pauseMs: 0, translation: 'off', translationMode: 'all', toolbar: true, highlight: true, recall: false, focusBlur: true, shadow: false };
 const segmentItem = 'h-7 rounded-md px-2.5 text-xs data-[state=on]:bg-background data-[state=on]:shadow-sm';
 
 function readPrefs(): ReadAloudPrefs {
@@ -53,8 +55,12 @@ function readPrefs(): ReadAloudPrefs {
     const raw = localStorage.getItem(PREFS_KEY);
     if (raw) {
       const saved = { ...DEFAULT_PREFS, ...JSON.parse(raw) } as ReadAloudPrefs;
-      // 旧偏好只有 translation：开着时沿用它的显示方式
-      if (!JSON.parse(raw).translationMode && saved.translation !== 'off') saved.translationMode = saved.translation;
+      // 译文改成工具栏开关之前存的偏好：显示方式按「全部」（「当前句」不朗读时一句也不显示，像是没反应）
+      if (!saved.toolbar) {
+        saved.toolbar = true;
+        saved.translationMode = 'all';
+        if (saved.translation !== 'off') saved.translation = 'all';
+      }
       return saved;
     }
   } catch {
@@ -84,6 +90,18 @@ const shuffle = <T,>(list: T[]) => {
   }
   return copy;
 };
+
+/** 工具栏上的图标开关：悬停显示名字，开着时高亮 */
+const IconToggle: React.FC<{ label: string; pressed: boolean; onPressedChange: (on: boolean) => void; disabled?: boolean; children: React.ReactNode }> = ({ label, pressed, onPressedChange, disabled, children }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Toggle size="sm" className="size-8 p-0 data-[state=on]:bg-accent data-[state=on]:text-accent-foreground" pressed={pressed} onPressedChange={onPressedChange} disabled={disabled} aria-label={label}>
+        {children}
+      </Toggle>
+    </TooltipTrigger>
+    <TooltipContent>{label}</TooltipContent>
+  </Tooltip>
+);
 
 /** 一段设置：标题 + 分段选择 */
 const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -393,41 +411,37 @@ export const ReadAloudPanel: React.FC<{
         {player.loading && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="正在生成语音" />}
         <span className="min-w-0 truncate text-xs text-muted-foreground">{status}</span>
         <div className="flex-1" />
-        {/* 读的时候随手切的开关；设一次就不动的在 ⚙ 里 */}
-        <Toggle size="sm" pressed={prefs.speed === 'slow'} onPressedChange={(on) => updatePrefs({ speed: on ? 'slow' : 'normal' })} aria-label="慢速">
-          <Snail />
-          慢速
-        </Toggle>
-        <Toggle size="sm" pressed={prefs.translation !== 'off'} onPressedChange={(on) => updatePrefs({ translation: on ? prefs.translationMode : 'off' })} aria-label="译文" disabled={blind}>
-          <Languages />
-          译文
-        </Toggle>
-        {say.enabled && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Toggle
-                size="sm"
-                pressed={prefs.shadow && say.ready === true}
-                onPressedChange={(on) => (say.ready === false ? void say.download() : updatePrefs({ shadow: on }))}
-                disabled={Boolean(say.downloading)}
-                aria-label="跟读"
-              >
-                {say.downloading ? <Loader2 className="animate-spin" /> : <Mic />}
-                跟读
-              </Toggle>
-            </TooltipTrigger>
-            <TooltipContent>{say.ready === false ? (say.downloading ? '正在下载评估模型' : '先下载评估模型') : '读完一句自动跟读'}</TooltipContent>
-          </Tooltip>
-        )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Toggle size="sm" pressed={blind} onPressedChange={toggleBlind} aria-label="盲听">
-              <EyeOff />
-              盲听
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>隐藏原文，朗读结束后显示</TooltipContent>
-        </Tooltip>
+        {/* 读的时候随手切的开关（只有图标，悬停说明）；设一次就不动的在 ⚙ 里 */}
+        <div className="flex items-center gap-0.5">
+          <IconToggle
+            label={prefs.speed === 'slow' ? '慢速（下一句起生效）' : '慢速'}
+            pressed={prefs.speed === 'slow'}
+            onPressedChange={(on) => updatePrefs({ speed: on ? 'slow' : 'normal' })}
+          >
+            <Snail />
+          </IconToggle>
+          <IconToggle
+            label={prefs.translationMode === 'current' ? '译文（朗读时显示正在读的那句）' : '译文'}
+            pressed={prefs.translation !== 'off'}
+            onPressedChange={(on) => updatePrefs({ translation: on ? prefs.translationMode : 'off' })}
+            disabled={blind}
+          >
+            <Languages />
+          </IconToggle>
+          {say.enabled && (
+            <IconToggle
+              label={say.ready === false ? (say.downloading ? '正在下载评估模型' : '跟读（先下载评估模型）') : '跟读：朗读时读完一句自动开麦'}
+              pressed={prefs.shadow && say.ready === true}
+              onPressedChange={(on) => (say.ready === false ? void say.download() : updatePrefs({ shadow: on }))}
+              disabled={Boolean(say.downloading)}
+            >
+              {say.downloading ? <Loader2 className="animate-spin" /> : <Mic />}
+            </IconToggle>
+          )}
+          <IconToggle label="盲听：隐藏原文，朗读结束后显示" pressed={blind} onPressedChange={toggleBlind}>
+            <EyeOff />
+          </IconToggle>
+        </div>
         <Popover>
           <Tooltip>
             <TooltipTrigger asChild>
