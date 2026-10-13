@@ -89,36 +89,33 @@ pub async fn reset_user_data(app: AppHandle) -> AppResult<ResetResult> {
 
     logger.api_request("reset_user_data", None);
 
-    let result = async {
-        let running = app.state::<Jobs>().active_titles();
-        if !running.is_empty() {
-            return Err(AppError::ValidationError(format!(
-                "还有后台任务在进行（{}），等它们结束或停止后再重置",
-                running.join("、")
-            )));
+    let result: AppResult<ResetResult> = async {
+        ensure_idle(&app).await?;
+        // 先关掉 AI 老师的对话进程：清库期间它不能再经工具写进新数据
+        let hub = app.state::<ChatHub>().inner().clone();
+        for session in hub.sessions().await {
+            hub.close(&session.id).await;
         }
         let pool = Arc::new(pool.inner().clone());
         let log = Arc::new(logger.inner().clone());
         let result = StatisticsService::new(pool.clone(), log.clone())
             .reset_user_data()
             .await?;
-        if !result.success {
-            return Ok(result);
-        }
-        // 数据库清空后再删文件：失败只记警告（剩下的文件不再被引用）
-        let hub = app.state::<ChatHub>().inner().clone();
-        if let Err(e) = TutorChatService::new(pool, log)
-            .delete_all(&agent_paths(&app)?, &hub)
-            .await
-        {
-            logger.warn("RESET", "删除 AI 老师的对话失败", Some(&e.to_string()));
-        }
-        let videos = crate::app_paths::dirs(&app).data.join("videos");
-        if videos.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&videos) {
-                logger.warn("RESET", "删除视频文件失败", Some(&e.to_string()));
+        // 数据库已经清空：之后删文件只记警告（剩下的文件不再被引用），不再报失败
+        match agent_paths(&app) {
+            Ok(paths) => {
+                if let Err(e) = TutorChatService::new(pool, log)
+                    .delete_all(&paths, &hub)
+                    .await
+                {
+                    logger.warn("RESET", "删除 AI 老师的对话失败", Some(&e.to_string()));
+                }
             }
+            Err(e) => logger.warn("RESET", "删除 AI 老师的对话失败", Some(&e.to_string())),
         }
+        remove_video_files(&app, &logger);
+        // 已结束的任务指向已删除的素材：一并清掉
+        app.state::<Jobs>().clear_finished();
         Ok(result)
     }
     .await;
@@ -130,6 +127,33 @@ pub async fn reset_user_data(app: AppHandle) -> AppResult<ResetResult> {
         Err(e) => {
             logger.api_response("reset_user_data", false, Some(&e.to_string()));
             Err(e)
+        }
+    }
+}
+
+/// 清数据前：有后台任务在跑、或 AI 老师正在回答 / 等回答时不清（它们会往刚清空的库里写）
+async fn ensure_idle(app: &AppHandle) -> AppResult<()> {
+    let running = app.state::<Jobs>().active_titles();
+    if !running.is_empty() {
+        return Err(AppError::ValidationError(format!(
+            "还有后台任务在进行（{}），等它们结束或停止后再重置",
+            running.join("、")
+        )));
+    }
+    if !app.state::<ChatHub>().activity().await.is_empty() {
+        return Err(AppError::ValidationError(
+            "AI 老师还在回答，等它答完或停止后再重置".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// 删掉视频文件夹（数据库里的视频已经清空）；失败只记警告
+fn remove_video_files(app: &AppHandle, logger: &Logger) {
+    let videos = crate::app_paths::dirs(app).data.join("videos");
+    if videos.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&videos) {
+            logger.warn("RESET", "删除视频文件失败", Some(&e.to_string()));
         }
     }
 }
@@ -290,21 +314,27 @@ pub async fn reset_selected_tables(
         Some(&format!("Tables: {:?}", table_names)),
     );
 
-    if table_names.is_empty() {
-        return Ok(ResetResult {
-            success: false,
-            message: "请先选择要清空的数据".to_string(),
-            deleted_records: 0,
-            affected_tables: vec![],
-        });
-    }
-
     let service = StatisticsService::new(
         Arc::new(pool.inner().clone()),
         Arc::new(logger.inner().clone()),
     );
+    let result: AppResult<ResetResult> = async {
+        if table_names.is_empty() {
+            return Err(AppError::ValidationError(
+                "请先选择要清空的数据".to_string(),
+            ));
+        }
+        ensure_idle(&app).await?;
+        let result = service.reset_selected_tables(&table_names).await?;
+        if table_names.iter().any(|t| t == "videos") {
+            remove_video_files(&app, &logger);
+        }
+        app.state::<Jobs>().clear_finished();
+        Ok(result)
+    }
+    .await;
 
-    match service.reset_selected_tables(&table_names).await {
+    match result {
         Ok(result) => {
             logger.api_response("reset_selected_tables", true, Some(&result.message));
             Ok(result)

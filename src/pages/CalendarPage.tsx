@@ -88,8 +88,8 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ onNavigate }) => {
       studyDays: stats.study_days || 0,
       totalDays: stats.total_days || 0,
       wordsLearned: stats.total_words_learned || 0,
-      // 平均每个学习日通过的词数（不按整月天数平均）
-      averageDaily: stats.study_days > 0 ? (stats.total_words_learned || 0) / stats.study_days : 0,
+      // 平均每个练过单词的日子通过的词数（不按整月天数平均，只读了短文的日子不算）
+      averageDaily: stats.word_days > 0 ? (stats.total_words_learned || 0) / stats.word_days : 0,
       streakDays: stats.streak_days || 0,
     };
   }, [calendarData]);

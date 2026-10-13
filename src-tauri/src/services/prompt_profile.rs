@@ -54,7 +54,7 @@ impl PromptProfileService {
         Ok(normalized)
     }
 
-    /// 套用预设：替换学习者、语言与讲解方式，保留兴趣场景、AI 老师的人设（称呼、风格、小问题）与补充要求
+    /// 套用预设：替换学习者、语言与讲解方式，保留兴趣场景、音标、AI 老师的人设（称呼、风格、小问题）与补充要求
     pub async fn apply_preset(pool: &SqlitePool, preset: &str) -> AppResult<PromptProfile> {
         let base = PromptProfile::preset(preset)
             .ok_or_else(|| AppError::ValidationError(format!("未知的预设：{}", preset)))?;
@@ -67,6 +67,7 @@ impl PromptProfileService {
             learner_name: current.learner_name,
             tutor_character: current.tutor_character,
             custom: current.custom,
+            ipa: current.ipa,
             ..base
         };
         Self::save(pool, &profile).await

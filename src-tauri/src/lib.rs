@@ -201,6 +201,8 @@ pub fn run() {
                         if let Err(e) = services::srs::sync_all_today(&pool).await {
                             logger.warn("SRS", "启动时同步今日复习失败", Some(&e.to_string()));
                         }
+                        // 「本次通过」口径变了：旧日程按新口径重算一次（只做一次）
+                        services::practice::upgrade_pass_counts(&pool, &logger).await;
                         // 日志级别：设置页保存的（未设置为默认）
                         services::log_settings::LogSettingsService::apply_saved(&pool, &logger)
                             .await;

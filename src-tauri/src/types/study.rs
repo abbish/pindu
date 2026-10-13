@@ -609,6 +609,8 @@ pub struct CalendarMonthlyStats {
     pub total_days: i32,
     /// 有学习活动的天数（单词练习 + 短文）
     pub study_days: i32,
+    /// 练过单词的天数
+    pub word_days: i32,
     /// 当月日程里本次通过的单词数
     pub total_words_learned: i32,
     pub streak_days: i32,
@@ -631,7 +633,7 @@ pub struct StudyPlanStatistics {
     pub task_days: i64,
     /// 任务都完成了的日子
     pub completed_days: i64,
-    /// 没练的日子：日期已过、任务没完成，且计划仍在进行（进行中 / 待开始）
+    /// 没练的日子：日期已过、任务没完成，且计划在进行中
     pub overdue_days: i64,
     /// 周期里每天一格（按日期）
     pub days: Vec<PlanDay>,

@@ -213,7 +213,7 @@ pub struct CalendarScheduleRow {
     pub plan_name: String,
     pub unified_status: String,
     pub total_words: i32,
-    /// 日程已掌握单词数（三步首答全对，见 refresh_completion）
+    /// 日程的本次通过单词数（见 refresh_completion）
     pub completed_words: i32,
     /// 日程已练完（有已完成的练习会话）
     pub practiced: bool,

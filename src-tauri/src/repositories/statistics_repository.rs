@@ -315,12 +315,9 @@ impl StatisticsRepository {
                             &format!("清空 {} 失败", table_name),
                             Some(&e.to_string()),
                         );
-                        return Ok(ResetResult {
-                            success: false,
-                            message: "清空数据没有完成，已全部撤销，请稍后再试".to_string(),
-                            deleted_records: 0,
-                            affected_tables: vec![],
-                        });
+                        return Err(AppError::DatabaseError(
+                            "清空数据没有完成，已全部撤销，请稍后再试".to_string(),
+                        ));
                     }
                 }
             }
@@ -412,12 +409,9 @@ impl StatisticsRepository {
                             &format!("清空 {} 失败", table_name),
                             Some(&e.to_string()),
                         );
-                        return Ok(ResetResult {
-                            success: false,
-                            message: "清空数据没有完成，已全部撤销，请稍后再试".to_string(),
-                            deleted_records: 0,
-                            affected_tables: vec![],
-                        });
+                        return Err(AppError::DatabaseError(
+                            "清空数据没有完成，已全部撤销，请稍后再试".to_string(),
+                        ));
                     }
                 }
             }
@@ -637,7 +631,8 @@ impl StatisticsRepository {
                         .map(|d| (d, *done))
                 })
                 .collect::<Vec<_>>(),
-            matches!(unified_status.as_str(), "Active" | "Pending"),
+            // 待开始的计划第一次练习时整体平移到当天：开始前的日子不算没练
+            unified_status == "Active",
         );
         let count = |status: &str| days.iter().filter(|d| d.status == status).count() as i64;
         let task_days = days.iter().filter(|d| d.status != "rest").count() as i64;

@@ -377,6 +377,11 @@ fn build_month_with_passages(
                         .is_ok_and(|date| study_dates.contains(&date))
             })
             .count() as i32,
+        // 练过单词的天数（「平均每个学习日通过的词数」的分母：只读了短文的日子不算）
+        word_days: current_month_days
+            .iter()
+            .filter(|d| d.study_sessions.is_some())
+            .count() as i32,
         total_words_learned: current_month_days
             .iter()
             .map(|d| d.completed_words_count)

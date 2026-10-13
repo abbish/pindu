@@ -22,11 +22,20 @@ impl StudyScheduleRepository {
         Self { pool, logger }
     }
 
+    /// 有已完成练习会话的日程（口径变化后重算本次通过数用）
+    pub async fn ids_with_completed_sessions(&self) -> AppResult<Vec<i64>> {
+        Ok(sqlx::query_scalar(
+            "SELECT DISTINCT schedule_id FROM practice_sessions WHERE completed = TRUE",
+        )
+        .fetch_all(self.pool.as_ref())
+        .await?)
+    }
+
     /// 根据已完成的练习会话重算日程掌握数与状态（在调用方事务内执行）。
     ///
-    /// 状态：有已完成会话即 completed（练完）。掌握数口径：日程内的单词，只要在该日程**任一已完成**会话中三个步骤的**首次作答**（kind = learn，
-    /// 不含纠正后重考与当轮小测）都正确，即计为完成；按单词去重。与 `PracticeRepository::find_word_states_by_session` 的
-    /// `passed` 判定一致。日历与今日日程读取 `completed_words_count` / `status`。
+    /// 状态：有已完成会话即 completed（练完）。`completed_words_count` 是本次通过数（口径见 `practice_metrics::MASTERED_CTE`）：
+    /// 日程内的单词，只要在该日程**任一已完成**会话中每步**首次作答**（kind = learn，不含纠正后重考）都正确、且当轮小测第一次没写错，
+    /// 即计入；按单词去重。与练习结果页的「本次通过」一致。日历与今日日程读取 `completed_words_count` / `status`。
     pub async fn refresh_completion(
         &self,
         conn: &mut SqliteConnection,

@@ -418,6 +418,8 @@ export interface CalendarMonthlyStats {
   total_days: number;
   /** 有学习活动的天数（单词练习 + 短文） */
   study_days: number;
+  /** 练过单词的天数 */
+  word_days: number;
   /** 当月日程里本次通过的单词数 */
   total_words_learned: number;
   streak_days: number;

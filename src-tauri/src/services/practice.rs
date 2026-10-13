@@ -606,6 +606,40 @@ impl PracticeService {
     }
 }
 
+/// 「本次通过」口径的版本：改了口径就加一，启动时按新口径重算一次旧日程（只做一次）
+const PASS_RULE_KEY: &str = "stats.pass_rule";
+const PASS_RULE: &str = "2";
+
+/// 升级后第一次启动：旧日程存着的本次通过数按当前口径（算上当轮小测）重算一遍；失败只记警告，下次启动再试
+pub async fn upgrade_pass_counts(pool: &SqlitePool, logger: &Logger) {
+    use crate::repositories::settings_repository::SettingsRepository;
+    if SettingsRepository::get(pool, PASS_RULE_KEY)
+        .await
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some(PASS_RULE)
+    {
+        return;
+    }
+    let result = async {
+        let repo = StudyScheduleRepository::new(Arc::new(pool.clone()), Arc::new(logger.clone()));
+        let ids = repo.ids_with_completed_sessions().await?;
+        let mut tx = srs::begin_write(pool).await?;
+        for id in &ids {
+            repo.refresh_completion(&mut tx, *id).await?;
+        }
+        SettingsRepository::set(&mut tx, PASS_RULE_KEY, Some(PASS_RULE)).await?;
+        tx.commit().await?;
+        AppResult::Ok(ids.len())
+    }
+    .await;
+    match result {
+        Ok(n) => logger.info("STATS", &format!("按新口径重算了 {n} 个日程的本次通过数")),
+        Err(e) => logger.warn("STATS", "重算日程的本次通过数失败", Some(&e.to_string())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -877,6 +911,27 @@ mod tests {
         assert_eq!(result.difficult_words.len(), 1);
         // 日程的通过数与结果页同一口径：小测第一次写错就不算本次通过
         assert_eq!(schedule_progress(&pool, fx.schedule_id).await.0, 0);
+
+        // 升级前按旧口径存的数：启动时重算一次（只做一次）
+        sqlx::query("UPDATE study_plan_schedules SET completed_words_count = 1 WHERE id = ?")
+            .bind(fx.schedule_id)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        let logger = crate::test_support::test_logger();
+        upgrade_pass_counts(&pool, &logger).await;
+        assert_eq!(schedule_progress(&pool, fx.schedule_id).await.0, 0);
+        sqlx::query("UPDATE study_plan_schedules SET completed_words_count = 1 WHERE id = ?")
+            .bind(fx.schedule_id)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        upgrade_pass_counts(&pool, &logger).await;
+        assert_eq!(
+            schedule_progress(&pool, fx.schedule_id).await.0,
+            1,
+            "只重算一次"
+        );
     }
 
     fn rec(
