@@ -14,7 +14,6 @@ import { cn } from '@/lib/utils';
 import type { PassageSentence, SentenceAnalysis } from '@/types/passage';
 import type { ApiResult } from '@/types';
 import { canAddTarget } from '@/utils/passage';
-import { useQuickSay } from '@/components/SayText';
 
 export interface SentenceAnalysisPanelProps {
   passageId: number;
@@ -116,8 +115,6 @@ export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ pa
   const sentence = sentences[index];
   const key = `${passageId}:${index}`;
   const [state, setState] = useState<{ key: string; analysis?: SentenceAnalysis; error?: string; loading: boolean; refresh?: boolean }>({ key, loading: false });
-  // 跟读这句：读完逐词标色（发音要点在分析里，对照着看）
-  const say = useQuickSay(sentence?.en ?? '');
 
   /** 加载这句的分析；`refresh` 重新分析。失败时保留已有的分析，只提示原因 */
   const load = async (refresh: boolean) => {
@@ -143,6 +140,17 @@ export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ pa
     else void load(false);
     // 换句时加载；load 依赖的值都在 key 里
   }, [key]);
+
+  // 这句分析好以后，后台先分析下一句：点「下一句」时多半已经好了
+  const ready = state.key === key && !state.loading && Boolean(state.analysis);
+  useEffect(() => {
+    const next = index + 1;
+    const nextKey = `${passageId}:${next}`;
+    if (!ready || next >= sentences.length || store.has(nextKey) || inflight.has(`${nextKey}:`)) return;
+    const request = passageService.analyzeSentence({ passageId, sentenceIndex: next, refresh: false });
+    inflight.set(`${nextKey}:`, request);
+    void request.then((r) => r.success && store.set(nextKey, r.data)).finally(() => inflight.delete(`${nextKey}:`));
+  }, [ready, key]);
 
   // Esc 关闭：输入框里、已被其它浮层处理（选词气泡、下拉、弹窗）时不关
   useEffect(() => {
@@ -181,11 +189,7 @@ export const SentenceAnalysisPanel: React.FC<SentenceAnalysisPanelProps> = ({ pa
             <X />
           </Button>
         </div>
-        <div className="flex items-start gap-2">
-          {say.marked('min-w-0 flex-1 text-[15px] leading-snug font-medium select-text')}
-          {say.button}
-        </div>
-        {say.verdict}
+        <p className="text-[15px] leading-snug font-medium select-text">{sentence.en}</p>
         <TranslationLine key={index} zh={sentence.zh} onSave={onEditTranslation && ((zh) => onEditTranslation(index, zh))} />
         <div className="inline-flex gap-0.5 rounded-lg bg-muted p-[3px]" role="tablist" aria-label="句子分析">
           {(

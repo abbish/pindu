@@ -19,6 +19,7 @@ import type { Passage, PassageSentence } from '@/types/passage';
 import type { PassageVideo } from '@/types/video';
 import { ListenBuildPanel } from './ListenBuildPanel';
 import type { PronunciationContext } from '@/types/pronunciation';
+import { useSentenceSay } from '@/components/SayText';
 import { ShadowingPanel } from './ShadowingPanel';
 
 type Mode = 'study' | 'shadow' | 'listen';
@@ -90,6 +91,9 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
   /** 目标词组在台词里的写法 */
   const forms = useMemo(() => formsOf(passage.targetWords), [passage.targetWords]);
+  // 台词每句后面的跟读：开始前暂停视频
+  const texts = useMemo(() => sentences.map((s) => s.en), [sentences]);
+  const sentenceSay = useSentenceSay(texts, pronunciationContext, () => videoRef.current?.pause());
   /** 正在看分析的台词 */
   const [analyzing, setAnalyzing] = useState<number | null>(null);
   const wordInfo = useTargetWordInfo(passage);
@@ -331,6 +335,8 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
             >
             <PassageReader
               onAnalyzeSentence={setAnalyzing}
+              sentenceAction={sentenceSay.action}
+              below={sentenceSay.below}
               analyzing={analyzing}
               scrollContainer={textBox}
               sentences={sentences}

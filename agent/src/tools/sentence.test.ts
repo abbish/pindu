@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sentenceAnalysisProblems, type SentenceAnalysisSubmission } from './sentence.ts';
+import { sentenceAnalysisProblems, trimSentenceAnalysis, type SentenceAnalysisSubmission } from './sentence.ts';
 
 const ok = (): SentenceAnalysisSubmission => ({
   sentence: 'She gave up her job because she wanted to travel.',
@@ -24,13 +24,24 @@ test('合格的分析', () => {
   assert.deepEqual(sentenceAnalysisProblems(ok()), []);
 });
 
-test('成分要照抄原句并按顺序；片段要出自原句；词组要是多词原形', () => {
+test('成分要照抄原句并按顺序（主干不合格才退回）', () => {
   const bad = ok();
   bad.chunks = [bad.chunks[2], bad.chunks[0], bad.chunks[1]];
-  bad.pronunciation = [{ text: 'look after', tip: 'x' }];
-  bad.phrases = [{ text: 'job', base: 'job', meaning: '工作' }];
-  const problems = sentenceAnalysisProblems(bad);
-  assert.ok(problems.some((p) => p.includes('按顺序')));
-  assert.ok(problems.some((p) => p.includes('pronunciation[1]')));
-  assert.ok(problems.some((p) => p.includes('phrases[1].base')));
+  assert.ok(sentenceAnalysisProblems(bad).some((p) => p.includes('按顺序')));
+});
+
+test('附加项不合格的直接去掉，不退回：take...to... 这样的词组、不在原句里的发音要点、语法点引用', () => {
+  const sub = ok();
+  sub.phrases = [
+    { text: 'gave up', base: 'give up', meaning: '放弃' },
+    { text: 'take ... to', base: 'take...to...', meaning: '带去' },
+    { text: 'job', base: 'job', meaning: '工作' },
+  ];
+  sub.pronunciation = [{ text: 'look after', tip: 'x' }, { text: 'gave up', tip: '连读' }];
+  sub.grammar = [{ title: '一般过去时', text: 'went away', explanation: '过去的动作' }];
+  assert.deepEqual(sentenceAnalysisProblems(sub), []);
+  const trimmed = trimSentenceAnalysis(sub);
+  assert.deepEqual(trimmed.phrases.map((p) => p.base), ['give up']);
+  assert.deepEqual(trimmed.pronunciation.map((p) => p.text), ['gave up']);
+  assert.equal(trimmed.grammar[0].text, '');
 });

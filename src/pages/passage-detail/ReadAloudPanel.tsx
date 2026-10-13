@@ -15,7 +15,7 @@ import { useTargetWordInfo } from './useTargetWordInfo';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { useRecorder } from '@/hooks/useRecorder';
 import { usePronunciation } from '@/hooks/usePronunciation';
-import { SayText, SayVerdict } from '@/components/SayText';
+import { SayText, SayVerdict, useSentenceSay } from '@/components/SayText';
 import type { Assessment, PronunciationContext } from '@/types/pronunciation';
 import { cn } from '@/lib/utils';
 import { canAddTarget, formsOf, recallBlanks } from '@/utils/passage';
@@ -122,6 +122,9 @@ export const ReadAloudPanel: React.FC<{
   const recorder = useRecorder({ silenceStopMs: 900, maxMs: 15000 });
   const [shadowing, setShadowing] = useState<{ index: number; resolve: () => void } | null>(null);
   const [sayResults, setSayResults] = useState<Map<number, Assessment>>(new Map());
+  // 原文每句后面的跟读（点一句跟读一句）：开始前停掉朗读
+  const stopRef = useRef<() => void>(() => {});
+  const sentenceSay = useSentenceSay(texts, pronunciationContext, () => stopRef.current());
   const shadowOn = prefs.shadow && say.enabled && say.ready === true;
   const shadowRef = useRef(shadowOn);
   shadowRef.current = shadowOn && !blind;
@@ -256,6 +259,8 @@ export const ReadAloudPanel: React.FC<{
     }
     player.stop();
   };
+
+  stopRef.current = stopAll;
 
   const toggleBlind = () => {
     stopAll();
@@ -506,11 +511,13 @@ export const ReadAloudPanel: React.FC<{
         renderSentence={renderRecallSentence}
         below={(i) => (
           <>
+            {sentenceSay.below(i)}
             {shadowPanel(i)}
             {recallPanel(i)}
           </>
         )}
         onAnalyzeSentence={blind || prefs.recall ? undefined : setAnalyzing}
+        sentenceAction={blind || prefs.recall ? undefined : sentenceSay.action}
         analyzing={analyzing}
         renderTarget={(text, target, active) => (
           <TargetWord text={text} target={target} active={active} word={details.get(target.toLowerCase())} speak={(w, slow) => wordAudio.speak(w, { slow })} onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined} />

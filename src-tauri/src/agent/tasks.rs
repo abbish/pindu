@@ -2148,8 +2148,8 @@ pub fn sentence_analyze_task(profile: &PromptProfile) -> AgentTask {
         name: "sentence-analyze",
         system_prompt: prompts::system_prompt(PromptTask::SentenceAnalyze, profile, &[]),
         tools: &["submit_sentence_analysis"],
-        // 语法与句式要准确
-        default_thinking: "medium",
+        // 准确性靠提示词里的规则与交卷校验；medium 时 MiniMax 等模型要想二三十秒，学习者在等着看
+        default_thinking: "low",
     }
 }
 

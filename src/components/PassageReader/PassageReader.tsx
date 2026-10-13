@@ -38,6 +38,8 @@ export interface PassageReaderProps {
   focusBlur?: boolean;
   /** 句子分析：每句右侧的分析按钮；不传则不显示 */
   onAnalyzeSentence?: (index: number) => void;
+  /** 句子后面、分析图标左边的操作（跟读，见 SayText/useSentenceSay） */
+  sentenceAction?: (index: number) => React.ReactNode;
   /** 正在看分析的句子（标出来） */
   analyzing?: number | null;
   /** 跟随当前句时只滚动这个容器（如视频旁的台词框），不带动整页；默认滚动页面 */
@@ -173,6 +175,7 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
   focusBlur = false,
   scrollContainer,
   onAnalyzeSentence,
+  sentenceAction,
   analyzing,
 }) => {
   const rows = useRef<(HTMLDivElement | null)[]>([]);
@@ -249,6 +252,7 @@ export const PassageReader: React.FC<PassageReaderProps> = ({
               {showZh && <p className={cn('text-sm leading-relaxed text-muted-foreground', active && 'mt-1 text-[15px]')}>{s.zh}</p>}
               {below?.(i)}
             </div>
+            {!hidden && sentenceAction?.(i)}
             {onAnalyzeSentence && !hidden && (
               <button
                 type="button"

@@ -1,5 +1,7 @@
 // 句子分析的工具：submit_sentence_analysis（句式、成分、语法点、交际功能、词组、发音要点）。
-// 校验不通过时抛错，模型只改被指出的地方再重交；Rust 侧（services::sentence_analysis）会按原句再校正。
+// 主干（句式、交际功能、成分、语法点的讲解）不合格时抛错，模型只改被指出的地方再重交；
+// 附加项（词组、发音要点、语法点引用的原文）不合格的直接去掉，不为它们整份重交（重交一轮要多等十几秒）。
+// Rust 侧（services::sentence_analysis）会按原句再校正。
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
@@ -47,10 +49,25 @@ export type SentenceAnalysisSubmission = Static<typeof SentenceAnalysisParams>;
 const norm = (s: string) => s.replace(/[\u2018\u2019]/g, "'").toLowerCase().replace(/\s+/g, " ").trim();
 const clean = (s: string) => norm(s).replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, "");
 
+const PHRASE_BASE = /^[A-Za-z'-]+( [A-Za-z'-]+){1,5}$/;
+
+/** 去掉不合格的附加项：词组原形不是 2–6 个英文词、缺释义、发音要点不在原句里或缺说明、语法点引用的原文不在原句里（只清空引用） */
+export function trimSentenceAnalysis(p: SentenceAnalysisSubmission): SentenceAnalysisSubmission {
+  const sentence = norm(p.sentence);
+  const inSentence = (part: string) => clean(part) !== "" && sentence.includes(clean(part));
+  return {
+    ...p,
+    grammar: p.grammar.map((g) => (g.text.trim() && !inSentence(g.text) ? { ...g, text: "" } : g)),
+    alternatives: p.alternatives.slice(0, 3),
+    phrases: p.phrases.filter((x) => PHRASE_BASE.test(x.base.trim()) && x.meaning.trim()).slice(0, 4),
+    pronunciation: p.pronunciation.filter((x) => inSentence(x.text) && x.tip.trim()).slice(0, 4),
+  };
+}
+
+/** 主干的问题（附加项先经 trimSentenceAnalysis 清理，不在这里退回） */
 export function sentenceAnalysisProblems(p: SentenceAnalysisSubmission): string[] {
   const problems: string[] = [];
   const sentence = norm(p.sentence);
-  const inSentence = (part: string) => clean(part) !== "" && sentence.includes(clean(part));
   if (!p.pattern.trim()) problems.push("pattern 不能为空");
   if (!p.function.trim()) problems.push("function 不能为空");
   if (p.chunks.length < 2 || p.chunks.length > 8) problems.push(`chunks 要 3–8 段（现在 ${p.chunks.length} 段）`);
@@ -65,18 +82,6 @@ export function sentenceAnalysisProblems(p: SentenceAnalysisSubmission): string[
   if (p.grammar.length < 1 || p.grammar.length > 3) problems.push(`grammar 要 1–3 个（现在 ${p.grammar.length} 个）`);
   p.grammar.forEach((g, i) => {
     if (!g.title.trim() || !g.explanation.trim()) problems.push(`grammar[${i + 1}] 要有 title 和 explanation`);
-    if (g.text.trim() && !inSentence(g.text)) problems.push(`grammar[${i + 1}].text「${g.text}」不在原句里`);
-  });
-  if (p.alternatives.length > 3) problems.push("alternatives 最多 3 个");
-  if (p.phrases.length > 4) problems.push("phrases 最多 4 个");
-  p.phrases.forEach((x, i) => {
-    if (!/^[A-Za-z'-]+( [A-Za-z'-]+){1,5}$/.test(x.base.trim())) problems.push(`phrases[${i + 1}].base「${x.base}」应是 2–6 个词的英文词组原形`);
-    if (!x.meaning.trim()) problems.push(`phrases[${i + 1}] 缺少 meaning`);
-  });
-  if (p.pronunciation.length > 4) problems.push("pronunciation 最多 4 个");
-  p.pronunciation.forEach((x, i) => {
-    if (!inSentence(x.text)) problems.push(`pronunciation[${i + 1}].text「${x.text}」不在原句里`);
-    if (!x.tip.trim()) problems.push(`pronunciation[${i + 1}] 缺少 tip`);
   });
   return problems.slice(0, 12);
 }
@@ -91,6 +96,6 @@ export const submitSentenceAnalysisTool = defineTool({
     if (problems.length > 0) {
       throw new Error(`提交未通过校验（${problems.length} 处），请修正后重新提交：\n- ${problems.join("\n- ")}`);
     }
-    return { content: [{ type: "text", text: "Accepted." }], details: params, terminate: true };
+    return { content: [{ type: "text", text: "Accepted." }], details: trimSentenceAnalysis(params), terminate: true };
   },
 });
