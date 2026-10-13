@@ -24,6 +24,8 @@ export function jobErrorText(job: Job): string {
 /** 进度百分比；不确定时按已用时间给一个渐近值（不到 100） */
 export function jobPercent(job: Job, now = Date.now()): number {
   if (job.status === 'succeeded') return 100;
+  // 还在排队：没开始，进度条空着
+  if (job.status === 'queued') return 0;
   if (job.total > 0) return Math.min(100, (job.current / job.total) * 100);
   const elapsed = job.startedAt ? (now - instantMs(job.startedAt)) / 1000 : 0;
   return Math.min(90, 8 + elapsed * 1.2);

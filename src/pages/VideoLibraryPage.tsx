@@ -29,7 +29,7 @@ import { ImportVideoDialog } from '@/components/ImportVideoDialog';
 import { PageError } from '@/components/PageError';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { useToast } from '@/components/Toast/ToastContainer';
-import { JobProgress } from '@/components/Jobs';
+import { JobProgress, pickActiveJob } from '@/components/Jobs';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { videoService } from '@/services/videoService';
 import { formatBytes } from '@/utils/fileSize';
@@ -49,9 +49,9 @@ export interface VideoLibraryPageProps {
   tagId?: number;
 }
 
-/** 这个视频正在跑的后台任务（导入 / 处理） */
-const jobOf = (jobs: Job[], videoId: number) =>
-  jobs.find((j) => isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId);
+/** 这个视频进行中的后台任务（导入 / 识别 / 处理）：显示正在运行的那个，另外几个在排队 */
+const jobsOf = (jobs: Job[], videoId: number) =>
+  jobs.filter((j) => isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId);
 
 const VIDEO_SORTS: SortOption<Video>[] = [
   { value: 'recent', label: '最近导入', compare: byInstant((v) => v.createdAt) },
@@ -220,7 +220,8 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
         {shownVideos.length === 0 && <EmptyState icon={<SearchX />} title="没有匹配的视频" />}
         <div ref={pager.anchorRef} className="grid scroll-mt-20 grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {(pager.pageItems ?? []).map((video) => {
-            const job = jobOf(jobs, video.id);
+            const videoJobs = jobsOf(jobs, video.id);
+            const job = pickActiveJob(videoJobs);
             const interrupted = !job && (video.status === 'importing' || video.status === 'processing');
             // 只有导入还没完成时打不开；识别 / 整理字幕、规划、切分时可以进编辑器看进度
             const clickable = job?.kind !== 'video_import' && video.mediaUrl !== null && (video.status === 'ready' || video.status === 'done' || video.status === 'processing');
@@ -273,7 +274,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
                     <CardMenuButton actions={actions} />
                   </div>
                   {job ? (
-                    <JobProgress job={job} fallback={STATUS_LABEL[video.status]} />
+                    <JobProgress job={job} fallback={STATUS_LABEL[video.status]} waiting={videoJobs.length - 1} />
                   ) : (
                     <div className="flex items-center gap-2">
                       <Badge variant={video.status === 'failed' || interrupted ? 'destructive' : video.status === 'done' ? 'default' : 'secondary'}>
