@@ -112,31 +112,29 @@ pub async fn update_pronunciation_settings(
 pub async fn start_pronunciation_model_download(app: AppHandle) -> AppResult<String> {
     let logger = app.state::<Logger>();
     logger.api_request("start_pronunciation_model_download", None);
-    let id = running_download(&app).unwrap_or_else(|| {
-        let dir = data_dir(&app);
-        app.state::<Jobs>().spawn(
-            JobSpec {
-                kind: DOWNLOAD_KIND,
-                module: None,
-                title: "下载发音评估模型".to_string(),
-                lane: Lane::Agent,
-                detached: true,
-                link: None,
-            },
-            move |ctx| async move {
-                ctx.stage("正在下载发音评估模型");
-                let progress = ctx.clone();
-                let cancel = ctx.clone();
-                model::ensure(
-                    &dir,
-                    move |p| progress.progress((p * 100.0) as u64, 100),
-                    move || cancel.is_cancelled(),
-                )
-                .await?;
-                Ok(serde_json::json!({ "ready": true }))
-            },
-        )
-    });
+    let dir = data_dir(&app);
+    let id = app.state::<Jobs>().spawn_unique(
+        JobSpec {
+            kind: DOWNLOAD_KIND,
+            module: None,
+            title: "下载发音评估模型".to_string(),
+            lane: Lane::Download,
+            detached: true,
+            link: None,
+        },
+        move |ctx| async move {
+            ctx.stage("正在下载发音评估模型");
+            let progress = ctx.clone();
+            let cancel = ctx.clone();
+            model::ensure(
+                &dir,
+                move |p| progress.progress((p * 100.0) as u64, 100),
+                move || cancel.is_cancelled(),
+            )
+            .await?;
+            Ok(serde_json::json!({ "ready": true }))
+        },
+    );
     finish(&logger, "start_pronunciation_model_download", Ok(id))
 }
 

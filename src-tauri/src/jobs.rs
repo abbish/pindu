@@ -29,6 +29,8 @@ const AGENT_SLOTS: usize = 2;
 const MEDIA_SLOTS: usize = 1;
 /// 设备互传同时进行的发送数（不占 AI 与视频处理的空位；接收另有一条队列）
 const TRANSFER_SLOTS: usize = 2;
+/// 模型下载同时进行的数（不占 AI 与视频处理的空位）
+const DOWNLOAD_SLOTS: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -56,6 +58,8 @@ pub enum Lane {
     Transfer,
     /// 设备互传的接收（同时只接收一个；不排在发送后面，否则对方传完了也等不到导入）
     Receive,
+    /// 本机模型下载（发音评估、语音输入、字幕识别）
+    Download,
 }
 
 /// 任务属于哪个模块：序列化为侧边栏一级页面键，菜单上显示这个模块进行中的任务
@@ -142,6 +146,9 @@ pub struct Jobs {
     media: Arc<Semaphore>,
     transfer: Arc<Semaphore>,
     receive: Arc<Semaphore>,
+    download: Arc<Semaphore>,
+    /// `spawn_unique` 的检查与提交在这把锁里，两次几乎同时的点击不会建出两个任务
+    unique: Arc<Mutex<()>>,
     seq: Arc<AtomicU64>,
 }
 
@@ -156,6 +163,8 @@ impl Jobs {
             media: Arc::new(Semaphore::new(MEDIA_SLOTS)),
             transfer: Arc::new(Semaphore::new(TRANSFER_SLOTS)),
             receive: Arc::new(Semaphore::new(1)),
+            download: Arc::new(Semaphore::new(DOWNLOAD_SLOTS)),
+            unique: Arc::new(Mutex::new(())),
             seq: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -175,6 +184,23 @@ impl Jobs {
                 }
             });
         }
+    }
+
+    /// 同一 kind 已有进行中的任务就返回它的 id，否则提交新的（检查与提交不会被另一次调用插进来）
+    pub fn spawn_unique<F, Fut>(&self, spec: JobSpec, run: F) -> String
+    where
+        F: FnOnce(JobCtx) -> Fut + Send + 'static,
+        Fut: Future<Output = AppResult<Value>> + Send + 'static,
+    {
+        let _guard = self.unique.lock().unwrap();
+        let running = self
+            .entries
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|e| e.job.kind == spec.kind && e.job.status.is_active())
+            .map(|e| e.job.id.clone());
+        running.unwrap_or_else(|| self.spawn(spec, run))
     }
 
     /// 提交任务，立即返回任务 id；`run` 在队列有空位时开始执行
@@ -220,6 +246,7 @@ impl Jobs {
             Lane::Media => self.media.clone(),
             Lane::Transfer => self.transfer.clone(),
             Lane::Receive => self.receive.clone(),
+            Lane::Download => self.download.clone(),
         };
         let job_id = id.clone();
         tauri::async_runtime::spawn(async move {

@@ -16,8 +16,8 @@ pub const FILE: ModelFile = ModelFile {
     bytes: 70_677_672,
     sha256: "d0e28b68164e8b1fbd6105100c01798828aa0855000ce9bbbd1a2cec233adf13",
     urls: &[
-        "https://huggingface.co/anyspeech/zipa-small-crctc-500k/resolve/main/model.int8.onnx",
-        "https://hf-mirror.com/anyspeech/zipa-small-crctc-500k/resolve/main/model.int8.onnx",
+        "https://huggingface.co/anyspeech/zipa-small-crctc-500k/resolve/dfe87c97662606fa6db90ad06f627d4363314744/model.int8.onnx",
+        "https://hf-mirror.com/anyspeech/zipa-small-crctc-500k/resolve/dfe87c97662606fa6db90ad06f627d4363314744/model.int8.onnx",
     ],
 };
 pub const BYTES: u64 = FILE.bytes;

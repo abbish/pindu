@@ -405,7 +405,7 @@ pub async fn start_speech_model_download(app: AppHandle, model_id: String) -> Ap
                 kind: "speech_model_download",
                 module: Some(JobModule::Videos),
                 title: format!("下载识别模型 · {}", model.label),
-                lane: Lane::Media,
+                lane: Lane::Download,
                 detached: true,
                 link: None,
             },
