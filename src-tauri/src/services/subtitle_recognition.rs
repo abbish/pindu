@@ -163,7 +163,6 @@ pub fn models_status(data_dir: &Path, selected: &SpeechModel, source: &str) -> S
                     label: m.label.to_string(),
                     note: m.note.to_string(),
                     downloaded: size == m.bytes,
-                    size_bytes: size as i64,
                     partial_bytes: std::fs::metadata(m.part_path(data_dir))
                         .map(|f| f.len() as i64)
                         .unwrap_or(0),
@@ -282,21 +281,18 @@ impl Failure {
     }
 }
 
-/// 没有这个模型时下载（进度 0–1），校验后放到位；`force` 时先删掉已有的重新下载。
+/// 没有这个模型时下载（进度 0–1），校验后放到位。
 /// 断了的下载留着 `.part`，下次（换来源也行，文件相同）接着下
 pub async fn ensure_model(
     data_dir: &Path,
     model: &SpeechModel,
-    force: bool,
     source: &str,
     logger: &Logger,
     mut on_progress: impl FnMut(f64),
     cancelled: impl Fn() -> bool,
 ) -> AppResult<PathBuf> {
     let target = model.path(data_dir);
-    if force {
-        delete_model(data_dir, model)?;
-    } else if model.ready(data_dir) {
+    if model.ready(data_dir) {
         return Ok(target);
     }
     std::fs::create_dir_all(models_dir(data_dir))
@@ -348,7 +344,7 @@ pub async fn ensure_model(
         reasons.push(failure.text(source));
     }
     Err(AppError::ExternalServiceError(format!(
-        "没能下载语音识别模型：{}。可以在「设置 → 素材 → 字幕识别」测试并换一个下载来源，或从文件导入",
+        "没能下载识别模型：{}。可以在设置里换个下载来源，或从文件导入",
         reasons.join("；")
     )))
 }
@@ -444,6 +440,7 @@ pub async fn test_source(source: &DownloadSource) -> crate::types::video::Speech
         if !response.status().is_success() {
             return Err(Failure::Http(response.status().as_u16()));
         }
+        // 速度只算拿到响应之后的那段
         let connected = started.elapsed();
         let mut got = 0u64;
         while let Some(chunk) = response
@@ -457,15 +454,14 @@ pub async fn test_source(source: &DownloadSource) -> crate::types::video::Speech
             }
         }
         let seconds = (started.elapsed() - connected).as_secs_f64().max(0.001);
-        Ok((connected, (got as f64 / seconds) as i64))
+        Ok((got as f64 / seconds) as i64)
     }
     .await;
     match result {
-        Ok((connected, speed)) => crate::types::video::SpeechSourceTest {
+        Ok(speed) => crate::types::video::SpeechSourceTest {
             id: source.id.to_string(),
             label: source.label.to_string(),
             ok: true,
-            latency_ms: connected.as_millis() as i64,
             bytes_per_second: speed,
             error: None,
         },
@@ -473,7 +469,6 @@ pub async fn test_source(source: &DownloadSource) -> crate::types::video::Speech
             id: source.id.to_string(),
             label: source.label.to_string(),
             ok: false,
-            latency_ms: 0,
             bytes_per_second: 0,
             error: Some(failure.text(source)),
         },
@@ -725,13 +720,12 @@ impl RecognizeJob {
         let downloading = !chosen.ready(&self.data_dir);
         let (audio_from, recognize_from) = if downloading { (40, 50) } else { (0, 10) };
         if downloading {
-            ctx.stage("下载语音识别模型（只需一次）");
+            ctx.stage("下载识别模型");
         }
         let source = selected_source(&self.pool).await;
         let model = ensure_model(
             &self.data_dir,
             chosen,
-            false,
             &source,
             &self.logger,
             |f| ctx.progress((f * 40.0) as u64, 100),
@@ -904,7 +898,7 @@ mod tests {
         let status = all.models.iter().find(|m| m.id == "small.en").unwrap();
         assert!(
             !status.downloaded
-                && status.size_bytes == 9
+                && status.partial_bytes == 7
                 && status.download_bytes == small.bytes as i64
         );
         delete_model(&dir, small).unwrap();
@@ -926,10 +920,9 @@ mod real {
         for source in &SOURCES {
             let t = test_source(source).await;
             println!(
-                "{} ok={} {}ms {} KB/s {:?}",
+                "{} ok={} {} KB/s {:?}",
                 t.label,
                 t.ok,
-                t.latency_ms,
                 t.bytes_per_second / 1024,
                 t.error
             );
@@ -959,7 +952,6 @@ mod real {
         ensure_model(
             &dir,
             base,
-            false,
             "modelscope",
             &logger,
             |p| {
@@ -983,17 +975,9 @@ mod real {
         let mut last = 0.0;
         let started = std::time::Instant::now();
         let base = find_model("base.en").unwrap();
-        let path = ensure_model(
-            &dir,
-            base,
-            false,
-            AUTO_SOURCE,
-            &logger,
-            |p| last = p,
-            || false,
-        )
-        .await
-        .unwrap();
+        let path = ensure_model(&dir, base, AUTO_SOURCE, &logger, |p| last = p, || false)
+            .await
+            .unwrap();
         println!(
             "下载完成：{:.1}s，进度 {last}",
             started.elapsed().as_secs_f64()
@@ -1003,7 +987,6 @@ mod real {
         ensure_model(
             &dir,
             base,
-            false,
             AUTO_SOURCE,
             &logger,
             |_| panic!("不该再下载"),

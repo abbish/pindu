@@ -211,77 +211,74 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
             {/* 字幕与标题都跟着视频来：选视频之前不显示 */}
             {videoPath && (
               <>
-              {searching ? (
-                <div className="space-y-1.5">
-                  <Label>字幕</Label>
-                  <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/30 px-3 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
-                    正在查找字幕…
+                {searching ? (
+                  <div className="space-y-1.5">
+                    <Label>字幕</Label>
+                    <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/30 px-3 text-sm text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" />
+                      正在查找字幕…
+                    </div>
                   </div>
-                </div>
-              ) : noSubtitle ? (
-                <div className="space-y-2">
-                  <Label>字幕</Label>
-                  <div className="space-y-3 rounded-lg border p-3">
-                    <p className="text-sm">
-                      {second ? '只找到中文字幕，还需要英文字幕' : '没有找到字幕'}
-                      {discovery !== null && discovery.imageTracks > 0 && (
-                        <span className="text-muted-foreground">（视频里的字幕是图片，取不出文字）</span>
-                      )}
-                    </p>
-                    <Label htmlFor="sub-recognize" className="flex cursor-pointer items-start gap-2.5 font-normal">
-                          <Checkbox id="sub-recognize" checked={recognize} onCheckedChange={(v) => setRecognize(v === true)} className="mt-0.5" />
-                          <span className="space-y-0.5">
-                            <span className="flex items-center gap-1.5 text-sm">
-                              <AudioLines className="size-4 text-muted-foreground" />
-                              导入后自动识别英文语音
-                            </span>
-                            <span className="block text-xs text-muted-foreground">
-                              在本机识别{model && !model.downloaded && `，第一次需要下载 ${formatBytes(model.downloadBytes)} 的识别模型`}。影视剧建议用正式字幕
-                            </span>
-                          </span>
-                        </Label>
-                    <Button type="button" variant="outline" size="sm" onClick={pickSubtitle}>
-                      <Captions />
-                      选择字幕文件…
-                    </Button>
+                ) : noSubtitle ? (
+                  <div className="space-y-2">
+                    <Label>字幕</Label>
+                    <div className="space-y-3 rounded-lg border p-3">
+                      <p className="text-sm">
+                        {second ? '只有中文字幕' : '没有找到字幕'}
+                        {discovery !== null && discovery.imageTracks > 0 && <span className="text-muted-foreground">（视频里的字幕是图片）</span>}
+                      </p>
+                      <Label htmlFor="sub-recognize" className="flex cursor-pointer items-center gap-2.5 font-normal">
+                        <Checkbox id="sub-recognize" checked={recognize} onCheckedChange={(v) => setRecognize(v === true)} />
+                        <AudioLines className="size-4 text-muted-foreground" />
+                        <span className="text-sm">导入后识别英文语音</span>
+                        {model && !model.downloaded && <span className="text-xs text-muted-foreground">需下载 {formatBytes(model.downloadBytes)}</span>}
+                      </Label>
+                      <Button type="button" variant="outline" size="sm" onClick={pickSubtitle}>
+                        <Captions />
+                        选择字幕文件…
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <FileRow
-                  label="字幕"
-                  hint="srt 或 vtt，英文或中英双语"
-                  icon={<Captions className="size-4" />}
-                  path={subtitle?.path ?? ''}
-                  display={subtitle?.label}
-                  auto={subtitle?.auto}
-                  onPick={pickSubtitle}
-                />
-              )}
-              {/* 第二字幕跟着字幕走：只有中文、选了识别时用不上它（识别出的英文由整理字幕翻译） */}
+                ) : (
+                  <FileRow
+                    label="字幕"
+                    hint="srt 或 vtt"
+                    icon={<Captions className="size-4" />}
+                    path={subtitle?.path ?? ''}
+                    display={subtitle?.label}
+                    auto={subtitle?.auto}
+                    onPick={pickSubtitle}
+                  />
+                )}
+                {/* 第二字幕跟着字幕走：只有中文、选了识别时用不上它 */}
                 {!searching && subtitle && (
-                <FileRow
-                  label="第二字幕"
-                  hint="例如单独的中文字幕"
-                  icon={<Captions className="size-4" />}
-                  path={second?.path ?? ''}
-                  display={second?.label}
-                  auto={second?.auto}
-                  onPick={async () => {
-                    const path = await pick(SUBTITLE_EXTENSIONS, '字幕', '请选择 srt 或 vtt 字幕文件');
-                    if (path) setSecond(manual(path));
-                  }}
-                  onClear={() => setSecond(null)}
-                />
-              )}
-              <div className="space-y-1.5">
-                <Label htmlFor="video-title">标题</Label>
-                <Input id="video-title" value={title} maxLength={100} placeholder="视频文件名" onChange={(e) => {
-                    setTitle(e.target.value);
-                    setTitleEdited(e.target.value.trim() !== '');
-                  }}
-                />
-              </div>
+                  <FileRow
+                    label="第二字幕"
+                    hint="可选"
+                    icon={<Captions className="size-4" />}
+                    path={second?.path ?? ''}
+                    display={second?.label}
+                    auto={second?.auto}
+                    onPick={async () => {
+                      const path = await pick(SUBTITLE_EXTENSIONS, '字幕', '请选择 srt 或 vtt 字幕文件');
+                      if (path) setSecond(manual(path));
+                    }}
+                    onClear={() => setSecond(null)}
+                  />
+                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="video-title">标题</Label>
+                  <Input
+                    id="video-title"
+                    value={title}
+                    maxLength={100}
+                    placeholder="视频文件名"
+                    onChange={(e) => {
+                      setTitle(e.target.value);
+                      setTitleEdited(e.target.value.trim() !== '');
+                    }}
+                  />
+                </div>
               </>
             )}
           </div>

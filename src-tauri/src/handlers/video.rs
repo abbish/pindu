@@ -382,18 +382,11 @@ pub async fn set_speech_model(app: AppHandle, model_id: String) -> AppResult<()>
     super::finish(&logger, "set_speech_model", result)
 }
 
-/// 下载识别模型（后台任务，可取消）；`force` 时删掉已有的重新下载
+/// 下载识别模型（后台任务，可取消；断了下次接着下）
 #[tauri::command]
-pub async fn start_speech_model_download(
-    app: AppHandle,
-    model_id: String,
-    force: bool,
-) -> AppResult<String> {
+pub async fn start_speech_model_download(app: AppHandle, model_id: String) -> AppResult<String> {
     let logger = app.state::<Logger>();
-    logger.api_request(
-        "start_speech_model_download",
-        Some(&format!("{model_id} force={force}")),
-    );
+    logger.api_request("start_speech_model_download", Some(&model_id));
     let result = async {
         let model = crate::services::subtitle_recognition::find_model(&model_id)?;
         if model_in_use(&app) {
@@ -422,7 +415,6 @@ pub async fn start_speech_model_download(
                 crate::services::subtitle_recognition::ensure_model(
                     &data_dir,
                     model,
-                    force,
                     &source,
                     &task_logger,
                     |f| ctx.progress((f * 100.0) as u64, 100),

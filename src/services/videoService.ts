@@ -43,9 +43,9 @@ export class VideoService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<void>('set_speech_model', { modelId }));
   }
 
-  /** 下载识别模型（后台任务，返回任务 id）；force：删掉已有的重新下载 */
-  async startSpeechModelDownload(modelId: string, force = false): Promise<ApiResult<string>> {
-    return this.executeWithLoading(() => this.client.invoke<string>('start_speech_model_download', { modelId, force }));
+  /** 下载识别模型（后台任务，返回任务 id；断了下次接着下） */
+  async startSpeechModelDownload(modelId: string): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_speech_model_download', { modelId }));
   }
 
   /** 选用哪个下载来源：auto 或某个来源的 id */

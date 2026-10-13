@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Play, Square } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -91,21 +92,24 @@ export const TtsStyleSection: React.FC<TtsStyleSectionProps> = ({ resourceId, ca
   return (
     <SettingsSection
       title="朗读风格"
-      description={supportsStyle ? undefined : '当前音色不支持'}
       actions={
-        <Button variant="outline" size="sm" onClick={() => onTogglePreview(STYLE_PREVIEW)} disabled={!canPreview}>
+        <>
+          {/* 2.0 以前的音色不认朗读风格：选项置灰，在这里说明原因 */}
+          {!supportsStyle && <Badge variant="secondary">当前音色不支持</Badge>}
+          <Button variant="outline" size="sm" onClick={() => onTogglePreview(STYLE_PREVIEW)} disabled={!canPreview}>
           {previewState === 'loading' ? <Loader2 className="animate-spin" /> : previewState === 'playing' ? <Square className="fill-current" /> : <Play />}
           {previewState === 'idle' ? '试听' : previewState === 'loading' ? '合成中…' : '停止'}
         </Button>
+        </>
       }
     >
       <div className="px-4 py-3">
-        <RadioGroup value={prefs.style} onValueChange={(v) => chooseStyle(v as TtsStylePreset)} className="grid grid-cols-5 gap-2 max-md:grid-cols-2" aria-label="朗读风格">
+        <RadioGroup value={prefs.style} onValueChange={(v) => chooseStyle(v as TtsStylePreset)} disabled={!supportsStyle} className="grid grid-cols-5 gap-2 max-md:grid-cols-2" aria-label="朗读风格">
           {PRESETS.map((p) => (
             <Label
               key={p.value}
               htmlFor={`tts-style-${p.value}`}
-              className="flex cursor-pointer flex-col items-start gap-0.5 rounded-lg border p-3 font-normal transition-colors hover:bg-muted/40 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-accent/50"
+              className="flex cursor-pointer flex-col items-start gap-0.5 rounded-lg border p-3 font-normal transition-colors hover:bg-muted/40 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-accent/50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"
             >
               <RadioGroupItem id={`tts-style-${p.value}`} value={p.value} className="sr-only" />
               <span className="text-sm font-medium">{p.label}</span>

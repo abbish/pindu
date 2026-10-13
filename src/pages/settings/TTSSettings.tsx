@@ -215,7 +215,6 @@ export const TTSSettings: React.FC = () => {
   const connection = (
     <SettingsSection
       title="豆包语音连接"
-      description={config.configured ? undefined : '未连接'}
       actions={
         <Button variant={config.configured ? 'outline' : 'default'} size="sm" onClick={() => setShowEdit(true)} disabled={saving}>
           <Pencil />
@@ -254,7 +253,6 @@ export const TTSSettings: React.FC = () => {
 
       <SettingsSection
         title="音色"
-        description={config.configured ? undefined : '先连接豆包语音'}
         actions={
           <ToggleGroup type="single" value={gender} onValueChange={(v) => v && setGender(v as typeof gender)} className="rounded-lg bg-muted p-0.5" aria-label="按性别筛选">
             {(['all', 'female', 'male'] as const).map((g) => (

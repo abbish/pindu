@@ -181,8 +181,6 @@ pub struct SpeechModelInfo {
     pub label: String,
     pub note: String,
     pub downloaded: bool,
-    /// 已下载的大小（字节）
-    pub size_bytes: i64,
     /// 没下载完的部分（字节；下次接着下）
     pub partial_bytes: i64,
     /// 需要下载的大小（字节）
@@ -215,8 +213,6 @@ pub struct SpeechSourceTest {
     pub id: String,
     pub label: String,
     pub ok: bool,
-    /// 连上用了多久（毫秒）
-    pub latency_ms: i64,
     /// 下载速度（字节 / 秒）
     pub bytes_per_second: i64,
     /// 不能用时的原因

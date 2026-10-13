@@ -79,8 +79,8 @@ export const SpeechModelSection: React.FC = () => {
     if (r.success) setData((d) => (d ? { ...d, selected: id } : d));
     else toast.showError('无法切换识别模型', r.error);
   };
-  const download = async (id: string, force = false) => {
-    const r = await videoService.startSpeechModelDownload(id, force);
+  const download = async (id: string) => {
+    const r = await videoService.startSpeechModelDownload(id);
     if (!r.success) toast.showError('无法下载识别模型', r.error);
   };
   const importFile = async (m: SpeechModelInfo) => {
@@ -200,7 +200,6 @@ export const SpeechModelSection: React.FC = () => {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onSelect={() => void importFile(m)}>从文件导入…</DropdownMenuItem>
-                    {m.downloaded && <DropdownMenuItem onSelect={() => void download(m.id, true)}>重新下载</DropdownMenuItem>}
                     {(m.downloaded || m.partialBytes > 0) && (
                       <>
                         <DropdownMenuSeparator />

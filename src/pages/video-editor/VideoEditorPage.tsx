@@ -867,7 +867,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
                   cues={cues}
                   playheadMs={playhead}
                   hasClips={detail.clips.length > 0}
-                  disabled={locked || recognizeJob !== undefined}
+                  // 还没有字幕时视频上方的卡片就是入口，这里不重复
+                  disabled={locked || recognizeJob !== undefined || cues.length === 0}
                   onChange={changeOffset}
                   subtitleName={detail.video.subtitleName}
                   onReplaceFile={() => void pickSubtitleFile()}
@@ -1047,8 +1048,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
           <AlertDialogHeader>
             <AlertDialogTitle>{confirmReplace?.kind === 'recognize' ? '重新识别字幕？' : '换成这个字幕文件？'}</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmReplace?.kind === 'recognize' ? '识别完会换掉现在的字幕。' : '现在的字幕会被换掉。'}
-              已规划的片段保留时间范围，已切出的场景片段不受影响；新字幕会重新整理和翻译。
+              {confirmReplace?.kind === 'recognize' ? '识别完会换掉现在的字幕' : '现在的字幕会被换掉'}，已切出的场景片段不受影响。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -166,8 +166,6 @@ export interface SpeechModelInfo {
   label: string;
   note: string;
   downloaded: boolean;
-  /** 已下载的大小（字节） */
-  sizeBytes: number;
   /** 没下载完的部分（字节；下次接着下） */
   partialBytes: number;
   /** 需要下载的大小（字节） */
@@ -194,8 +192,6 @@ export interface SpeechSourceTest {
   id: string;
   label: string;
   ok: boolean;
-  /** 连上用了多久（毫秒） */
-  latencyMs: number;
   /** 下载速度（字节 / 秒） */
   bytesPerSecond: number;
   /** 不能用时的原因 */
