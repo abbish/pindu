@@ -13,6 +13,8 @@ import { PassageReader, type TranslationMode } from '@/components/PassageReader'
 import { TargetWord } from '@/components/PassageReader/WordCard';
 import { SelectionAction } from '@/components/SelectionAction';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { videoService } from '@/services/videoService';
+import { refineSentenceTimes } from '@/utils/speechBoundaries';
 import { canAddTarget, formsOf } from '@/utils/passage';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { cn } from '@/lib/utils';
@@ -85,6 +87,9 @@ export interface ClipStudyPanelProps {
 const startOf = (s: PassageSentence | undefined) => s?.startMs ?? 0;
 const endOf = (s: PassageSentence | undefined) => s?.endMs ?? startOf(s);
 
+/** 单句播放提前一点停：暂停生效要一小会儿，不提前会漏出下一句的开头 */
+const STOP_LEAD_MS = 40;
+
 /** 跟读里两步之间稍停一下（看清结果、换气） */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -97,12 +102,26 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * 「练习设置」里调画面字幕、台词显示、翻译、聚焦、自动暂停与原声遍数。
  */
 
-export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences, passage, onAddTarget, onOpenWord, onEditTranslation, onPractice, pronunciationContext }) => {
+export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences: rawSentences, passage, onAddTarget, onOpenWord, onEditTranslation, onPractice, pronunciationContext }) => {
+  // 句子起止按声音校准（字幕交界常常紧挨着下一句开口，单句播放会带出下一句的开头），波形读不到时用字幕时间
+  const [peaks, setPeaks] = useState<number[]>([]);
+  useEffect(() => {
+    let alive = true;
+    videoService.getPeaks(video.videoId).then((r) => alive && r.success && setPeaks(r.data));
+    return () => {
+      alive = false;
+    };
+  }, [video.videoId]);
+  const sentences = useMemo(() => {
+    if (peaks.length === 0) return rawSentences;
+    const times = refineSentenceTimes(rawSentences, peaks, video.startMs);
+    return rawSentences.map((s, i) => ({ ...s, ...times[i] }));
+  }, [rawSentences, peaks, video.startMs]);
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
   /** 目标词组在台词里的写法 */
   const forms = useMemo(() => formsOf(passage.targetWords), [passage.targetWords]);
   // 台词每句后面的跟读：开始前暂停视频
-  const texts = useMemo(() => sentences.map((s) => s.en), [sentences]);
+  const texts = useMemo(() => rawSentences.map((s) => s.en), [rawSentences]);
   const sentenceSay = useSentenceSay(texts, pronunciationContext, () => videoRef.current?.pause());
   const say = sentenceSay.say;
   /** 正在看分析的台词 */
@@ -221,7 +240,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       v.currentTime = startOf(s) / 1000;
       v.playbackRate = slow ? SLOW_RATE : rate;
       setSentenceSlow(slow);
-      stopAt.current = endOf(s);
+      stopAt.current = Math.max(startOf(s), endOf(s) - STOP_LEAD_MS);
       sentencePlay.current = true;
       void v.play();
       }),
