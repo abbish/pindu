@@ -356,7 +356,7 @@ pub struct AddWordsArgs {
 pub struct SavePassageArgs {
     /// English text to save as a passage, exactly as it should be kept (one paragraph per line). Write it yourself using what you and the learner discussed.
     pub text: String,
-    /// English title (optional; generated when empty)
+    /// Title (optional; generated when empty). If the learner named it, use their title exactly, in their language
     #[serde(default)]
     pub title: Option<String>,
     /// The words / phrases this passage is for (base forms, with Chinese meaning). Each must appear in the text (any inflected form).

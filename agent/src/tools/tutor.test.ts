@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DECLINED_REASON, gateDecision, normalizeReplies, pinduDetails, suggestRepliesTool, VIEW_ONLY_REASON } from "./tutor.ts";
+import { callsSuggestReplies, DECLINED_REASON, gateDecision, normalizeReplies, pinduDetails, suggestRepliesTool, VIEW_ONLY_REASON } from "./tutor.ts";
 
 test("MCP 结果里取出拼读给界面的部分", () => {
   const redlark = { step: "查了你的词汇本", output: { kind: "wordbook", id: 3 } };
@@ -41,4 +41,11 @@ test("推荐下一步的参数：写法偏差在校验前整理好，最多 3 �
 test("拦下时的说明：界面按开头认出没同意 / 只查看（与 src/utils/tutorTranscript.ts 的 TOOL_OUTCOMES 一致）", () => {
   assert.ok(DECLINED_REASON.startsWith("The learner did not confirm"));
   assert.ok(VIEW_ONLY_REASON.startsWith("The learner set the AI teacher to view only"));
+});
+
+test("起标题与推荐下一步在同一条消息里时这一轮结束", () => {
+  const call = (name: string) => ({ type: "toolCall", id: name, name, arguments: {} });
+  assert.equal(callsSuggestReplies({ role: "assistant", content: [{ type: "text", text: "答" }, call("name_conversation"), call("suggest_replies")] }), true);
+  assert.equal(callsSuggestReplies({ role: "assistant", content: [call("name_conversation"), call("mcp__pindu__create_word_book")] }), false);
+  assert.equal(callsSuggestReplies({ role: "toolResult", content: [call("suggest_replies")] }), false);
 });

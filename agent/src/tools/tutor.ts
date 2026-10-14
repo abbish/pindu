@@ -41,17 +41,35 @@ export function normalizeReplies(args: unknown): string[] {
   return [];
 }
 
-/** 给对话起标题（第一轮回答时由模型起，存成 pi 的会话名；已经有名字（含学习者改过的）时不覆盖） */
+/** 一条 AI 消息里有没有调用 suggest_replies（这一轮要在这批工具之后结束） */
+export function callsSuggestReplies(message: unknown): boolean {
+  const content = (message as { role?: string; content?: unknown } | undefined)?.content;
+  return (
+    (message as { role?: string } | undefined)?.role === "assistant" &&
+    Array.isArray(content) &&
+    content.some(block => block?.type === "toolCall" && block?.name === suggestRepliesTool.name)
+  );
+}
+
+/**
+ * 给对话起标题（第一轮回答时由模型起，存成 pi 的会话名；已经有名字（含学习者改过的）时不覆盖）。
+ * 常和 suggest_replies 一起调用：pi 只在这批工具全都 terminate 时结束这一轮，所以同一条消息里有 suggest_replies 时这里也 terminate，
+ * 否则模型会多回一次（重复正文或说「已经起好名字了」）；单独调用（起完名还要接着做事）时不结束。
+ */
 function nameConversationTool(pi: ExtensionAPI) {
+  let endsTurn = false;
+  pi.on("message_end", event => {
+    if ((event.message as { role?: string }).role === "assistant") endsTurn = callsSuggestReplies(event.message);
+  });
   return defineTool({
     name: "name_conversation",
     label: "给对话起标题",
     description:
-      "In your first reply of a conversation, give it a short Chinese title (at most 12 characters) summarizing what the learner wants. It does not end your turn.",
+      "In your first reply of a conversation, give it a short Chinese title (at most 12 characters) summarizing what the learner wants.",
     parameters: Type.Object({ title: Type.String({ minLength: 1, maxLength: 20 }) }),
     async execute(_id, { title }) {
       if (!pi.getSessionName()) pi.setSessionName(title.trim());
-      return { content: [{ type: "text", text: "Named." }], details: undefined };
+      return { content: [{ type: "text", text: "Named." }], details: undefined, terminate: endsTurn };
     },
   });
 }

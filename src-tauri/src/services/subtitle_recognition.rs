@@ -553,6 +553,8 @@ fn whisper_cli() -> AppResult<PathBuf> {
     } else {
         "whisper-cli"
     };
+    // 开发版还可以用环境变量指定目录（正式版不改 dirs）
+    #[cfg_attr(not(debug_assertions), allow(unused_mut))]
     let mut dirs: Vec<PathBuf> = crate::media::built_in_dir().into_iter().collect();
     #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var("PINDU_WHISPER_DIR") {

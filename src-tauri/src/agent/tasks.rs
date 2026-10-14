@@ -1144,6 +1144,17 @@ pub async fn explain_word(
     let reply = AiReply::from_output(&run.outcome.text, &[]);
     let content = &reply.content;
     if content.chars().count() < 50 {
+        // 模型偶尔把讲解都写在思考里、正文几乎为空：记下长度与开头，便于排查
+        logger.warn(
+            "WORD_EXPLAIN",
+            &format!("「{}」讲解太短，没有采用", word.word),
+            Some(&format!(
+                "正文 {} 字（去掉追问后 {} 字）：{}",
+                run.outcome.text.chars().count(),
+                content.chars().count(),
+                run.outcome.text.chars().take(80).collect::<String>()
+            )),
+        );
         return Err(AppError::ExternalServiceError(
             "老师没有讲出来，请再试一次".to_string(),
         ));
