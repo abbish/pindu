@@ -303,6 +303,82 @@ impl WordCardService {
         Ok(words.len())
     }
 
+    /// 几篇短文里还没有单词卡的未收录目标词（去重），以及它们在短文里的释义（有就沿用）；已删除的短文跳过
+    pub async fn missing_for(
+        &self,
+        passage_ids: &[Id],
+    ) -> AppResult<(Vec<String>, std::collections::HashMap<String, String>)> {
+        let repository = PassageRepository::new(self.pool.clone());
+        let mut words: Vec<String> = Vec::new();
+        let mut meanings = std::collections::HashMap::new();
+        let mut seen = std::collections::HashSet::new();
+        for id in passage_ids {
+            let Some(passage) = repository.find(*id).await? else {
+                continue;
+            };
+            for t in passage.target_words.iter().filter(|t| t.word_id.is_none()) {
+                let key = t.word.trim().to_lowercase();
+                if key.is_empty() || !seen.insert(key.clone()) {
+                    continue;
+                }
+                if let Some(m) = t
+                    .meaning
+                    .as_ref()
+                    .map(|m| m.trim())
+                    .filter(|m| !m.is_empty())
+                {
+                    meanings.insert(key, m.to_string());
+                }
+                words.push(t.word.clone());
+            }
+        }
+        let cards = WordCardRepository::new(self.pool.clone())
+            .find_many(&words)
+            .await?;
+        words.retain(|w| !cards.contains_key(&w.trim().to_lowercase()));
+        Ok((words, meanings))
+    }
+
+    /// 分批做拼读分析并存成单词卡（打开短文时补生成、视频切分时一并生成共用）。
+    /// AI 没给出分析的词存一张只有释义的卡片（不然每次打开都会再提交一次）；取消时停在当前批之后。
+    /// 返回存下的张数；一张都没存成且没取消时返回最后一次的错误
+    pub async fn generate(
+        &self,
+        analyzer: &crate::services::phonics_analysis::PhonicsBatchAnalyzer,
+        words: &[String],
+        meanings: &std::collections::HashMap<String, String>,
+        batch_size: usize,
+        ctx: &crate::jobs::JobCtx,
+        progress: impl Fn(u64, u64),
+    ) -> AppResult<usize> {
+        let batches: Vec<&[String]> = words.chunks(batch_size.max(1)).collect();
+        let total = words.len() as u64;
+        let mut done = 0u64;
+        let mut saved = 0usize;
+        let mut last_error = None;
+        progress(0, total);
+        for (i, batch) in batches.iter().enumerate() {
+            if ctx.is_cancelled() {
+                break;
+            }
+            match analyzer.analyze_batch(batch, i, batches.len()).await {
+                Ok(outcome) => {
+                    saved += self.save(&outcome.analyzed).await?;
+                    saved += self.save_basic(&outcome.missing, meanings).await?;
+                }
+                Err(e) => last_error = Some(e),
+            }
+            done += batch.len() as u64;
+            progress(done, total);
+        }
+        if saved == 0 && !words.is_empty() && !ctx.is_cancelled() {
+            return Err(last_error.unwrap_or_else(|| {
+                AppError::ExternalServiceError("没有生成单词卡，请再试一次".into())
+            }));
+        }
+        Ok(saved)
+    }
+
     /// 保存分析好的单词卡
     pub async fn save(&self, analyzed: &[PhonicsWord]) -> AppResult<usize> {
         let repository = WordCardRepository::new(self.pool.clone());
@@ -485,6 +561,31 @@ mod tests {
             ["plan", "give up"]
         );
         assert!(service.remove_target_word(id, "policy").await.is_err());
+    }
+
+    /// 几篇短文一起找缺卡片的词：去重（不分大小写）、带上释义、已有卡片的与已删除的短文跳过
+    #[tokio::test]
+    async fn missing_for_dedupes_across_passages_and_skips_existing_cards() {
+        let pool = memory_pool().await;
+        let service = WordCardService::new(pool.clone(), test_logger());
+        let a = seed(&pool, "The salmon swim upstream past the old dam.").await;
+        let b = seed(&pool, "Salmon return to the river every fall.").await;
+        service
+            .replace_target_words(a, &[pick("salmon", &[], "鲑鱼"), pick("dam", &[], "水坝")])
+            .await
+            .unwrap();
+        service
+            .replace_target_words(
+                b,
+                &[pick("Salmon", &[], "三文鱼"), pick("river", &[], "河")],
+            )
+            .await
+            .unwrap();
+        service.save(&[phonics("river")]).await.unwrap();
+        let (words, meanings) = service.missing_for(&[a, b, 9999]).await.unwrap();
+        assert_eq!(words, ["salmon", "dam"]);
+        assert_eq!(meanings.get("salmon").map(String::as_str), Some("鲑鱼"));
+        assert_eq!(meanings.get("dam").map(String::as_str), Some("水坝"));
     }
 
     #[tokio::test]

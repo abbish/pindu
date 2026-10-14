@@ -3,7 +3,7 @@
 //!
 //! 按段幂等：起止与规划完全相同的短片已经存在时跳过，所以中途停止或失败后再点「开始处理」会从没做完的那段继续。
 
-use crate::agent::tasks::{self, TranslateSpec};
+use crate::agent::tasks::{self, PhonicsContext, TranslateSpec};
 use crate::agent::AgentPaths;
 use crate::error::{AppError, AppResult};
 use crate::jobs::JobCtx;
@@ -12,8 +12,10 @@ use crate::media::MediaTools;
 use crate::repositories::passage_repository::{NewPassage, PassageRepository};
 use crate::repositories::video_repository::{VideoRepository, VideoRow};
 use crate::services::passage_rules::{english_word_count, GeneratedPassage};
+use crate::services::phonics_analysis::PhonicsBatchAnalyzer;
 use crate::services::subtitle::Cue;
 use crate::services::video::video_dir;
+use crate::services::word_cards::WordCardService;
 use crate::types::ai_model::AIModelConfig;
 use crate::types::passage::{PassageSentence, PassageTargetWord};
 use crate::types::video::VideoSegment;
@@ -39,6 +41,8 @@ pub struct VideoProcessJob {
     pub plan_id: i64,
     /// 已经有整理字幕的任务在跑：切分前不再整理（避免同一批字幕重复交给模型；缺的中文切分时逐段补）
     pub skip_prepare: bool,
+    /// 切完后给片段里的词汇生成单词卡用的拼读分析模型与每批词数（没有时不生成，打开片段时再按需补）
+    pub cards: Option<(AIModelConfig, usize)>,
 }
 
 /// 片段里的字幕 → 短文句子：被断行拆开的一句合并回完整的句子（`sentences::group_cues`），
@@ -120,6 +124,10 @@ impl VideoProcessJob {
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
         let result = self.process(&ctx, &row).await;
+        // 切好的片段里的词汇：一并生成单词卡，学的时候不用再等。失败只记警告（打开片段时还会按需补）
+        if let Ok(value) = &result {
+            self.word_cards(&ctx, &row.title, value).await;
+        }
         // 结束后：所有片段都切好了算完成；否则回到可以继续编辑与处理的状态
         let all_done = self.all_done(&row).await.unwrap_or(false);
         let status = if all_done || before == "done" {
@@ -133,6 +141,63 @@ impl VideoProcessJob {
         };
         VideoRepository::set_status(&self.pool, self.video_id, status, error.as_deref()).await?;
         result
+    }
+
+    /// 给这次切出的片段里还没有单词卡的词汇生成单词卡（去重、已有的跳过）；取消或片段已删除时直接结束
+    async fn word_cards(&self, ctx: &JobCtx, title: &str, result: &Value) {
+        let Some((model, batch_size)) = self.cards.clone() else {
+            return;
+        };
+        let ids: Vec<i64> = result
+            .get("passageIds")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_i64).collect())
+            .unwrap_or_default();
+        if ids.is_empty() || ctx.is_cancelled() {
+            return;
+        }
+        let service = WordCardService::new(self.pool.clone(), self.logger.clone());
+        let outcome = async {
+            let (words, meanings) = service.missing_for(&ids).await?;
+            if words.is_empty() {
+                return Ok(0);
+            }
+            ctx.stage("生成单词卡".to_string());
+            let analyzer = PhonicsBatchAnalyzer::new(
+                self.logger.clone(),
+                &self.data_dir,
+                model,
+                self.profile.clone(),
+                PhonicsContext {
+                    scene: crate::prompts::topic_scene(title),
+                    meanings: meanings.clone(),
+                },
+            )?;
+            service
+                .generate(
+                    &analyzer,
+                    &words,
+                    &meanings,
+                    batch_size,
+                    ctx,
+                    |done, total| ctx.progress(done, total),
+                )
+                .await
+        }
+        .await;
+        match outcome {
+            Ok(saved) if saved > 0 => self.logger.info(
+                "VIDEO",
+                &format!("视频 {} 切分后生成单词卡 {saved} 张", self.video_id),
+            ),
+            Ok(_) => {}
+            Err(_) if ctx.is_cancelled() => {}
+            Err(e) => self.logger.warn(
+                "VIDEO",
+                "切分后生成单词卡失败（打开片段时会再补）",
+                Some(&e.to_string()),
+            ),
+        }
     }
 
     async fn all_done(&self, row: &VideoRow) -> AppResult<bool> {
@@ -629,6 +694,7 @@ mod real_tests {
             VideoProcessJob {
             plan_id,
             skip_prepare: false,
+            cards: None,
             pool: pool.clone(),
             logger: logger.clone(),
             tools: tools.clone(),

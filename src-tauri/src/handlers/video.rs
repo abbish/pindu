@@ -937,6 +937,23 @@ pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<S
         }
         let pool_arc = Arc::new(pool.inner().clone());
         let logger_arc = Arc::new(logger.inner().clone());
+        // 切完一并生成单词卡：与打开片段时补生成同一个任务模型（拼读分析）与每批词数；取不到就不生成
+        let settings = crate::services::agent_settings::AgentSettingsService::new(
+            pool_arc.clone(),
+            logger_arc.clone(),
+        );
+        let cards = match (
+            settings
+                .model_for(
+                    crate::services::agent_settings::AgentTaskKind::Phonics,
+                    None,
+                )
+                .await,
+            settings.get().await,
+        ) {
+            (Ok(model), Ok(s)) => Some((model, s.batch_size.max(1) as usize)),
+            _ => None,
+        };
         let job = crate::services::video_processing::VideoProcessJob {
             tools: require_tools(&app).await?,
             model: crate::services::agent_settings::AgentSettingsService::new(
@@ -954,6 +971,7 @@ pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<S
             video_id,
             skip_prepare: running(&app, video_id, &["video_translate"]),
             plan_id,
+            cards,
         };
         Ok(app.state::<Jobs>().spawn(
             JobSpec {
