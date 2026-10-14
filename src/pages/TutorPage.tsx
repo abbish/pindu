@@ -3,7 +3,7 @@
  * 对话由 pi 会话保存（handlers/tutor.rs）；页面按 pi 的事件重建对话（utils/tutorTranscript.ts）。
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, CornerUpLeft, GraduationCap, Loader2, MessageSquarePlus } from 'lucide-react';
+import { ArrowDown, CornerUpLeft, GraduationCap, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { NavigateFn } from '@/navigation';
 import { toTurns } from '@/utils/tutorTranscript';
@@ -122,14 +122,23 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
     void send(initialPrompt, []);
   }, []);
 
+  // ⌘N：新对话
+  const newConversation = useRef(chat.newConversation);
+  newConversation.current = chat.newConversation;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        newConversation.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div className="flex h-full min-h-0">
       <aside className="flex w-56 shrink-0 flex-col border-r bg-muted/30">
-        <div className="p-3">
-          <Button variant="outline" className="w-full justify-start" onClick={chat.newConversation}>
-            <MessageSquarePlus /> 新对话
-          </Button>
-        </div>
         <ConversationList
           conversations={chat.conversations}
           loading={chat.listLoading}
@@ -142,6 +151,7 @@ export const TutorPage: React.FC<{ initialPrompt?: string; conversationId?: stri
           onFlags={(id, pinned, archived) => void chat.setFlags(id, pinned, archived)}
           onRename={(id, name) => void chat.rename(id, name)}
           onDelete={(id) => void chat.remove(id)}
+          onNew={chat.newConversation}
         />
       </aside>
 

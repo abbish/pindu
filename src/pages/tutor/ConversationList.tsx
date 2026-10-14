@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, CornerUpLeft, Loader2, MessageCircleQuestionMark, MoreHorizontal, Pin, PinOff, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, CornerUpLeft, Loader2, MessageCircleQuestionMark, MoreHorizontal, Pin, PinOff, Search, SquarePen, X } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,8 +13,10 @@ import {
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { markNavSeen, NAV_SEEN_SINCE, useNavSeen } from '@/hooks/useNavSeen';
 import { useTutorActivity } from '@/hooks/useTutorActivity';
@@ -75,7 +77,9 @@ export const ConversationList: React.FC<{
   onFlags: (id: string, pinned: boolean, archived: boolean) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
-}> = ({ conversations, loading, partial, activeId, onOpen, onFlags, onRename, onDelete }) => {
+  /** 新对话（搜索框右边的图标） */
+  onNew: () => void;
+}> = ({ conversations, loading, partial, activeId, onOpen, onFlags, onRename, onDelete, onNew }) => {
   const [query, setQuery] = useState('');
   // 清掉搜索：对话里标出的匹配处也去掉
   useEffect(() => {
@@ -178,8 +182,8 @@ export const ConversationList: React.FC<{
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {conversations.length > 0 && (
-        <div className="relative mx-3 mb-2">
+      <div className="mx-3 mt-3 mb-2 flex items-center gap-1.5">
+        <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
@@ -201,7 +205,15 @@ export const ConversationList: React.FC<{
             </button>
           )}
         </div>
-      )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={onNew} aria-label="新对话">
+              <SquarePen />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>新对话（⌘N）</TooltipContent>
+        </Tooltip>
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {query.trim() ? (
           <SearchResults query={query.trim()} conversations={conversations} activeId={activeId} onOpen={onOpen} />
