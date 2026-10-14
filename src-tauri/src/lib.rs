@@ -484,6 +484,7 @@ pub fn run() {
                 start_video_plan,
                 start_video_processing,
                 get_passage_video,
+                align_clip_sentences,
                 delete_video,
                 delete_video_source
             ];

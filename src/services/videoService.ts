@@ -1,6 +1,6 @@
 import { BaseService } from './baseService';
 import type { ApiResult } from '../types';
-import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, SetVideoSubtitlesRequest, SpeechModels, SpeechSourceTest, StartVideoImportRequest, StartVideoPlanRequest, SubtitleDiscovery, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
+import type { ClipSummary, VideoPlanInfo, MediaToolsStatus, PassageVideo, SentenceSpan, SetVideoSubtitlesRequest, SpeechModels, SpeechSourceTest, StartVideoImportRequest, StartVideoPlanRequest, SubtitleDiscovery, Video, VideoDetail, VideoImportStarted, VideoPlan } from '../types/video';
 import { notifyOnSuccess } from './tagService';
 
 /** 视频库（handlers/video.rs）：视频组件、导入（后台任务）、列表 / 详情 / 波形、改名、规划草稿、删除 */
@@ -132,6 +132,11 @@ export class VideoService extends BaseService {
   /** 短文对应的视频短片；不是视频短片时为 null */
   async getPassageVideo(passageId: number): Promise<ApiResult<PassageVideo | null>> {
     return this.executeWithLoading(() => this.client.invoke<PassageVideo | null>('get_passage_video', { passageId }));
+  }
+
+  /** 场景片段每句台词真正说出来的起止；发音评估模型没下载等情况为 null（照用字幕时间） */
+  async alignClip(passageId: number): Promise<ApiResult<(SentenceSpan | null)[] | null>> {
+    return this.executeWithLoading(() => this.client.invoke<(SentenceSpan | null)[] | null>('align_clip_sentences', { passageId }));
   }
 
   async delete(videoId: number): Promise<ApiResult<void>> {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PEAKS_PER_SECOND, quietLevel, refineSentenceTimes } from './speechBoundaries.ts';
+import { PEAKS_PER_SECOND, quietLevel, refineSentenceTimes, timesFromSpans } from './speechBoundaries.ts';
 
 /** 按 [起, 止, 音量] 段造一段波形（毫秒），其余是安静 */
 const wave = (totalMs: number, loud: [number, number, number][]) => {
@@ -116,4 +116,25 @@ test('安静门槛：按底噪，夹在上下限之间', () => {
   assert.ok(Math.abs(quietLevel(Array(100).fill(0.01)) - 0.016) < 1e-9);
   assert.equal(quietLevel(Array(100).fill(0.2)), 0.06);
   assert.equal(quietLevel(Array(100).fill(0)), 0.015);
+});
+
+test('按对齐结果定起止：留余量但不越过停顿的一半，没对上的用字幕时间', () => {
+  const fallback = [
+    { startMs: 300, endMs: 1300 },
+    { startMs: 1300, endMs: 3300 },
+    { startMs: 3300, endMs: 5300 },
+    { startMs: 5300, endMs: 7300 },
+  ];
+  const times = timesFromSpans(fallback, [
+    { startMs: 80, endMs: 1325 },
+    { startMs: 2028, endMs: 3955 },
+    { startMs: 3955, endMs: 5320 },
+    null,
+  ]);
+  assert.deepEqual(times, [
+    { startMs: 0, endMs: 1575 },
+    { startMs: 1908, endMs: 3955 },
+    { startMs: 3955, endMs: 5570 },
+    { startMs: 5300, endMs: 7300 },
+  ]);
 });

@@ -83,3 +83,23 @@ export function quietLevel(levels: number[]): number {
   const floor = sorted[Math.floor((sorted.length - 1) * FLOOR_PERCENTILE)];
   return Math.min(QUIET_MAX, Math.max(QUIET_MIN, floor * 1.6));
 }
+
+/** 对齐出来的说话起止往外留的余量：句首提前一点（起音），句尾多留一点（尾音，暂停会丢掉还没放出来的一小段） */
+const SPAN_LEAD_MS = 120;
+const SPAN_TAIL_MS = 250;
+
+/**
+ * 用台词与声音对齐的结果（每句真正说出来的起止，见后端 clip_alignment）定单句播放的起止：
+ * 前后各留余量，但不越过和相邻一句之间停顿的一半；没对上的句子用 `fallback`（字幕时间按声音校准）。
+ */
+export function timesFromSpans(fallback: { startMs: number; endMs: number }[], spans: ({ startMs: number; endMs: number } | null)[]): { startMs: number; endMs: number }[] {
+  return fallback.map((f, i) => {
+    const span = spans[i];
+    if (!span) return f;
+    const prev = spans[i - 1];
+    const next = spans[i + 1];
+    const lead = prev ? Math.min(SPAN_LEAD_MS, Math.max(0, span.startMs - prev.endMs) / 2) : SPAN_LEAD_MS;
+    const tail = next ? Math.min(SPAN_TAIL_MS, Math.max(0, next.startMs - span.endMs) / 2) : SPAN_TAIL_MS;
+    return { startMs: Math.max(0, Math.round(span.startMs - lead)), endMs: Math.round(span.endMs + tail) };
+  });
+}

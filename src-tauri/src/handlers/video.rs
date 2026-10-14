@@ -1007,6 +1007,34 @@ pub async fn get_passage_video(
     super::finish(&logger, "get_passage_video", result)
 }
 
+/// 场景片段每句台词真正说出来的起止（单句播放按它切）；发音评估模型没下载等情况返回 null，界面照用字幕时间
+#[tauri::command]
+pub async fn align_clip_sentences(
+    app: AppHandle,
+    passage_id: i64,
+) -> AppResult<Option<Vec<Option<crate::services::clip_alignment::SentenceSpan>>>> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "align_clip_sentences",
+        Some(&format!("passage_id: {passage_id}")),
+    );
+    let result = async {
+        let pool = app.state::<SqlitePool>();
+        let dirs = crate::app_paths::dirs(&app);
+        crate::services::clip_alignment::align(
+            Arc::new(pool.inner().clone()),
+            Arc::new(logger.inner().clone()),
+            media_tools(&app).await?,
+            &dirs.data,
+            &dirs.cache,
+            passage_id,
+        )
+        .await
+    }
+    .await;
+    super::finish(&logger, "align_clip_sentences", result)
+}
+
 async fn passage_video(
     app: &AppHandle,
     passage_id: i64,

@@ -233,7 +233,7 @@ export const ReadAloudPanel: React.FC<{
 
   // 场景片段：原声（按声音校准过的句子时间）或 AI 朗读
   const [voice, setVoice] = useClipVoice();
-  const clipTimes = useClipTimes(clip, passage.sentences);
+  const clipTimes = useClipTimes(clip, passage.sentences, passage.id);
   const clipSource = useMemo(() => (clip && voice === 'original' ? { url: clip.clipUrl, sentences: clipTimes } : null), [clip, voice, clipTimes]);
   const player = useSentencePlayer(texts, {
     clip: clipSource,

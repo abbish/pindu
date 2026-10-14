@@ -104,7 +104,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences: rawSentences, passage, onAddTarget, onOpenWord, onEditTranslation, onPractice, pronunciationContext }) => {
   // 句子起止按声音校准（字幕交界常常紧挨着下一句开口，单句播放会带出下一句的开头），波形读不到时用字幕时间
-  const sentences = useClipTimes(video, rawSentences);
+  const sentences = useClipTimes(video, rawSentences, passage.id);
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
   /** 目标词组在台词里的写法 */
   const forms = useMemo(() => formsOf(passage.targetWords), [passage.targetWords]);
@@ -276,6 +276,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       await sleep(outcome === 'scored' ? 1200 : 500);
       if (!alive()) return;
     }
+    sentenceSay.release();
     setFlowing(false);
   };
 

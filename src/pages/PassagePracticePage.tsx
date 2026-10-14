@@ -500,7 +500,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
   /** 听力播放（播放条与听句填空共用）：场景片段可选原声（按声音校准过的句子时间）或 AI 朗读，其余用 AI 朗读 */
   const [slow, setSlow] = useState(false);
   const [voice, setVoice] = useClipVoice();
-  const clipTimes = useClipTimes(clip, passage?.sentences ?? NO_SENTENCES);
+  const clipTimes = useClipTimes(clip, passage?.sentences ?? NO_SENTENCES, passage?.id);
   const clipSource = useMemo(() => (clip && voice === 'original' ? { url: clip.clipUrl, sentences: clipTimes } : null), [clip, voice, clipTimes]);
   const listenPlayer: ListeningPlayerHandle = useSentencePlayer(mode === 'listening' ? texts : NO_TEXTS, { speed: slow ? 'slow' : 'normal', clip: clipSource });
   const clozeQuestions = useMemo(() => set?.questions.filter((q) => q.kind === 'cloze') ?? [], [set]);

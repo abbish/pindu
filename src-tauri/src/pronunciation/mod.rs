@@ -4,6 +4,7 @@
 //! （CTC 对齐 + GOP + 训练好的小模型，`score`）。录音不上传、不收费。
 //! 方案与实测（speechocean762：音素 PCC 0.56、句子 0.64）见 `.claude/work/pronunciation-spike/evidence.md`。
 
+pub mod align;
 pub mod dict;
 pub mod fbank;
 pub mod model;

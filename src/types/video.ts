@@ -113,6 +113,12 @@ export interface PassageVideo {
   endMs: number;
 }
 
+/** 一句台词在短片里真正说出来的起止（毫秒，相对短片开头；本机发音模型对齐得出） */
+export interface SentenceSpan {
+  startMs: number;
+  endMs: number;
+}
+
 export interface StartVideoImportRequest {
   videoPath: string;
   /** 字幕文件（选的或自动找到的）；为空时必须 recognize */

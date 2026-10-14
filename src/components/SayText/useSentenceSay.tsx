@@ -18,7 +18,7 @@ export type SayOutcome = 'scored' | 'recorded' | 'nothing' | 'mic';
  * - `below(i)`：句子下面的状态 / 结果；
  * - `run(i)`：自动流程用（场景片段跟读：播完原声接着跟读），开麦录这一句，录完（评估开着时评完）才返回结局；
  *   评估没开或模型没下载时只录音，能回放；
- * - `stop()`：朗读、播放前停掉跟读；`clear()`：清掉各句的结果（从头再来一遍）。
+ * - `stop()`：朗读、播放前停掉跟读（也关掉麦克风）；`release()`：自动流程走完时关掉一直开着的麦克风；`clear()`：清掉各句的结果（从头再来一遍）。
  * `onStart`：开始录音前调用（停掉正在放的原音 / 朗读，免得录进去）。
  */
 export function useSentenceSay(texts: string[], context?: PronunciationContext, onStart?: () => void) {
@@ -32,6 +32,11 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
   const [micFailed, setMicFailed] = useState<number | null>(null);
   /** run() 在等的那一句 */
   const waiting = useRef<{ index: number; resolve: (o: SayOutcome) => void } | null>(null);
+  /**
+   * 自动流程中一句录完不关麦克风，到 release() / stop() 才关：每句开关一次时，蓝牙耳机会在通话与听音乐两种模式间来回切，
+   * 切回来那一两秒正在播的原声会断掉、卡住；系统也可能重新配置声音输出。会议软件也是整个过程一直开着
+   */
+  const hold = useRef(false);
   const mine = useRef<HTMLAudioElement | null>(null);
   const [playingMine, setPlayingMine] = useState(false);
   const scoring = say.enabled && say.ready === true;
@@ -75,7 +80,7 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     if (saying === null) return;
     const index = saying;
     const take = recorder.take;
-    recorder.close();
+    if (!hold.current) recorder.close();
     if (!take || take.tag !== String(index)) {
       const mic = Boolean(recorder.error);
       if (mic) setMicFailed(index);
@@ -125,6 +130,7 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
       waiting.current?.resolve('nothing');
       const w = { index: i, resolve };
       waiting.current = w;
+      hold.current = true;
       onStart?.();
       window.clearTimeout(beginTimer.current);
       beginTimer.current = window.setTimeout(() => {
@@ -224,9 +230,17 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
   };
 
   /** 朗读、播放视频前调用：正在跟读就停下（不然会把朗读录进去），也停掉「听我的录音」 */
+  /** 自动流程结束：关掉一直开着的麦克风 */
+  const release = () => {
+    hold.current = false;
+    if (!recording) recorder.close();
+  };
+
   const stop = () => {
+    hold.current = false;
     if (recording) recorder.stop();
-    else if (waiting.current && saying === null) {
+    else recorder.close();
+    if (!recording && waiting.current && saying === null) {
       // 还在等开麦：不录了
       window.clearTimeout(beginTimer.current);
       const w = waiting.current;
@@ -242,5 +256,5 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     setRecorded(new Set());
   };
 
-  return { action, below, run, stop, clear, say, recording };
+  return { action, below, run, release, stop, clear, say, recording };
 }
