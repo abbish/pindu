@@ -111,7 +111,15 @@ impl LogProbs {
     /// 最可能的读法（贪心解码，听到了什么）
     pub fn greedy(&self) -> String {
         let toks = tokens();
-        let mut out = String::new();
+        self.greedy_ids()
+            .iter()
+            .map(|&k| toks[k].as_str())
+            .collect()
+    }
+
+    /// 贪心解码的字表下标（去掉 blank 与连续重复）
+    pub fn greedy_ids(&self) -> Vec<usize> {
+        let mut out = Vec::new();
         let mut prev = usize::MAX;
         for t in 0..self.frames {
             let (best, _) = (0..self.vocab).fold((0, NEG), |acc, k| {
@@ -123,7 +131,7 @@ impl LogProbs {
                 }
             });
             if best != prev && best != 0 {
-                out.push_str(&toks[best]);
+                out.push(best);
             }
             prev = best;
         }
@@ -182,6 +190,50 @@ pub fn ctc_logp(lp: &LogProbs, labels: &[usize]) -> f64 {
     } else {
         a[s - 1]
     }
+}
+
+/// 听到的字符算不算读出了标准读法里的这个字符（相同，或听起来接近、母语者也常这样读）
+fn same_sound(expected: usize, heard: usize) -> bool {
+    if expected == heard {
+        return true;
+    }
+    let toks = tokens();
+    lenient(&toks[expected], &toks[heard])
+}
+
+/// 把听到的（贪心解码）和标准读法逐字符对齐（编辑距离），返回标准读法每个字符有没有被读出来。
+/// GOP 只比「标准读法」和「换掉一个音」谁更像，录音里根本没在读（静音、噪声、读了别的）时两边都不像、差距接近 0，
+/// 打分树会给出中高分；对齐能看出这句到底读出来多少。
+pub fn heard_mask(heard: &[usize], expected: &[usize]) -> Vec<bool> {
+    let (n, m) = (expected.len(), heard.len());
+    let mut d = vec![vec![0usize; m + 1]; n + 1];
+    for (i, row) in d.iter_mut().enumerate() {
+        row[0] = i;
+    }
+    for (j, cell) in d[0].iter_mut().enumerate() {
+        *cell = j;
+    }
+    for i in 1..=n {
+        for j in 1..=m {
+            let sub = d[i - 1][j - 1] + usize::from(!same_sound(expected[i - 1], heard[j - 1]));
+            d[i][j] = sub.min(d[i - 1][j] + 1).min(d[i][j - 1] + 1);
+        }
+    }
+    let mut mask = vec![false; n];
+    let (mut i, mut j) = (n, m);
+    while i > 0 && j > 0 {
+        let matched = same_sound(expected[i - 1], heard[j - 1]);
+        if d[i][j] == d[i - 1][j - 1] + usize::from(!matched) {
+            mask[i - 1] = matched;
+            i -= 1;
+            j -= 1;
+        } else if d[i][j] == d[i - 1][j] + 1 {
+            i -= 1;
+        } else {
+            j -= 1;
+        }
+    }
+    mask
 }
 
 /// 拿来比较的其他读法：英语里的全部音
@@ -375,6 +427,25 @@ mod tests {
         assert!(fold.contains(&"▁") && fold.contains(&"ː") && fold.contains(&"̴"));
         assert_eq!(seq("tʃ").len(), 2);
         assert_eq!(seq("g").len(), 1);
+    }
+
+    #[test]
+    fn heard_mask_marks_what_was_actually_said() {
+        let e = |s: &str| seq(s);
+        // careful 读成 hɛɹfəl：k 听成 h，其余都读出来了
+        let mask = heard_mask(&e("hɛɹfəl"), &e("kɛɹfəl"));
+        assert_eq!(mask, [false, true, true, true, true, true]);
+        // 什么都没听到 / 读了别的
+        assert!(heard_mask(&[], &e("kɛɹfəl")).iter().all(|m| !m));
+        assert_eq!(
+            heard_mask(&e("enana"), &e("kɛɹfəl"))
+                .iter()
+                .filter(|&&m| m)
+                .count(),
+            0
+        );
+        // 听起来接近的（弱读）算读出来了
+        assert_eq!(heard_mask(&e("ʌ"), &e("ə")), [true]);
     }
 
     #[test]

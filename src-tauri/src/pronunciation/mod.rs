@@ -18,6 +18,14 @@ use std::path::Path;
 const SCALE: f64 = 50.0;
 /// 低于这个分数时说明「听起来像什么」
 const EXPLAIN_BELOW: u32 = 60;
+/// 算作有声音的音量（20ms 一段的 RMS，约 -46 dBFS）：没接麦克风的底噪在这以下，离麦克风远、很小声说话也在这以上（跟读录音不开自动增益，音量比说话输入小）
+const VOICE_RMS: f32 = 0.005;
+/// 有声音的部分不到这么长就当没读（一个短词也有 200ms 以上）
+const MIN_VOICE_MS: usize = 150;
+/// 听到的音不到标准读法的这个比例（且不到 2 个）就当没在读：静音、底噪时模型只会冒出一两个音
+const MIN_HEARD_RATIO: f64 = 0.15;
+/// 一个词读出来的音不到一半时按比例降分：读出来的比例 c → 分数 × (0.3 + 1.4c)，一个音都没读出来时只剩三成
+const WORD_HEARD_FULL: f64 = 0.5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,9 +75,40 @@ pub fn assess(model_path: &Path, text: &str, samples: &[f32]) -> AppResult<Asses
     if words.is_empty() {
         return Err(AppError::ValidationError("没有要读的英文".to_string()));
     }
+    if voiced_ms(samples) < MIN_VOICE_MS {
+        return Ok(unvoiced(&words));
+    }
     let (frames, vocab, raw) = model::log_probs(model_path, samples)?;
     let lp = LogProbs::new(frames, vocab, &raw);
     Ok(assess_log_probs(&lp, &words))
+}
+
+/// 录音里有声音的时长（毫秒，20ms 一段按音量算）
+fn voiced_ms(samples: &[f32]) -> usize {
+    const WINDOW: usize = fbank::SAMPLE_RATE / 50;
+    samples
+        .chunks(WINDOW)
+        .filter(|w| (w.iter().map(|v| v * v).sum::<f32>() / w.len() as f32).sqrt() >= VOICE_RMS)
+        .count()
+        * 20
+}
+
+/// 没听到在读：不评分
+fn unvoiced(words: &[String]) -> Assessment {
+    Assessment {
+        score: None,
+        words: words
+            .iter()
+            .map(|w| WordAssessment {
+                word: w.clone(),
+                known: dict::lookup(w).is_some(),
+                score: None,
+                phones: Vec::new(),
+            })
+            .collect(),
+        heard: String::new(),
+        voiced: false,
+    }
 }
 
 /// 已经有对数概率时打分（测试与整句复用）
@@ -102,6 +141,25 @@ pub fn assess_log_probs(lp: &LogProbs, words: &[String]) -> Assessment {
             }
         }
     }
+    // 听到的音和标准读法对齐：这句到底读出来多少（见 score::heard_mask）
+    let tokens: Vec<Vec<usize>> = phones.iter().map(|p| score::seq(p)).collect();
+    let expected: Vec<usize> = tokens.iter().flatten().copied().collect();
+    let heard_ids = lp.greedy_ids();
+    if expected.is_empty()
+        || (heard_ids.len() as f64) < (expected.len() as f64 * MIN_HEARD_RATIO).max(2.0)
+    {
+        return unvoiced(words);
+    }
+    let mask = score::heard_mask(&heard_ids, &expected);
+    let mut at = 0;
+    let phone_heard: Vec<bool> = tokens
+        .iter()
+        .map(|t| {
+            let got = mask[at..at + t.len()].iter().filter(|&&m| m).count();
+            at += t.len();
+            got * 2 >= t.len() && got > 0
+        })
+        .collect();
     let feats = score::features(lp, &phones);
     let mut out: Vec<WordAssessment> = words
         .iter()
@@ -125,10 +183,22 @@ pub fn assess_log_probs(lp: &LogProbs, words: &[String]) -> Assessment {
             likely_confused: confused,
         });
     }
-    for w in &mut out {
+    let mut heard_in_word = vec![(0usize, 0usize); words.len()];
+    for (&h, &i) in phone_heard.iter().zip(&owner) {
+        heard_in_word[i].0 += usize::from(h);
+        heard_in_word[i].1 += 1;
+    }
+    for (w, &(got, all)) in out.iter_mut().zip(&heard_in_word) {
         if !w.phones.is_empty() {
             let sum: u32 = w.phones.iter().map(|p| p.score).sum();
-            w.score = Some((sum as f64 / w.phones.len() as f64).round() as u32);
+            let mean = sum as f64 / w.phones.len() as f64;
+            let c = got as f64 / all as f64;
+            let factor = if c >= WORD_HEARD_FULL {
+                1.0
+            } else {
+                0.3 + 1.4 * c
+            };
+            w.score = Some((mean * factor).round() as u32);
         }
     }
     let scored: Vec<u32> = out.iter().filter_map(|w| w.score).collect();
@@ -136,7 +206,7 @@ pub fn assess_log_probs(lp: &LogProbs, words: &[String]) -> Assessment {
         score: (!scored.is_empty())
             .then(|| (scored.iter().sum::<u32>() as f64 / scored.len() as f64).round() as u32),
         words: out,
-        voiced: heard.chars().filter(|c| c.is_alphabetic()).count() > 0,
+        voiced: true,
         heard,
     }
 }
@@ -161,6 +231,27 @@ mod tests {
         assert!(words_of("123 …").is_empty());
     }
 
+    #[test]
+    fn silence_is_not_scored_and_never_reaches_the_model() {
+        // 模型文件不存在：没声音时根本不该去跑模型
+        let a = assess(
+            Path::new("/nonexistent/model.onnx"),
+            "careful",
+            &vec![0.0; 16000],
+        )
+        .unwrap();
+        assert!(!a.voiced && a.score.is_none());
+        let hiss: Vec<f32> = (0..16000)
+            .map(|i| if i % 2 == 0 { 0.002 } else { -0.002 })
+            .collect();
+        assert!(
+            !assess(Path::new("/nonexistent/model.onnx"), "careful", &hiss)
+                .unwrap()
+                .voiced
+        );
+        assert_eq!(voiced_ms(&vec![0.1; 16000]), 1000);
+    }
+
     /// 读 16 位 wav（固定样例）
     fn wav(name: &str) -> Vec<f32> {
         let bytes = std::fs::read(
@@ -175,6 +266,50 @@ mod tests {
             .iter()
             .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
             .collect()
+    }
+
+    /// 读任意 wav（找 data 块；macOS `say` 生成的文件头不止 44 字节）
+    fn wav_any(path: &Path) -> Vec<f32> {
+        let bytes = std::fs::read(path).unwrap();
+        let at = bytes.windows(4).position(|w| w == b"data").unwrap() + 8;
+        bytes[at..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
+            .collect()
+    }
+
+    /// 评分探针：`PINDU_PRONUNCIATION_MODEL=<model> PINDU_PRONUNCIATION_PROBE=<目录>`，目录里 cases.txt 每行「文件|要读的文字」
+    #[test]
+    #[ignore]
+    fn probe_cases() {
+        let model = std::env::var("PINDU_PRONUNCIATION_MODEL").expect("PINDU_PRONUNCIATION_MODEL");
+        let dir = std::path::PathBuf::from(
+            std::env::var("PINDU_PRONUNCIATION_PROBE").expect("PINDU_PRONUNCIATION_PROBE"),
+        );
+        for line in std::fs::read_to_string(dir.join("cases.txt"))
+            .unwrap()
+            .lines()
+        {
+            let Some((file, text)) = line.split_once('|') else {
+                continue;
+            };
+            let samples = wav_any(&dir.join(file));
+            let a = assess(Path::new(&model), text, &samples).unwrap();
+            let words: Vec<String> = a
+                .words
+                .iter()
+                .map(|w| format!("{}={:?}", w.word, w.score))
+                .collect();
+            println!(
+                "{file:<16} score={:?} voiced={} heard=「{}」 {}",
+                a.score,
+                a.voiced,
+                a.heard,
+                words.join(" ")
+            );
+        }
     }
 
     /// 与原型逐项对照：需要模型文件（`PINDU_PRONUNCIATION_MODEL=<model.int8.onnx>`）
