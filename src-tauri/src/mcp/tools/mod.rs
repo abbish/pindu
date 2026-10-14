@@ -373,16 +373,16 @@ pub struct QuestionSetArgs {
     /// reading (default) or listening
     #[serde(default)]
     pub mode: Option<String>,
-    /// Number of multiple-choice questions (default 3)
+    /// Number of multiple-choice questions. Give a count for each type you want; types left out get 0 (with no counts at all: 3 choice + 2 true/false)
     #[serde(default)]
     pub choice: Option<i64>,
-    /// Number of true/false questions (default 2)
+    /// Number of true/false questions (0 if left out)
     #[serde(default)]
     pub true_false: Option<i64>,
-    /// Number of cloze blanks (default 0)
+    /// Number of cloze blanks (0 if left out)
     #[serde(default)]
     pub cloze: Option<i64>,
-    /// Number of open questions (default 0)
+    /// Number of open questions (0 if left out)
     #[serde(default)]
     pub open: Option<i64>,
     /// basic / standard / advanced (default standard)

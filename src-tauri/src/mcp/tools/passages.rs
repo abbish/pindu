@@ -198,9 +198,10 @@ impl PinduTools {
             Some("listening") => "listening",
             _ => "reading",
         };
+        let counts = question_counts(&args);
         let spec = json!({
-            "cloze": args.cloze.unwrap_or(0), "choice": args.choice.unwrap_or(3),
-            "trueFalse": args.true_false.unwrap_or(2), "open": args.open.unwrap_or(0),
+            "cloze": counts.cloze, "choice": counts.choice,
+            "trueFalse": counts.true_false, "open": counts.open,
             "difficulty": args.difficulty.clone().unwrap_or_else(|| "standard".to_string()),
         });
         let request = match serde_json::from_value(
@@ -526,5 +527,66 @@ impl PinduTools {
             ),
             Err(e) => failed("没能准备单词卡", e),
         }
+    }
+}
+
+/// 出题数量
+#[derive(Debug, PartialEq)]
+struct QuestionCounts {
+    choice: i64,
+    true_false: i64,
+    cloze: i64,
+    open: i64,
+}
+
+/// 各题型数量：给了任何一项时，没给的都是 0（老师说「出 3 道题」只传 choice=3，不再默认补 2 道判断）；一项都没给时出 3 道选择 + 2 道判断
+fn question_counts(args: &QuestionSetArgs) -> QuestionCounts {
+    let given = [args.choice, args.true_false, args.cloze, args.open];
+    if given.iter().all(Option::is_none) {
+        return QuestionCounts {
+            choice: 3,
+            true_false: 2,
+            cloze: 0,
+            open: 0,
+        };
+    }
+    QuestionCounts {
+        choice: args.choice.unwrap_or(0),
+        true_false: args.true_false.unwrap_or(0),
+        cloze: args.cloze.unwrap_or(0),
+        open: args.open.unwrap_or(0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(v: Value) -> QuestionSetArgs {
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn question_counts_left_out_types_are_zero() {
+        let only_choice = question_counts(&args(json!({ "passage_id": 1, "choice": 3 })));
+        assert_eq!(
+            only_choice,
+            QuestionCounts {
+                choice: 3,
+                true_false: 0,
+                cloze: 0,
+                open: 0
+            }
+        );
+        let none = question_counts(&args(json!({ "passage_id": 1, "mode": "listening" })));
+        assert_eq!(
+            none,
+            QuestionCounts {
+                choice: 3,
+                true_false: 2,
+                cloze: 0,
+                open: 0
+            }
+        );
     }
 }
