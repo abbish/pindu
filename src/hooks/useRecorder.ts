@@ -18,7 +18,15 @@ export interface RecorderOptions {
   silenceStopMs?: number;
   /** 最长录多久（毫秒） */
   maxMs?: number;
+  /**
+   * 用系统的语音处理（回声消除、降噪、自动增益）。只给说话输入用：跟读时原声 / 朗读已经停了，用不着回声消除，
+   * 而 macOS 上开着它时声音输出会切到语音处理模式，正在播的原声 / 朗读会被压低、卡顿（每次开关麦克风都会抖一下）。
+   */
+  voiceProcessing?: boolean;
 }
+
+/** 放音停下后等这么久再开始录：扬声器、蓝牙耳机还在放最后一点声音（蓝牙延迟常到 200ms 以上），不等会把句尾录进去 */
+export const PLAYBACK_TAIL_MS = 350;
 
 /** 认为在说话的音量阈值（RMS） */
 const SPEAKING = 0.04;
@@ -61,7 +69,10 @@ export function useRecorder(options: RecorderOptions = {}) {
     if (streamRef.current) return true;
     const generation = generationRef.current;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const processing = optionsRef.current.voiceProcessing ?? false;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: processing, noiseSuppression: processing, autoGainControl: processing },
+      });
       if (generation !== generationRef.current) {
         stream.getTracks().forEach((t) => t.stop());
         return false;

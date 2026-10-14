@@ -14,6 +14,7 @@ import { TargetWord } from '@/components/PassageReader/WordCard';
 import { SelectionAction } from '@/components/SelectionAction';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { useClipTimes } from '@/hooks/useClipTimes';
+import { seekMedia } from '@/utils/mediaSeek';
 import { canAddTarget, formsOf } from '@/utils/passage';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { cn } from '@/lib/utils';
@@ -224,12 +225,17 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       originalDone.current?.(false);
       originalDone.current = resolve;
       setCurrent(index);
-      v.currentTime = startOf(s) / 1000;
+      v.pause();
       v.playbackRate = slow ? SLOW_RATE : rate;
       setSentenceSlow(slow);
-      stopAt.current = Math.max(startOf(s), endOf(s) - STOP_LEAD_MS);
+      stopAt.current = null;
       sentencePlay.current = true;
-      void v.play();
+      // 跳好了再播（跳转中就播，句首会卡一下）；等跳转期间被打断（originalDone 已换）就不播了
+      void seekMedia(v, startOf(s) / 1000).then(() => {
+        if (originalDone.current !== resolve) return;
+        stopAt.current = Math.max(startOf(s), endOf(s) - STOP_LEAD_MS);
+        void v.play();
+      });
       }),
     [sentences, rate]
   );

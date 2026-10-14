@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Mic, Play, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useRecorder } from '@/hooks/useRecorder';
+import { PLAYBACK_TAIL_MS, useRecorder } from '@/hooks/useRecorder';
 import { usePronunciation } from '@/hooks/usePronunciation';
 import { MicProblem } from '@/components/MicProblem';
 import type { Assessment, PronunciationContext } from '@/types/pronunciation';
@@ -59,8 +59,16 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     setRecorded(new Set());
   }, [texts]);
 
+  /** run() 开麦前的等待 */
+  const beginTimer = useRef<number | undefined>(undefined);
   // 卸载时还在等的流程照常收尾
-  useEffect(() => () => waiting.current?.resolve('nothing'), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(beginTimer.current);
+      waiting.current?.resolve('nothing');
+    },
+    []
+  );
 
   // 一次录音结束：录到了就评估这句（评估没开就只留下录音）；没录到（太短、麦克风打不开）就算了。之后关掉麦克风
   useEffect(() => {
@@ -111,12 +119,17 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     begin(i);
   };
 
-  /** 自动流程：跟读第 i 句，录完（评完）返回结局 */
+  /** 自动流程：跟读第 i 句，录完（评完）返回结局；先等刚停的原声放完最后一点再开麦 */
   const run = (i: number) =>
     new Promise<SayOutcome>((resolve) => {
       waiting.current?.resolve('nothing');
-      waiting.current = { index: i, resolve };
-      begin(i);
+      const w = { index: i, resolve };
+      waiting.current = w;
+      onStart?.();
+      window.clearTimeout(beginTimer.current);
+      beginTimer.current = window.setTimeout(() => {
+        if (waiting.current === w) begin(i);
+      }, PLAYBACK_TAIL_MS);
     });
 
   const playMine = () => {
@@ -213,6 +226,13 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
   /** 朗读、播放视频前调用：正在跟读就停下（不然会把朗读录进去），也停掉「听我的录音」 */
   const stop = () => {
     if (recording) recorder.stop();
+    else if (waiting.current && saying === null) {
+      // 还在等开麦：不录了
+      window.clearTimeout(beginTimer.current);
+      const w = waiting.current;
+      waiting.current = null;
+      w.resolve('nothing');
+    }
     stopMine();
   };
 

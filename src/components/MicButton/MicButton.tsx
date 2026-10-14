@@ -33,7 +33,7 @@ export interface MicButtonProps {
  * 第一次用先下载语音输入模型（设置 → 本机模型里也能管理）。
  */
 export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange, disabled, className, label = '说话输入', language }) => {
-  const recorder = useRecorder({ silenceStopMs: 1800, maxMs: 60000 });
+  const recorder = useRecorder({ silenceStopMs: 1800, maxMs: 60000, voiceProcessing: true });
   const onTextRef = useRef(onText);
   onTextRef.current = onText;
   const [status, setStatus] = useState<DictationStatus | null>(null);

@@ -17,7 +17,7 @@ import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { useClipTimes } from '@/hooks/useClipTimes';
 import { useClipVoice } from '@/hooks/useClipVoice';
 import type { PassageVideo } from '@/types/video';
-import { useRecorder } from '@/hooks/useRecorder';
+import { PLAYBACK_TAIL_MS, useRecorder } from '@/hooks/useRecorder';
 import { usePronunciation } from '@/hooks/usePronunciation';
 import { SayText, SayVerdict, useSentenceSay } from '@/components/SayText';
 import { MicProblem } from '@/components/MicProblem';
@@ -173,13 +173,17 @@ export const ReadAloudPanel: React.FC<{
   }, [blind, prefs.recall]);
   const recallRef = useRef(prefs.recall);
   recallRef.current = prefs.recall && !blind;
+  /** 等原声 / 朗读的最后一点放完再开始录（停下朗读时取消） */
+  const shadowTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(shadowTimer.current), []);
   const shadowStep = useCallback((index: number) => {
     if (!shadowRef.current) return;
     return new Promise<void>((resolve) => {
       setShadowing({ index, resolve });
       // 清掉上一次的录音：这次太短没录成时，结束时不会拿到上一次的
       recorder.clear();
-      void recorder.start(String(index));
+      window.clearTimeout(shadowTimer.current);
+      shadowTimer.current = window.setTimeout(() => void recorder.start(String(index)), PLAYBACK_TAIL_MS);
     });
   }, [recorder]);
   const afterSentence = useCallback(
@@ -310,6 +314,7 @@ export const ReadAloudPanel: React.FC<{
       recall.resolve();
       setRecall(null);
     }
+    window.clearTimeout(shadowTimer.current);
     if (shadowing) {
       if (recorder.state !== 'idle') recorder.stop();
       shadowing.resolve();

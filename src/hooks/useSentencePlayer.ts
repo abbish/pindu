@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAudioPlayer } from './useAudioPlayer';
+import { seekMedia } from '@/utils/mediaSeek';
 import type { SpeechSpeed } from '../services/ttsService';
 
 export interface SentencePlayerOptions {
@@ -60,9 +61,8 @@ function playClipRange(audio: HTMLAudioElement, startMs: number, endMs: number, 
       frame = requestAnimationFrame(tick);
     };
     audio.playbackRate = rate;
-    audio.currentTime = startMs / 1000;
-    audio
-      .play()
+    void seekMedia(audio, startMs / 1000)
+      .then(() => (settled ? undefined : audio.play()))
       .then(() => {
         if (!settled) frame = requestAnimationFrame(tick);
       })
