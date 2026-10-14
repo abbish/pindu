@@ -636,18 +636,19 @@ async fn progress_of(b: &mut Builder, pool: &Arc<SqlitePool>, id: Id) -> AppResu
     let schedules = Repo::schedules(pool, id).await?;
     let day_of: HashMap<Id, i64> = schedules.iter().map(|s| (s.id, s.day_number)).collect();
     let mut words_of: HashMap<Id, Vec<PkgScheduleWord>> = HashMap::new();
+    // 日程词条编号 → 它在那天日程里的下标（练习记录按它指向词条）
+    let mut entry_of: HashMap<Id, usize> = HashMap::new();
     for w in Repo::schedule_words(pool, id).await? {
-        words_of
-            .entry(w.schedule_id)
-            .or_default()
-            .push(PkgScheduleWord {
-                word_ref: word_ref(b, w.word_id)?,
-                review: w.is_review,
-                review_count: w.review_count,
-                priority: w.priority,
-                difficulty: w.difficulty_level,
-                created_at: w.created_at.unwrap_or_default(),
-            });
+        let list = words_of.entry(w.schedule_id).or_default();
+        entry_of.insert(w.id, list.len());
+        list.push(PkgScheduleWord {
+            word_ref: word_ref(b, w.word_id)?,
+            review: w.is_review,
+            review_count: w.review_count,
+            priority: w.priority,
+            difficulty: w.difficulty_level,
+            created_at: w.created_at.unwrap_or_default(),
+        });
     }
     let schedules = schedules
         .into_iter()
@@ -695,6 +696,7 @@ async fn progress_of(b: &mut Builder, pool: &Arc<SqlitePool>, id: Id) -> AppResu
     for r in Repo::records(pool, id).await? {
         records.entry(r.session_id).or_default().push(PkgRecord {
             word_ref: word_ref(b, r.word_id)?,
+            entry: entry_of.get(&r.plan_word_id).copied(),
             step: r.step,
             user_input: r.user_input,
             correct: r.is_correct,

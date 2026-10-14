@@ -426,6 +426,7 @@ pub struct ScheduleRow {
 
 #[derive(sqlx::FromRow)]
 pub struct ScheduleWordRow {
+    pub id: Id,
     pub schedule_id: Id,
     pub word_id: Id,
     pub is_review: bool,
@@ -478,6 +479,7 @@ pub struct PauseRow {
 pub struct RecordRow {
     pub session_id: String,
     pub word_id: Id,
+    pub plan_word_id: Id,
     pub step: i64,
     pub user_input: String,
     pub is_correct: bool,
@@ -579,7 +581,7 @@ impl LanPackageRepository {
 
     pub async fn schedule_words(pool: &SqlitePool, plan_id: Id) -> AppResult<Vec<ScheduleWordRow>> {
         Ok(sqlx::query_as(
-            "SELECT sw.schedule_id, sw.word_id, sw.is_review, sw.review_count, sw.priority, sw.difficulty_level, sw.created_at
+            "SELECT sw.id, sw.schedule_id, sw.word_id, sw.is_review, sw.review_count, sw.priority, sw.difficulty_level, sw.created_at
              FROM study_plan_schedule_words sw JOIN study_plan_schedules s ON s.id = sw.schedule_id
              WHERE s.plan_id = ? ORDER BY s.day_number, sw.id",
         )
@@ -603,7 +605,7 @@ impl LanPackageRepository {
         Ok(sqlx::query_as(
             "SELECT id, schedule_id, schedule_date, start_time, end_time, total_time, active_time, pause_count,
                     completed, created_at, updated_at
-             FROM practice_sessions WHERE plan_id = ? ORDER BY start_time, id",
+             FROM practice_sessions WHERE plan_id = ? ORDER BY start_time, rowid",
         )
         .bind(plan_id)
         .fetch_all(pool)
@@ -623,7 +625,7 @@ impl LanPackageRepository {
 
     pub async fn records(pool: &SqlitePool, plan_id: Id) -> AppResult<Vec<RecordRow>> {
         Ok(sqlx::query_as(
-            "SELECT r.session_id, r.word_id, r.step, r.user_input, r.is_correct, r.time_spent, r.attempts, r.kind, r.created_at
+            "SELECT r.session_id, r.word_id, r.plan_word_id, r.step, r.user_input, r.is_correct, r.time_spent, r.attempts, r.kind, r.created_at
              FROM word_practice_records r JOIN practice_sessions s ON s.id = r.session_id
              WHERE s.plan_id = ? ORDER BY r.id",
         )
@@ -760,8 +762,8 @@ impl LanPackageRepository {
         word_id: Id,
         wordbook_id: Id,
         w: &crate::lan::package::PkgScheduleWord,
-    ) -> AppResult<()> {
-        sqlx::query(
+    ) -> AppResult<Id> {
+        let done = sqlx::query(
             "INSERT INTO study_plan_schedule_words (schedule_id, word_id, wordbook_id, is_review, review_count,
                  priority, difficulty_level, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -776,7 +778,7 @@ impl LanPackageRepository {
         .bind(&w.created_at)
         .execute(&mut *conn)
         .await?;
-        Ok(())
+        Ok(done.last_insert_rowid())
     }
 
     pub async fn insert_word_state_conn(

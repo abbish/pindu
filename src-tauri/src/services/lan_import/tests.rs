@@ -812,12 +812,53 @@ async fn practice_some(src: &Source) {
         .execute(pool)
         .await
         .unwrap();
+    // 练习记录指向日程词条：第 1 天学的第一个新词，第 2 天又作为复习词出现、在第二个会话里练
+    let (entry1, w1): (Id, Id) = sqlx::query_as(
+        "SELECT id, word_id FROM study_plan_schedule_words WHERE schedule_id = ? ORDER BY id LIMIT 1",
+    )
+    .bind(schedule_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    let (schedule2,): (Id,) =
+        sqlx::query_as("SELECT id FROM study_plan_schedules WHERE plan_id = ? AND day_number = 2")
+            .bind(src.plan_id)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    let entry2 = sqlx::query(
+        "INSERT INTO study_plan_schedule_words (schedule_id, word_id, wordbook_id, is_review, review_count, priority, difficulty_level, created_at)
+         SELECT ?, word_id, wordbook_id, 1, 1, priority, difficulty_level, created_at FROM study_plan_schedule_words WHERE id = ?",
+    )
+    .bind(schedule2)
+    .bind(entry1)
+    .execute(pool)
+    .await
+    .unwrap()
+    .last_insert_rowid();
+    sqlx::query(
+        "INSERT INTO practice_sessions (id, plan_id, schedule_id, schedule_date, start_time, end_time, total_time,
+             active_time, pause_count, completed, created_at, updated_at)
+         VALUES ('sess-2', ?, ?, ?, ?, ?, 60, 60, 0, 1, ?, ?)",
+    )
+    .bind(src.plan_id)
+    .bind(schedule2)
+    .bind(&today)
+    .bind(&now)
+    .bind(&now)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .unwrap();
     sqlx::query(
         "INSERT INTO word_practice_records (session_id, word_id, plan_word_id, step, user_input, is_correct, time_spent, attempts, kind, created_at)
-         VALUES ('sess-1', ?, ?, 1, 'gate', 1, 5, 1, 'learn', ?)",
+         VALUES ('sess-1', ?1, ?2, 1, 'x', 1, 5, 1, 'learn', ?4), ('sess-1', ?1, ?2, 3, 'x', 1, 5, 1, 'learn', ?4),
+                ('sess-2', ?1, ?3, 3, 'x', 0, 5, 1, 'learn', ?4)",
     )
-    .bind(word_id)
-    .bind(pw)
+    .bind(w1)
+    .bind(entry1)
+    .bind(entry2)
     .bind(&now)
     .execute(pool)
     .await
@@ -900,7 +941,7 @@ async fn plan_with_progress_is_restored_as_is() {
         .unwrap();
     let progress = exported.package.plans[0].progress.as_ref().unwrap();
     assert_eq!(progress.status, "Active");
-    assert_eq!((progress.sessions.len(), progress.attempts.len()), (1, 1));
+    assert_eq!((progress.sessions.len(), progress.attempts.len()), (2, 1));
     assert_eq!(progress.passage_tasks[0].attempt, Some(0));
     assert_eq!(progress.pronunciation.len(), 2);
     assert_eq!(progress.pronunciation[0].session, Some(0));
@@ -915,6 +956,13 @@ async fn plan_with_progress_is_restored_as_is() {
     );
 
     let dst = memory_pool().await;
+    // 接收方做过重置：表空了但自增序号还在，日程词条与计划单词的编号错开（BUG06）
+    sqlx::query(
+        "INSERT INTO sqlite_sequence (name, seq) VALUES ('study_plan_schedule_words', 1000), ('study_plan_words', 10)",
+    )
+    .execute(dst.as_ref())
+    .await
+    .unwrap();
     let dst_dir = temp_dir("dst-progress");
     let result = import(
         dst.clone(),
@@ -953,14 +1001,7 @@ async fn plan_with_progress_is_restored_as_is() {
     .unwrap();
     let answers: serde_json::Value = serde_json::from_str(&answers).unwrap();
     assert_eq!(answers["questionResults"][0]["questionId"], q1);
-    let orphan: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM word_practice_records r LEFT JOIN study_plan_words pw ON pw.id = r.plan_word_id
-         WHERE pw.id IS NULL OR pw.word_id != r.word_id",
-    )
-    .fetch_one(dst.as_ref())
-    .await
-    .unwrap();
-    assert_eq!(orphan, 0);
+    assert_records_point_to_their_schedule(&dst, plan, 3).await;
     let srs: i64 = sqlx::query_scalar(
         "SELECT pw.srs_box FROM study_plan_words pw JOIN words w ON w.id = pw.word_id WHERE pw.plan_id = ? AND w.word = 'gate'",
     )
@@ -980,4 +1021,38 @@ async fn plan_with_progress_is_restored_as_is() {
     .unwrap();
     assert_eq!((word.as_str(), linked), ("gate", 1));
     crate::time::assert_instants_canonical(&dst).await;
+
+    // 接收方已有数据：再收一次是新的一份，记录同样指向新计划自己的日程词条
+    let second = import(
+        dst.clone(),
+        test_logger(),
+        &dst_dir,
+        &exported.package,
+        &deliver(&exported),
+    )
+    .await
+    .unwrap();
+    assert_records_point_to_their_schedule(&dst, second.plans[0].id, 3).await;
+}
+
+/// 练习记录的 plan_word_id 指向会话所练那天日程里同一个词的词条；复习词指向复习词条
+async fn assert_records_point_to_their_schedule(pool: &SqlitePool, plan: Id, expected: i64) {
+    let rows: Vec<(i64, bool, bool)> = sqlx::query_as(
+        "SELECT s.day_number, sw.is_review, sw.schedule_id = ps.schedule_id AND sw.word_id = r.word_id
+         FROM word_practice_records r
+         JOIN practice_sessions ps ON ps.id = r.session_id
+         LEFT JOIN study_plan_schedule_words sw ON sw.id = r.plan_word_id
+         LEFT JOIN study_plan_schedules s ON s.id = sw.schedule_id
+         WHERE ps.plan_id = ? ORDER BY r.id",
+    )
+    .bind(plan)
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    assert_eq!(rows.len() as i64, expected);
+    assert!(rows.iter().all(|r| r.2), "{rows:?}");
+    assert_eq!(
+        rows.iter().map(|r| (r.0, r.1)).collect::<Vec<_>>(),
+        [(1, false), (1, false), (2, true)]
+    );
 }

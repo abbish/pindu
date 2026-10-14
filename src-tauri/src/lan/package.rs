@@ -465,6 +465,9 @@ pub struct PkgPause {
 #[serde(rename_all = "camelCase")]
 pub struct PkgRecord {
     pub word_ref: String,
+    /// 作答的是会话那天日程里的第几个词条（`PkgSchedule.words` 的下标）；同一个词可能在一天里既是新词又是复习词
+    #[serde(default)]
+    pub entry: Option<usize>,
     pub step: i64,
     pub user_input: String,
     pub correct: bool,

@@ -632,18 +632,23 @@ async fn restore_plan(
     .await?;
 
     let mut schedule_of_day: HashMap<i64, Id> = HashMap::new();
+    // 每天日程的词条：(单词引用, 新编号)，顺序与包里一致；练习记录指向的是这些词条
+    let mut entries_of_day: HashMap<i64, Vec<(&str, Id)>> = HashMap::new();
     for s in &pr.schedules {
         let sid = Repo::insert_schedule_conn(&mut *tx, plan_id, s).await?;
         schedule_of_day.insert(s.day, sid);
+        let entries = entries_of_day.entry(s.day).or_default();
         for w in &s.words {
             let info = word(&w.word_ref)?;
-            Repo::insert_schedule_word_conn(&mut *tx, sid, info.id, info.book_id, w).await?;
+            let id =
+                Repo::insert_schedule_word_conn(&mut *tx, sid, info.id, info.book_id, w).await?;
+            entries.push((w.word_ref.as_str(), id));
         }
     }
 
     // 计划单词与记忆等级（没有记录的按初始状态）
     // 按原来的顺序写，计划里没有状态记录的词按初始状态补上
-    let mut plan_word: HashMap<&str, Id> = HashMap::new();
+    let mut plan_word: HashSet<&str> = HashSet::new();
     let has_state: HashSet<&str> = pr.word_states.iter().map(|s| s.word_ref.as_str()).collect();
     let fresh: Vec<PkgWordState> = p
         .words
@@ -655,12 +660,11 @@ async fn restore_plan(
         })
         .collect();
     for state in pr.word_states.iter().chain(&fresh) {
-        if plan_word.contains_key(state.word_ref.as_str()) {
+        if !plan_word.insert(state.word_ref.as_str()) {
             continue;
         }
         let info = word(&state.word_ref)?;
-        let id = Repo::insert_word_state_conn(&mut *tx, plan_id, info.id, state).await?;
-        plan_word.insert(state.word_ref.as_str(), id);
+        Repo::insert_word_state_conn(&mut *tx, plan_id, info.id, state).await?;
     }
 
     let mut session_ids: Vec<String> = Vec::with_capacity(pr.sessions.len());
@@ -672,12 +676,20 @@ async fn restore_plan(
         for pause in &s.pauses {
             Repo::insert_pause_conn(&mut *tx, &session_id, pause).await?;
         }
+        // 练习记录指向会话那天日程里的词条（study_plan_schedule_words），不是计划单词
+        let entries = entries_of_day.get(&s.day).map(Vec::as_slice).unwrap_or(&[]);
         for r in &s.records {
             let info = word(&r.word_ref)?;
-            let pw = *plan_word
-                .get(r.word_ref.as_str())
-                .ok_or_else(|| AppError::ValidationError("练习记录里的单词不在计划里".into()))?;
-            Repo::insert_record_conn(&mut *tx, &session_id, info.id, pw, r).await?;
+            let entry = r
+                .entry
+                .and_then(|i| entries.get(i))
+                .filter(|(w, _)| *w == r.word_ref)
+                .or_else(|| entries.iter().find(|(w, _)| *w == r.word_ref))
+                .map(|(_, id)| *id)
+                .ok_or_else(|| {
+                    AppError::ValidationError("练习记录里的单词不在那天的日程里".into())
+                })?;
+            Repo::insert_record_conn(&mut *tx, &session_id, info.id, entry, r).await?;
         }
     }
     for r in &pr.study_records {
