@@ -9,8 +9,8 @@
 pub mod agent_settings;
 pub mod ai_model;
 pub mod calendar;
-#[cfg(debug_assertions)]
 pub mod clip_alignment;
+#[cfg(debug_assertions)]
 pub mod diagnostics;
 pub mod lan_export;
 pub mod lan_import;
