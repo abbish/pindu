@@ -53,6 +53,18 @@ export function splitAt<T extends ImportItemLike>(items: T[], itemIndex: number,
   return [...items.slice(0, itemIndex), first, second, ...items.slice(itemIndex + 1)];
 }
 
+/**
+ * 预览里改一句的英文（value 已去掉多余空白、非空）：用户核对过，去掉待核对标记；
+ * 英文真改了的丢掉材料里的旧译文，导入时由 AI 重新翻译这句（后端只在译文为空时用 AI 的）。
+ */
+export function editSentenceText<S extends ImportSentenceLike & { zh?: string | null; unverified?: boolean }>(
+  sentence: S,
+  value: string,
+): S {
+  const changed = sentence.en.replace(/\s+/g, ' ').trim() !== value;
+  return { ...sentence, en: value, unverified: false, ...(changed ? { zh: null } : {}) };
+}
+
 /** 改第 index 篇的标题 */
 export function renameItem<T extends ImportItemLike>(items: T[], index: number, title: string): T[] {
   return items.map((it, i) => (i === index ? { ...it, title } : it));

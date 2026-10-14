@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { englishWordCount, lengthHint, mergeWithPrevious, renameItem, splitAt, titleFrom } from './passageImport.ts';
+import { editSentenceText, englishWordCount, lengthHint, mergeWithPrevious, renameItem, splitAt, titleFrom } from './passageImport.ts';
 
 const s = (en: string, paragraph = false) => ({ en, paragraph });
 const item = (title: string, ...sentences: ReturnType<typeof s>[]) => ({
@@ -71,4 +71,13 @@ test('文件后缀与 base64', async () => {
   const bytes = new Uint8Array(70000).map((_, i) => i % 256);
   assert.equal(bytesToBase64(bytes), Buffer.from(bytes).toString('base64'));
   assert.equal(bytesToBase64(new TextEncoder().encode('Hi')), 'SGk=');
+});
+
+test('改英文：真改了的丢掉旧译文，没改的保留；都去掉待核对标记', () => {
+  const orig = { en: 'It takes  two hours.', paragraph: true, zh: '要两小时。', unverified: true };
+  const changed = editSentenceText(orig, 'It takes three hours.');
+  assert.deepEqual(changed, { en: 'It takes three hours.', paragraph: true, zh: null, unverified: false });
+  const same = editSentenceText(orig, 'It takes two hours.');
+  assert.equal(same.zh, '要两小时。');
+  assert.equal(same.unverified, false);
 });

@@ -37,6 +37,7 @@ import { useJob, useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { JobPanel } from '@/components/Jobs';
 import { isJobActive } from '@/types/job';
 import {
+  editSentenceText,
   englishWordCount,
   lengthHint,
   mergeWithPrevious,
@@ -269,7 +270,7 @@ export const ImportPassagePage: React.FC<ImportPassagePageProps> = ({ onNavigate
       prev.map((it) => {
         if (it.key !== editing.key) return it;
         const sentences = value
-          ? it.sentences.map((s, j) => (j === editing.index ? { ...s, en: value, unverified: false } : s))
+          ? it.sentences.map((s, j) => (j === editing.index ? editSentenceText(s, value) : s))
           : it.sentences.length > 1
             ? it.sentences.filter((_, j) => j !== editing.index).map((s, j) => (j === 0 ? { ...s, paragraph: true } : s))
             : it.sentences;
