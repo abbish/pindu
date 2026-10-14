@@ -9,6 +9,7 @@ import { dictationService } from '@/services/dictationService';
 import { jobPercent } from '@/components/Jobs';
 import { recordingToPcmBase64 } from '@/utils/audioPcm';
 import { formatBytes } from '@/utils/fileSize';
+import { openMicrophoneSettings } from '@/components/MicProblem';
 import type { DictationLanguage, DictationStatus } from '@/types/pronunciation';
 
 /** 识别模型是否就绪在页面间共用 */
@@ -116,13 +117,17 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, onRecordingChange,
       else setError(r.error);
       return;
     }
-    void recorder.start();
+    // 上次因为权限没打开失败：这次还是不行就直接打开系统设置（系统不会再弹授权框）
+    const denied = recorder.problem === 'denied';
+    if (!(await recorder.start()) && denied) openMicrophoneSettings();
   };
 
   // 麦克风打不开的原因也要说出来（不然按钮闪一下就恢复，用户不知道为什么）
   const problem = error ?? recorder.error;
   const tip = problem
-    ? problem
+    ? recorder.problem === 'denied' && !error
+      ? `${problem}，再点一下打开系统设置`
+      : problem
     : downloading
       ? `正在下载语音输入模型 ${Math.floor(jobPercent(downloading))}%`
       : ready === false

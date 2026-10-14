@@ -88,6 +88,13 @@ export class DataManagementService extends BaseService {
     });
   }
 
+  /** 打开系统设置里的麦克风权限 */
+  async openMicrophoneSettings(): Promise<ApiResult<void>> {
+    return this.executeWithLoading(async () => {
+      return this.client.invoke<void>('open_microphone_settings');
+    });
+  }
+
   /** 在访达 / 资源管理器中打开日志文件夹（反馈问题时附上日志） */
   async openLogFolder(): Promise<ApiResult<void>> {
     return this.executeWithLoading(async () => {

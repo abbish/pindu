@@ -340,6 +340,7 @@ pub fn run() {
                 write_client_log,
                 open_log_folder,
                 open_data_folder,
+                open_microphone_settings,
                 get_startup_status,
                 check_for_update,
                 install_update,

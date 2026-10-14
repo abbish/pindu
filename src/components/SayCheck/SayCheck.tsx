@@ -9,6 +9,7 @@ import { usePronunciation } from '@/hooks/usePronunciation';
 import type { PronunciationContext } from '@/types/pronunciation';
 import { jobPercent } from '@/components/Jobs';
 import { formatBytes } from '@/utils/fileSize';
+import { openMicrophoneSettings } from '@/components/MicProblem';
 import { BAND_LABEL, BAND_STYLE, bandOf, flaggedPhones, phoneSegments, phoneTip, type Band, type Strictness } from '@/utils/pronunciation';
 
 /** 读过关后停多久再往下走（看清结果） */
@@ -208,6 +209,12 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
   const band = result?.score != null ? bandOf(result.score, strictness) : null;
   const tips = word && band ? flaggedPhones(word, strictness).map(phoneTip) : [];
   const problem = error ?? recorder.error;
+  /** 麦克风权限没打开：给出打开系统设置的按钮（拒绝过以后系统不再弹授权框） */
+  const micSettings = !error && recorder.problem === 'denied' && !recording ? (
+    <Button variant="outline" size="sm" className="shrink-0" onClick={openMicrophoneSettings}>
+      打开系统设置
+    </Button>
+  ) : null;
 
   const scoreChip = band ? (
     <span className={cn('shrink-0 rounded-full px-2.5 py-0.5 text-sm font-semibold', BAND_STYLE[band])}>
@@ -289,6 +296,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
       }
       extras = (
         <>
+          {micSettings}
           {take && !recording && iconAction('听我的', playingMine ? <Square className="fill-current" /> : <Play />, toggleMine)}
           {onSkip && !recording && !assessing && (misses >= SKIP_AFTER_TRIES || micFailed) && iconAction('不读了，盖住开始写', <EyeOff />, () => {
             cancelPass();
@@ -374,7 +382,10 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
         ))}
       </span>
     ) : (
-      (problem ?? hint)
+      <span className="flex items-center gap-2">
+        {problem ?? hint}
+        {micSettings}
+      </span>
     );
   }
 

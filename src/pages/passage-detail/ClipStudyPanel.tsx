@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Ear, Eye, Languages, Mic, Pause, Play, Settings2 } from 'lucide-react';
+import { Download, Ear, Eye, Languages, Mic, Pause, Play, Settings2 } from 'lucide-react';
 import { IconToggle } from '@/components/IconToggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -22,9 +22,9 @@ import type { PassageVideo } from '@/types/video';
 import { ListenBuildPanel } from './ListenBuildPanel';
 import type { PronunciationContext } from '@/types/pronunciation';
 import { useSentenceSay } from '@/components/SayText';
-import { ShadowingPanel } from './ShadowingPanel';
 
-type Mode = 'study' | 'shadow' | 'listen';
+/** 观看 / 跟读 / 听力 */
+type Mode = 'watch' | 'shadow' | 'listen';
 type Subtitles = 'both' | 'en' | 'zh' | 'none';
 
 const RATES = [0.5, 0.75, 1, 1.25];
@@ -42,14 +42,14 @@ interface ClipPrefs {
   translationMode: 'current' | 'all';
   /** 聚焦：当前句放大，上下文渐隐 */
   focusBlur: boolean;
-  /** 场景学习：每句播完自动暂停 */
+  /** 观看：每句播完自动暂停 */
   pauseEach: boolean;
-  /** 跟读：播完原声自动录音 */
-  autoRecord: boolean;
+  /** 跟读：每句原声播几遍再跟读 */
+  shadowRepeat: number;
 }
 
 const PREFS_KEY = 'passage.clipStudy.v1';
-const DEFAULT_PREFS: ClipPrefs = { subtitles: 'both', showText: true, translation: 'all', translationMode: 'all', focusBlur: true, pauseEach: false, autoRecord: false };
+const DEFAULT_PREFS: ClipPrefs = { subtitles: 'both', showText: true, translation: 'all', translationMode: 'all', focusBlur: true, pauseEach: false, shadowRepeat: 1 };
 
 function loadPrefs(): ClipPrefs {
   try {
@@ -85,15 +85,17 @@ export interface ClipStudyPanelProps {
 const startOf = (s: PassageSentence | undefined) => s?.startMs ?? 0;
 const endOf = (s: PassageSentence | undefined) => s?.endMs ?? startOf(s);
 
+/** 跟读里两步之间稍停一下（看清结果、换气） */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * 视频短片的学习面板：
- * - 场景学习：视频 + 右侧台词（与朗读一样：当前句放大、上下文渐隐、重点词标出），点台词跳过去；可每句后暂停；
- * - 跟读：一句一句播，录音与原声对比（见 ShadowingPanel）；
+ * - 观看：视频 + 右侧台词（与朗读一样：当前句放大、上下文渐隐、重点词标出），点台词跳过去；可每句后暂停；每句后面可以跟读这一句；
+ * - 跟读：和原文的「读完一句自动跟读」一样，只是原声来自视频：播这一句（可播几遍）→ 自动开麦跟读 → 本机评分，
+ *   结果留在这句下面（可听自己的录音），接着下一句；点台词从那句开始；
  * - 听力：每句只听不看，用单词卡拼出听到的句子，拼对后画面才显示这句字幕（见 ListenBuildPanel）。
- * 「练习设置」里调画面字幕、台词显示、翻译、聚焦与自动暂停。
+ * 「练习设置」里调画面字幕、台词显示、翻译、聚焦、自动暂停与原声遍数。
  */
-/** 选中的文字是一个英文单词（可以加成目标词） */
-/** 选中的文字是一个英文单词或 2–6 个词的词组（可以加成目标词） */
 
 export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences, passage, onAddTarget, onOpenWord, onEditTranslation, onPractice, pronunciationContext }) => {
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
@@ -102,27 +104,30 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   // 台词每句后面的跟读：开始前暂停视频
   const texts = useMemo(() => sentences.map((s) => s.en), [sentences]);
   const sentenceSay = useSentenceSay(texts, pronunciationContext, () => videoRef.current?.pause());
+  const say = sentenceSay.say;
   /** 正在看分析的台词 */
   const [analyzing, setAnalyzing] = useState<number | null>(null);
   const wordInfo = useTargetWordInfo(passage);
   const wordAudio = useAudioPlayer();
   const videoRef = useRef<HTMLVideoElement>(null);
   const textBox = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<Mode>('study');
+  const [mode, setMode] = useState<Mode>('watch');
   const [prefs, setPrefs] = useState<ClipPrefs>(loadPrefs);
   // 听句拼句、隐藏台词时不看句子分析（分析里有整句台词）
   useEffect(() => {
-    if (mode !== 'study' || !prefs.showText) setAnalyzing(null);
+    if (mode === 'listen' || (mode === 'watch' && !prefs.showText)) setAnalyzing(null);
   }, [mode, prefs.showText]);
   const [now, setNow] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
   const [current, setCurrent] = useState(0);
-  const [loop, setLoop] = useState(false);
   /** 听力里拼好的句子：画面上可以显示它的字幕 */
   const [solved, setSolved] = useState<Set<number>>(new Set());
-  /** 跟读：每播完一次当前句原声加 1 */
-  const [originalEnded, setOriginalEnded] = useState(0);
+  /** 跟读：正在自动一句一句跟读；flowToken 每次开始 / 停下加 1，旧流程据此退出 */
+  const [flowing, setFlowing] = useState(false);
+  const flowToken = useRef(0);
+  /** 单句原声播完（true）或被打断（false）时通知等着的跟读流程 */
+  const originalDone = useRef<((finished: boolean) => void) | null>(null);
   /** 播到这里自动停（单句播放 / 每句后暂停） */
   const stopAt = useRef<number | null>(null);
   /** 这次播放是单句原声（跟读、听力用） */
@@ -131,7 +136,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   const [sentenceSlow, setSentenceSlow] = useState(false);
   /** 每句后暂停：正在播的那句（播过它的结尾就停）；播放中改开关也立刻生效 */
   const pauseEachRef = useRef(false);
-  pauseEachRef.current = mode === 'study' && prefs.pauseEach;
+  pauseEachRef.current = mode === 'watch' && prefs.pauseEach;
   const playingSentence = useRef<number | null>(null);
   const [durationMs, setDurationMs] = useState(0);
 
@@ -148,7 +153,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
 
   const active = sentences.findIndex((s) => startOf(s) <= now && now < endOf(s));
   const line = active >= 0 ? sentences[active] : null;
-  // 听力：没拼好的句子不显示字幕；跟读 / 场景学习按设置
+  // 听力：没拼好的句子不显示字幕；跟读 / 观看按设置
   const shown: Subtitles = mode === 'listen' ? (active >= 0 && solved.has(active) ? 'both' : 'none') : prefs.subtitles;
 
   useEffect(() => {
@@ -165,16 +170,16 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
         const t = v.currentTime * 1000;
         if (stopAt.current !== null && t >= stopAt.current) {
           const end = stopAt.current;
-          if (loop && mode === 'shadow' && sentencePlay.current) {
-            v.currentTime = startOf(sentences[current]) / 1000;
-          } else {
-            stopAt.current = null;
-            v.pause();
-            v.currentTime = end / 1000;
-            v.playbackRate = rate;
-            if (sentencePlay.current) setOriginalEnded((n) => n + 1);
-            sentencePlay.current = false;
+          stopAt.current = null;
+          v.pause();
+          v.currentTime = end / 1000;
+          v.playbackRate = rate;
+          if (sentencePlay.current) {
+            const done = originalDone.current;
+            originalDone.current = null;
+            done?.(true);
           }
+          sentencePlay.current = false;
         } else if (pauseEachRef.current && !sentencePlay.current) {
           const done = playingSentence.current;
           if (done !== null && sentences[done] && t >= endOf(sentences[done])) {
@@ -193,7 +198,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, loop, mode, current, sentences, rate]);
+  }, [playing, mode, current, sentences, rate]);
 
   const seek = (ms: number) => {
     const v = videoRef.current;
@@ -203,12 +208,15 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
     setNow(ms);
   };
 
-  /** 只播一句（跟读原声、听力）；slow 时这一句用慢速 */
+  /** 只播一句（跟读原声、听力）；slow 时这一句用慢速。播完返回 true，被打断返回 false */
   const playSentence = useCallback(
-    (index: number, slow = false) => {
+    (index: number, slow = false) =>
+      new Promise<boolean>((resolve) => {
       const s = sentences[index];
       const v = videoRef.current;
-      if (!s || !v) return;
+      if (!s || !v) return resolve(false);
+      originalDone.current?.(false);
+      originalDone.current = resolve;
       setCurrent(index);
       v.currentTime = startOf(s) / 1000;
       v.playbackRate = slow ? SLOW_RATE : rate;
@@ -216,7 +224,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       stopAt.current = endOf(s);
       sentencePlay.current = true;
       void v.play();
-    },
+      }),
     [sentences, rate]
   );
 
@@ -224,17 +232,53 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
     videoRef.current?.pause();
     stopAt.current = null;
     sentencePlay.current = false;
+    const done = originalDone.current;
+    originalDone.current = null;
+    done?.(false);
   };
+
+  /** 停下跟读流程（录到一半的照常收尾、评分） */
+  const stopFlow = () => {
+    flowToken.current += 1;
+    setFlowing(false);
+    sentenceSay.stop();
+    pause();
+  };
+
+  /** 跟读：从第 from 句开始，播原声（设定的遍数）→ 跟读 → 评分，一句接一句；麦克风打不开时停下，原因写在那句下面 */
+  const runFlow = async (from: number) => {
+    const token = ++flowToken.current;
+    const alive = () => token === flowToken.current;
+    sentenceSay.stop();
+    setFlowing(true);
+    if (from === 0) sentenceSay.clear();
+    for (let i = from; i < sentences.length; i++) {
+      setCurrent(i);
+      for (let r = 0; r < prefs.shadowRepeat; r++) {
+        if (r > 0) await sleep(400);
+        if (!alive() || !(await playSentence(i)) || !alive()) return;
+      }
+      const outcome = await sentenceSay.run(i);
+      if (!alive()) return;
+      if (outcome === 'mic') break;
+      await sleep(outcome === 'scored' ? 1200 : 500);
+      if (!alive()) return;
+    }
+    setFlowing(false);
+  };
+
+  // 离开页面：跟读流程不再往下走
+  useEffect(() => () => void (flowToken.current += 1), []);
 
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
+    if (mode === 'shadow') return flowing ? stopFlow() : void runFlow(current);
     if (!v.paused) return pause();
     // 句子后面的跟读还在录：先停（不然原声会被录进去）
     sentenceSay.stop();
-    if (mode === 'shadow') return playSentence(current);
-    if (mode === 'listen') return playSentence(current);
-    // 场景学习：每句后暂停由播放头跟踪（见上面的 tick）
+    if (mode === 'listen') return void playSentence(current);
+    // 观看：每句后暂停由播放头跟踪（见上面的 tick）
     stopAt.current = null;
     playingSentence.current = null;
     sentencePlay.current = false;
@@ -242,6 +286,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   };
 
   const changeMode = (next: Mode) => {
+    if (flowing) stopFlow();
     pause();
     setMode(next);
     if (next === 'shadow' || next === 'listen') {
@@ -252,10 +297,10 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
     if (next === 'listen') setSolved(new Set());
   };
 
-  const originalProgress =
-    mode === 'shadow' && playing && sentencePlay.current && sentences[current]
-      ? Math.min(1, Math.max(0, (now - startOf(sentences[current])) / Math.max(1, endOf(sentences[current]) - startOf(sentences[current]))))
-      : null;
+  /** 跟读进行到哪一步 */
+  const flowStatus = !flowing ? '' : sentenceSay.recording ? '请跟读' : say.assessing ? '正在评分…' : `第 ${current + 1}/${sentences.length} 句`;
+  /** 右侧台词当前句：跟读时是正在练的那句 */
+  const readerCurrent = mode === 'shadow' ? (flowing ? current : active >= 0 ? active : current) : active >= 0 ? active : null;
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_380px] items-stretch gap-6">
@@ -289,19 +334,22 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
           sentences={sentences}
           active={active}
           onSeek={(ms) => {
+            if (flowing) stopFlow();
             seek(ms);
-            if (mode !== 'study') {
+            if (mode !== 'watch') {
               stopAt.current = null;
               sentencePlay.current = false;
+              const i = sentences.findIndex((x) => startOf(x) <= ms && ms < endOf(x));
+              if (mode === 'shadow' && i >= 0) setCurrent(i);
             }
           }}
         />
 
         <div className="flex flex-wrap items-center gap-2">
           <ToggleGroup type="single" value={mode} onValueChange={(v) => v && changeMode(v as Mode)} variant="outline">
-            <ToggleGroupItem value="study" className="px-3">
+            <ToggleGroupItem value="watch" className="px-3">
               <Eye />
-              场景学习
+              观看
             </ToggleGroupItem>
             <ToggleGroupItem value="shadow" className="px-3">
               <Mic />
@@ -313,9 +361,19 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
             </ToggleGroupItem>
           </ToggleGroup>
           <div className="ml-auto flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}>
-              {playing ? <Pause /> : <Play />}
-            </Button>
+            {flowStatus && (
+              <span className="mr-1 text-sm text-muted-foreground" aria-live="polite">
+                {flowStatus}
+              </span>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={togglePlay} aria-label={mode === 'shadow' ? (flowing ? '停止跟读' : '开始跟读') : playing ? '暂停' : '播放'}>
+                  {(mode === 'shadow' ? flowing : playing) ? <Pause /> : <Play />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{mode === 'shadow' ? (flowing ? '停止跟读' : '开始跟读') : playing ? '暂停' : '播放'}</TooltipContent>
+            </Tooltip>
             <Select value={String(rate)} onValueChange={(v) => setRate(Number(v))}>
               <SelectTrigger size="sm" className="w-20" aria-label="播放速度">
                 <SelectValue />
@@ -328,13 +386,13 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
                 ))}
               </SelectContent>
             </Select>
-            {/* 场景学习时译文常开常关，放在外面；其余设一次就不动的在 ⚙ 里 */}
-            {mode === 'study' && (
+            {/* 译文常开常关，放在外面；其余设一次就不动的在 ⚙ 里 */}
+            {mode !== 'listen' && (
               <IconToggle
                 label="译文"
                 pressed={prefs.translation !== 'off'}
                 onPressedChange={(on) => updatePrefs({ translation: on ? prefs.translationMode : 'off' })}
-                disabled={!prefs.showText}
+                disabled={mode === 'watch' && !prefs.showText}
               >
                 <Languages />
               </IconToggle>
@@ -347,8 +405,9 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
       {/* 右侧与左侧（视频 + 时间轴 + 控制栏）同高，内容多时在里面滚动 */}
       <div className="relative min-h-[360px]">
       <Card className="absolute inset-0 flex flex-col gap-0 overflow-hidden p-0">
-        {mode === 'study' && (
+        {mode !== 'listen' && (
           <div ref={textBox} className="min-h-0 flex-1 overflow-y-auto p-3">
+            {mode === 'shadow' && say.enabled && say.ready === false && <ModelNotice downloading={Boolean(say.downloading)} onDownload={() => void say.download()} />}
             <SelectionAction
               label="加入词汇"
               accept={(text) => Boolean(onAddTarget) && canAddTarget(text, targetWords)}
@@ -361,14 +420,19 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               analyzing={analyzing}
               scrollContainer={textBox}
               sentences={sentences}
-              current={active >= 0 ? active : null}
+              current={readerCurrent}
               translation={prefs.translation}
               highlight={targetWords}
               highlightForms={forms}
               focusBlur={prefs.focusBlur}
-              hidden={!prefs.showText}
-              playState={active >= 0 ? { index: active, playing } : null}
+              hidden={mode === 'watch' && !prefs.showText}
+              playState={mode === 'shadow' ? (flowing ? { index: current, playing: true } : null) : active >= 0 ? { index: active, playing } : null}
               onPlaySentence={(i) => {
+                // 跟读：从这句开始（正在跟读这句时是停下）
+                if (mode === 'shadow') {
+                  if (flowing && current === i) return stopFlow();
+                  return void runFlow(i);
+                }
                 // 正在播这句：暂停
                 if (playing && active === i) return pause();
                 sentenceSay.stop();
@@ -392,29 +456,6 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
             </SelectionAction>
           </div>
         )}
-        {mode === 'shadow' && (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-          <ShadowingPanel
-            pronunciationContext={pronunciationContext}
-            sentence={sentences[current]}
-            index={current}
-            total={sentences.length}
-            loop={loop}
-            onLoopChange={setLoop}
-            autoRecord={prefs.autoRecord}
-            onAutoRecordChange={(autoRecord) => updatePrefs({ autoRecord })}
-            onPlayOriginal={() => playSentence(current)}
-            onStopOriginal={pause}
-            originalProgress={originalProgress}
-            originalEnded={originalEnded}
-            onGo={(i) => {
-              pause();
-              setCurrent(i);
-              seek(startOf(sentences[i]));
-            }}
-          />
-          </div>
-        )}
         {mode === 'listen' && (
           <div className="min-h-0 flex-1 overflow-y-auto">
           <ListenBuildPanel
@@ -425,7 +466,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
               setCurrent(i);
               seek(startOf(sentences[i]));
             }}
-            onPlay={playSentence}
+            onPlay={(i, slow) => void playSentence(i, slow)}
             onStop={pause}
             playing={playing ? (sentenceSlow ? 'slow' : 'normal') : null}
             onSolved={(i) => setSolved((s) => new Set(s).add(i))}
@@ -507,7 +548,7 @@ const ClipTimeline: React.FC<{
   );
 };
 
-/** 练习设置：画面字幕；场景学习另有台词显示、翻译、聚焦、每句后暂停 */
+/** 练习设置：画面字幕；观看另有台词显示、每句后暂停；观看与跟读有译文显示、聚焦；跟读有原声遍数 */
 const PrefsPopover: React.FC<{ mode: Mode; prefs: ClipPrefs; onChange: (patch: Partial<ClipPrefs>) => void }> = ({ mode, prefs, onChange }) => (
   <Popover>
     <Tooltip>
@@ -534,11 +575,29 @@ const PrefsPopover: React.FC<{ mode: Mode; prefs: ClipPrefs; onChange: (patch: P
           </SelectContent>
         </Select>
       </Row>
-      {mode === 'study' && (
+      {mode === 'watch' && (
+        <Row label="显示台词列表" htmlFor="cs-text">
+          <Switch id="cs-text" checked={prefs.showText} onCheckedChange={(showText) => onChange({ showText })} />
+        </Row>
+      )}
+      {mode === 'shadow' && (
+        <Row label="每句原声播放">
+          <Select value={String(prefs.shadowRepeat)} onValueChange={(v) => onChange({ shadowRepeat: Number(v) })}>
+            <SelectTrigger size="sm" className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[1, 2, 3].map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n} 遍
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Row>
+      )}
+      {mode !== 'listen' && (
         <>
-          <Row label="显示台词列表" htmlFor="cs-text">
-            <Switch id="cs-text" checked={prefs.showText} onCheckedChange={(showText) => onChange({ showText })} />
-          </Row>
           <Row label="译文显示">
             <Select
               value={prefs.translationMode}
@@ -546,7 +605,7 @@ const PrefsPopover: React.FC<{ mode: Mode; prefs: ClipPrefs; onChange: (patch: P
                 const mode = v as ClipPrefs['translationMode'];
                 onChange({ translationMode: mode, translation: prefs.translation === 'off' ? 'off' : mode });
               }}
-              disabled={!prefs.showText}
+              disabled={mode === 'watch' && !prefs.showText}
             >
               <SelectTrigger size="sm" className="w-28">
                 <SelectValue />
@@ -558,12 +617,14 @@ const PrefsPopover: React.FC<{ mode: Mode; prefs: ClipPrefs; onChange: (patch: P
             </Select>
           </Row>
           <Row label="聚焦当前句" htmlFor="cs-focus">
-            <Switch id="cs-focus" checked={prefs.focusBlur} onCheckedChange={(focusBlur) => onChange({ focusBlur })} disabled={!prefs.showText} />
-          </Row>
-          <Row label="每句后暂停" htmlFor="cs-pause">
-            <Switch id="cs-pause" checked={prefs.pauseEach} onCheckedChange={(pauseEach) => onChange({ pauseEach })} />
+            <Switch id="cs-focus" checked={prefs.focusBlur} onCheckedChange={(focusBlur) => onChange({ focusBlur })} disabled={mode === 'watch' && !prefs.showText} />
           </Row>
         </>
+      )}
+      {mode === 'watch' && (
+        <Row label="每句后暂停" htmlFor="cs-pause">
+          <Switch id="cs-pause" checked={prefs.pauseEach} onCheckedChange={(pauseEach) => onChange({ pauseEach })} />
+        </Row>
       )}
     </PopoverContent>
   </Popover>
@@ -575,5 +636,18 @@ const Row: React.FC<{ label: string; htmlFor?: string; children: React.ReactNode
       {label}
     </Label>
     {children}
+  </div>
+);
+
+/** 跟读要先下载评估模型（没下载时也能跟读、听自己的录音，只是没有评分） */
+const ModelNotice: React.FC<{ downloading: boolean; onDownload: () => void }> = ({ downloading, onDownload }) => (
+  <div className="mb-3 flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+    <span className="min-w-0 flex-1">{downloading ? '正在下载评估模型…' : '跟读评分要先下载评估模型'}</span>
+    {!downloading && (
+      <Button variant="outline" size="sm" className="h-7" onClick={onDownload}>
+        <Download />
+        下载
+      </Button>
+    )}
   </div>
 );

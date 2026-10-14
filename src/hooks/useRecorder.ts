@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiClient } from '@/api/client';
+import { MIC_PROBLEM_TEXT, micProblemKind, type MicProblemKind } from '@/utils/microphone';
 
 export type RecorderState = 'idle' | 'arming' | 'recording';
 
@@ -29,7 +31,9 @@ const PEAK_MS = 50;
  * - `start()` 后先短暂 `arming`，录音器真正开始后才进入 `recording`（界面据此提示「开始说」）；
  * - `level` 实时音量（0–1）、`live` 最近的音量轮廓，用来画实时声波；`heard` 是否已经检测到说话；
  * - 说完静音 `silenceStopMs` 或到 `maxMs` 自动停止；停止后得到 `take`（地址、时长、音量轮廓、`start(tag)` 的标记）；
- * - `ended` 每结束一次录音加 1（太短没有 `take`、麦克风打不开也算），等着录音结束的流程据此往下走。
+ * - `ended` 每结束一次录音加 1（太短没有 `take`、麦克风打不开也算），等着录音结束的流程据此往下走；
+ * - 麦克风打不开时 `error` 是给学习者看的原因，`problem` 是原因的种类（`denied` 时界面给出打开系统设置的按钮，见 MicProblem）。
+ *   第一次使用由 getUserMedia 弹出系统授权框；拒绝过以后系统不再弹，只能去系统设置里打开。
  */
 export function useRecorder(options: RecorderOptions = {}) {
   const [state, setState] = useState<RecorderState>('idle');
@@ -39,6 +43,7 @@ export function useRecorder(options: RecorderOptions = {}) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [take, setTake] = useState<Take | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<MicProblemKind | null>(null);
   const [ended, setEnded] = useState(0);
 
   const streamRef = useRef<MediaStream | null>(null);
@@ -69,9 +74,16 @@ export function useRecorder(options: RecorderOptions = {}) {
       ctxRef.current = ctx;
       analyserRef.current = analyser;
       setError(null);
+      setProblem(null);
       return true;
-    } catch {
-      if (generation === generationRef.current) setError('无法使用麦克风，请在系统设置里允许拼读使用麦克风');
+    } catch (e) {
+      const name = e instanceof Error ? e.name : '';
+      apiClient.log('WARN', 'recorder', `打不开麦克风：${name || '未知原因'}`, e instanceof Error ? e.message : String(e));
+      if (generation === generationRef.current) {
+        const kind = micProblemKind(name);
+        setError(MIC_PROBLEM_TEXT[kind]);
+        setProblem(kind);
+      }
       return false;
     }
   }, []);
@@ -182,5 +194,5 @@ export function useRecorder(options: RecorderOptions = {}) {
 
   const clear = useCallback(() => setTake(null), []);
 
-  return { state, level, live, heard, elapsedMs, take, ended, error, open, close, start, stop, clear };
+  return { state, level, live, heard, elapsedMs, take, ended, error, problem, open, close, start, stop, clear };
 }

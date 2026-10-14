@@ -72,6 +72,18 @@ pub async fn open_log_folder(app: AppHandle) -> AppResult<()> {
         .map_err(|e| AppError::InternalError(format!("无法打开日志文件夹：{}", e)))
 }
 
+/// 打开系统设置里的麦克风权限（拒绝过以后程序不能再弹授权框，只能让学习者去这里打开）
+#[tauri::command]
+pub async fn open_microphone_settings(app: AppHandle) -> AppResult<()> {
+    #[cfg(target_os = "windows")]
+    let url = "ms-settings:privacy-microphone";
+    #[cfg(not(target_os = "windows"))]
+    let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| AppError::InternalError(format!("无法打开麦克风设置：{}", e)))
+}
+
 /// 启动状态：数据库打开并升级成功为 ok；否则带原因（前端显示错误页，见 `startup.rs`）
 #[tauri::command]
 pub async fn get_startup_status(app: AppHandle) -> AppResult<StartupStatus> {

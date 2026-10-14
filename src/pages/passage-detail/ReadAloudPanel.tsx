@@ -17,6 +17,7 @@ import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { useRecorder } from '@/hooks/useRecorder';
 import { usePronunciation } from '@/hooks/usePronunciation';
 import { SayText, SayVerdict, useSentenceSay } from '@/components/SayText';
+import { MicProblem } from '@/components/MicProblem';
 import type { Assessment, PronunciationContext } from '@/types/pronunciation';
 import { cn } from '@/lib/utils';
 import { canAddTarget, formsOf, recallBlanks } from '@/utils/passage';
@@ -358,7 +359,7 @@ export const ReadAloudPanel: React.FC<{
     const result = sayResults.get(index);
     const active = shadowing?.index === index;
     if (shadowMicError === index && recorder.error) {
-      return <div className="mt-2 rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">{recorder.error}</div>;
+      return <MicProblem message={recorder.error} problem={recorder.problem} className="mt-2" />;
     }
     if (!active && !result) return null;
     const recording = active && recorder.state !== 'idle';
