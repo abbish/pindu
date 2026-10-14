@@ -206,13 +206,14 @@ export const JOB_NOTICE = "pindu-job";
 
 /**
  * 拼读在后台任务（存短文、出题）结束时调用 `/pindu-job <JSON>`：把结果作为自定义消息放进会话并让 AI 老师接着说。
+ * `text` 给学习者看（界面显示），`model` 给模型看（附接着出题要用的短文 id）。
  * 扩展命令在 AI 回答过程中也会立即执行（pi rpc 文档）；空闲时立刻触发一轮，忙时排到这一轮之后。
  */
 function registerJobNotice(pi: ExtensionAPI) {
   pi.registerCommand(JOB_NOTICE, {
     description: "Background job finished (sent by Pindu)",
     handler: async (args, ctx) => {
-      let notice: { text?: string; job?: unknown };
+      let notice: { text?: string; model?: string; job?: unknown };
       try {
         notice = JSON.parse(args);
       } catch {
@@ -220,7 +221,8 @@ function registerJobNotice(pi: ExtensionAPI) {
       }
       if (!notice.text) return;
       pi.sendMessage(
-        { customType: JOB_NOTICE, content: notice.text, display: true, details: notice.job },
+        // 模型看 content（可能附内部 id）；界面显示 details.text（不带 id）
+        { customType: JOB_NOTICE, content: notice.model || notice.text, display: true, details: { job: notice.job, text: notice.text } },
         ctx.isIdle() ? { triggerTurn: true } : { triggerTurn: true, deliverAs: "followUp" },
       );
     },

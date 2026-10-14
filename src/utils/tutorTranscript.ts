@@ -422,7 +422,12 @@ export function toTurns(state: TranscriptState): ViewTurn[] {
       agent = null;
       askedAt = m.timestamp;
       anchors += 1;
-      const text = typeof m.content === 'string' ? m.content : m.content.map((b) => b.text).join('');
+      const text =
+        typeof m.details?.text === 'string'
+          ? m.details.text
+          : typeof m.content === 'string'
+            ? m.content
+            : m.content.map((b) => b.text).join('');
       turns.push({ role: 'notice', key: `n${anchors}`, text });
     }
   });

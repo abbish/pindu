@@ -57,24 +57,9 @@ pub fn origin_of(job_id: &str) -> Option<String> {
     ORIGIN.lock().ok().and_then(|o| o.get(job_id).cloned())
 }
 
-/// 给 AI 老师看的一句话：任务名 + 结果（短文 id 方便接着出题）
+/// 显示给学习者的一句话：任务名 + 结果，不带内部编号
 pub fn notice_text(job: &Job) -> String {
-    let ids = job
-        .result
-        .as_ref()
-        .and_then(|r| r.get("passageIds"))
-        .and_then(Value::as_array)
-        .map(|ids| {
-            ids.iter()
-                .filter_map(Value::as_i64)
-                .map(|id| id.to_string())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
     match job.status {
-        JobStatus::Succeeded if !ids.is_empty() => {
-            format!("后台任务完成：{}（短文 id：{}）", job.title, ids.join("、"))
-        }
         JobStatus::Succeeded if job.kind == "word_analysis" => {
             format!("后台任务完成：{}（词已进词汇本）", job.title)
         }
@@ -92,6 +77,32 @@ pub fn notice_text(job: &Job) -> String {
     }
 }
 
+/// 给 AI 老师看的：同一句话，成功写好短文时再附上短文 id（接着出题、建计划要用），标明只给工具用
+pub fn model_text(job: &Job) -> String {
+    let ids = job
+        .result
+        .as_ref()
+        .and_then(|r| r.get("passageIds"))
+        .and_then(Value::as_array)
+        .map(|ids| {
+            ids.iter()
+                .filter_map(Value::as_i64)
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let text = notice_text(job);
+    if job.status == JobStatus::Succeeded && !ids.is_empty() {
+        format!(
+            "{}\n(passage id for tools only: {}; never mention ids to the learner)",
+            text,
+            ids.join(", ")
+        )
+    } else {
+        text
+    }
+}
+
 /// 任务状态变化（jobs 的事件回调里调用）：登记过的任务结束时通知对话
 pub fn on_job(app: &AppHandle, job: &Job) {
     if job.status.is_active() {
@@ -103,7 +114,8 @@ pub fn on_job(app: &AppHandle, job: &Job) {
     let app = app.clone();
     let line = format!(
         "/pindu-job {}",
-        json!({ "text": notice_text(job), "job": { "id": job.id, "kind": job.kind, "status": job.status } })
+        json!({ "text": notice_text(job), "model": model_text(job),
+               "job": { "id": job.id, "kind": job.kind, "status": job.status } })
     );
     tauri::async_runtime::spawn(async move {
         let hub = app.state::<ChatHub>().inner().clone();
@@ -150,14 +162,16 @@ mod tests {
 
     #[test]
     fn notice_says_what_finished() {
-        assert_eq!(
-            notice_text(&job(
-                JobStatus::Succeeded,
-                Some(json!({ "passageIds": [12] })),
-                None
-            )),
-            "后台任务完成：导入短文 · A Day with My Phone（短文 id：12）"
+        let written = job(
+            JobStatus::Succeeded,
+            Some(json!({ "passageIds": [12] })),
+            None,
         );
+        assert_eq!(
+            notice_text(&written),
+            "后台任务完成：导入短文 · A Day with My Phone"
+        );
+        assert!(model_text(&written).contains("passage id for tools only: 12"));
         assert_eq!(
             notice_text(&job(
                 JobStatus::Failed,

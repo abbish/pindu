@@ -237,6 +237,19 @@ test('后台任务结束的通知显示成系统提示，AI 老师接着说的�
   assert.equal(turns[2].role === 'notice' && turns[2].text, '后台任务完成：导入短文 · A Day');
 });
 
+test('后台任务通知显示给学习者的那句，不显示给模型附的内部编号', () => {
+  const notice = {
+    role: 'custom' as const,
+    customType: 'pindu-job',
+    content: '后台任务完成：导入短文 · A Day\n(passage id for tools only: 15; never mention ids to the learner)',
+    display: true,
+    details: { text: '后台任务完成：导入短文 · A Day' },
+    timestamp: 3,
+  };
+  const turns = toTurns(run([{ type: 'message_end', message: user }, { type: 'message_end', message: notice }]));
+  assert.equal(turns[1].role === 'notice' && turns[1].text, '后台任务完成：导入短文 · A Day');
+});
+
 test('自动重试成功后不显示前面那次的错误', () => {
   const failed = { role: 'assistant' as const, content: [], stopReason: 'error' as const, errorMessage: '429 {"error":{"type":"rate_limit_error"}}', timestamp: 2 };
   const ok = { role: 'assistant' as const, content: [{ type: 'text' as const, text: '今天可以做的练习有……' }], stopReason: 'stop' as const, timestamp: 3 };

@@ -126,6 +126,8 @@ export interface PiCustomMessage {
   customType: string;
   content: string | PiTextBlock[];
   display: boolean;
+  /** pindu-job：`text` 是给学习者看的一句（content 给模型，可能带内部编号） */
+  details?: { text?: string };
   timestamp: number;
 }
 /** 其它角色（system 等）界面不显示 */
