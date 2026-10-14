@@ -170,8 +170,11 @@ export const LanSettings: React.FC = () => {
         </SettingsRow>
         {running && status && status.addresses.length > 0 && (
           <SettingsRow label="地址">
-            <span className="select-text text-sm text-muted-foreground tabular-nums">
-              {status.addresses.map((a) => `${a}:${status.port}`).join('　')}
+            {/* 网卡多（虚拟网卡、VPN）时地址很多：换行排，不撑开这一行 */}
+            <span className="flex min-w-0 max-w-[70%] flex-wrap justify-end gap-x-4 gap-y-1 select-text text-sm text-muted-foreground tabular-nums">
+              {status.addresses.map((a) => (
+                <span key={a}>{`${a}:${status.port}`}</span>
+              ))}
             </span>
           </SettingsRow>
         )}

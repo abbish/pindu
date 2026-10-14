@@ -6,7 +6,7 @@ import { useElapsed } from '@/hooks/useElapsed';
 import { jobService } from '@/services/jobService';
 import { formatDuration } from '@/utils/datetime';
 import { isJobActive, type Job } from '@/types/job';
-import { jobErrorText, jobPercent } from './JobItem';
+import { jobCount, jobErrorText, jobPercent } from './JobItem';
 
 /** 后台任务停止中的阶段（jobs.rs 请求停止后写入） */
 export const STOPPING_STAGE = '正在停止…';
@@ -42,7 +42,7 @@ export const JobPanel: React.FC<JobPanelProps> = ({ job, title, count, extra, ac
   const heading = stopping ? STOPPING_STAGE : !active ? (failed ? '没有完成' : job?.status === 'cancelled' ? '已停止' : '已完成') : title;
   // 阶段与标题说的是同一件事时不重复（如标题「正在生成题组」）；没有阶段时只显示已用时间
   const sub = !job || job.status === 'queued' ? '排队中' : stopping ? null : job.stage;
-  const shownCount = count ?? (job && job.total > 0 ? `${job.current} / ${job.total}` : null);
+  const shownCount = count ?? (job ? jobCount(job, ' / ') : null);
 
   const stop = async () => {
     if (!job) return;

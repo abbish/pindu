@@ -5,6 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { toUserMessage, type AppErrorCode } from '@/api/errors';
 import { formatDuration, formatRelative, instantMs } from '@/utils/datetime';
+import { formatBytes } from '@/utils/fileSize';
 import type { Job } from '@/types/job';
 
 const STATUS_META: Record<Job['status'], { label: string; icon: React.ComponentType<{ className?: string }>; className: string }> = {
@@ -19,6 +20,15 @@ const STATUS_META: Record<Job['status'], { label: string; icon: React.ComponentT
 export function jobErrorText(job: Job): string {
   if (!job.error) return '请再试一次';
   return toUserMessage(job.error.message, job.error.code as AppErrorCode);
+}
+
+/** 进度按字节报告的任务（设备互传）：数量显示成大小 */
+const BYTE_JOBS = new Set(['lan_send', 'lan_receive']);
+
+/** 进度数量「3 / 10」「12.5 MB / 80 MB」；没有确定总数时为 null */
+export function jobCount(job: Job, sep = '/'): string | null {
+  if (job.total <= 0) return null;
+  return BYTE_JOBS.has(job.kind) ? `${formatBytes(job.current)} / ${formatBytes(job.total)}` : `${job.current}${sep}${job.total}`;
 }
 
 /** 进度百分比；不确定时按已用时间给一个渐近值（不到 100） */
@@ -48,7 +58,7 @@ export const JobItem: React.FC<JobItemProps> = ({ job, onCancel, onOpen, onRemov
     job.status === 'failed'
       ? jobErrorText(job)
       : active
-        ? [job.stage ?? meta.label, job.total > 0 ? `${job.current}/${job.total}` : null, job.startedAt ? `已用 ${formatDuration(elapsed)}` : null]
+        ? [job.stage ?? meta.label, jobCount(job), job.startedAt ? `已用 ${formatDuration(elapsed)}` : null]
             .filter(Boolean)
             .join(' · ')
         : `${meta.label}${job.finishedAt ? ` · ${formatRelative(job.finishedAt)}` : ''}`;
