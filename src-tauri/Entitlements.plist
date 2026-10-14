@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 正式包开着 hardened runtime：库验证要求运行时加载的库与主程序同一个开发者团队。
+       ad-hoc 签名没有团队，随包的 ONNX Runtime（Contents/Frameworks）会被拒绝加载，发音评估与语音输入就用不了 -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <!-- hardened runtime 下录音要这项，否则跟读、语音输入拿不到麦克风 -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+</dict>
+</plist>

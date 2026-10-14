@@ -58,6 +58,15 @@ def main() -> int:
     connect_src = (security.get("csp") or {}).get("connect-src", "") if isinstance(security.get("csp"), dict) else ""
     if security.get("csp") and "blob:" not in connect_src.split():
         errors.append("tauri.conf.json app.security.csp 的 connect-src 要包含 blob:：跟读评估与语音输入用 fetch 读录音（blob: 地址），正式版不允许时全部失败（开发版看不出来）")
+    mac_conf = json.loads((ROOT / "src-tauri" / "tauri.macos.conf.json").read_text(encoding="utf-8"))
+    entitlements = mac_conf.get("bundle", {}).get("macOS", {}).get("entitlements")
+    plist = (ROOT / "src-tauri" / entitlements).read_text(encoding="utf-8") if entitlements and (ROOT / "src-tauri" / entitlements).exists() else ""
+    for key, why in (
+        ("com.apple.security.cs.disable-library-validation", "正式包开着 hardened runtime，没有它随包的 ONNX Runtime 加载不了（发音评估、语音输入不可用；开发版看不出来）"),
+        ("com.apple.security.device.audio-input", "hardened runtime 下没有它拿不到麦克风"),
+    ):
+        if key not in plist:
+            errors.append(f"tauri.macos.conf.json bundle.macOS.entitlements 指向的文件要包含 {key}：{why}")
     if conf.get("bundle", {}).get("createUpdaterArtifacts") is not False:
         errors.append("tauri.conf.json bundle.createUpdaterArtifacts 应为 false（发版时由 package.mjs 在有私钥时打开），否则没有私钥的本地打包会失败")
 

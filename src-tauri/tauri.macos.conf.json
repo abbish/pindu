@@ -1,7 +1,8 @@
 {
   "bundle": {
     "macOS": {
-      "frameworks": ["resources/onnxruntime/libonnxruntime.dylib"]
+      "frameworks": ["resources/onnxruntime/libonnxruntime.dylib"],
+      "entitlements": "Entitlements.plist"
     }
   }
 }
