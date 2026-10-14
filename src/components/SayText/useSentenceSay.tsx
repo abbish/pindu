@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Mic, Play, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { PLAYBACK_TAIL_MS, useRecorder } from '@/hooks/useRecorder';
+import { useRecorder } from '@/hooks/useRecorder';
+import { expectedSpeechMs } from '@/utils/microphone';
+import { trackPlayback } from '@/utils/playbackTail';
 import { usePronunciation } from '@/hooks/usePronunciation';
 import { MicProblem } from '@/components/MicProblem';
 import type { Assessment, PronunciationContext } from '@/types/pronunciation';
@@ -16,8 +18,9 @@ export type SayOutcome = 'scored' | 'recorded' | 'nothing' | 'mic';
  * 刚录的那句可以「听我的录音」和原声对比。
  * - `action(i)`：句子行里的跟读按钮（点一下跟读这一句；录音中再点任何一句都是停止）；评估关掉时不显示；
  * - `below(i)`：句子下面的状态 / 结果；
- * - `run(i)`：自动流程用（场景片段跟读：播完原声接着跟读），开麦录这一句，录完（评估开着时评完）才返回结局；
- *   评估没开或模型没下载时只录音，能回放；
+ * - `run(i)`：自动流程用（场景片段跟读、原文朗读「读完一句自动跟读」：播完接着跟读），开麦录这一句，录完（评估开着时评完）才返回结局；
+ *   评估没开或模型没下载时只录音，能回放；不调用 `onStart`（放音已经停了，调用方的流程还在进行）；
+ * - `recording` 麦克风在准备或在录，`listening` 真正在录（这时才提示「请跟读」）；
  * - `stop()`：朗读、播放前停掉跟读（也关掉麦克风）；`release()`：自动流程走完时关掉一直开着的麦克风；`clear()`：清掉各句的结果（从头再来一遍）。
  * `onStart`：开始录音前调用（停掉正在放的原音 / 朗读，免得录进去）。
  */
@@ -64,16 +67,8 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     setRecorded(new Set());
   }, [texts]);
 
-  /** run() 开麦前的等待 */
-  const beginTimer = useRef<number | undefined>(undefined);
   // 卸载时还在等的流程照常收尾
-  useEffect(
-    () => () => {
-      window.clearTimeout(beginTimer.current);
-      waiting.current?.resolve('nothing');
-    },
-    []
-  );
+  useEffect(() => () => waiting.current?.resolve('nothing'), []);
 
   // 一次录音结束：录到了就评估这句（评估没开就只留下录音）；没录到（太短、麦克风打不开）就算了。之后关掉麦克风
   useEffect(() => {
@@ -103,15 +98,17 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
 
   const recording = recorder.state !== 'idle';
 
-  const begin = (i: number) => {
-    onStart?.();
+  /** 开始跟读第 i 句；`auto`：自动流程里（放音已经停了，不调用 onStart） */
+  const begin = (i: number, auto = false) => {
+    if (!auto) onStart?.();
     stopMine();
     setMicFailed(null);
     say.reset();
     // 清掉上一次的录音：这次太短没录成时，结束时不会拿到上一次的
     recorder.clear();
     setSaying(i);
-    void recorder.start(String(i));
+    // 刚停的原声 / 朗读最后一点放完才开始录（useRecorder 等），按句子长短判断是不是读到一半停顿
+    void recorder.start(String(i), { expectMs: expectedSpeechMs(texts[i]) });
   };
 
   const toggle = (i: number) => {
@@ -124,18 +121,13 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     begin(i);
   };
 
-  /** 自动流程：跟读第 i 句，录完（评完）返回结局；先等刚停的原声放完最后一点再开麦 */
+  /** 自动流程：跟读第 i 句，录完（评完）返回结局 */
   const run = (i: number) =>
     new Promise<SayOutcome>((resolve) => {
       waiting.current?.resolve('nothing');
-      const w = { index: i, resolve };
-      waiting.current = w;
+      waiting.current = { index: i, resolve };
       hold.current = true;
-      onStart?.();
-      window.clearTimeout(beginTimer.current);
-      beginTimer.current = window.setTimeout(() => {
-        if (waiting.current === w) begin(i);
-      }, PLAYBACK_TAIL_MS);
+      begin(i, true);
     });
 
   const playMine = () => {
@@ -144,6 +136,7 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     if (!take) return;
     onStart?.();
     const audio = new Audio(take.url);
+    trackPlayback(audio);
     mine.current = audio;
     const done = () => {
       if (mine.current === audio) stopMine();
@@ -194,7 +187,7 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
         {active && recording ? (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Mic className="size-4 text-destructive" />
-            {recorder.heard ? '在听…' : '请跟读'}
+            {recorder.state === 'arming' ? '准备…' : recorder.heard ? '在听…' : '请跟读'}
             <span className="flex h-4 items-end gap-0.5" aria-hidden>
               {recorder.live.slice(-12).map((v, k) => (
                 <span key={k} className="w-0.5 rounded-full bg-primary" style={{ height: `${Math.max(2, v * 16)}px` }} />
@@ -238,14 +231,15 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
 
   const stop = () => {
     hold.current = false;
+    // 准备中（还没开始录）停下也算这次结束，等着的流程照常收到结局
     if (recording) recorder.stop();
-    else recorder.close();
-    if (!recording && waiting.current && saying === null) {
-      // 还在等开麦：不录了
-      window.clearTimeout(beginTimer.current);
+    else {
+      recorder.close();
+      if (!say.assessing) setSaying(null);
+      // 在评分、还没开始录的流程：不等了
       const w = waiting.current;
       waiting.current = null;
-      w.resolve('nothing');
+      w?.resolve('nothing');
     }
     stopMine();
   };
@@ -256,5 +250,5 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     setRecorded(new Set());
   };
 
-  return { action, below, run, release, stop, clear, say, recording };
+  return { action, below, run, release, stop, clear, say, recording, listening: recorder.state === 'recording' };
 }

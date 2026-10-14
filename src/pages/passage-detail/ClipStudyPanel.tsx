@@ -15,6 +15,7 @@ import { SelectionAction } from '@/components/SelectionAction';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { useClipTimes } from '@/hooks/useClipTimes';
 import { seekMedia } from '@/utils/mediaSeek';
+import { trackPlayback } from '@/utils/playbackTail';
 import { canAddTarget, formsOf } from '@/utils/passage';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { cn } from '@/lib/utils';
@@ -311,7 +312,7 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   };
 
   /** 跟读进行到哪一步 */
-  const flowStatus = !flowing ? '' : sentenceSay.recording ? '请跟读' : say.assessing ? '正在评分…' : `第 ${current + 1}/${sentences.length} 句`;
+  const flowStatus = !flowing ? '' : sentenceSay.listening ? '请跟读' : sentenceSay.recording ? '准备…' : say.assessing ? '正在评分…' : `第 ${current + 1}/${sentences.length} 句`;
   /** 右侧台词当前句：跟读时是正在练的那句 */
   const readerCurrent = mode === 'shadow' ? (flowing ? current : active >= 0 ? active : current) : active >= 0 ? active : null;
 
@@ -325,9 +326,22 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
             poster={video.posterUrl ?? undefined}
             className="size-full object-contain"
             onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
+            onPause={() => {
+              setPlaying(false);
+              // 单句播放被别处暂停（如朗读目标词）：这一句算没播完，等着的跟读流程不会卡住
+              if (stopAt.current !== null && sentencePlay.current) {
+                stopAt.current = null;
+                sentencePlay.current = false;
+                const done = originalDone.current;
+                originalDone.current = null;
+                done?.(false);
+              }
+            }}
             onSeeked={() => videoRef.current && setNow(videoRef.current.currentTime * 1000)}
-            onLoadedMetadata={(e) => setDurationMs(e.currentTarget.duration * 1000)}
+            onLoadedMetadata={(e) => {
+              trackPlayback(e.currentTarget);
+              setDurationMs(e.currentTarget.duration * 1000);
+            }}
             onClick={togglePlay}
             preload="auto"
           />

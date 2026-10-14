@@ -84,14 +84,22 @@ pub fn assess(model_path: &Path, text: &str, samples: &[f32]) -> AppResult<Asses
     Ok(assess_log_probs(&lp, &words))
 }
 
-/// 录音里有声音的时长（毫秒，20ms 一段按音量算）
+/// 比底噪大这么多倍（约 10dB）才算有声音：录音前会放大（麦克风增益，默认 ×4），底噪也跟着变大，固定门槛会把它当成声音
+const VOICE_OVER_FLOOR: f32 = 3.0;
+
+/// 录音里有声音的时长（毫秒，20ms 一段按音量算）：门槛是 VOICE_RMS 与底噪（最安静的一成）× VOICE_OVER_FLOOR 中较大的
 fn voiced_ms(samples: &[f32]) -> usize {
     const WINDOW: usize = fbank::SAMPLE_RATE / 50;
-    samples
+    let rms: Vec<f32> = samples
         .chunks(WINDOW)
-        .filter(|w| (w.iter().map(|v| v * v).sum::<f32>() / w.len() as f32).sqrt() >= VOICE_RMS)
-        .count()
-        * 20
+        .map(|w| (w.iter().map(|v| v * v).sum::<f32>() / w.len() as f32).sqrt())
+        .collect();
+    // 全 0 的段（解码的开头填充、录音器刚开始）不算底噪，不然底噪成了 0
+    let mut sorted: Vec<f32> = rms.iter().copied().filter(|&r| r >= 1e-4).collect();
+    sorted.sort_by(f32::total_cmp);
+    let floor = sorted.get(sorted.len() / 10).copied().unwrap_or(0.0);
+    let threshold = VOICE_RMS.max(floor * VOICE_OVER_FLOOR);
+    rms.iter().filter(|&&r| r >= threshold).count() * 20
 }
 
 /// 没听到在读：不评分
@@ -250,7 +258,14 @@ mod tests {
                 .unwrap()
                 .voiced
         );
-        assert_eq!(voiced_ms(&vec![0.1; 16000]), 1000);
+        // 放大过的底噪（一直差不多大）不算声音；安静之后说话，说话的部分算
+        let loud_hiss: Vec<f32> = (0..16000)
+            .map(|i| if i % 2 == 0 { 0.012 } else { -0.012 })
+            .collect();
+        assert_eq!(voiced_ms(&loud_hiss), 0);
+        let mut speech = vec![0.002f32; 6400];
+        speech.extend(vec![0.1f32; 9600]);
+        assert_eq!(voiced_ms(&speech), 600);
     }
 
     /// 读 16 位 wav（固定样例）

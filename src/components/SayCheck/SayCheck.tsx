@@ -5,6 +5,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { useRecorder } from '@/hooks/useRecorder';
+import { expectedSpeechMs } from '@/utils/microphone';
+import { trackPlayback } from '@/utils/playbackTail';
 import { usePronunciation } from '@/hooks/usePronunciation';
 import type { PronunciationContext } from '@/types/pronunciation';
 import { jobPercent } from '@/components/Jobs';
@@ -108,7 +110,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
     stopMine();
     // 开麦前先让页面停掉正在放的朗读
     onRecordingRef.current?.(true);
-    void recorder.start(text);
+    void recorder.start(text, { expectMs: expectedSpeechMs(text) });
   }, [ready, disabled, recorder, assessing, text, cancelPass, stopMine]);
 
   const recording = recorder.state !== 'idle';
@@ -195,6 +197,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
     if (!take) return;
     player.current?.pause();
     const audio = new Audio(take.url);
+    trackPlayback(audio);
     player.current = audio;
     const done = () => {
       if (player.current === audio) stopMine();
@@ -371,7 +374,7 @@ export const SayCheck: React.FC<SayCheckProps> = ({ play, hint, text, segments, 
       </Button>
     );
     feedback = recording ? (
-      '在听…'
+      recorder.state === 'arming' ? '准备…' : '在听…'
     ) : assessing ? (
       '正在评分…'
     ) : band ? (

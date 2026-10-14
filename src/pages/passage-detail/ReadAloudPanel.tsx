@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, ChevronLeft, ChevronRight, EyeOff, Languages, Loader2, Mic, Pause, Play, Settings2, Snail, Square } from 'lucide-react';
+import { Brain, ChevronLeft, ChevronRight, EyeOff, Languages, Loader2, Mic, Pause, Play, Settings2, Snail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -17,11 +17,8 @@ import { useSentencePlayer } from '@/hooks/useSentencePlayer';
 import { useClipTimes } from '@/hooks/useClipTimes';
 import { useClipVoice } from '@/hooks/useClipVoice';
 import type { PassageVideo } from '@/types/video';
-import { PLAYBACK_TAIL_MS, useRecorder } from '@/hooks/useRecorder';
-import { usePronunciation } from '@/hooks/usePronunciation';
-import { SayText, SayVerdict, useSentenceSay } from '@/components/SayText';
-import { MicProblem } from '@/components/MicProblem';
-import type { Assessment, PronunciationContext } from '@/types/pronunciation';
+import { useSentenceSay } from '@/components/SayText';
+import type { PronunciationContext } from '@/types/pronunciation';
 import { cn } from '@/lib/utils';
 import { canAddTarget, formsOf, recallBlanks } from '@/utils/passage';
 import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
@@ -139,18 +136,16 @@ export const ReadAloudPanel: React.FC<{
   /** 正在看分析的句子 */
   const [analyzing, setAnalyzing] = useState<number | null>(null);
 
-  // 跟读评估：朗读完一句 → 开麦 → 学习者跟读 → 本机评估，结果留在这句下面
-  const say = usePronunciation(pronunciationContext);
-  const recorder = useRecorder({ silenceStopMs: 900, maxMs: 15000 });
-  const [shadowing, setShadowing] = useState<{ index: number; resolve: () => void } | null>(null);
-  const [sayResults, setSayResults] = useState<Map<number, Assessment>>(new Map());
-  /** 读完一句自动跟读时麦克风打不开的那一句：停下朗读，在这句下面说明原因 */
-  const [shadowMicError, setShadowMicError] = useState<number | null>(null);
   /** 读完一遍（onFinish 里只置位，effect 里收尾：那时 player 已经有了） */
   const [roundDone, setRoundDone] = useState(false);
-  // 原文每句后面的跟读（点一句跟读一句）：开始前停掉朗读
+  // 跟读评估：原文每句后面的跟读（点一句跟读一句，开始前停掉朗读），与「读完一句自动跟读」共用（录音、评估、结果都在这句下面）
   const stopRef = useRef<() => void>(() => {});
   const sentenceSay = useSentenceSay(texts, pronunciationContext, () => stopRef.current());
+  const sayRef = useRef(sentenceSay);
+  sayRef.current = sentenceSay;
+  const say = sentenceSay.say;
+  /** 读完一句自动跟读中（等开麦、录音、评分） */
+  const [shadowing, setShadowing] = useState(false);
   const shadowOn = prefs.shadow && say.enabled && say.ready === true;
   const shadowRef = useRef(shadowOn);
   shadowRef.current = shadowOn && !blind;
@@ -173,23 +168,24 @@ export const ReadAloudPanel: React.FC<{
   }, [blind, prefs.recall]);
   const recallRef = useRef(prefs.recall);
   recallRef.current = prefs.recall && !blind;
-  /** 等原声 / 朗读的最后一点放完再开始录（停下朗读时取消） */
-  const shadowTimer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(shadowTimer.current), []);
-  const shadowStep = useCallback((index: number) => {
+  /** 读完一句自动跟读：评了分稍停一下看结果；麦克风打不开时停下朗读（每句都会失败），原因写在这句下面 */
+  /** 每次停下朗读加一：跟读评完时朗读已经停了，不再往下走（不弹听后回忆） */
+  const stops = useRef(0);
+  const shadowStep = useCallback(async (index: number) => {
     if (!shadowRef.current) return;
-    return new Promise<void>((resolve) => {
-      setShadowing({ index, resolve });
-      // 清掉上一次的录音：这次太短没录成时，结束时不会拿到上一次的
-      recorder.clear();
-      window.clearTimeout(shadowTimer.current);
-      shadowTimer.current = window.setTimeout(() => void recorder.start(String(index)), PLAYBACK_TAIL_MS);
-    });
-  }, [recorder]);
+    const mine = stops.current;
+    setShadowing(true);
+    const outcome = await sayRef.current.run(index);
+    setShadowing(false);
+    if (mine !== stops.current) return;
+    if (outcome === 'mic') return stopRef.current();
+    await new Promise((r) => setTimeout(r, outcome === 'scored' ? 1200 : 500));
+  }, []);
   const afterSentence = useCallback(
     async (index: number) => {
+      const mine = stops.current;
       await shadowStep(index);
-      if (!recallRef.current) return;
+      if (mine !== stops.current || !recallRef.current) return;
       const blanks = recallBlanks(texts[index], targets, forms).flatMap((p) => (p.kind === 'blank' ? [p] : []));
       const answers = blanks.map((b) => b.answer);
       if (answers.length === 0) return;
@@ -202,33 +198,6 @@ export const ReadAloudPanel: React.FC<{
     [texts, targets, forms, shadowStep]
   );
 
-  // 一次跟读录音结束：录到了就评估这句（结果留在句子下面，稍停一下），没录到（太短、麦克风打不开）直接接着朗读
-  useEffect(() => {
-    if (!shadowing) return;
-    const current = shadowing;
-    const take = recorder.take;
-    const finish = (delay: number) =>
-      setTimeout(() => {
-        setShadowing((s) => (s === current ? null : s));
-        current.resolve();
-      }, delay);
-    if (!take || take.tag !== String(current.index)) {
-      if (recorder.error) {
-        // 麦克风打不开：每句都会失败，停下来说明，不再一句一句地闪过去
-        setShadowMicError(current.index);
-        setShadowing((s) => (s === current ? null : s));
-        current.resolve();
-        player.stop();
-        return;
-      }
-      finish(0);
-      return;
-    }
-    void say.assess(take.url, texts[current.index]).then((r) => {
-      if (r) setSayResults((m) => new Map(m).set(current.index, r));
-      finish(r ? 1200 : 600);
-    });
-  }, [recorder.ended]);
 
 
   // 场景片段：原声（按声音校准过的句子时间）或 AI 朗读
@@ -262,15 +231,14 @@ export const ReadAloudPanel: React.FC<{
   const playOrPause = () => {
     if (player.playing) return stopAll();
     sentenceSay.stop();
-    setShadowMicError(null);
-    if (player.current == null) setSayResults(new Map());
+    if (player.current == null) sentenceSay.clear();
     void player.play(player.current ?? 0);
   };
 
-  // 朗读停下来以后关掉麦克风（指示灯不一直亮着）
+  // 朗读停下来以后关掉自动跟读一直开着的麦克风（指示灯不一直亮着）
   useEffect(() => {
-    if (!player.playing && !shadowing) recorder.close();
-  }, [player.playing, shadowing]);
+    if (!player.playing) sentenceSay.release();
+  }, [player.playing]);
 
   // 播放中改语速：当前这句立刻用新语速从头读（遍数、停顿、听后回忆从这句之后生效）
   const speedRef = useRef(prefs.speed);
@@ -310,16 +278,12 @@ export const ReadAloudPanel: React.FC<{
 
   // 停止朗读时一并结束回忆
   const stopAll = () => {
+    stops.current += 1;
     if (recall) {
       recall.resolve();
       setRecall(null);
     }
-    window.clearTimeout(shadowTimer.current);
-    if (shadowing) {
-      if (recorder.state !== 'idle') recorder.stop();
-      shadowing.resolve();
-      setShadowing(null);
-    }
+    if (shadowing) sentenceSay.stop();
     player.stop();
   };
 
@@ -332,7 +296,7 @@ export const ReadAloudPanel: React.FC<{
   };
 
   const status = (() => {
-    if (shadowing) return recorder.state === 'recording' ? '请跟读' : say.assessing ? '正在评分…' : '准备跟读…';
+    if (shadowing) return sentenceSay.listening ? '请跟读' : say.assessing ? '正在评分…' : '准备跟读…';
     if (recall) return '回忆词汇';
     if (player.pausing) return '停顿中，请跟读';
     // 没在播时不显示状态（盲听时播放按钮写明「开始盲听」）
@@ -368,47 +332,6 @@ export const ReadAloudPanel: React.FC<{
         </span>
       );
     });
-  };
-
-  /** 句子下面：跟读中的状态，或这句跟读的结果（逐词标色 + 三档 + 怎么读） */
-  const shadowPanel = (index: number) => {
-    const result = sayResults.get(index);
-    const active = shadowing?.index === index;
-    if (shadowMicError === index && recorder.error) {
-      return <MicProblem message={recorder.error} problem={recorder.problem} className="mt-2" />;
-    }
-    if (!active && !result) return null;
-    const recording = active && recorder.state !== 'idle';
-    return (
-      <div className="mt-2 flex flex-col gap-1.5 rounded-lg border bg-background px-3 py-2 text-sm select-none" aria-live="polite">
-        {recording ? (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Mic className="size-4 text-destructive" />
-            {recorder.heard ? '在听…' : '请跟读'}
-            <span className="flex h-4 items-end gap-0.5" aria-hidden>
-              {recorder.live.slice(-12).map((v, i) => (
-                <span key={i} className="w-0.5 rounded-full bg-primary" style={{ height: `${Math.max(2, v * 16)}px` }} />
-              ))}
-            </span>
-            <Button variant="ghost" size="icon" className="ml-auto size-7" onClick={recorder.stop} aria-label="停止" title="停止">
-              <Square className="size-3.5 fill-current" />
-            </Button>
-          </div>
-        ) : active && say.assessing ? (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            正在评分…
-          </div>
-        ) : result ? (
-          <>
-            <SayText text={texts[index]} result={result} strictness={say.strictness} />
-            <SayVerdict result={result} strictness={say.strictness} showScore={say.showScore} />
-          </>
-        ) : (
-          active && say.error && <div className="text-muted-foreground">{say.error}</div>
-        )}
-      </div>
-    );
   };
 
   const recallPanel = (index: number) => {
@@ -617,7 +540,6 @@ export const ReadAloudPanel: React.FC<{
         below={(i) => (
           <>
             {sentenceSay.below(i)}
-            {shadowPanel(i)}
             {recallPanel(i)}
           </>
         )}

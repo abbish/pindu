@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAudioPlayer } from './useAudioPlayer';
 import { seekMedia } from '@/utils/mediaSeek';
+import { trackPlayback } from '@/utils/playbackTail';
 import type { SpeechSpeed } from '../services/ttsService';
 
 export interface SentencePlayerOptions {
@@ -109,6 +110,7 @@ export function useSentencePlayer(texts: string[], options: SentencePlayerOption
     if (!clipUrl) return;
     const a = new Audio(clipUrl);
     a.preload = 'auto';
+    trackPlayback(a);
     clipAudio.current = a;
     return () => {
       a.pause();

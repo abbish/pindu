@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { ttsService, type SpeechSpeed, type SpeechStyle, type WordTiming } from '../services/ttsService';
 import { useToast } from '../components';
+import { trackPlayback } from '../utils/playbackTail';
 
 export interface AudioPlayerState {
   isPlaying: boolean;
@@ -105,6 +106,8 @@ const getSharedAudio = (): HTMLAudioElement => {
   if (!sharedAudio) {
     sharedAudio = new Audio();
     sharedAudio.preload = 'auto';
+    // 跟读录音前等它的尾巴放完
+    trackPlayback(sharedAudio);
     if (typeof document !== 'undefined') {
       UNLOCK_EVENTS.forEach(e => document.addEventListener(e, unlockAudio, true));
     }

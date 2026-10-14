@@ -18,8 +18,24 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// 太长的短片不对齐（对齐的计算量随长度增长；场景片段一般一两分钟）
-const MAX_CLIP_MS: i64 = 10 * 60 * 1000;
+/// 太长的短片不对齐（对齐的计算量与内存随长度平方增长；场景片段一般一两分钟）
+const MAX_CLIP_MS: i64 = 5 * 60 * 1000;
+/// 对齐结果离字幕时间多远就不信（与 align::WINDOW_MARGIN_FRAMES 的 1.5 秒一致）
+const TRUST_MARGIN_MS: i64 = 1500;
+
+/// 对出来的这句像不像真的说出来了：太短（字幕里有、其实没说的行被硬塞进几帧，如 [Music]）、太长、离字幕太远都不信，
+/// 这句照用字幕时间（界面按声音停顿校准）
+fn plausible(span: SentenceSpan, window: Option<(i64, i64)>) -> bool {
+    let len = span.end_ms - span.start_ms;
+    let Some((a, b)) = window else {
+        return len >= 150;
+    };
+    let sub = b - a;
+    len >= 150.max(sub / 4)
+        && len <= sub * 3 + 2000
+        && span.end_ms > a - TRUST_MARGIN_MS
+        && span.start_ms < b + TRUST_MARGIN_MS
+}
 
 /// 一句台词在短片里真正说出来的起止（毫秒，相对短片开头）
 #[derive(Debug, Clone, Copy, Serialize, PartialEq)]
@@ -59,12 +75,13 @@ pub async fn align(
         .get(passage_id)
         .await?;
     let texts: Vec<String> = passage.sentences.iter().map(|s| s.en.clone()).collect();
-    let windows: Vec<(i64, i64)> = passage
+    // 没有时间的句子不给参考范围（不当成在开头）
+    let windows: Vec<Option<(i64, i64)>> = passage
         .sentences
         .iter()
         .map(|s| {
-            let start = s.start_ms.unwrap_or(0);
-            (start, s.end_ms.unwrap_or(start).max(start))
+            s.start_ms
+                .map(|start| (start, s.end_ms.unwrap_or(start).max(start)))
         })
         .collect();
     let key = {
@@ -101,18 +118,23 @@ pub async fn align(
         let (frames, vocab, raw) = model::log_probs(&path, &samples)?;
         let lp = LogProbs::new(frames, vocab, &raw);
         let ms = samples.len() as f64 / 16.0 / frames as f64;
-        let windows: Vec<(f64, f64)> = windows
+        let frames_windows: Vec<(f64, f64)> = windows
             .iter()
-            .map(|&(a, b)| (a as f64 / ms, b as f64 / ms))
+            .map(|w| match w {
+                Some((a, b)) => (*a as f64 / ms, *b as f64 / ms),
+                None => (f64::NEG_INFINITY, f64::INFINITY),
+            })
             .collect();
         Ok(
-            pronunciation::align::align_sentences(&lp, &texts, Some(&windows))
+            pronunciation::align::align_sentences(&lp, &texts, Some(&frames_windows))
                 .into_iter()
-                .map(|span| {
+                .zip(&windows)
+                .map(|(span, window)| {
                     span.map(|(a, b)| SentenceSpan {
                         start_ms: (a as f64 * ms).round() as i64,
                         end_ms: (b as f64 * ms).round() as i64,
                     })
+                    .filter(|&s| plausible(s, *window))
                 })
                 .collect(),
         )
@@ -142,4 +164,27 @@ fn read_wav(path: &Path) -> AppResult<Vec<f32>> {
         .iter()
         .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn span(start_ms: i64, end_ms: i64) -> SentenceSpan {
+        SentenceSpan { start_ms, end_ms }
+    }
+
+    #[test]
+    fn untrusted_spans_fall_back_to_subtitles() {
+        // 字幕早了一秒：照样可信
+        assert!(plausible(span(2030, 3960), Some((1300, 3300))));
+        // 字幕里有、其实没说的行被塞进几帧
+        assert!(!plausible(span(5000, 5080), Some((4000, 7000))));
+        // 离字幕太远
+        assert!(!plausible(span(9000, 11000), Some((1000, 3000))));
+        // 拖得太长
+        assert!(!plausible(span(1000, 12000), Some((1000, 3000))));
+        // 没有字幕时间：只看长短
+        assert!(plausible(span(0, 800), None));
+    }
 }
