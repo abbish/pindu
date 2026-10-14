@@ -262,7 +262,7 @@ pub struct PracticeResult {
     #[serde(rename = "passedWords")]
     pub passed_words: i32, // 三步全对的单词数
     #[serde(rename = "totalSteps")]
-    pub total_steps: i32, // 总步骤数（单词数 * 3）
+    pub total_steps: i32, // 该考的步骤数（新词 3 步，复习词 1 步）
     #[serde(rename = "correctSteps")]
     pub correct_steps: i32, // 正确步骤数
     #[serde(rename = "stepAccuracy")]

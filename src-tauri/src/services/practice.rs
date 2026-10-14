@@ -557,11 +557,20 @@ impl PracticeService {
         // 完全掌握：三步首次作答都对，且当轮小测没有写错（没做小测的旧会话只看三步）
         let mastered = |w: &WordPracticeState| w.passed && w.review_correct != Some(false);
         let passed_words = word_states.iter().filter(|w| mastered(w)).count();
-        let total_steps = total_words * 3;
-        let correct_steps = word_states
+        // 一次答对率按该考的步骤算（与 practice_metrics 首答口径一致）：新词三步，复习词只考第三步
+        let due_steps = |w: &WordPracticeState| -> (usize, usize) {
+            let steps = if w.is_review {
+                w.step_results.get(2..).unwrap_or_default()
+            } else {
+                w.step_results.as_slice()
+            };
+            let due = if w.is_review { 1 } else { 3 };
+            (due, steps.iter().filter(|&&r| r).count())
+        };
+        let (total_steps, correct_steps) = word_states
             .iter()
-            .map(|w| w.step_results.iter().filter(|&&r| r).count())
-            .sum::<usize>();
+            .map(due_steps)
+            .fold((0, 0), |(t, c), (d, r)| (t + d, c + r));
 
         let step_accuracy = if total_steps > 0 {
             (correct_steps as f64 / total_steps as f64) * 100.0
@@ -1298,5 +1307,100 @@ mod tests {
                 .unwrap();
         assert_eq!(history, 2);
         crate::time::assert_instants_canonical(&pool).await;
+    }
+
+    /// 把日程里前 `n` 个词标成到期复习词
+    async fn mark_review(pool: &SqlitePool, fx: &crate::test_support::ScheduleFixture, n: usize) {
+        for id in &fx.schedule_word_ids[..n] {
+            sqlx::query("UPDATE study_plan_schedule_words SET is_review = TRUE WHERE id = ?")
+                .bind(id)
+                .execute(pool)
+                .await
+                .unwrap();
+        }
+    }
+
+    /// 练习记录里的首答（统一口径 FIRST_LEARN_CTE）：(作答步数, 答对步数)
+    async fn first_learn_counts(pool: &SqlitePool, session: &str) -> (i32, i32) {
+        sqlx::query_as(&format!(
+            "WITH {} SELECT COUNT(*), COALESCE(SUM(is_correct), 0) FROM first_learn WHERE session_id = ?1",
+            crate::repositories::practice_metrics::FIRST_LEARN_CTE
+        ))
+        .bind(session)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn step_accuracy_counts_one_step_for_review_words() {
+        // 6 新词三步 + 6 复习词只考第三步，当轮小测全对，首答全对 → 24/24，100%（BUG03：曾按 36 步算成 66.7%）
+        let (service, pool) = setup().await;
+        let fx = seed_schedule(&pool, 12).await;
+        mark_review(&pool, &fx, 6).await;
+        seed_session(&pool, &fx, "s1", false).await;
+        for i in 0..12 {
+            let steps: &[i32] = if i < 6 { &[3] } else { &[1, 2, 3] };
+            for &step in steps {
+                service
+                    .submit_step_result(rec(&fx, i, "s1", step, true, "learn"))
+                    .await
+                    .unwrap();
+            }
+            if i >= 6 {
+                service
+                    .submit_step_result(rec(&fx, i, "s1", 3, true, "review"))
+                    .await
+                    .unwrap();
+            }
+        }
+        let result = service
+            .complete_practice_session("s1", 1_000, 1_000)
+            .await
+            .unwrap();
+
+        assert_eq!((result.total_words, result.passed_words), (12, 12));
+        assert_eq!((result.total_steps, result.correct_steps), (24, 24));
+        assert!((result.step_accuracy - 100.0).abs() < 1e-9);
+        assert_eq!(
+            first_learn_counts(&pool, "s1").await,
+            (result.total_steps, result.correct_steps),
+            "与练习记录的首答一致"
+        );
+    }
+
+    #[tokio::test]
+    async fn step_accuracy_for_review_only_session_matches_records() {
+        // 纯复习：4 个复习词，3 个第三步首答对、1 个错（重考对不算）→ 3/4
+        let (service, pool) = setup().await;
+        let fx = seed_schedule(&pool, 4).await;
+        mark_review(&pool, &fx, 4).await;
+        seed_session(&pool, &fx, "s1", false).await;
+        for i in 0..4 {
+            let ok = i != 0;
+            service
+                .submit_step_result(rec(&fx, i, "s1", 3, ok, "learn"))
+                .await
+                .unwrap();
+            if !ok {
+                service
+                    .submit_step_result(rec(&fx, i, "s1", 3, true, "retry"))
+                    .await
+                    .unwrap();
+            }
+        }
+        let result = service
+            .complete_practice_session("s1", 1_000, 1_000)
+            .await
+            .unwrap();
+
+        assert_eq!((result.total_words, result.passed_words), (4, 3));
+        assert_eq!((result.total_steps, result.correct_steps), (4, 3));
+        assert!((result.step_accuracy - 75.0).abs() < 1e-9);
+        assert_eq!(
+            first_learn_counts(&pool, "s1").await,
+            (result.total_steps, result.correct_steps),
+            "与练习记录的首答一致"
+        );
     }
 }
