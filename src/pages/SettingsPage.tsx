@@ -40,7 +40,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: '学习偏好',
     items: [
       { key: 'learner', label: '学习者', icon: UserRound, keywords: ['小学生', '中学生', '成人', '水平', '讲解语言', '详略', '记忆方法', '音标', '兴趣'] },
-      { key: 'voice', label: '朗读与发音', icon: AudioLines, keywords: ['音色', '朗读风格', '语速', '音调', '音量', '试听', '发音', '跟读', '评分'] },
+      { key: 'voice', label: '朗读与发音', icon: AudioLines, keywords: ['音色', '朗读风格', '语速', '音调', '音量', '试听', '发音', '跟读', '评分', '麦克风', '录音', '测试麦克风'] },
       {
         key: 'materials',
         label: '素材与计划',

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/api/client';
-import { MIC_PROBLEM_TEXT, micProblemKind, type MicProblemKind } from '@/utils/microphone';
+import { loadMicPrefs, MIC_PROBLEM_TEXT, micProblemKind, SILENCE_WAIT_FACTOR, type MicProblemKind } from '@/utils/microphone';
 
 export type RecorderState = 'idle' | 'arming' | 'recording';
 
@@ -28,8 +28,8 @@ export interface RecorderOptions {
 /** 放音停下后等这么久再开始录：扬声器、蓝牙耳机还在放最后一点声音（蓝牙延迟常到 200ms 以上），不等会把句尾录进去 */
 export const PLAYBACK_TAIL_MS = 350;
 
-/** 认为在说话的音量阈值（RMS） */
-const SPEAKING = 0.04;
+/** 认为在说话的音量阈值（RMS × 4，即原始 RMS 约 0.0075）：跟读不开自动增益，离麦克风远一点、小声说也要能听到 */
+const SPEAKING = 0.03;
 /** 声波条的采样间隔 */
 const PEAK_MS = 50;
 
@@ -70,9 +70,18 @@ export function useRecorder(options: RecorderOptions = {}) {
     const generation = generationRef.current;
     try {
       const processing = optionsRef.current.voiceProcessing ?? false;
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: processing, noiseSuppression: processing, autoGainControl: processing },
-      });
+      const base = { echoCancellation: processing, noiseSuppression: processing, autoGainControl: processing };
+      // 设置里选了麦克风就用它；它不在了（拔掉了）改用系统默认
+      const { deviceId } = loadMicPrefs();
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { ...base, deviceId: { exact: deviceId } } : base });
+      } catch (e) {
+        const name = e instanceof Error ? e.name : '';
+        if (!deviceId || (name !== 'OverconstrainedError' && name !== 'NotFoundError')) throw e;
+        apiClient.log('WARN', 'recorder', '设置里选的麦克风不在了，改用系统默认', name);
+        stream = await navigator.mediaDevices.getUserMedia({ audio: base });
+      }
       if (generation !== generationRef.current) {
         stream.getTracks().forEach((t) => t.stop());
         return false;
@@ -144,6 +153,7 @@ export function useRecorder(options: RecorderOptions = {}) {
     const peaks: number[] = [];
     const rec = new MediaRecorder(stream);
     recorderRef.current = rec;
+    const waitFactor = SILENCE_WAIT_FACTOR[loadMicPrefs().wait];
     let begun = 0;
     let lastVoice = 0;
     let voice = false;
@@ -191,7 +201,7 @@ export function useRecorder(options: RecorderOptions = {}) {
           }
         }
         const { silenceStopMs = 1500, maxMs = 30_000 } = optionsRef.current;
-        if ((voice && silenceStopMs > 0 && now - lastVoice > silenceStopMs) || now - begun > maxMs) {
+        if ((voice && silenceStopMs > 0 && now - lastVoice > silenceStopMs * waitFactor) || now - begun > maxMs) {
           rec.stop();
           return;
         }
