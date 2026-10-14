@@ -131,6 +131,8 @@ struct Entry {
     job: Job,
     cancel: Arc<AtomicBool>,
     last_emit: Option<Instant>,
+    /// 有被节流压下、还没推送的变化（间隔到了补推一次，不然最后一次进度要等下一次变化才看得到）
+    pending: bool,
 }
 
 type EmitFn = dyn Fn(&Job) + Send + Sync;
@@ -235,6 +237,7 @@ impl Jobs {
                 job: job.clone(),
                 cancel: cancel.clone(),
                 last_emit: None,
+                pending: false,
             });
             prune(&mut entries);
         }
@@ -368,8 +371,35 @@ impl Jobs {
                 .last_emit
                 .is_none_or(|at| at.elapsed() >= EMIT_INTERVAL);
             if !force && !due {
+                if !entry.pending {
+                    entry.pending = true;
+                    let wait = entry.last_emit.map_or(Duration::ZERO, |at| {
+                        EMIT_INTERVAL.saturating_sub(at.elapsed())
+                    });
+                    let jobs = self.clone();
+                    let id = id.to_string();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(wait).await;
+                        jobs.flush(&id);
+                    });
+                }
                 return;
             }
+            entry.last_emit = Some(Instant::now());
+            entry.pending = false;
+            entry.job.clone()
+        };
+        (self.emit)(&snapshot);
+    }
+
+    /// 补推被节流压下的变化（期间已经推过的就不再推）
+    fn flush(&self, id: &str) {
+        let snapshot = {
+            let mut entries = self.entries.lock().unwrap();
+            let Some(entry) = entries.iter_mut().find(|e| e.job.id == id && e.pending) else {
+                return;
+            };
+            entry.pending = false;
             entry.last_emit = Some(Instant::now());
             entry.job.clone()
         };
@@ -448,6 +478,16 @@ impl JobCtx {
         self.jobs
             .update(&self.id, true, |job| job.stage = Some(stage));
     }
+
+    /// 换到一个有自己计数的阶段：阶段说明与从 0 开始的进度一起立即推送（不带出上一阶段的计数）
+    pub fn stage_with_total(&self, stage: impl Into<String>, total: u64) {
+        let stage = stage.into();
+        self.jobs.update(&self.id, true, |job| {
+            job.stage = Some(stage);
+            job.current = 0;
+            job.total = total;
+        });
+    }
 }
 
 #[cfg(test)]
@@ -518,6 +558,33 @@ mod tests {
         let seen = seen.lock().unwrap();
         assert_eq!(seen.first().unwrap().status, JobStatus::Queued);
         assert_eq!(seen.last().unwrap().status, JobStatus::Succeeded);
+    }
+
+    #[tokio::test]
+    async fn throttled_progress_is_pushed_after_the_interval_and_new_stage_starts_from_zero() {
+        let (jobs, seen) = collecting();
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let id = jobs.spawn(spec(Lane::Agent), |ctx| async move {
+            ctx.progress(300, 300);
+            ctx.stage_with_total("生成单词卡", 10);
+            // 紧接着的进度被节流压下，间隔到了也要补推
+            ctx.progress(5, 10);
+            let _ = rx.await;
+            Ok(json!(null))
+        });
+        tokio::time::sleep(EMIT_INTERVAL * 2).await;
+        {
+            let seen = seen.lock().unwrap();
+            let stage = seen
+                .iter()
+                .find(|j| j.stage.as_deref() == Some("生成单词卡"))
+                .unwrap();
+            assert_eq!((stage.current, stage.total), (0, 10));
+            let last = seen.last().unwrap();
+            assert_eq!((last.current, last.total), (5, 10));
+        }
+        let _ = tx.send(());
+        wait_done(&jobs, &id).await;
     }
 
     #[tokio::test]
@@ -659,6 +726,7 @@ mod tests {
                 },
                 cancel: Arc::new(AtomicBool::new(false)),
                 last_emit: None,
+                pending: false,
             })
         };
         push(JobStatus::Running);
@@ -714,6 +782,7 @@ mod tests {
                 },
                 cancel: Arc::new(AtomicBool::new(false)),
                 last_emit: None,
+                pending: false,
             });
         }
         prune(&mut jobs.entries.lock().unwrap());

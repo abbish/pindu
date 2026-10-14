@@ -162,7 +162,7 @@ impl VideoProcessJob {
             if words.is_empty() {
                 return Ok(0);
             }
-            ctx.stage("生成单词卡".to_string());
+            ctx.stage_with_total("生成单词卡", words.len() as u64);
             let analyzer = PhonicsBatchAnalyzer::new(
                 self.logger.clone(),
                 &self.data_dir,
