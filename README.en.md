@@ -28,7 +28,7 @@ Import text, PDFs, Word files or images. Keep the original text and existing tra
 
 ![Document import](docs/screenshots/import.png)
 
-The reader supports sentence playback, vocabulary lookup and adding selected words. Generate practice passages from vocabulary or topics, and adjust the reading voice, style and speed.
+The reader supports sentence playback and shadowing, listening with the text hidden, vocabulary recall, word lookup and adding selected words. Generate practice passages from vocabulary or topics, and adjust the reading voice, style and speed.
 
 ![Passage reader](docs/screenshots/passage.png)
 
@@ -44,11 +44,11 @@ Create separate reading and listening question sets for each passage, with cloze
 
 ### Video learning
 
-Import local videos and subtitles to create bilingual dialogue and scene-cutting plans. The clip editor supports previews, clip range adjustments and subtitle timing corrections.
+Import local videos with automatically detected external or embedded subtitles. If English subtitles are missing, speech can be transcribed on your computer. Create bilingual dialogue and scene clips, with previews, clip range adjustments and subtitle timing corrections in the editor.
 
 ![Video clip editor](docs/screenshots/editor.png)
 
-Scene clips support line-by-line study, shadowing with recording, and listen-and-spell practice using the video, dialogue, translations and vocabulary.
+Scene clips offer watching, shadowing and listening modes, with sentence-by-sentence speaking practice, pronunciation scoring, recording playback and listen-and-spell exercises. Passage playback and listening questions can use the original video audio or AI-generated speech.
 
 ![Scene clip study](docs/screenshots/clip-study.png)
 
@@ -58,15 +58,25 @@ Add vocabulary books, passages and scene clips to study plans. Set your daily wo
 
 ![Study plan](docs/screenshots/plan.png)
 
-Vocabulary practice combines speaking, spelling and recall, followed by a short quiz. Progress is saved so you can resume unfinished practice.
+Vocabulary practice combines speaking, spelling and recall, followed by a short quiz. Pronunciation feedback highlights sounds to improve, and progress is saved so you can resume unfinished practice.
 
 ![Vocabulary practice](docs/screenshots/practice.png)
 
+Learning statistics show words studied and mastered, first-attempt accuracy, study time and your learning streak. Each plan has separate results for spelling, pronunciation, reading and listening.
+
+![Learning statistics](docs/screenshots/statistics.png)
+
 ### AI tutor
 
-Get explanations of words, usage and sentences based on your materials and progress. The tutor can also create vocabulary books, passages, question sets and study plans on request. Conversations are saved for follow-up questions.
+Get explanations of words, usage and sentences based on your materials and progress. The tutor can also create vocabulary books, passages, question sets and study plans on request. Search or pin conversations, continue asking questions, or start a new conversation from one of your earlier messages. Voice input is supported.
 
 ![AI tutor creates study materials and plans](docs/screenshots/tutor-materials.png)
+
+### Transfer between computers
+
+Pair computers on the same network to send vocabulary books, passages, videos, scene clips and study plans. Plans can include learning progress so you can continue studying on another computer.
+
+![Send a study plan with learning progress](docs/screenshots/devices.png)
 
 ## Usage costs
 
@@ -76,6 +86,8 @@ Get explanations of words, usage and sentences based on your materials and progr
 - **Speech**: text-to-speech uses the service you configure, with fees charged by that provider under its own terms.
 
 Your costs depend on the model, speech service and usage, as shown in the provider's pricing and billing. Pindu does not collect these fees or include AI or speech credits. Manual vocabulary management, practice and statistics work without configuring these services.
+
+Local subtitle transcription, pronunciation scoring and voice input do not require a paid online speech service. Original video audio also works without a text-to-speech service.
 
 ## Installation
 
@@ -97,12 +109,15 @@ After installation, configure these services in Settings:
 
 Without them, you can still manage vocabulary books by hand, practise and view statistics.
 
+Subtitle transcription, pronunciation scoring and voice input require local models, which you can manage in Settings → Local models.
+
 ## Privacy
 
 - Your learning materials and records, including AI tutor conversations, are stored on your computer. There is no usage tracking.
-- The app connects to the network in two cases only:
-  - When you use AI or speech features, the relevant content is sent directly to the provider you configured.
-  - When it checks GitHub for updates. You can turn this off in Settings.
+- When you use AI or text-to-speech, the relevant content is sent directly to the provider you configured.
+- Subtitle transcription, pronunciation scoring and voice input run locally. Video audio and recordings are not sent to those providers.
+- Local model downloads and update checks require a network connection. You can turn off automatic update checks in Settings.
+- Transfers take place on the same local network. Materials and any learning progress you choose to include are sent only to the selected paired computer.
 - Service keys (API keys) are stored on your computer without encryption and are never written to logs.
 
 See [SECURITY.md](./SECURITY.md) for details.
