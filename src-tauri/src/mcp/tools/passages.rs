@@ -194,9 +194,10 @@ impl PinduTools {
             Ok(p) => p,
             Err(e) => return failed("没能打开这篇短文", e),
         };
-        let mode = match args.mode.as_deref() {
-            Some("listening") => "listening",
-            _ => "reading",
+        // 写错的题型退回让模型改，不悄悄当成阅读（没写才默认阅读）
+        let mode = match question_mode(args.mode.as_deref()) {
+            Ok(mode) => mode,
+            Err(message) => return needs_revision(message, "核对题型后重新出题".to_string()),
         };
         let counts = question_counts(&args);
         let spec = json!({
@@ -558,9 +559,29 @@ fn question_counts(args: &QuestionSetArgs) -> QuestionCounts {
     }
 }
 
+/// 题组方式：没写是阅读；写了就只能是 reading / listening，写错的返回给模型看的说明
+fn question_mode(mode: Option<&str>) -> Result<&'static str, String> {
+    match mode.map(str::trim) {
+        None | Some("") | Some("reading") => Ok("reading"),
+        Some("listening") => Ok("listening"),
+        Some(other) => Err(format!(
+            "mode must be \"reading\" or \"listening\", got \"{other}\". Nothing was created; call again with a valid mode."
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn question_mode_rejects_unknown_values() {
+        assert_eq!(question_mode(None), Ok("reading"));
+        assert_eq!(question_mode(Some("reading")), Ok("reading"));
+        assert_eq!(question_mode(Some("listening")), Ok("listening"));
+        assert!(question_mode(Some("listen")).is_err());
+        assert!(question_mode(Some("Listening")).is_err());
+    }
 
     fn args(v: Value) -> QuestionSetArgs {
         serde_json::from_value(v).unwrap()

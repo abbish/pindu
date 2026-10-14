@@ -370,7 +370,7 @@ pub struct SavePassageArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct QuestionSetArgs {
     pub passage_id: i64,
-    /// reading (default) or listening
+    /// Exactly "reading" (default) or "listening"; any other value is rejected
     #[serde(default)]
     pub mode: Option<String>,
     /// Number of multiple-choice questions. Give a count for each type you want; types left out get 0 (with no counts at all: 3 choice + 2 true/false)
