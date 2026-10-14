@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { InlineError } from '@/components/InlineError';
 import { videoService } from '@/services/videoService';
 import { formatBytes } from '@/utils/fileSize';
@@ -62,6 +62,21 @@ const FileRow: React.FC<{
       </Button>
     </div>
   </div>
+);
+
+/** 没有英文字幕时的一个选项（卡片式单选） */
+const SubtitleChoice: React.FC<{ value: string; icon: React.ReactNode; label: string; detail: string }> = ({ value, icon, label, detail }) => (
+  <Label
+    htmlFor={`sub-${value}`}
+    className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 font-normal transition-colors hover:bg-muted/40 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-accent/50 [&_svg]:size-4"
+  >
+    <RadioGroupItem id={`sub-${value}`} value={value} className="sr-only" />
+    <span className="mt-0.5 shrink-0 text-primary">{icon}</span>
+    <span className="min-w-0">
+      <span className="block text-sm font-medium">{label}</span>
+      <span className="mt-0.5 block text-xs text-muted-foreground">{detail}</span>
+    </span>
+  </Label>
 );
 
 /**
@@ -182,6 +197,10 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
     const path = await pick(SUBTITLE_EXTENSIONS, '字幕', '请选择 srt 或 vtt 字幕文件');
     if (path) setSubtitle(manual(path));
   };
+  // 清掉自己选的字幕、回到「怎么补上字幕」时默认识别
+  useEffect(() => {
+    if (noSubtitle && !recognize) setRecognize(true);
+  }, [noSubtitle]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -221,23 +240,31 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
                   </div>
                 ) : noSubtitle ? (
                   <div className="space-y-2">
-                    <Label>字幕</Label>
-                    <div className="space-y-3 rounded-lg border p-3">
-                      <p className="text-sm">
-                        {second ? '只有中文字幕' : '没有找到字幕'}
-                        {discovery !== null && discovery.imageTracks > 0 && <span className="text-muted-foreground">（视频里的字幕是图片）</span>}
-                      </p>
-                      <Label htmlFor="sub-recognize" className="flex cursor-pointer items-center gap-2.5 font-normal">
-                        <Checkbox id="sub-recognize" checked={recognize} onCheckedChange={(v) => setRecognize(v === true)} />
-                        <AudioLines className="size-4 text-muted-foreground" />
-                        <span className="text-sm">导入后识别英文语音</span>
-                        {model && !model.downloaded && <span className="text-xs text-muted-foreground">需下载 {formatBytes(model.downloadBytes)}</span>}
-                      </Label>
-                      <Button type="button" variant="outline" size="sm" onClick={pickSubtitle}>
-                        <Captions />
-                        选择字幕文件…
-                      </Button>
+                    {/* 结果在前：没找到（或只有中文）；接着二选一怎么补上英文字幕。选「字幕文件」直接打开选择框 */}
+                    <div className="flex items-baseline gap-2">
+                      <Label>字幕</Label>
+                      <span className="text-sm text-muted-foreground">
+                        {second ? '只找到中文字幕' : '没有找到字幕'}
+                        {discovery !== null && discovery.imageTracks > 0 && '（视频里的字幕是图片）'}
+                      </span>
                     </div>
+                    <RadioGroup
+                      value={recognize ? 'recognize' : ''}
+                      onValueChange={(v) => {
+                        if (v === 'recognize') setRecognize(true);
+                        else void pickSubtitle();
+                      }}
+                      className="grid grid-cols-2 gap-2"
+                      aria-label="怎么补上字幕"
+                    >
+                      <SubtitleChoice
+                        value="recognize"
+                        icon={<AudioLines />}
+                        label="识别英文语音"
+                        detail={model && !model.downloaded ? `首次需下载 ${formatBytes(model.downloadBytes)}` : '在你的电脑上生成'}
+                      />
+                      <SubtitleChoice value="file" icon={<Captions />} label="使用字幕文件" detail="srt 或 vtt" />
+                    </RadioGroup>
                   </div>
                 ) : (
                   <FileRow
@@ -248,6 +275,7 @@ export const ImportVideoDialog: React.FC<ImportVideoDialogProps> = ({ open, onOp
                     display={subtitle?.label}
                     auto={subtitle?.auto}
                     onPick={pickSubtitle}
+                    onClear={discovery?.primary == null ? () => setSubtitle(null) : undefined}
                   />
                 )}
                 {/* 第二字幕跟着字幕走：只有中文、选了识别时用不上它 */}
