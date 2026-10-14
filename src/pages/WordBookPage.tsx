@@ -18,6 +18,7 @@ import type { WordBook as DbWordBook } from '@/types';
 import { MaterialToolbar } from '@/components/MaterialToolbar/MaterialToolbar';
 import { activeJobFor } from '@/components/Jobs';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
+import { isReceiveDone } from '@/types/lan';
 import { BatchDeleteButton, BatchDeleteDialog, BatchTagButton, SelectionBar, useSelection } from '@/components/MaterialSelection/MaterialSelection';
 import type { NavigateFn } from '@/navigation';
 import { PageError } from '@/components/PageError';
@@ -133,9 +134,9 @@ export const WordBookPage: React.FC<WordBookPageProps> = ({ onNavigate, tagId })
     loadWordBookData(filters.status);
   };
 
-  // 分析完单词数、词性变了：刷新（不打断正在看的列表）
+  // 分析完单词数、词性变了，或收到别的电脑发来的词汇本：刷新（不打断正在看的列表）
   useOnJobFinished((job) => {
-    if (job.kind === 'word_analysis') void loadWordBookData(filters.status, true);
+    if (job.kind === 'word_analysis' || isReceiveDone(job)) void loadWordBookData(filters.status, true);
   });
 
   // 状态筛选走后端，变化时重新加载

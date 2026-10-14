@@ -12,6 +12,8 @@ import { studyService } from '@/services/studyService';
 import { calendarService } from '@/services/calendarService';
 import { passageService } from '@/services/passageService';
 import { useAsyncData } from '@/hooks/useAsyncData';
+import { useOnJobFinished } from '@/hooks/useJobs';
+import { isReceiveDone } from '@/types/lan';
 import type { NavigateFn } from '@/navigation';
 import type { StudyPlanWithProgress, UnifiedStudyPlanStatus } from '@/types';
 import { PLAN_STATUS } from '@/types/study';
@@ -62,9 +64,15 @@ export const StudyPlansPage: React.FC<StudyPlansPageProps> = ({ onNavigate }) =>
     }
   });
   // 计划卡日程栏的“今天”（单词日程 + 到期短文）；拿不到时卡片退回显示图例
-  const { data: today } = useAsyncData(async () => {
+  const { data: today, refresh: refreshToday } = useAsyncData(async () => {
     const [schedules, passages] = await Promise.all([calendarService.getTodayStudySchedules(), passageService.getTodayPassageTasks()]);
     return { schedules: schedules.success ? schedules.data : [], passages: passages.success ? passages.data : [] };
+  });
+  // 收到别的电脑发来的计划后刷新
+  useOnJobFinished((job) => {
+    if (!isReceiveDone(job)) return;
+    void refresh();
+    void refreshToday();
   });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useSortPref('plans', PLAN_SORTS);

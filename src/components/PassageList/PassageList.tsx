@@ -15,6 +15,7 @@ import { JobProgress, activeJobFor } from '@/components/Jobs';
 import { PlanUsageBadge } from '@/components/LinkedPlans';
 import { useJobs, useOnJobFinished } from '@/hooks/useJobs';
 import { isJobActive, type Job } from '@/types/job';
+import { isReceiveDone } from '@/types/lan';
 import {
   BatchDeleteButton,
   BatchDeleteDialog,
@@ -191,7 +192,7 @@ export const PassageList: React.FC<PassageListProps> = ({ bookId, query = '', or
     if (createdKey) void load();
   }, [createdKey, load]);
   useOnJobFinished((job) => {
-    if ([...CREATING_KINDS, 'question_set'].includes(job.kind)) void load();
+    if ([...CREATING_KINDS, 'question_set'].includes(job.kind) || isReceiveDone(job)) void load();
   });
 
   const visible = useMemo(() => {

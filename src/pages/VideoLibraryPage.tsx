@@ -35,6 +35,7 @@ import { videoService } from '@/services/videoService';
 import { formatBytes } from '@/utils/fileSize';
 import { formatDuration, formatRelative } from '@/utils/datetime';
 import { isJobActive, type Job } from '@/types/job';
+import { isReceiveDone } from '@/types/lan';
 import type { ClipSummary, Video } from '@/types/video';
 import type { NavigateFn } from '../navigation';
 import { BatchSendButton, SEND_LABEL, SendIcon, sendToDevice } from '@/components/SendToDevice';
@@ -105,9 +106,9 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({ tab: initial
     load();
   }, [load]);
 
-  // 导入 / 处理结束后刷新状态与封面
+  // 导入 / 处理结束、收到别的电脑发来的视频或片段后刷新状态与封面
   useOnJobFinished((job) => {
-    if (job.kind.startsWith('video_')) load();
+    if (job.kind.startsWith('video_') || isReceiveDone(job)) load();
   });
 
   const open = (video: Video) => {

@@ -1,5 +1,10 @@
 /** 局域网设备互传（对应 Rust `types/lan.rs`，camelCase） */
 
+import type { Job } from './job';
+
+/** 收到的素材已导入（后台任务 lan_receive 成功）：列表页据此刷新 */
+export const isReceiveDone = (job: Pick<Job, 'kind' | 'status'>) => job.kind === 'lan_receive' && job.status === 'succeeded';
+
 /** 本机的互传状态 */
 export interface LanStatus {
   /** 设置里是否开启 */
