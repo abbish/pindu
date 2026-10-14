@@ -8,15 +8,20 @@
 /** 波形每秒的峰值个数（与后端 media::PEAKS_PER_SECOND 一致） */
 export const PEAKS_PER_SECOND = 50;
 const FRAME_MS = 1000 / PEAKS_PER_SECOND;
-/** 低于它算安静 */
-const QUIET = 0.06;
+/** 低于它算安静：按这段的底噪定（底噪 × 1.6），夹在这两个值之间——小声的素材（如无线电通话，尾音只有 0.04）不把尾音当安静，有背景音乐的也不至于找不到停顿 */
+const QUIET_MIN = 0.015;
+const QUIET_MAX = 0.06;
+/** 底噪：这一段音量从低到高第 20% 的值 */
+const FLOOR_PERCENTILE = 0.2;
 /** 安静至少这么长才算句间停顿 */
 const MIN_GAP_MS = 60;
 /** 句间停顿要碰到交界前后这个范围（字幕多半比说话晚，往前放宽一些） */
 const NEAR_BEFORE_MS = 400;
 const NEAR_AFTER_MS = 200;
-/** 停顿里留给上一句的尾音、下一句的起音 */
+/** 停顿里留给下一句的起音 */
 const PAD_MS = 60;
+/** 上一句停在停顿里多远：暂停时还没从扬声器放出来的一小段会被丢掉（蓝牙耳机更多），停在停顿开始处听起来就像没读完 */
+const TAIL_MS = 250;
 /** 每句至少留这么长，不会被校准吃掉 */
 const MIN_SENTENCE_MS = 300;
 /** 两句之间已经隔开这么多的，不用校准 */
@@ -36,8 +41,9 @@ export function refineSentenceTimes(sentences: Timed[], peaks: number[], offsetM
     const startMs = s.startMs ?? 0;
     return { startMs, endMs: Math.max(startMs, s.endMs ?? startMs) };
   });
-  if (peaks.length === 0) return times;
+  if (peaks.length === 0 || times.length === 0) return times;
   const level = (ms: number) => peaks[Math.floor((ms + offsetMs) / FRAME_MS)] ?? 0;
+  const QUIET = quietLevel(peaks.slice(Math.floor((times[0].startMs + offsetMs) / FRAME_MS), Math.ceil((times[times.length - 1].endMs + offsetMs) / FRAME_MS)));
   for (let i = 0; i + 1 < times.length; i++) {
     const prev = times[i];
     const next = times[i + 1];
@@ -63,8 +69,17 @@ export function refineSentenceTimes(sentences: Timed[], peaks: number[], offsetM
       }
     }
     if (!best) continue;
-    prev.endMs = Math.round(Math.min(best.end, best.start + PAD_MS));
+    const tail = Math.max(PAD_MS, Math.min(TAIL_MS, best.end - best.start - PAD_MS));
+    prev.endMs = Math.round(Math.min(best.end, best.start + tail));
     next.startMs = Math.round(Math.max(prev.endMs, best.end - PAD_MS));
   }
   return times;
+}
+
+/** 这一段里算安静的音量（见 QUIET_MIN） */
+export function quietLevel(levels: number[]): number {
+  if (levels.length === 0) return QUIET_MAX;
+  const sorted = [...levels].sort((a, b) => a - b);
+  const floor = sorted[Math.floor((sorted.length - 1) * FLOOR_PERCENTILE)];
+  return Math.min(QUIET_MAX, Math.max(QUIET_MIN, floor * 1.6));
 }

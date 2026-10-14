@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PEAKS_PER_SECOND, refineSentenceTimes } from './speechBoundaries.ts';
+import { PEAKS_PER_SECOND, quietLevel, refineSentenceTimes } from './speechBoundaries.ts';
 
 /** 按 [起, 止, 音量] 段造一段波形（毫秒），其余是安静 */
 const wave = (totalMs: number, loud: [number, number, number][]) => {
@@ -25,7 +25,7 @@ test('字幕交界紧挨着下一句开口：上一句停在停顿开始处，�
     peaks,
     0
   );
-  assert.equal(a.endMs, 2060);
+  assert.equal(a.endMs, 2250);
   assert.equal(b.startMs, 3020);
 });
 
@@ -42,7 +42,7 @@ test('短片在原视频中间：按偏移读波形', () => {
     peaks,
     10000
   );
-  assert.equal(a.endMs, 2060);
+  assert.equal(a.endMs, 2250);
   assert.equal(b.startMs, 3020);
 });
 
@@ -89,4 +89,31 @@ test('两句本来就隔开、或没有波形时不动', () => {
   ];
   assert.deepEqual(refineSentenceTimes(sentences, wave(6000, [[0, 6000, 0.4]]), 0), sentences);
   assert.deepEqual(refineSentenceTimes(sentences, [], 0), sentences);
+});
+
+test('小声的素材：尾音不当安静，按底噪定门槛', () => {
+  // 底噪 0.015，说话 0.15，句尾 1600–2000 只有 0.045（无线电通话常见），2000 之后才真安静
+  const peaks = wave(6000, [
+    [0, 1600, 0.15],
+    [1600, 2000, 0.045],
+    [2000, 3000, 0.015],
+    [3000, 5500, 0.15],
+  ]).map((v) => (v === 0.01 ? 0.015 : v));
+  const [a, b] = refineSentenceTimes(
+    [
+      { startMs: 0, endMs: 3100 },
+      { startMs: 3100, endMs: 6000 },
+    ],
+    peaks,
+    0
+  );
+  // 停在真正的安静里（尾音之后再留 250ms），不在 1600 截断
+  assert.equal(a.endMs, 2250);
+  assert.equal(b.startMs, 2940);
+});
+
+test('安静门槛：按底噪，夹在上下限之间', () => {
+  assert.ok(Math.abs(quietLevel(Array(100).fill(0.01)) - 0.016) < 1e-9);
+  assert.equal(quietLevel(Array(100).fill(0.2)), 0.06);
+  assert.equal(quietLevel(Array(100).fill(0)), 0.015);
 });
