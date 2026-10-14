@@ -502,7 +502,7 @@ export const PassageDetailPage: React.FC<PassageDetailPageProps> = ({ passageId,
 
         <TabsContent value="text">
           <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6">
-            <ReadAloudPanel passage={passage} onAddTarget={studying ? undefined : addTarget} onOpenWord={openWord} onEditTranslation={studying ? undefined : editTranslation} pronunciationContext={sayContext} />
+            <ReadAloudPanel passage={passage} clip={clip} onAddTarget={studying ? undefined : addTarget} onOpenWord={openWord} onEditTranslation={studying ? undefined : editTranslation} pronunciationContext={sayContext} />
 
             <aside className="flex flex-col gap-4">
               <Card className="gap-3 px-5 py-4">

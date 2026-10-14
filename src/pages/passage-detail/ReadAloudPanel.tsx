@@ -14,6 +14,9 @@ import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { SelectionAction } from '@/components/SelectionAction';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
+import { useClipTimes } from '@/hooks/useClipTimes';
+import { useClipVoice } from '@/hooks/useClipVoice';
+import type { PassageVideo } from '@/types/video';
 import { useRecorder } from '@/hooks/useRecorder';
 import { usePronunciation } from '@/hooks/usePronunciation';
 import { SayText, SayVerdict, useSentenceSay } from '@/components/SayText';
@@ -105,6 +108,7 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ la
  * 朗读全文 / 单句，逐词高亮并在读到目标词时放大提示；点目标词看单词卡片；
  * 工具栏上随手切：慢速、译文、跟读（读完一句自动开麦）、盲听（先听再看原文）；⚙ 里设一次就不动的：每句读几遍、句间停顿、
  * 译文显示当前句还是全部、听后回忆、聚焦当前句、标出目标词。
+ * 场景片段（`clip`）可以选用原声还是 AI 朗读，默认原声（带着原来的语气语调；没有逐词高亮）。
  */
 /** 选中的文字是一个英文单词（可以加成目标词） */
 /** 选中的文字是一个英文单词或 2–6 个词的词组（可以加成目标词） */
@@ -118,7 +122,9 @@ export const ReadAloudPanel: React.FC<{
   onEditTranslation?: (index: number, zh: string) => Promise<string | null>;
   /** 学习计划里朗读时带上：跟读评估的结果保存进计划的发音统计 */
   pronunciationContext?: PronunciationContext;
-}> = ({ passage, onAddTarget, onOpenWord, onEditTranslation, pronunciationContext }) => {
+  /** 场景片段的短片：可以用原声朗读 */
+  clip?: PassageVideo | null;
+}> = ({ passage, onAddTarget, onOpenWord, onEditTranslation, pronunciationContext, clip }) => {
   const [prefs, setPrefs] = useState<ReadAloudPrefs>(readPrefs);
   const [blind, setBlind] = useState(false);
   const [blindDone, setBlindDone] = useState(false);
@@ -221,7 +227,12 @@ export const ReadAloudPanel: React.FC<{
   }, [recorder.ended]);
 
 
+  // 场景片段：原声（按声音校准过的句子时间）或 AI 朗读
+  const [voice, setVoice] = useClipVoice();
+  const clipTimes = useClipTimes(clip, passage.sentences);
+  const clipSource = useMemo(() => (clip && voice === 'original' ? { url: clip.clipUrl, sentences: clipTimes } : null), [clip, voice, clipTimes]);
   const player = useSentencePlayer(texts, {
+    clip: clipSource,
     speed: prefs.speed,
     repeat: prefs.repeat,
     pauseMs: prefs.pauseMs,
@@ -434,6 +445,26 @@ export const ReadAloudPanel: React.FC<{
         {player.loading && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="正在生成语音" />}
         <span className="min-w-0 truncate text-xs text-muted-foreground">{status}</span>
         <div className="flex-1" />
+        {clip && (
+          <ToggleGroup
+            type="single"
+            value={voice}
+            className="rounded-lg bg-muted p-0.5"
+            onValueChange={(v) => {
+              if (!v || v === voice) return;
+              stopAll();
+              setVoice(v as 'original' | 'ai');
+            }}
+            aria-label="朗读声音"
+          >
+            <ToggleGroupItem value="original" className={segmentItem} title="视频原声">
+              原声
+            </ToggleGroupItem>
+            <ToggleGroupItem value="ai" className={segmentItem} title="AI 朗读">
+              AI 朗读
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )}
         {/* 读的时候随手切的开关（只有图标，悬停说明）；设一次就不动的在 ⚙ 里 */}
         <div className="flex items-center gap-0.5">
           <IconToggle

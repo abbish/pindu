@@ -13,8 +13,7 @@ import { PassageReader, type TranslationMode } from '@/components/PassageReader'
 import { TargetWord } from '@/components/PassageReader/WordCard';
 import { SelectionAction } from '@/components/SelectionAction';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
-import { videoService } from '@/services/videoService';
-import { refineSentenceTimes } from '@/utils/speechBoundaries';
+import { useClipTimes } from '@/hooks/useClipTimes';
 import { canAddTarget, formsOf } from '@/utils/passage';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { cn } from '@/lib/utils';
@@ -104,19 +103,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences: rawSentences, passage, onAddTarget, onOpenWord, onEditTranslation, onPractice, pronunciationContext }) => {
   // 句子起止按声音校准（字幕交界常常紧挨着下一句开口，单句播放会带出下一句的开头），波形读不到时用字幕时间
-  const [peaks, setPeaks] = useState<number[]>([]);
-  useEffect(() => {
-    let alive = true;
-    videoService.getPeaks(video.videoId).then((r) => alive && r.success && setPeaks(r.data));
-    return () => {
-      alive = false;
-    };
-  }, [video.videoId]);
-  const sentences = useMemo(() => {
-    if (peaks.length === 0) return rawSentences;
-    const times = refineSentenceTimes(rawSentences, peaks, video.startMs);
-    return rawSentences.map((s, i) => ({ ...s, ...times[i] }));
-  }, [rawSentences, peaks, video.startMs]);
+  const sentences = useClipTimes(video, rawSentences);
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
   /** 目标词组在台词里的写法 */
   const forms = useMemo(() => formsOf(passage.targetWords), [passage.targetWords]);

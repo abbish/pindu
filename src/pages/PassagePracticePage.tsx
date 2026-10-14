@@ -44,7 +44,9 @@ import { InlineError } from '@/components/InlineError';
 import { PageError } from '@/components/PageError';
 import { PassageReader } from '@/components/PassageReader';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
-import { useClipSentencePlayer } from '@/hooks/useClipSentencePlayer';
+import { useClipTimes } from '@/hooks/useClipTimes';
+import { useClipVoice, type ClipVoice } from '@/hooks/useClipVoice';
+import type { PassageVideo } from '@/types/video';
 import { videoService } from '@/services/videoService';
 import { cn } from '@/lib/utils';
 import { passageService } from '@/services/passageService';
@@ -92,7 +94,14 @@ interface ListeningPlayerHandle {
   stop: () => void;
 }
 
-const ListeningPlayer: React.FC<{ player: ListeningPlayerHandle; total: number; slow: boolean; onSlowChange: (slow: boolean) => void }> = ({ player, total, slow, onSlowChange }) => {
+const ListeningPlayer: React.FC<{
+  player: ListeningPlayerHandle;
+  total: number;
+  slow: boolean;
+  onSlowChange: (slow: boolean) => void;
+  /** 场景片段：原声 / AI 朗读（普通短文没有） */
+  voice?: { value: ClipVoice; onChange: (voice: ClipVoice) => void };
+}> = ({ player, total, slow, onSlowChange, voice }) => {
   const texts = Array.from({ length: total });
   const current = player.current ?? 0;
   const go = (delta: number) => player.play(Math.min(texts.length - 1, Math.max(0, current + delta)), true);
@@ -126,6 +135,26 @@ const ListeningPlayer: React.FC<{ player: ListeningPlayerHandle; total: number; 
         </div>
       </div>
       <div className="flex items-center gap-1">
+        {voice && (
+          <ToggleGroup
+            type="single"
+            value={voice.value}
+            onValueChange={(v) => {
+              if (!v || v === voice.value) return;
+              player.stop();
+              voice.onChange(v as ClipVoice);
+            }}
+            className="mr-1 rounded-lg bg-muted p-0.5"
+            aria-label="朗读声音"
+          >
+            <ToggleGroupItem value="original" className="h-7 rounded-md px-2.5 text-xs data-[state=on]:bg-background data-[state=on]:shadow-sm" title="视频原声">
+              原声
+            </ToggleGroupItem>
+            <ToggleGroupItem value="ai" className="h-7 rounded-md px-2.5 text-xs data-[state=on]:bg-background data-[state=on]:shadow-sm" title="AI 朗读">
+              AI 朗读
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )}
         <Button variant="ghost" size="sm" onClick={() => player.play(current, true)}>
           <RotateCcw />
           重听本句
@@ -414,7 +443,8 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
   const [set, setSet] = useState<QuestionSet | null>(null);
   const [passage, setPassage] = useState<Passage | null>(null);
   /** 视频切片：听力用原声 */
-  const [clipUrl, setClipUrl] = useState<string | null>(null);
+  /** 场景片段的短片：听力可以用原声 */
+  const [clip, setClip] = useState<PassageVideo | null>(null);
   const [attempt, setAttempt] = useState<PassageAttempt | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -447,7 +477,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
     setPassage(p.data);
     if (p.data.origin === 'video') {
       const v = await videoService.getPassageVideo(p.data.id);
-      setClipUrl(v.success ? (v.data?.clipUrl ?? null) : null);
+      setClip(v.success ? (v.data ?? null) : null);
     }
     setAttempt(a.data);
     setAnswers({});
@@ -467,11 +497,12 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
   }, [finished]);
 
   const texts = useMemo(() => passage?.sentences.map((s) => s.en) ?? [], [passage]);
-  /** 听力播放：视频切片用原声，其余用合成语音（播放条与听句填空共用） */
+  /** 听力播放（播放条与听句填空共用）：场景片段可选原声（按声音校准过的句子时间）或 AI 朗读，其余用 AI 朗读 */
   const [slow, setSlow] = useState(false);
-  const tts = useSentencePlayer(mode === 'listening' && !clipUrl ? texts : NO_TEXTS, { speed: slow ? 'slow' : 'normal' });
-  const original = useClipSentencePlayer(mode === 'listening' ? clipUrl : null, passage?.sentences ?? NO_SENTENCES, { slow });
-  const listenPlayer: ListeningPlayerHandle = clipUrl ? original : tts;
+  const [voice, setVoice] = useClipVoice();
+  const clipTimes = useClipTimes(clip, passage?.sentences ?? NO_SENTENCES);
+  const clipSource = useMemo(() => (clip && voice === 'original' ? { url: clip.clipUrl, sentences: clipTimes } : null), [clip, voice, clipTimes]);
+  const listenPlayer: ListeningPlayerHandle = useSentencePlayer(mode === 'listening' ? texts : NO_TEXTS, { speed: slow ? 'slow' : 'normal', clip: clipSource });
   const clozeQuestions = useMemo(() => set?.questions.filter((q) => q.kind === 'cloze') ?? [], [set]);
   const otherQuestions = useMemo(() => set?.questions.filter((q) => q.kind !== 'cloze') ?? [], [set]);
 
@@ -720,7 +751,7 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
         // 听力作答：单栏居中，播放条吸顶（随时能听），下沿是题号（已答点亮，点击跳到该题）
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
           <div className="sticky top-0 z-10 space-y-3 rounded-xl border bg-card/95 p-3 shadow-sm backdrop-blur">
-            <ListeningPlayer player={listenPlayer} total={texts.length} slow={slow} onSlowChange={setSlow} />
+            <ListeningPlayer player={listenPlayer} total={texts.length} slow={slow} onSlowChange={setSlow} voice={clip ? { value: voice, onChange: setVoice } : undefined} />
             {otherQuestions.length > 1 && (
               <div className="flex flex-wrap items-center gap-1.5 border-t pt-2.5">
                 {otherQuestions.map((q, i) => (

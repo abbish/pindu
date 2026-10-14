@@ -18,6 +18,56 @@ export interface SentencePlayerOptions {
   afterSentence?: (index: number) => Promise<void> | void;
   /** 连续播放读完最后一句时调用（如盲听结束后显示原文） */
   onFinish?: () => void;
+  /**
+   * 用原声代替合成语音（场景片段）：短片地址 + 每句在短片里的起止（毫秒，按声音校准过的）。
+   * 原声没有逐词时间（`words` 为 null），慢速是 0.75 倍速播放，不用联网、马上能播。
+   */
+  clip?: ClipSource | null;
+}
+
+export interface ClipSource {
+  url: string;
+  sentences: { startMs?: number | null; endMs?: number | null }[];
+}
+
+/** 原声慢速的播放倍速 */
+const CLIP_SLOW_RATE = 0.75;
+/** 原声提前一点停：暂停生效要一小会儿，不提前会漏出下一句的开头 */
+const CLIP_STOP_LEAD_MS = 40;
+
+/** 用一个音频元素播短片里的一段（到终点或被中止时停）；播完返回 true */
+function playClipRange(audio: HTMLAudioElement, startMs: number, endMs: number, rate: number, signal: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve(false);
+    let frame = 0;
+    let settled = false;
+    const end = Math.max(startMs, endMs - CLIP_STOP_LEAD_MS) / 1000;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      cancelAnimationFrame(frame);
+      signal.removeEventListener('abort', onAbort);
+      audio.removeEventListener('ended', onEnded);
+      audio.pause();
+      resolve(ok);
+    };
+    const onAbort = () => finish(false);
+    const onEnded = () => finish(true);
+    signal.addEventListener('abort', onAbort, { once: true });
+    audio.addEventListener('ended', onEnded);
+    const tick = () => {
+      if (audio.currentTime >= end) return finish(true);
+      frame = requestAnimationFrame(tick);
+    };
+    audio.playbackRate = rate;
+    audio.currentTime = startMs / 1000;
+    audio
+      .play()
+      .then(() => {
+        if (!settled) frame = requestAnimationFrame(tick);
+      })
+      .catch(() => finish(false));
+  });
 }
 
 /** 可被中止的等待 */
@@ -39,6 +89,7 @@ function wait(ms: number, signal: AbortSignal): Promise<boolean> {
 /**
  * 逐句朗读一段短文：连播（从某句开始）/ 只播一句 / 停止；支持语速、每句重复、句间停顿、读完一句后的回调（听后回忆）。
  * 每句单独合成并缓存（style = sentence），播放下一句前预取；`words` / `timeMs` 用于逐词高亮。
+ * 给了 `clip` 时改用原声：每句播短片里对应的那一段，其余（重复、停顿、回调）不变。
  */
 export function useSentencePlayer(texts: string[], options: SentencePlayerOptions = {}) {
   const audio = useAudioPlayer();
@@ -51,6 +102,34 @@ export function useSentencePlayer(texts: string[], options: SentencePlayerOption
   const abortRef = useRef<AbortController | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  // 原声：一个音频元素，换短片时换
+  const clipUrl = options.clip?.url ?? null;
+  const clipAudio = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    if (!clipUrl) return;
+    const a = new Audio(clipUrl);
+    a.preload = 'auto';
+    clipAudio.current = a;
+    return () => {
+      a.pause();
+      if (clipAudio.current === a) clipAudio.current = null;
+    };
+  }, [clipUrl]);
+  /** 播第 i 句：原声或合成语音；播完返回 true */
+  const playOne = useCallback(
+    (text: string, i: number, signal: AbortSignal) => {
+      const clip = optionsRef.current.clip;
+      const a = clipAudio.current;
+      if (clip && a) {
+        const s = clip.sentences[i];
+        if (!s) return Promise.resolve(false);
+        const rate = optionsRef.current.speed === 'slow' ? CLIP_SLOW_RATE : 1;
+        return playClipRange(a, s.startMs ?? 0, s.endMs ?? s.startMs ?? 0, rate, signal);
+      }
+      return audio.playSentence(text, undefined, { signal, speed: optionsRef.current.speed, withTimings: optionsRef.current.withTimings });
+    },
+    [audio]
+  );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -72,13 +151,13 @@ export function useSentencePlayer(texts: string[], options: SentencePlayerOption
       let finished = true;
       for (let i = from; i < texts.length; i++) {
         setCurrent(i);
-        if (!single && i + 1 < texts.length) audio.prefetch(texts[i + 1], 'sentence', undefined, speech());
+        if (!single && i + 1 < texts.length && !optionsRef.current.clip) audio.prefetch(texts[i + 1], 'sentence', undefined, speech());
         const repeat = Math.max(1, optionsRef.current.repeat ?? 1);
         for (let r = 1; r <= repeat; r++) {
           setRound(r);
           let ok: boolean;
           try {
-            ok = await audio.playSentence(texts[i], undefined, { signal, ...speech() });
+            ok = await playOne(texts[i], i, signal);
           } catch {
             ok = false;
           }
@@ -115,12 +194,12 @@ export function useSentencePlayer(texts: string[], options: SentencePlayerOption
         if (finished && !single) optionsRef.current.onFinish?.();
       }
     },
-    [audio, texts]
+    [audio, texts, playOne]
   );
 
   // 预取第一句；离开页面时停止
   useEffect(() => {
-    if (texts[0]) audio.prefetch(texts[0], 'sentence', undefined, { speed: optionsRef.current.speed, withTimings: optionsRef.current.withTimings });
+    if (texts[0] && !optionsRef.current.clip) audio.prefetch(texts[0], 'sentence', undefined, { speed: optionsRef.current.speed, withTimings: optionsRef.current.withTimings });
     return () => abortRef.current?.abort();
     // 只在换短文时预取
   }, [texts]);
@@ -130,12 +209,13 @@ export function useSentencePlayer(texts: string[], options: SentencePlayerOption
     playing,
     round,
     pausing,
-    loading: audio.state.isLoading,
-    /** 当前音频的逐词时间与播放位置（毫秒） */
-    words: audio.state.words,
+    loading: clipUrl ? false : audio.state.isLoading,
+    /** 当前音频的逐词时间与播放位置（毫秒）；原声没有逐词时间 */
+    words: clipUrl ? null : audio.state.words,
     timeMs: audio.state.currentTime * 1000,
     /** 实时播放位置（毫秒；没在播放为 null） */
     timeNowMs: useCallback(() => {
+      if (optionsRef.current.clip) return null;
       const t = audio.currentTimeNow();
       return t == null ? null : t * 1000;
     }, [audio]),
