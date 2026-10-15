@@ -1,5 +1,6 @@
 // RedLark agent sidecar 入口：RedLark 配置 → pi models.json，然后以 RPC 模式运行 pi（工具编译进二进制）。
 // 契约见 docs/agent-harness/DESIGN.md §3。
+import "./photon-wasm.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main, SessionManager, type SessionInfo } from "@earendil-works/pi-coding-agent";
