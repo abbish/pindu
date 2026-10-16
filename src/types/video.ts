@@ -99,6 +99,8 @@ export interface VideoClip {
   seq: number;
   startMs: number;
   endMs: number;
+  /** 句子跟不上现在的字幕（重新整理、换了字幕之后），可以按新字幕更新 */
+  outdated: boolean;
 }
 
 /** 短文对应的视频短片（短文详情页播放） */
@@ -115,6 +117,15 @@ export interface PassageVideo {
 
 /** 一句台词在短片里真正说出来的起止（毫秒，相对短片开头；本机发音模型对齐得出） */
 export interface SentenceSpan {
+  startMs: number;
+  endMs: number;
+  /** 每个词说出来的起止（同步跟读逐词标出）：句子里读出来的词按顺序，没对上的词不在里面 */
+  words: WordSpan[];
+}
+
+/** 一个词在短片里说出来的起止（毫秒） */
+export interface WordSpan {
+  word: string;
   startMs: number;
   endMs: number;
 }

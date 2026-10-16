@@ -6,6 +6,7 @@ pub mod calendar_repository;
 pub mod diagnostics_repository;
 pub mod lan_package_repository;
 pub mod lan_repository;
+pub mod passage_guide_repository;
 pub mod passage_repository;
 pub mod passage_word_repository;
 pub mod plan_pace_repository;

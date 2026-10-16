@@ -136,7 +136,8 @@ function renderTokens(tokens: ReturnType<typeof tokenize>, targets: string[], ac
         className={cn(
           'inline-block rounded-sm transition-[transform,background-color,color] duration-150',
           target && 'font-semibold text-warning underline decoration-overdue decoration-wavy decoration-2 underline-offset-[5px]',
-          isActive && 'relative z-10 inline-block -mx-0.5 scale-[1.15] rounded-md bg-primary px-0.5 text-primary-foreground no-underline shadow-sm',
+          // 读到的词：底色 + 稍微放大；缩放和外圈描边都不占位置、也伸不到两边的空格里，前后的词不挪、不被盖住
+          isActive && 'relative z-10 inline-block scale-[1.06] rounded-sm bg-primary text-primary-foreground no-underline shadow-sm ring-2 ring-primary',
           isActive && target && 'ring-2 ring-warning ring-offset-1 ring-offset-background'
         )}
       >

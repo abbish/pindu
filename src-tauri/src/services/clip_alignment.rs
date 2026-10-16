@@ -8,7 +8,7 @@
 use crate::error::{AppError, AppResult};
 use crate::logger::Logger;
 use crate::media::MediaTools;
-use crate::pronunciation::{self, model, score::LogProbs};
+use crate::pronunciation::{self, model};
 use crate::repositories::video_repository::VideoRepository;
 use crate::services::passage::PassageService;
 use serde::Serialize;
@@ -18,14 +18,14 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// 太长的短片不对齐（对齐的计算量与内存随长度平方增长；场景片段一般一两分钟）
-const MAX_CLIP_MS: i64 = 5 * 60 * 1000;
+/// 太长的短片不对齐（超过 3 分钟按句子分段对齐，见 `align::align_audio`；场景片段一般一两分钟）
+const MAX_CLIP_MS: i64 = 30 * 60 * 1000;
 /// 对齐结果离字幕时间多远就不信（与 align::WINDOW_MARGIN_FRAMES 的 1.5 秒一致）
 const TRUST_MARGIN_MS: i64 = 1500;
 
 /// 对出来的这句像不像真的说出来了：太短（字幕里有、其实没说的行被硬塞进几帧，如 [Music]）、太长、离字幕太远都不信，
 /// 这句照用字幕时间（界面按声音停顿校准）
-fn plausible(span: SentenceSpan, window: Option<(i64, i64)>) -> bool {
+fn plausible(span: &SentenceSpan, window: Option<(i64, i64)>) -> bool {
     let len = span.end_ms - span.start_ms;
     let Some((a, b)) = window else {
         return len >= 150;
@@ -38,9 +38,20 @@ fn plausible(span: SentenceSpan, window: Option<(i64, i64)>) -> bool {
 }
 
 /// 一句台词在短片里真正说出来的起止（毫秒，相对短片开头）
-#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SentenceSpan {
+    pub start_ms: i64,
+    pub end_ms: i64,
+    /// 每个词说出来的起止（同步跟读逐词标出）：句子里读出来的词按顺序，没对上的词不在里面
+    pub words: Vec<WordSpan>,
+}
+
+/// 一个词说出来的起止（毫秒，相对短片开头）
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WordSpan {
+    pub word: String,
     pub start_ms: i64,
     pub end_ms: i64,
 }
@@ -115,26 +126,26 @@ pub async fn align(
         model::unload_if_idle();
     });
     let spans = tokio::task::spawn_blocking(move || -> AppResult<Spans> {
-        let (frames, vocab, raw) = model::log_probs(&path, &samples)?;
-        let lp = LogProbs::new(frames, vocab, &raw);
-        let ms = samples.len() as f64 / 16.0 / frames as f64;
-        let frames_windows: Vec<(f64, f64)> = windows
-            .iter()
-            .map(|w| match w {
-                Some((a, b)) => (*a as f64 / ms, *b as f64 / ms),
-                None => (f64::NEG_INFINITY, f64::INFINITY),
-            })
-            .collect();
         Ok(
-            pronunciation::align::align_sentences(&lp, &texts, Some(&frames_windows))
+            pronunciation::align::align_audio(&path, &samples, &texts, &windows)?
                 .into_iter()
                 .zip(&windows)
-                .map(|(span, window)| {
-                    span.map(|(a, b)| SentenceSpan {
-                        start_ms: (a as f64 * ms).round() as i64,
-                        end_ms: (b as f64 * ms).round() as i64,
-                    })
-                    .filter(|&s| plausible(s, *window))
+                .map(|(aligned, window)| {
+                    aligned
+                        .map(|a| SentenceSpan {
+                            start_ms: a.start_ms,
+                            end_ms: a.end_ms,
+                            words: a
+                                .words
+                                .into_iter()
+                                .map(|w| WordSpan {
+                                    word: w.word,
+                                    start_ms: w.start_ms,
+                                    end_ms: w.end_ms,
+                                })
+                                .collect(),
+                        })
+                        .filter(|s| plausible(s, *window))
                 })
                 .collect(),
         )
@@ -171,20 +182,24 @@ mod tests {
     use super::*;
 
     fn span(start_ms: i64, end_ms: i64) -> SentenceSpan {
-        SentenceSpan { start_ms, end_ms }
+        SentenceSpan {
+            start_ms,
+            end_ms,
+            words: Vec::new(),
+        }
     }
 
     #[test]
     fn untrusted_spans_fall_back_to_subtitles() {
         // 字幕早了一秒：照样可信
-        assert!(plausible(span(2030, 3960), Some((1300, 3300))));
+        assert!(plausible(&span(2030, 3960), Some((1300, 3300))));
         // 字幕里有、其实没说的行被塞进几帧
-        assert!(!plausible(span(5000, 5080), Some((4000, 7000))));
+        assert!(!plausible(&span(5000, 5080), Some((4000, 7000))));
         // 离字幕太远
-        assert!(!plausible(span(9000, 11000), Some((1000, 3000))));
+        assert!(!plausible(&span(9000, 11000), Some((1000, 3000))));
         // 拖得太长
-        assert!(!plausible(span(1000, 12000), Some((1000, 3000))));
+        assert!(!plausible(&span(1000, 12000), Some((1000, 3000))));
         // 没有字幕时间：只看长短
-        assert!(plausible(span(0, 800), None));
+        assert!(plausible(&span(0, 800), None));
     }
 }

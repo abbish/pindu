@@ -72,6 +72,8 @@ export interface WordTutorRequest {
   cardWord?: string | null;
   /** 围绕短文里的一句答疑（此时 wordId 为 0） */
   sentence?: SentenceRef | null;
+  /** 围绕整篇短文 / 场景片段答疑（此时 wordId 为 0） */
+  passageId?: Id | null;
 }
 
 /// 单词讲解（agent 实时生成的 Markdown，不落库）

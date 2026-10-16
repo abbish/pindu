@@ -876,3 +876,13 @@ pub struct PassageSceneSuggestRequest {
     #[serde(default)]
     pub exclude: Vec<String>,
 }
+
+/// 场景片段的内容讲解（AI 生成的 Markdown，保存在 passage_guides，071）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipGuide {
+    pub passage_id: Id,
+    pub content: String,
+    pub model_name: Option<String>,
+    pub generated_at: String,
+}

@@ -13,6 +13,8 @@ export interface Take {
   peaks: number[];
   /** 开始录音时给的标记（录的是哪个词 / 哪一句）：录完时内容已经换了，调用方据此丢掉 */
   tag?: string;
+  /** 录音开始的时刻（performance.now）：边放边录时据此算原声在录音里的位置 */
+  startedAt: number;
 }
 
 export interface RecorderOptions {
@@ -210,7 +212,7 @@ export function useRecorder(options: RecorderOptions = {}) {
       const durationMs = begun ? performance.now() - begun : 0;
       // 已经关掉（卸载）的不再生成录音地址：没人会释放它
       if (chunks.length > 0 && durationMs > 300 && generation === generationRef.current) {
-        setTake({ url: URL.createObjectURL(new Blob(chunks, { type: rec.mimeType })), durationMs, peaks, tag });
+        setTake({ url: URL.createObjectURL(new Blob(chunks, { type: rec.mimeType })), durationMs, peaks, tag, startedAt: begun });
       }
       setEnded((n) => n + 1);
     };

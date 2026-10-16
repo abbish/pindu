@@ -44,7 +44,7 @@ import { InlineError } from '@/components/InlineError';
 import { PageError } from '@/components/PageError';
 import { PassageReader } from '@/components/PassageReader';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
-import { useClipTimes } from '@/hooks/useClipTimes';
+import { useClipTiming } from '@/hooks/useClipTimes';
 import { useClipVoice, type ClipVoice } from '@/hooks/useClipVoice';
 import type { PassageVideo } from '@/types/video';
 import { videoService } from '@/services/videoService';
@@ -500,8 +500,8 @@ export const PassagePracticePage: React.FC<PassagePracticePageProps> = ({ setId,
   /** 听力播放（播放条与听句填空共用）：场景片段可选原声（按声音校准过的句子时间）或 AI 朗读，其余用 AI 朗读 */
   const [slow, setSlow] = useState(false);
   const [voice, setVoice] = useClipVoice();
-  const clipTimes = useClipTimes(clip, passage?.sentences ?? NO_SENTENCES, passage?.id);
-  const clipSource = useMemo(() => (clip && voice === 'original' ? { url: clip.clipUrl, sentences: clipTimes } : null), [clip, voice, clipTimes]);
+  const { sentences: clipTimes, ready: clipReady } = useClipTiming(clip, passage?.sentences ?? NO_SENTENCES, passage?.id);
+  const clipSource = useMemo(() => (clip && voice === 'original' ? { url: clip.clipUrl, sentences: clipTimes, ready: clipReady } : null), [clip, voice, clipTimes, clipReady]);
   const listenPlayer: ListeningPlayerHandle = useSentencePlayer(mode === 'listening' ? texts : NO_TEXTS, { speed: slow ? 'slow' : 'normal', clip: clipSource });
   const clozeQuestions = useMemo(() => set?.questions.filter((q) => q.kind === 'cloze') ?? [], [set]);
   const otherQuestions = useMemo(() => set?.questions.filter((q) => q.kind !== 'cloze') ?? [], [set]);

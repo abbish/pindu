@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, ChevronLeft, ChevronRight, EyeOff, Languages, Loader2, Mic, Pause, Play, Settings2, Snail } from 'lucide-react';
+import { Brain, ChevronLeft, ChevronRight, EyeOff, GraduationCap, Languages, Loader2, Mic, Pause, Play, Settings2, Snail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -14,7 +14,7 @@ import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { SelectionAction } from '@/components/SelectionAction';
 import { useTargetWordInfo } from './useTargetWordInfo';
 import { useSentencePlayer } from '@/hooks/useSentencePlayer';
-import { useClipTimes } from '@/hooks/useClipTimes';
+import { useClipTiming } from '@/hooks/useClipTimes';
 import { useClipVoice } from '@/hooks/useClipVoice';
 import type { PassageVideo } from '@/types/video';
 import { useSentenceSay } from '@/components/SayText';
@@ -22,6 +22,8 @@ import type { PronunciationContext } from '@/types/pronunciation';
 import { cn } from '@/lib/utils';
 import { canAddTarget, formsOf, recallBlanks } from '@/utils/passage';
 import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
+import { AiTeacherPanel } from '@/components/AiTeacher';
+import { passageChatId } from '@/services/wordExplanationService';
 import type { SpeechSpeed } from '@/services/ttsService';
 import type { Passage } from '@/types/passage';
 
@@ -135,6 +137,8 @@ export const ReadAloudPanel: React.FC<{
   const texts = useMemo(() => passage.sentences.map((s) => s.en), [passage]);
   /** 正在看分析的句子 */
   const [analyzing, setAnalyzing] = useState<number | null>(null);
+  /** 围绕这篇的 AI 老师对话（和句子分析占同一个位置，开一个关另一个） */
+  const [teacherOpen, setTeacherOpen] = useState(false);
 
   /** 读完一遍（onFinish 里只置位，effect 里收尾：那时 player 已经有了） */
   const [roundDone, setRoundDone] = useState(false);
@@ -202,8 +206,8 @@ export const ReadAloudPanel: React.FC<{
 
   // 场景片段：原声（按声音校准过的句子时间）或 AI 朗读
   const [voice, setVoice] = useClipVoice();
-  const clipTimes = useClipTimes(clip, passage.sentences, passage.id);
-  const clipSource = useMemo(() => (clip && voice === 'original' ? { url: clip.clipUrl, sentences: clipTimes } : null), [clip, voice, clipTimes]);
+  const { sentences: clipTimes, ready: clipReady, words: clipWords } = useClipTiming(clip, passage.sentences, passage.id);
+  const clipSource = useMemo(() => (clip && voice === 'original' ? { url: clip.clipUrl, sentences: clipTimes, ready: clipReady, words: clipWords } : null), [clip, voice, clipTimes, clipReady, clipWords]);
   const player = useSentencePlayer(texts, {
     clip: clipSource,
     speed: prefs.speed,
@@ -423,6 +427,16 @@ export const ReadAloudPanel: React.FC<{
           <IconToggle label="盲听：隐藏原文，朗读结束后显示" pressed={blind} onPressedChange={toggleBlind}>
             <EyeOff />
           </IconToggle>
+          <IconToggle
+            label="AI 老师：聊聊这篇"
+            pressed={teacherOpen}
+            onPressedChange={(on) => {
+              setTeacherOpen(on);
+              if (on) setAnalyzing(null);
+            }}
+          >
+            <GraduationCap />
+          </IconToggle>
         </div>
         <Popover>
           <Tooltip>
@@ -543,7 +557,14 @@ export const ReadAloudPanel: React.FC<{
             {recallPanel(i)}
           </>
         )}
-        onAnalyzeSentence={blind || prefs.recall ? undefined : setAnalyzing}
+        onAnalyzeSentence={
+          blind || prefs.recall
+            ? undefined
+            : (i) => {
+                setTeacherOpen(false);
+                setAnalyzing(i);
+              }
+        }
         sentenceAction={blind || prefs.recall ? undefined : sentenceSay.action}
         analyzing={analyzing}
         renderTarget={(text, target, active) => (
@@ -551,6 +572,7 @@ export const ReadAloudPanel: React.FC<{
         )}
       />
       </SelectionAction>
+      {teacherOpen && <AiTeacherPanel word={passage.title} wordId={passageChatId(passage.id)} passage onClose={() => setTeacherOpen(false)} />}
       {analyzing !== null && (
         <SentenceAnalysisPanel passageId={passage.id} sentences={passage.sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targets} onAddTarget={onAddTarget && ((w, form) => onAddTarget(w, true, form))} onEditTranslation={onEditTranslation} onClose={() => setAnalyzing(null)} />
       )}

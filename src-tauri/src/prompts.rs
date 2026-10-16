@@ -347,6 +347,7 @@ pub enum PromptTask {
     VideoSuggest,
     SubtitlePrepare,
     SentenceAnalyze,
+    ClipGuide,
     VocabSuggest,
     PassageSceneSuggest,
     PassageTargetWords,
@@ -355,7 +356,7 @@ pub enum PromptTask {
 }
 
 impl PromptTask {
-    pub const ALL: [PromptTask; 21] = [
+    pub const ALL: [PromptTask; 22] = [
         PromptTask::Extract,
         PromptTask::Generate,
         PromptTask::Phonics,
@@ -372,6 +373,7 @@ impl PromptTask {
         PromptTask::VideoSuggest,
         PromptTask::SubtitlePrepare,
         PromptTask::SentenceAnalyze,
+        PromptTask::ClipGuide,
         PromptTask::VocabSuggest,
         PromptTask::PassageSceneSuggest,
         PromptTask::PassageTargetWords,
@@ -397,6 +399,7 @@ impl PromptTask {
             PromptTask::VideoSuggest => "video_suggest",
             PromptTask::SubtitlePrepare => "subtitle_prepare",
             PromptTask::SentenceAnalyze => "sentence_analyze",
+            PromptTask::ClipGuide => "clip_guide",
             PromptTask::VocabSuggest => "vocab_suggest",
             PromptTask::PassageSceneSuggest => "passage_scene_suggest",
             PromptTask::PassageTargetWords => "passage_target_words",
@@ -423,6 +426,7 @@ impl PromptTask {
             PromptTask::VideoSuggest => "视频：切分要求的建议",
             PromptTask::SubtitlePrepare => "视频：整理字幕（断句与翻译）",
             PromptTask::SentenceAnalyze => "句子分析",
+            PromptTask::ClipGuide => "场景片段讲解",
             PromptTask::VocabSuggest => "词汇本：词汇需求的建议",
             PromptTask::PassageSceneSuggest => "短文：场景的建议",
             PromptTask::PassageTargetWords => "短文：重新挑选目标词",
@@ -449,6 +453,7 @@ impl PromptTask {
             PromptTask::VideoSuggest => include_str!("prompts/agent/video_plan_suggest.md"),
             PromptTask::SubtitlePrepare => include_str!("prompts/agent/subtitle_prepare.md"),
             PromptTask::SentenceAnalyze => include_str!("prompts/agent/sentence_analyze.md"),
+            PromptTask::ClipGuide => include_str!("prompts/agent/clip_guide.md"),
             PromptTask::VocabSuggest => include_str!("prompts/agent/vocab_topic_suggest.md"),
             PromptTask::PassageSceneSuggest => {
                 include_str!("prompts/agent/passage_scene_suggest.md")
@@ -627,6 +632,8 @@ pub enum MessageTemplate {
     SubtitlePrepare,
     SentenceAnalyze,
     SentenceTutor,
+    PassageTutor,
+    ClipGuide,
     VocabSuggest,
     PassageSceneSuggest,
     PassageTargetWords,
@@ -655,6 +662,8 @@ pub fn message(template: MessageTemplate, vars: &[(&str, &str)]) -> String {
         MessageTemplate::SubtitlePrepare => include_str!("prompts/messages/subtitle_prepare.md"),
         MessageTemplate::SentenceAnalyze => include_str!("prompts/messages/sentence_analyze.md"),
         MessageTemplate::SentenceTutor => include_str!("prompts/messages/sentence_tutor.md"),
+        MessageTemplate::PassageTutor => include_str!("prompts/messages/passage_tutor.md"),
+        MessageTemplate::ClipGuide => include_str!("prompts/messages/clip_guide.md"),
         MessageTemplate::VocabSuggest => include_str!("prompts/messages/vocab_topic_suggest.md"),
         MessageTemplate::PassageSceneSuggest => {
             include_str!("prompts/messages/passage_scene_suggest.md")
@@ -825,6 +834,7 @@ mod tests {
             (PromptTask::VideoSuggest, "video_plan_suggest.md"),
             (PromptTask::SubtitlePrepare, "subtitle_prepare.md"),
             (PromptTask::SentenceAnalyze, "sentence_analyze.md"),
+            (PromptTask::ClipGuide, "clip_guide.md"),
             (PromptTask::VocabSuggest, "vocab_topic_suggest.md"),
             (PromptTask::PassageSceneSuggest, "passage_scene_suggest.md"),
             (PromptTask::PassageTargetWords, "passage_target_words.md"),

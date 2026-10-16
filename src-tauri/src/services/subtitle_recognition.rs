@@ -93,6 +93,9 @@ const MODEL_SETTING: &str = "speech.model";
 /// 识别出的字幕记作这个名字（视频的「字幕」一栏显示）
 pub const RECOGNIZED_NAME: &str = "自动识别的字幕";
 const CANCEL_POLL: Duration = Duration::from_millis(300);
+/// 给 whisper 的开头提示：带标点和大小写的一句话。不给时 small.en 常写出全小写、没有标点的字幕，
+/// 一条里混着几句话的边界，之后怎么整理都断不对
+const PUNCTUATION_PROMPT: &str = "Hello, everyone. Welcome back to the program.";
 
 pub fn find_model(id: &str) -> AppResult<&'static SpeechModel> {
     MODELS
@@ -600,7 +603,7 @@ pub struct Heard {
     pub last: String,
 }
 
-/// 运行 whisper-cli，输出 `<out_prefix>.srt`；进度（0–1）与识别出的句子随时回报
+/// 运行 whisper-cli，输出 `<out_prefix>.srt` 与逐词时间 `<out_prefix>.json`；进度（0–1）与识别出的句子随时回报
 async fn run_whisper(
     model: &Path,
     wav: &Path,
@@ -613,7 +616,10 @@ async fn run_whisper(
         .arg(model)
         .arg("-f")
         .arg(wav)
-        .args(["-l", "en", "-osrt", "-pp", "-np", "-t"])
+        .args(["-l", "en", "-osrt", "-ojf", "-pp", "-np"])
+        .arg("--prompt")
+        .arg(PUNCTUATION_PROMPT)
+        .arg("-t")
         .arg(threads().to_string())
         .arg("-of")
         .arg(out_prefix)
@@ -690,11 +696,179 @@ async fn run_whisper(
     Ok(srt)
 }
 
-/// 识别出的字幕 → 字幕条（与导入的字幕同一个解析）；几乎没有英文时说明原因
+fn no_speech() -> AppError {
+    AppError::ValidationError("没有识别出英文对白：这个视频可能没有英文语音".to_string())
+}
+
+/// 识别出的字幕（srt）→ 字幕条（与导入的字幕同一个解析）；逐词结果读不了时用；几乎没有英文时说明原因
 pub fn cues_from_recognized(srt: &str) -> AppResult<Vec<Cue>> {
-    subtitle::build_cues(srt, None).map_err(|_| {
-        AppError::ValidationError("没有识别出英文对白：这个视频可能没有英文语音".to_string())
-    })
+    subtitle::build_cues(srt, None).map_err(|_| no_speech())
+}
+
+/// 识别出的一个词
+#[derive(Debug, Clone, PartialEq)]
+struct Word {
+    text: String,
+    start_ms: i64,
+    end_ms: i64,
+    /// 这个词前面换了一个人说话（`>>` / `-`）
+    new_speaker: bool,
+}
+
+/// whisper 完整 JSON（`-ojf`）→ 词：token 以空格开头是新词，否则接在上一个词后面（标点、词的后半）；
+/// 去掉特殊 token、音效标注（[Music] / (laughs)）、开头提示被原样写出来的段（静音时会有）
+/// 一个音效标注（`[Music]`、`(laughs)`）最多这么多个 token；超过还没闭合，就当成不是标注
+const MAX_MARK_TOKENS: usize = 8;
+
+fn words_from_whisper(json: &serde_json::Value) -> Vec<Word> {
+    let prompt: Vec<String> = PUNCTUATION_PROMPT
+        .split_inclusive(['.', '?', '!'])
+        .map(|s| s.trim().to_lowercase())
+        .collect();
+    let mut words: Vec<Word> = Vec::new();
+    let mut speaker = false;
+    let segments = json["transcription"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for (k, segment) in segments.iter().enumerate() {
+        let text = segment["text"].as_str().unwrap_or("").trim().to_lowercase();
+        // whisper 偶尔把提示句原样吐出来（常在开头或静音处）：不常说的后半句在哪都丢掉；
+        // "Hello, everyone." 这样的常见开场只在开头那段丢（片中真说了不能丢）
+        if prompt.contains(&text) && (k == 0 || prompt.first() != Some(&text)) {
+            continue;
+        }
+        // 音效标注只在一段里找（一个没闭合的括号不能把后面的都吞掉），最多跳过 MAX_MARK_TOKENS 个
+        let mut in_mark = 0usize;
+        for token in segment["tokens"].as_array().into_iter().flatten() {
+            let raw = token["text"].as_str().unwrap_or("");
+            if raw.starts_with("[_") {
+                continue;
+            }
+            let (from, to) = (
+                token["offsets"]["from"].as_i64().unwrap_or(0),
+                token["offsets"]["to"].as_i64().unwrap_or(0),
+            );
+            let piece = raw.trim();
+            if piece.is_empty() {
+                continue;
+            }
+            // 音效标注：从 [ / ( 开始到 ] / ) 结束，整段丢掉
+            if (in_mark > 0 && in_mark <= MAX_MARK_TOKENS) || piece.starts_with(['[', '(']) {
+                in_mark = if piece.ends_with([']', ')']) {
+                    0
+                } else {
+                    in_mark + 1
+                };
+                continue;
+            }
+            in_mark = 0;
+            if piece.contains('♪') {
+                continue;
+            }
+            // 换人说话：`>>`，或单独的短横（不是 check-in 这种词中间的连字符）
+            if piece.starts_with(">>") || (raw.starts_with(' ') && (piece == "-" || piece == "–"))
+            {
+                speaker = true;
+                let rest = piece.trim_start_matches(['>', '-', '–']).trim();
+                if rest.is_empty() {
+                    continue;
+                }
+                words.push(Word {
+                    text: rest.to_string(),
+                    start_ms: from,
+                    end_ms: to,
+                    new_speaker: true,
+                });
+                speaker = false;
+                continue;
+            }
+            match words.last_mut() {
+                Some(last) if !raw.starts_with(' ') => {
+                    last.text.push_str(piece);
+                    last.end_ms = last.end_ms.max(to);
+                }
+                _ => {
+                    words.push(Word {
+                        text: piece.to_string(),
+                        start_ms: from,
+                        end_ms: to.max(from),
+                        new_speaker: speaker,
+                    });
+                    speaker = false;
+                }
+            }
+        }
+    }
+    words.retain(|w| w.text.chars().any(|c| c.is_alphanumeric()));
+    words
+}
+
+/// 识别出的词 → 字幕条：一句一条（句末标点、停顿、换人说话处断开；太长的在逗号、连词、停顿处拆开，不断在虚词后，
+/// 规则与导入字幕的断句同一套 `sentences::group_spans`），时间来自每个词，比按 whisper 的分段准
+pub fn cues_from_whisper_json(json: &str) -> AppResult<Vec<Cue>> {
+    let value: serde_json::Value = serde_json::from_str(json)
+        .map_err(|e| AppError::InternalError(format!("读取识别结果失败：{e}")))?;
+    let words = words_from_whisper(&value);
+    let spans: Vec<crate::services::sentences::Span> = words
+        .iter()
+        .map(|w| crate::services::sentences::Span {
+            text: &w.text,
+            start_ms: w.start_ms,
+            end_ms: w.end_ms,
+        })
+        .collect();
+    let cues: Vec<Cue> =
+        crate::services::sentences::group_spans(&spans, |i| words[i].new_speaker.then_some(false))
+            .into_iter()
+            .map(|range| {
+                let group = &words[range];
+                Cue {
+                    start_ms: group[0].start_ms,
+                    end_ms: group[group.len() - 1].end_ms.max(group[0].start_ms + 1),
+                    en: group
+                        .iter()
+                        .map(|w| w.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    zh: String::new(),
+                    join: None,
+                }
+            })
+            .filter(|c| c.en.chars().any(|ch| ch.is_ascii_alphabetic()))
+            .collect();
+    if cues.is_empty() {
+        return Err(no_speech());
+    }
+    Ok(cues)
+}
+
+/// 识别结果 → 字幕条：优先按逐词时间组句（`<prefix>.json`），读不了时退回 whisper 的分段（`<prefix>.srt`）
+pub fn recognized_cues(out_prefix: &Path, logger: &Logger) -> AppResult<Vec<Cue>> {
+    let json = out_prefix.with_extension("json");
+    // whisper 按字节切 token，多字节字符（♪ 等）被切开时不是合法 UTF-8：按字节读、坏的字节替换掉
+    let read = std::fs::read(&json).map(|b| String::from_utf8_lossy(&b).into_owned());
+    if let Err(e) = &read {
+        logger.warn(
+            "VIDEO",
+            "逐词识别结果读不了，按分段组句",
+            Some(&e.to_string()),
+        );
+    }
+    if let Ok(text) = read {
+        match cues_from_whisper_json(&text) {
+            Ok(cues) => return Ok(cues),
+            Err(e @ AppError::ValidationError(_)) => return Err(e),
+            Err(e) => logger.warn(
+                "VIDEO",
+                "逐词识别结果读不了，按分段组句",
+                Some(&e.to_string()),
+            ),
+        }
+    }
+    let srt = std::fs::read_to_string(out_prefix.with_extension("srt"))
+        .map_err(|e| AppError::InternalError(format!("读取识别结果失败：{e}")))?;
+    cues_from_recognized(&srt)
 }
 
 /// 给一个已导入的视频识别字幕（后台任务，media 队列：排在导入任务之后）
@@ -774,10 +948,11 @@ impl RecognizeJob {
                 .await?;
             ctx.stage("识别英文语音");
             let mut reported = 0;
-            let srt = run_whisper(
+            let out_prefix = work.join("speech");
+            run_whisper(
                 &model,
                 &wav,
-                &work.join("speech"),
+                &out_prefix,
                 |f, heard| {
                     ctx.progress(
                         recognize_from + (f * (100 - recognize_from) as f64) as u64,
@@ -791,9 +966,7 @@ impl RecognizeJob {
                 || ctx.is_cancelled(),
             )
             .await?;
-            let text = std::fs::read_to_string(&srt)
-                .map_err(|e| AppError::InternalError(format!("读取识别结果失败：{e}")))?;
-            cues_from_recognized(&text)
+            recognized_cues(&out_prefix, &self.logger)
         }
         .await;
         let _ = std::fs::remove_dir_all(&work);
@@ -898,6 +1071,190 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("没有识别出英文对白"));
+    }
+
+    /// whisper `-ojf` 的结构：段 → token（以空格开头是新词），offsets 是毫秒
+    /// 一个 token：文字、开始、结束（毫秒）
+    type Token<'a> = (&'a str, i64, i64);
+
+    fn whisper_json(segments: &[(&str, &[Token])]) -> String {
+        let segs: Vec<serde_json::Value> = segments
+            .iter()
+            .map(|(text, tokens)| {
+                let mut list =
+                    vec![serde_json::json!({"text": "[_BEG_]", "offsets": {"from": 0, "to": 0}})];
+                list.extend(tokens.iter().map(|(t, from, to)| {
+                    serde_json::json!({"text": t, "offsets": {"from": from, "to": to}})
+                }));
+                serde_json::json!({"text": text, "tokens": list})
+            })
+            .collect();
+        serde_json::json!({"transcription": segs}).to_string()
+    }
+
+    #[test]
+    fn unclosed_bracket_does_not_swallow_later_segments() {
+        // 一段里有个没闭合的 `(`：只跳过有限的几个 token，下一段照常识别；片中间真说了提示句也保留
+        let json = whisper_json(&[
+            (" (sighs", &[(" (", 0, 0), ("sighs", 0, 300)]),
+            (
+                " Hello, everyone.",
+                &[
+                    (" Hello", 1000, 1300),
+                    (",", 1300, 1300),
+                    (" everyone", 1300, 1800),
+                    (".", 1800, 1800),
+                ],
+            ),
+            (
+                " We are leaving now.",
+                &[
+                    (" We", 2000, 2200),
+                    (" are", 2200, 2400),
+                    (" leaving", 2400, 2800),
+                    (" now", 2800, 3000),
+                    (".", 3000, 3000),
+                ],
+            ),
+        ]);
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let text: Vec<String> = words_from_whisper(&value)
+            .into_iter()
+            .map(|w| w.text)
+            .collect();
+        assert_eq!(
+            text,
+            ["Hello,", "everyone.", "We", "are", "leaving", "now."]
+        );
+    }
+
+    #[test]
+    fn recognized_words_become_sentences() {
+        // whisper 的分段断在半句话里（that ‖ it's）：按词重新组句
+        let json = whisper_json(&[
+            (
+                " The flight was delayed again. I got a message that",
+                &[
+                    (" The", 0, 200),
+                    (" flight", 200, 600),
+                    (" was", 600, 800),
+                    (" delayed", 800, 1300),
+                    (" again", 1300, 1700),
+                    (".", 1700, 1700),
+                    (" I", 2200, 2300),
+                    (" got", 2300, 2500),
+                    (" a", 2500, 2550),
+                    (" message", 2550, 3000),
+                    (" that", 3000, 3200),
+                ],
+            ),
+            (
+                " it's cancelled, Mr. Smith. [Music]",
+                &[
+                    (" it", 3300, 3400),
+                    ("'s", 3400, 3500),
+                    (" cancel", 3500, 3900),
+                    ("led", 3900, 4100),
+                    (",", 4100, 4100),
+                    (" Mr", 4300, 4500),
+                    (".", 4500, 4500),
+                    (" Smith", 4500, 4900),
+                    (".", 4900, 4900),
+                    (" [", 5000, 5000),
+                    ("Music", 5000, 5500),
+                    ("]", 5500, 5500),
+                ],
+            ),
+            (
+                " >> Hello, everyone.",
+                &[
+                    (" >>", 8000, 8000),
+                    (" Hello", 8000, 8400),
+                    (",", 8400, 8400),
+                    (" everyone", 8400, 9000),
+                    (".", 9000, 9000),
+                ],
+            ),
+            // 静音时 whisper 会把开头提示原样写出来
+            (
+                " Welcome back to the program.",
+                &[
+                    (" Welcome", 9500, 9800),
+                    (" back", 9800, 10_000),
+                    (" to", 10_000, 10_100),
+                    (" the", 10_100, 10_200),
+                    (" program", 10_200, 10_600),
+                    (".", 10_600, 10_600),
+                ],
+            ),
+        ]);
+        let cues = cues_from_whisper_json(&json).unwrap();
+        let texts: Vec<&str> = cues.iter().map(|c| c.en.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "The flight was delayed again.",
+                "I got a message that it's cancelled, Mr. Smith.",
+                "Hello, everyone."
+            ]
+        );
+        assert_eq!((cues[1].start_ms, cues[1].end_ms), (2200, 4900));
+        assert!(cues.iter().all(|c| c.join.is_none() && c.zh.is_empty()));
+
+        // 连字符不是换人说话
+        let json = whisper_json(&[(
+            " check-in desk.",
+            &[
+                (" check", 0, 300),
+                ("-", 300, 300),
+                ("in", 300, 500),
+                (" desk", 500, 900),
+                (".", 900, 900),
+            ],
+        )]);
+        assert_eq!(
+            cues_from_whisper_json(&json).unwrap()[0].en,
+            "check-in desk."
+        );
+
+        // 只有音效：没有英文对白
+        let json = whisper_json(&[(
+            " [Music]",
+            &[(" [", 0, 0), ("Music", 0, 900), ("]", 900, 900)],
+        )]);
+        assert!(cues_from_whisper_json(&json)
+            .unwrap_err()
+            .to_string()
+            .contains("没有识别出英文对白"));
+    }
+
+    #[test]
+    fn long_recognized_run_on_splits_at_safe_places() {
+        // 没有句号的一长串（口语常见）：在逗号 / 连词 / 停顿处拆开，不断在虚词后面
+        let text = "I went to the gate and they said it was cancelled , you have to get another flight so we went back to the hotel and waited for the next one because nobody at the desk could tell us anything";
+        let mut tokens: Vec<(String, i64, i64)> = Vec::new();
+        let mut t = 0;
+        for w in text.split(' ') {
+            let token = if w == "," {
+                ",".to_string()
+            } else {
+                format!(" {w}")
+            };
+            let (from, to) = if w == "," { (t, t) } else { (t, t + 300) };
+            tokens.push((token, from, to));
+            if w != "," {
+                t += 320;
+            }
+        }
+        let refs: Vec<Token> = tokens
+            .iter()
+            .map(|(a, b, c)| (a.as_str(), *b, *c))
+            .collect();
+        let cues = cues_from_whisper_json(&whisper_json(&[(" x", &refs)])).unwrap();
+        assert!(cues.len() >= 2, "{cues:?}");
+        for c in &cues[..cues.len() - 1] {
+            assert!(!crate::services::sentences::dangling(&c.en), "{}", c.en);
+        }
     }
 
     #[test]
@@ -1035,25 +1392,144 @@ mod real {
             .await
             .unwrap();
         let mut last = 0.0;
-        let srt = run_whisper(
-            &small.path(&data),
-            &wav,
-            &work.join("speech"),
-            |p, _| last = p,
-            || false,
-        )
-        .await
-        .unwrap();
-        let cues = cues_from_recognized(&std::fs::read_to_string(srt).unwrap()).unwrap();
+        let prefix = work.join("speech");
+        run_whisper(&small.path(&data), &wav, &prefix, |p, _| last = p, || false)
+            .await
+            .unwrap();
+        let logger = Logger::new(&work).unwrap();
+        let cues = recognized_cues(&prefix, &logger).unwrap();
         println!(
             "{} 条，用时 {:.1}s，最后进度 {last}",
             cues.len(),
             started.elapsed().as_secs_f64()
         );
-        for c in cues.iter().take(4) {
-            println!("{:>6} {}", c.start_ms, c.en);
+        for c in &cues {
+            println!("{:>7} {:>7}  {}", c.start_ms, c.end_ms, c.en);
         }
         assert!(!cues.is_empty() && last >= 0.99);
         std::fs::remove_dir_all(&work).ok();
+    }
+
+    /// 断句评测：按清单逐个视频（片段）识别、断句，汇总质量指标，调识别或断句规则时比前后。
+    /// `PINDU_EVAL_MANIFEST`：JSON 数组，每项 `{name, kind: "recognize" | "subtitle", path, start?, duration?}`
+    /// （recognize 取视频的 start 秒起 duration 秒识别；subtitle 读 srt / vtt 或 videos.cues 的 JSON）；
+    /// `PINDU_EVAL_OUT`：结果目录（每项的字幕条与指标，以及 summary.json）；
+    /// `PINDU_EVAL_BASELINE=1` 时另按改动前的参数识别一份 `<name>.before.srt`（不加开头提示、只出 srt）。
+    /// 其余环境变量同 real_recognize
+    #[tokio::test]
+    #[ignore]
+    async fn real_segmentation_eval() {
+        use crate::services::sentences::eval;
+        let manifest: Vec<serde_json::Value> = serde_json::from_str(
+            &std::fs::read_to_string(std::env::var("PINDU_EVAL_MANIFEST").unwrap()).unwrap(),
+        )
+        .unwrap();
+        let out = PathBuf::from(std::env::var("PINDU_EVAL_OUT").unwrap());
+        std::fs::create_dir_all(&out).unwrap();
+        let baseline = std::env::var("PINDU_EVAL_BASELINE").is_ok_and(|v| v == "1");
+        let tools = crate::media::locate_in(Path::new(&std::env::var("PINDU_FFMPEG_DIR").unwrap()))
+            .await
+            .expect("ffmpeg");
+        let data = PathBuf::from(std::env::var("PINDU_TEST_DATA").unwrap());
+        let model = find_model(DEFAULT_MODEL).unwrap().path(&data);
+        let logger = Logger::new(&out).unwrap();
+        let mut summary = serde_json::Map::new();
+        for item in &manifest {
+            let name = item["name"].as_str().unwrap();
+            let path = item["path"].as_str().unwrap();
+            let started = std::time::Instant::now();
+            let cues = if item["kind"] == "subtitle" {
+                let text = std::fs::read_to_string(path).unwrap();
+                if path.ends_with(".json") {
+                    serde_json::from_str::<Vec<Cue>>(&text).unwrap()
+                } else {
+                    subtitle::build_cues(&text, None).unwrap()
+                }
+            } else {
+                let wav = out.join(format!("{name}.wav"));
+                let mut args: Vec<String> = Vec::new();
+                if let Some(start) = item["start"].as_f64() {
+                    args.extend(["-ss".into(), start.to_string()]);
+                }
+                if let Some(duration) = item["duration"].as_f64() {
+                    args.extend(["-t".into(), duration.to_string()]);
+                }
+                args.extend(["-i".into(), path.into()]);
+                args.extend(
+                    ["-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y"]
+                        .map(String::from),
+                );
+                args.push(wav.to_string_lossy().into_owned());
+                let status = crate::process::command(&tools.ffmpeg)
+                    .args(["-v", "error"])
+                    .args(&args)
+                    .status()
+                    .await
+                    .unwrap();
+                assert!(status.success(), "{name}: 抽音频失败");
+                if baseline {
+                    let status = crate::process::command(whisper_cli().unwrap())
+                        .arg("-m")
+                        .arg(&model)
+                        .arg("-f")
+                        .arg(&wav)
+                        .args([
+                            "-l",
+                            "en",
+                            "-osrt",
+                            "-np",
+                            "-t",
+                            &threads().to_string(),
+                            "-of",
+                        ])
+                        .arg(out.join(format!("{name}.before")))
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status()
+                        .await
+                        .unwrap();
+                    assert!(status.success(), "{name}: 改动前参数识别失败");
+                }
+                let prefix = out.join(name);
+                run_whisper(&model, &wav, &prefix, |_, _| {}, || false)
+                    .await
+                    .unwrap();
+                std::fs::remove_file(&wav).ok();
+                match recognized_cues(&prefix, &logger) {
+                    Ok(cues) => cues,
+                    Err(e) => {
+                        // 没有英文对白（静音、非英语）也是一种结果
+                        println!("{name:<16} {e}");
+                        summary.insert(
+                            name.to_string(),
+                            serde_json::json!({ "error": e.to_string() }),
+                        );
+                        continue;
+                    }
+                }
+            };
+            let stats = eval::stats(&cues);
+            std::fs::write(
+                out.join(format!("{name}.cues.json")),
+                serde_json::to_string_pretty(&cues).unwrap(),
+            )
+            .unwrap();
+            println!(
+                "{name:<16} 条 {:>4} 句 {:>4} 虚词断 {:>2} 无标点断 {:>3} 大写 {:>3.0}% 句末标点 {:>3.0}% 中位 {:>2} 最长 {:>2} 超长 {:>2}  {:.1}s",
+                stats.cues, stats.sentences, stats.dangling_cuts, stats.bare_cuts,
+                stats.capitalized * 100.0, stats.terminal * 100.0,
+                stats.median_words, stats.max_words, stats.over_soft,
+                started.elapsed().as_secs_f64()
+            );
+            for e in &stats.examples {
+                println!("    {e}");
+            }
+            summary.insert(name.to_string(), serde_json::to_value(&stats).unwrap());
+        }
+        std::fs::write(
+            out.join("summary.json"),
+            serde_json::to_string_pretty(&summary).unwrap(),
+        )
+        .unwrap();
     }
 }

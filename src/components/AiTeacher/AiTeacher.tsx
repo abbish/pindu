@@ -16,16 +16,18 @@ export const TeacherAvatar: React.FC<{ className?: string }> = ({ className }) =
 export interface AiTeacherPanelProps {
   /** 正在讲的单词（显示用） */
   word: string;
-  /** 讲解 / 答疑用的 id（词汇本的词为 wordId，单词卡为负数 id） */
+  /** 讲解 / 答疑用的 id（词汇本的词为 wordId，单词卡、整篇为负数 id） */
   wordId: number;
+  /** 围绕整篇短文 / 场景片段聊（wordId 为 passageChatId） */
+  passage?: boolean;
   onClose: () => void;
 }
 
 /**
  * AI 老师的对话面板：固定在窗口右侧（标题栏下方到窗口底部），不随页面滚动，输入框一直可见、对话在面板里滚动；开着时切换单词，老师跟着讲新的词。
- * 同一个词的对话在单词卡、练习、短文与视频里共用（D43）。
+ * 同一个词的对话在单词卡、练习、短文与视频里共用（D43）；也可以围绕整篇短文 / 场景片段聊（原文页签、视频的内容讲解）。
  */
-export const AiTeacherPanel: React.FC<AiTeacherPanelProps> = ({ word, wordId, onClose }) =>
+export const AiTeacherPanel: React.FC<AiTeacherPanelProps> = ({ word, wordId, passage, onClose }) =>
   // 固定在窗口右侧：上到标题栏（面包屑）下方、下到窗口底部，主页面滚动不影响；浮在内容之上，不挤占单词卡
   createPortal(
     <Card className="fixed top-[calc(3rem+0.75rem)] right-3 bottom-3 z-30 w-[380px] max-w-[calc(100vw-1.5rem)] gap-0 overflow-hidden py-0 shadow-xl duration-200 animate-in fade-in slide-in-from-right-4">
@@ -40,7 +42,7 @@ export const AiTeacherPanel: React.FC<AiTeacherPanelProps> = ({ word, wordId, on
         </Button>
       </header>
       <div className="min-h-0 flex-1 pt-4 pb-4">
-        <WordExplanationView key={wordId} wordId={wordId} word={word} active fill />
+        <WordExplanationView key={wordId} wordId={wordId} word={word} active fill passage={passage} />
       </div>
     </Card>,
     document.body

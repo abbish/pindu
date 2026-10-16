@@ -658,6 +658,65 @@ impl PassageRepository {
         Ok(())
     }
 
+    /// 换掉正文与目标词（场景片段按新字幕更新句子），词数与词索引一并更新（在调用方事务内）
+    pub async fn replace_body_conn(
+        conn: &mut SqliteConnection,
+        passage_id: Id,
+        sentences: &[PassageSentence],
+        target_words: &[PassageTargetWord],
+    ) -> AppResult<()> {
+        let done = sqlx::query(
+            "UPDATE passages SET sentences = ?, target_words = ?, word_count = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(json(&sentences)?)
+        .bind(json(&target_words)?)
+        .bind(crate::services::passage_rules::english_word_count(sentences) as i64)
+        .bind(crate::time::now_utc())
+        .bind(passage_id)
+        .execute(&mut *conn)
+        .await?;
+        if done.rows_affected() == 0 {
+            return Err(crate::error::AppError::NotFound(
+                "短文不存在，可能已被删除".to_string(),
+            ));
+        }
+        // 讲解是按旧台词写的：删掉，下次打开按新台词重新生成
+        sqlx::query("DELETE FROM passage_guides WHERE passage_id = ?")
+            .bind(passage_id)
+            .execute(&mut *conn)
+            .await?;
+        // 填空题记着空在第几句：句子重新断开后按答案词在新句子里重新找（题干本身是整句，题目照样能做）
+        let cloze: Vec<(Id, Option<String>, Option<i64>)> = sqlx::query_as(
+            "SELECT q.id, q.answer, q.sentence_index FROM passage_questions q
+             JOIN passage_question_sets s ON s.id = q.set_id
+             WHERE s.passage_id = ? AND q.kind = 'cloze'",
+        )
+        .bind(passage_id)
+        .fetch_all(&mut *conn)
+        .await?;
+        for (id, answer, old) in cloze {
+            let Some(answer) = answer else { continue };
+            let found = sentences
+                .iter()
+                .position(|s| crate::services::passage_rules::text_uses(&s.en, &answer))
+                .map(|i| i as i64);
+            if found.is_some() && found != old {
+                sqlx::query("UPDATE passage_questions SET sentence_index = ? WHERE id = ?")
+                    .bind(found)
+                    .bind(id)
+                    .execute(&mut *conn)
+                    .await?;
+            }
+        }
+        crate::repositories::passage_word_repository::PassageWordRepository::replace_conn(
+            conn,
+            passage_id,
+            sentences,
+            target_words,
+        )
+        .await
+    }
+
     /// 改写短文的目标词（生词加进词汇本后补上 wordId）
     pub async fn update_target_words(
         &self,

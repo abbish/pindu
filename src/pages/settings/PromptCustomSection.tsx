@@ -20,6 +20,7 @@ const CUSTOM_TASKS: Option[] = [
   { value: 'generate', label: '按意图生成单词' },
   { value: 'plan', label: '学习计划排序' },
   { value: 'sentence_analyze', label: '句子分析' },
+  { value: 'clip_guide', label: '场景片段讲解' },
   { value: 'passage_plan', label: '短文：内容规划' },
   { value: 'passage', label: '短文：生成短文' },
   { value: 'passage_target_words', label: '短文：挑选词汇' },

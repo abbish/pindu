@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Copy, FilePlus2, Sparkles, Wand2 } from 'lucide-react';
+import { Copy, FilePlus2, Film, Sparkles, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
 
-export type NewPlanStart = 'ai' | 'auto' | 'copy' | 'blank';
+export type NewPlanStart = 'ai' | 'auto' | 'whole' | 'copy' | 'blank';
 
 export interface NewPlanDialogProps {
   open: boolean;
@@ -16,18 +16,21 @@ export interface NewPlanDialogProps {
   defaultName: string;
   /** 当前规划有片段时才能复制 */
   canCopy: boolean;
+  /** 视频不超过 5 分钟时才能整段不切分 */
+  canWhole: boolean;
   onConfirm: (name: string, start: NewPlanStart) => void;
 }
 
 const STARTS: { value: NewPlanStart; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: 'ai', label: 'AI 规划', icon: Sparkles },
   { value: 'auto', label: '按字幕自动切分', icon: Wand2 },
+  { value: 'whole', label: '整段不切分', icon: Film },
   { value: 'copy', label: '复制当前规划', icon: Copy },
   { value: 'blank', label: '自己划片段', icon: FilePlus2 },
 ];
 
-/** 新建规划：起名字 + 选怎么开始，确认后直接进入下一步（AI 规划 / 自动切分的对话框，或复制、空白） */
-export const NewPlanDialog: React.FC<NewPlanDialogProps> = ({ open, onOpenChange, defaultName, canCopy, onConfirm }) => {
+/** 新建规划：起名字 + 选怎么开始，确认后直接进入下一步（AI 规划 / 自动切分的对话框，或整段、复制、空白） */
+export const NewPlanDialog: React.FC<NewPlanDialogProps> = ({ open, onOpenChange, defaultName, canCopy, canWhole, onConfirm }) => {
   const [name, setName] = useState('');
   const [start, setStart] = useState<NewPlanStart>('ai');
 
@@ -53,7 +56,7 @@ export const NewPlanDialog: React.FC<NewPlanDialogProps> = ({ open, onOpenChange
           </div>
           <RadioGroup value={start} onValueChange={(v) => setStart(v as NewPlanStart)} className="grid grid-cols-2 gap-2">
             {STARTS.map(({ value, label, icon: Icon }) => {
-              const disabled = value === 'copy' && !canCopy;
+              const disabled = (value === 'copy' && !canCopy) || (value === 'whole' && !canWhole);
               return (
                 <Label
                   key={value}
@@ -66,6 +69,7 @@ export const NewPlanDialog: React.FC<NewPlanDialogProps> = ({ open, onOpenChange
                   <RadioGroupItem id={`start-${value}`} value={value} disabled={disabled} className="sr-only" />
                   <Icon className="size-4 shrink-0" />
                   {label}
+                  {value === 'whole' && !canWhole && <span className="ml-auto text-xs text-muted-foreground">5 分钟以内</span>}
                 </Label>
               );
             })}

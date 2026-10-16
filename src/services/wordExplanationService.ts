@@ -29,9 +29,18 @@ export function sentenceChatId(passageId: number, sentenceIndex: number): number
   sentenceRefs.set(id, { passageId, sentenceIndex });
   return id;
 }
+/** 围绕整篇短文 / 场景片段的对话：同样用负数 id（与单词卡、句子的 id 范围错开），调用后端时换成 wordId 0 + passageId */
+const passageRefs = new Map<number, number>();
+export function passageChatId(passageId: number): number {
+  const id = -(2 ** 40 + passageId);
+  passageRefs.set(id, passageId);
+  return id;
+}
 const target = (wordId: number) => {
   const sentence = sentenceRefs.get(wordId);
   if (sentence) return { wordId: 0, cardWord: null, sentence };
+  const passageId = passageRefs.get(wordId);
+  if (passageId !== undefined) return { wordId: 0, cardWord: null, passageId };
   return wordId < 0 ? { wordId: 0, cardWord: cardWords.get(wordId) ?? null } : { wordId, cardWord: null };
 };
 

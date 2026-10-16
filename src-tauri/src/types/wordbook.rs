@@ -86,6 +86,9 @@ pub struct WordTutorRequest {
     /// 围绕短文里的一句答疑（此时 word_id 为 0、card_word 为空）
     #[serde(default)]
     pub sentence: Option<crate::types::passage::SentenceRef>,
+    /// 围绕整篇短文 / 场景片段答疑（此时 word_id 为 0、card_word 与 sentence 为空）
+    #[serde(default)]
+    pub passage_id: Option<Id>,
 }
 
 /// 单词讲解（agent 实时生成的 Markdown，不落库）

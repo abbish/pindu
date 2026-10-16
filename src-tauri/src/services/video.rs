@@ -192,6 +192,7 @@ pub fn to_detail(
     plans: &[crate::repositories::video_repository::PlanRow],
     data_dir: &Path,
     clips: &[ClipRow],
+    outdated: &[i64],
     url: UrlOf,
 ) -> VideoDetail {
     VideoDetail {
@@ -220,6 +221,7 @@ pub fn to_detail(
                 seq: c.seq,
                 start_ms: c.start_ms,
                 end_ms: c.end_ms,
+                outdated: outdated.contains(&c.passage_id),
             })
             .collect(),
     }
@@ -667,7 +669,9 @@ mod real_tests {
         };
         assert!(job.error.is_none(), "{:?}", job.error);
         let row = VideoRepository::get(&pool, id).await.unwrap().unwrap();
-        let detail = to_detail(&row, &[], &data, &[], &|p| Some(p.display().to_string()));
+        let detail = to_detail(&row, &[], &data, &[], &[], &|p| {
+            Some(p.display().to_string())
+        });
         eprintln!(
             "status={} duration={} media={:?} thumbs={} peaks={}",
             row.status,

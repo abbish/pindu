@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { waitForClipTimes } from '@/hooks/useClipTimes';
 import { useAudioPlayer } from './useAudioPlayer';
 import { seekMedia } from '@/utils/mediaSeek';
 import { trackPlayback } from '@/utils/playbackTail';
@@ -22,7 +23,7 @@ export interface SentencePlayerOptions {
   onFinish?: () => void;
   /**
    * 用原声代替合成语音（场景片段）：短片地址 + 每句在短片里的起止（毫秒，按声音校准过的）。
-   * 原声没有逐词时间（`words` 为 null），慢速是 0.75 倍速播放，不用联网、马上能播。
+   * 有逐词时间（台词对齐）时也逐词高亮；慢速是 0.75 倍速播放，不用联网、马上能播。
    */
   clip?: ClipSource | null;
 }
@@ -30,6 +31,10 @@ export interface SentencePlayerOptions {
 export interface ClipSource {
   url: string;
   sentences: { startMs?: number | null; endMs?: number | null }[];
+  /** 句子时间是否就绪（useClipTiming）；false 时播放前先等，不然按字幕时间会切掉句尾 */
+  ready?: boolean;
+  /** 每句每个词在短片里的起止（毫秒，台词对齐的结果）：逐词高亮用 */
+  words?: ({ word: string; startMs: number; endMs: number }[] | null)[];
 }
 
 /** 原声慢速的播放倍速 */
@@ -123,10 +128,15 @@ export function useSentencePlayer(texts: string[], options: SentencePlayerOption
       const clip = optionsRef.current.clip;
       const a = clipAudio.current;
       if (clip && a) {
-        const s = clip.sentences[i];
-        if (!s) return Promise.resolve(false);
-        const rate = optionsRef.current.speed === 'slow' ? CLIP_SLOW_RATE : 1;
-        return playClipRange(a, s.startMs ?? 0, s.endMs ?? s.startMs ?? 0, rate, signal);
+        return (async () => {
+          if (clip.ready === false && !(await waitForClipTimes(() => optionsRef.current.clip?.ready !== false, () => !signal.aborted))) return false;
+          // 等的时候换成了 AI 朗读：这一句不再用原声
+          if (!optionsRef.current.clip) return false;
+          const s = optionsRef.current.clip.sentences[i];
+          if (!s) return false;
+          const rate = optionsRef.current.speed === 'slow' ? CLIP_SLOW_RATE : 1;
+          return playClipRange(a, s.startMs ?? 0, s.endMs ?? s.startMs ?? 0, rate, signal);
+        })();
       }
       return audio.playSentence(text, undefined, { signal, speed: optionsRef.current.speed, withTimings: optionsRef.current.withTimings });
     },
@@ -212,12 +222,15 @@ export function useSentencePlayer(texts: string[], options: SentencePlayerOption
     round,
     pausing,
     loading: clipUrl ? false : audio.state.isLoading,
-    /** 当前音频的逐词时间与播放位置（毫秒）；原声没有逐词时间 */
-    words: clipUrl ? null : audio.state.words,
+    /** 当前音频的逐词时间与播放位置（毫秒）；原声用台词对齐的逐词时间（相对短片开头，和下面的播放位置一致） */
+    words: clipUrl ? (current === null ? null : (options.clip?.words?.[current] ?? null)) : audio.state.words,
     timeMs: audio.state.currentTime * 1000,
     /** 实时播放位置（毫秒；没在播放为 null） */
     timeNowMs: useCallback(() => {
-      if (optionsRef.current.clip) return null;
+      if (optionsRef.current.clip) {
+        const a = clipAudio.current;
+        return a && !a.paused ? a.currentTime * 1000 : null;
+      }
       const t = audio.currentTimeNow();
       return t == null ? null : t * 1000;
     }, [audio]),

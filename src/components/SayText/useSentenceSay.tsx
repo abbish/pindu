@@ -9,6 +9,7 @@ import { usePronunciation } from '@/hooks/usePronunciation';
 import { MicProblem } from '@/components/MicProblem';
 import type { Assessment, PronunciationContext } from '@/types/pronunciation';
 import { SayText, SayVerdict } from './SayText';
+import { bandOf, type Band } from '@/utils/pronunciation';
 
 /** 跟读一句的结局：评了分 / 只录下了（评估没开或模型没下载）/ 没录到 / 麦克风打不开 */
 export type SayOutcome = 'scored' | 'recorded' | 'nothing' | 'mic';
@@ -21,7 +22,7 @@ export type SayOutcome = 'scored' | 'recorded' | 'nothing' | 'mic';
  * - `run(i)`：自动流程用（场景片段跟读、原文朗读「读完一句自动跟读」：播完接着跟读），开麦录这一句，录完（评估开着时评完）才返回结局；
  *   评估没开或模型没下载时只录音，能回放；不调用 `onStart`（放音已经停了，调用方的流程还在进行）；
  * - `recording` 麦克风在准备或在录，`listening` 真正在录（这时才提示「请跟读」）；
- * - `stop()`：朗读、播放前停掉跟读（也关掉麦克风）；`release()`：自动流程走完时关掉一直开着的麦克风；`clear()`：清掉各句的结果（从头再来一遍）。
+ * - `band(i)`：这句的三档结果（练习进度条用）；`stop()`：朗读、播放前停掉跟读（也关掉麦克风）；`release()`：自动流程走完时关掉一直开着的麦克风；`clear()`：清掉各句的结果（从头再来一遍）。
  * `onStart`：开始录音前调用（停掉正在放的原音 / 朗读，免得录进去）。
  */
 export function useSentenceSay(texts: string[], context?: PronunciationContext, onStart?: () => void) {
@@ -170,7 +171,8 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     );
   };
 
-  const below = (i: number): React.ReactNode => {
+  /** `stopButton: false`：录音时不在框里放停止按钮（外面已经有唯一的停止按钮，如场景片段的逐句跟读） */
+  const below = (i: number, { stopButton = true }: { stopButton?: boolean } = {}): React.ReactNode => {
     const active = saying === i;
     const result = results.get(i);
     if (micFailed === i && recorder.error) return <MicProblem message={recorder.error} problem={recorder.problem} className="mt-2" />;
@@ -193,9 +195,11 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
                 <span key={k} className="w-0.5 rounded-full bg-primary" style={{ height: `${Math.max(2, v * 16)}px` }} />
               ))}
             </span>
-            <Button variant="ghost" size="icon" className="ml-auto size-7" onClick={recorder.stop} aria-label="停止" title="停止">
-              <Square className="size-3.5 fill-current" />
-            </Button>
+            {stopButton && (
+              <Button variant="ghost" size="icon" className="ml-auto size-7" onClick={recorder.stop} aria-label="停止" title="停止">
+                <Square className="size-3.5 fill-current" />
+              </Button>
+            )}
           </div>
         ) : active && say.assessing ? (
           <div className="flex items-center gap-2 text-muted-foreground">
@@ -244,11 +248,18 @@ export function useSentenceSay(texts: string[], context?: PronunciationContext, 
     stopMine();
   };
 
+  /** 第 i 句的三档结果（没评过分为 null；只录下没评分的为 'recorded'） */
+  const band = (i: number): Band | 'recorded' | null => {
+    const score = results.get(i)?.score;
+    if (score !== undefined && score !== null) return bandOf(score, say.strictness);
+    return recorded.has(i) || results.has(i) ? 'recorded' : null;
+  };
+
   /** 清掉各句的结果（从头再来一遍） */
   const clear = () => {
     setResults(new Map());
     setRecorded(new Set());
   };
 
-  return { action, below, run, release, stop, clear, say, recording, listening: recorder.state === 'recording' };
+  return { action, below, run, release, stop, clear, band, say, recording, listening: recorder.state === 'recording' };
 }

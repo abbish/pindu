@@ -155,6 +155,9 @@ test('判断接着上一条：AI 断过句的按它，否则看标点与停顿',
   assert.equal(continuesSentence(c(0, 'So we waited'), c(4000, 'and waited.')), false);
   assert.equal(continuesSentence(c(0, 'Hello.'), c(1000, 'world', true)), true);
   assert.equal(continuesSentence(c(0, 'no punctuation here'), c(1000, 'new sentence', false)), false);
+  // 停在 that 上又没停顿：AI 判不是同一句也接着说
+  assert.equal(continuesSentence(c(0, 'I got a message that'), c(1000, "it's cancelled.", false)), true);
+  assert.equal(continuesSentence(c(0, 'to launch pad A'), c(1000, 'Next one.', false)), false);
 });
 
 test('按字幕自动切分不在半句中间切', () => {

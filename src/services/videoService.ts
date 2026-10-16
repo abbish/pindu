@@ -29,6 +29,16 @@ export class VideoService extends BaseService {
     return this.executeWithLoading(() => this.client.invoke<string>('start_video_recognition', { videoId, replace }));
   }
 
+  /** 重新整理字幕：AI 按现在的规则对整部重新断句、补上缺的中文（后台任务，返回任务 id） */
+  async reorganizeSubtitles(videoId: number): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_video_reorganize', { videoId }));
+  }
+
+  /** 按现在的字幕更新句子跟不上的场景片段（后台任务，返回任务 id） */
+  async refreshClips(videoId: number): Promise<ApiResult<string>> {
+    return this.executeWithLoading(() => this.client.invoke<string>('start_clip_refresh', { videoId }));
+  }
+
   /** 用字幕文件补上字幕；request.replace：换掉已有的字幕 */
   async setSubtitles(request: SetVideoSubtitlesRequest): Promise<ApiResult<void>> {
     return this.executeWithLoading(() => this.client.invoke<void>('set_video_subtitles', { request }));

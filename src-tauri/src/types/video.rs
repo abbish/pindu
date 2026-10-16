@@ -61,6 +61,8 @@ pub struct VideoClip {
     pub seq: i64,
     pub start_ms: i64,
     pub end_ms: i64,
+    /// 句子跟不上现在的字幕（重新整理、换了字幕之后），可以按新字幕更新
+    pub outdated: bool,
 }
 
 /// 切分规划（编辑器草稿，自动保存）

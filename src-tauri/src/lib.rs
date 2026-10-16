@@ -279,6 +279,8 @@ pub fn run() {
                 update_passage_info,
                 update_passage_translation,
                 analyze_sentence,
+                get_clip_guide,
+                generate_clip_guide,
                 start_word_cards,
                 get_material_settings,
                 save_material_settings,
@@ -452,6 +454,7 @@ pub fn run() {
                 start_pronunciation_model_download,
                 delete_pronunciation_model,
                 assess_pronunciation,
+                assess_shadowing,
                 get_pronunciation_overview,
                 get_dictation_status,
                 start_dictation_model_download,
@@ -485,6 +488,8 @@ pub fn run() {
                 start_video_processing,
                 get_passage_video,
                 align_clip_sentences,
+                start_video_reorganize,
+                start_clip_refresh,
                 delete_video,
                 delete_video_source
             ];

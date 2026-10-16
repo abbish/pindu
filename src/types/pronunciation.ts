@@ -102,3 +102,28 @@ export interface DictationStatus {
 
 /** zh 中文为主（夹着英文单词也认）/ en 英文 */
 export type DictationLanguage = 'zh' | 'en';
+
+/** 评估同步跟读 / 影子跟读的一段录音 */
+export interface AssessShadowingRequest {
+  /** 这段录音跟着说的句子（按顺序） */
+  texts: string[];
+  /** 每句原声在录音里大概的位置（毫秒，相对录音开头） */
+  windows: ([number, number] | null)[];
+  /** 录音：16kHz 单声道 16 位小端 PCM，base64 */
+  audio: string;
+}
+
+/** 跟读录音里的一句：学习者说这句的位置（毫秒，相对录音开头；没说为 null）与每个词说没说出来 */
+export interface ShadowSentence {
+  startMs: number | null;
+  endMs: number | null;
+  words: ShadowWord[];
+}
+
+export interface ShadowWord {
+  word: string;
+  /** 说出来了 */
+  said: boolean;
+  /** 说出来时在录音里的起点（毫秒） */
+  startMs: number | null;
+}

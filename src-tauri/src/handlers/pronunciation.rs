@@ -4,7 +4,7 @@ use crate::error::{AppError, AppResult};
 use crate::handlers::finish;
 use crate::jobs::{JobSpec, Jobs, Lane};
 use crate::logger::Logger;
-use crate::pronunciation::{self, model, Assessment};
+use crate::pronunciation::{self, model, Assessment, ShadowSentence};
 use crate::services::pronunciation::{
     PronunciationContext, PronunciationOverview, PronunciationService,
 };
@@ -41,6 +41,21 @@ pub struct AssessPronunciationRequest {
     /// 学习计划里的跟读：带上时保存结果（给计划的发音统计）
     pub context: Option<PronunciationContext>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssessShadowingRequest {
+    /// 这段录音跟着说的句子（按顺序）
+    pub texts: Vec<String>,
+    /// 每句原声在录音里大概的位置（毫秒，相对录音开头）
+    pub windows: Vec<Option<(i64, i64)>>,
+    /// 录音：16kHz 单声道 16 位小端 PCM，base64
+    pub audio: String,
+}
+
+/// 同步跟读 / 影子跟读一次最长录多久（秒）与最多几句
+const MAX_SHADOW_SECONDS: usize = 6 * 60;
+const MAX_SHADOW_SENTENCES: usize = 300;
 
 const DOWNLOAD_KIND: &str = "pronunciation_model";
 /// 一次评估最长录音（秒）与最多词数：再长评估会很慢（每个音都要试几十种读法，耗时随句长平方增长）；
@@ -232,6 +247,71 @@ pub async fn assess_pronunciation(
     }
     .await;
     finish(&logger, "assess_pronunciation", result)
+}
+
+/// 评估同步跟读 / 影子跟读的一段录音：逐句给出学习者说的位置与评分（见 `pronunciation::assess_shadowing`）
+#[tauri::command]
+pub async fn assess_shadowing(
+    app: AppHandle,
+    request: AssessShadowingRequest,
+) -> AppResult<Vec<ShadowSentence>> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "assess_shadowing",
+        Some(&format!(
+            "{} sentences, audio: {} chars",
+            request.texts.len(),
+            request.audio.len()
+        )),
+    );
+    let result = async {
+        let dir = data_dir(&app);
+        if !model::ready(&dir) {
+            return Err(AppError::NotFound("发音评估模型还没有下载".to_string()));
+        }
+        if request.audio.len() > max_audio_chars(MAX_SHADOW_SECONDS) {
+            return Err(AppError::ValidationError("一次最多跟读 6 分钟".to_string()));
+        }
+        if request.texts.is_empty()
+            || request.texts.len() > MAX_SHADOW_SENTENCES
+            || request.windows.len() != request.texts.len()
+        {
+            return Err(AppError::ValidationError("要跟读的句子不对".to_string()));
+        }
+        let samples: Vec<f32> = decode_pcm(&request.audio)?
+            .into_iter()
+            .map(|v| v as f32 / 32768.0)
+            .collect();
+        if samples.len() < pronunciation::fbank::SAMPLE_RATE / 2 {
+            return Err(AppError::ValidationError(
+                "录音太短了，再跟一遍".to_string(),
+            ));
+        }
+        // 每句的参考范围限制在录音长度以内（多留 2 秒），起点不晚于终点：前端算错时不会溢出或越界
+        let total_ms = (samples.len() * 1000 / pronunciation::fbank::SAMPLE_RATE) as i64;
+        let windows: Vec<Option<(i64, i64)>> = request
+            .windows
+            .iter()
+            .map(|w| {
+                w.map(|(a, b)| {
+                    let a = a.clamp(0, total_ms);
+                    (a, b.clamp(a, total_ms + 2000))
+                })
+            })
+            .collect();
+        let path = model::path(&dir);
+        tauri::async_runtime::spawn(async {
+            tokio::time::sleep(model::IDLE_UNLOAD + std::time::Duration::from_secs(1)).await;
+            model::unload_if_idle();
+        });
+        tokio::task::spawn_blocking(move || {
+            pronunciation::assess_shadowing(&path, &samples, &request.texts, &windows)
+        })
+        .await
+        .map_err(|e| AppError::InternalError(format!("跟读评估中断：{e}")))?
+    }
+    .await;
+    finish(&logger, "assess_shadowing", result)
 }
 
 /// 学习计划的发音统计：跟读次数、平均分、常错的音

@@ -9,13 +9,15 @@ export interface SelectionActionProps {
   label: string;
   onAction: (text: string) => void;
   children: React.ReactNode;
+  /** 外层的类名（要撑满父容器时用） */
+  className?: string;
 }
 
 /**
  * 在一段文字里选中内容后，在选区上方浮出一个操作按钮（如「加入目标词」）。
  * 点按钮外的地方、滚动、按 Esc 或选区消失时收起。
  */
-export const SelectionAction: React.FC<SelectionActionProps> = ({ accept, label, onAction, children }) => {
+export const SelectionAction: React.FC<SelectionActionProps> = ({ accept, label, onAction, children, className }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [pick, setPick] = useState<{ text: string; x: number; y: number } | null>(null);
 
@@ -50,7 +52,7 @@ export const SelectionAction: React.FC<SelectionActionProps> = ({ accept, label,
   };
 
   return (
-    <div ref={ref} onMouseUp={onMouseUp}>
+    <div ref={ref} onMouseUp={onMouseUp} className={className}>
       {children}
       {pick && (
         <div className="fixed z-50 -translate-x-1/2 -translate-y-full pb-2" style={{ left: pick.x, top: pick.y }}>

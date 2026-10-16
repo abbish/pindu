@@ -452,6 +452,19 @@ impl JobCtx {
         self.cancel.load(Ordering::SeqCst)
     }
 
+    /// 等别的任务结束（结束、失败、取消都算），自己被取消时也停止等待
+    pub async fn wait_for(&self, ids: &[String]) {
+        while !self.is_cancelled()
+            && self
+                .jobs
+                .list()
+                .iter()
+                .any(|job| job.status.is_active() && ids.contains(&job.id))
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
+
     /// 进度（节流推送）
     pub fn progress(&self, current: u64, total: u64) {
         self.jobs.update(&self.id, false, |job| {

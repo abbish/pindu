@@ -6,6 +6,7 @@ import {
   ArrowRightToLine,
   Check,
   CircleAlert,
+  Film,
   Loader2,
   Magnet,
   Keyboard,
@@ -26,6 +27,7 @@ import {
   ZoomOut,
   X,
   Pencil,
+  RefreshCw,
 } from 'lucide-react';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import {
@@ -70,6 +72,7 @@ import {
   addSegment,
   cueBoundaries,
   cuesIn,
+  emptySegment,
   mergeWithNext,
   moveEdge,
   pushHistory,
@@ -162,6 +165,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
   const processJob = activeJob('video_process');
   /** 没有字幕的视频：正在本机识别字幕（D61） */
   const recognizeJob = activeJob('video_recognize');
+  /** 正在按新字幕更新场景片段 */
+  const refreshJob = activeJob('video_refresh');
   // 导入时在后台整理字幕（断句、补中文）：进行中随进度刷新字幕
   const translateJobs = jobs.filter(
     (j) => j.kind === 'video_translate' && isJobActive(j) && (j.link?.params as { videoId?: number } | undefined)?.videoId === videoId
@@ -227,7 +232,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
   const reloadCues = useCallback(async () => {
     if (!videoId) return;
     const result = await videoService.getVideo(videoId);
-    if (result.success) setDetail((d) => (d ? { ...d, cues: result.data.cues, video: result.data.video } : d));
+    if (result.success) setDetail((d) => (d ? { ...d, cues: result.data.cues, video: result.data.video, clips: result.data.clips } : d));
   }, [videoId]);
   const reloadCuesRef = useRef(reloadCues);
   reloadCuesRef.current = reloadCues;
@@ -256,6 +261,17 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
     const result = await videoService.startRecognition(videoId, replace);
     if (!result.success) toast.showError('无法识别字幕', result.error);
   };
+  const reorganize = async () => {
+    if (!videoId) return;
+    const result = await videoService.reorganizeSubtitles(videoId);
+    if (!result.success) toast.showError('无法重新整理字幕', result.error);
+    else await reloadCues();
+  };
+  const refreshClips = async () => {
+    if (!videoId) return;
+    const result = await videoService.refreshClips(videoId);
+    if (!result.success) toast.showError('无法更新场景片段', result.error);
+  };
   const requestRecognize = () => {
     if ((detail?.cues.length ?? 0) > 0) setConfirmReplace({ kind: 'recognize' });
     else void startRecognize(false);
@@ -283,6 +299,12 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
     // 整理字幕是内部步骤（D40）：只读回结果，没整理完的在 AI 规划 / 切分前自动补，不提示用户
     if (job.kind === 'video_translate') {
       await reloadCues();
+      return;
+    }
+    if (job.kind === 'video_refresh') {
+      await reloadCues();
+      if (job.status === 'failed') toast.showError('场景片段没有更新完', jobErrorText(job));
+      else if (job.status === 'succeeded') toast.showSuccess(`已更新 ${(job.result as { updated?: number } | null)?.updated ?? 0} 个场景片段`);
       return;
     }
     if (job.kind === 'video_process') {
@@ -612,17 +634,18 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
   const segments = plan.segments;
   const clipOf = (s: VideoSegment) => detail.clips.find((c) => c.startMs === s.startMs && c.endMs === s.endMs);
   const pendingCount = segments.filter((s) => !clipOf(s)).length;
+  const outdatedCount = detail.clips.filter((c) => c.outdated).length;
 
   const startProcessing = async () => {
     // 先把最新的规划存好，任务按库里的规划切
     if (!planId) return;
     const saved = await videoService.savePlan(planId, plan);
     if (!saved.success) {
-      toast.showError('无法开始切分', saved.error);
+      toast.showError('无法生成场景片段', saved.error);
       return;
     }
     const started = await videoService.startProcessing(planId);
-    if (!started.success) toast.showError('无法开始切分', started.error);
+    if (!started.success) toast.showError('无法生成场景片段', started.error);
   };
   const allIssues = segments.map((s) => segmentIssues(s, cues));
   const problemCount = allIssues.filter((i) => i.length > 0).length;
@@ -632,6 +655,17 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
   const thumbOf = (s: VideoSegment) => segmentThumb(detail.thumbs, detail.thumbIntervalMs, s);
   const currentPlan = detail.plans.find((x) => x.id === planId);
   const cutCount = (p: VideoPlanInfo) => p.plan.segments.filter((sg) => clipOf(sg)).length;
+  /** 整段不切分只用于不超过 5 分钟的视频（见 WHOLE_MAX_MS）；时长还不知道时不能用 */
+  const wholeOk = durationMs > 0 && durationMs <= WHOLE_MAX_MS;
+  const wholeLabel = wholeOk ? '整段不切分' : '整段不切分（只用于 5 分钟以内的视频）';
+  /** 整段不切分：整部视频就是一个片段（替换现有片段，可撤销），生成时照常补标题、译文与重点词；返回新的规划 */
+  const applyWhole = (base: VideoPlan = plan): VideoPlan => {
+    const whole = emptySegment(0, durationMs);
+    const next = { ...base, segments: [whole] };
+    commit(next);
+    setSelectedId(whole.id);
+    return next;
+  };
   /** 新建规划，然后直接进入选的下一步 */
   const createPlan = async (name: string, start: NewPlanStart) => {
     const copy = start === 'copy';
@@ -647,6 +681,8 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
     switchTo(r.data.id, plans);
     if (start === 'ai') setAiPlanOpen(true);
     if (start === 'auto') setAutoSplitOpen(true);
+    // 刚切换过去的这次改动会被自动保存当成「加载」跳过：直接存
+    if (start === 'whole') void videoService.savePlan(r.data.id, applyWhole(r.data.plan));
   };
   const renamePlan = async (name: string) => {
     if (!planId) return false;
@@ -713,7 +749,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
           </span>
           <div className="ml-auto flex items-center gap-2">
             {onNavigate && <JobsButton onNavigate={onNavigate} />}
-            {/* 规划 → 开始切分 */}
+            {/* 规划 → 生成场景片段 */}
             <PlanMenu
               plans={detail.plans}
               currentId={planId ?? 0}
@@ -726,12 +762,42 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
               onDelete={deletePlan}
               onViewClips={() => onNavigate?.('videos', { tab: 'clips', videoId: detail.video.id })}
             />
-            <Button size="sm" onClick={startProcessing} disabled={locked || recognizeJob !== undefined || pendingCount === 0 || saveState === 'saving'}>
+            <Button size="sm" onClick={startProcessing} disabled={locked || recognizeJob !== undefined || refreshJob !== undefined || pendingCount === 0 || saveState === 'saving'}>
               <Scissors />
-              {pendingCount === 0 && segments.length > 0 ? '已全部切分' : `开始切分（${pendingCount} 段）`}
+              {pendingCount === 0 && segments.length > 0 ? '已全部生成' : `生成场景片段（${pendingCount} 个）`}
             </Button>
           </div>
         </header>
+
+        {/* 字幕变了以后：已生成的场景片段按新字幕更新（唯一入口） */}
+        {(refreshJob || (outdatedCount > 0 && translateJobs.length === 0 && !recognizeJob)) && (
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-muted/50 px-4 text-sm">
+            {refreshJob ? (
+              <>
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                <span>
+                  正在更新场景片段
+                  {refreshJob.total > 0 && (
+                    <span className="ml-1 text-muted-foreground tabular-nums">
+                      {refreshJob.current}/{refreshJob.total}
+                    </span>
+                  )}
+                </span>
+                <Button variant="ghost" size="sm" className="ml-auto" onClick={() => void jobService.cancel(refreshJob.id)}>
+                  停止
+                </Button>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="size-4 text-warning" />
+                <span>{outdatedCount} 个场景片段还是按旧字幕生成的</span>
+                <Button size="sm" variant="outline" className="ml-auto" onClick={() => void refreshClips()} disabled={locked}>
+                  更新场景片段
+                </Button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* 主区：片段列表 · 播放器 · 片段属性 */}
         <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_360px]">
@@ -746,6 +812,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
               </ToolButton>
               <ToolButton label="按字幕自动切分" onClick={() => setAutoSplitOpen(true)} disabled={noPlanning}>
                 <Wand2 />
+              </ToolButton>
+              <ToolButton label={wholeLabel} onClick={() => applyWhole()} disabled={noPlanning || !wholeOk}>
+                <Film />
               </ToolButton>
               {problemCount > 0 && (
                 <span className="flex items-center gap-1 text-warning">
@@ -765,6 +834,12 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
                     <Wand2 />
                     按字幕自动切分
                   </Button>
+                  {wholeOk && (
+                    <Button variant="outline" onClick={() => applyWhole()} disabled={noPlanning}>
+                      <Film />
+                      整段不切分
+                    </Button>
+                  )}
                   <p className="pt-1 text-center text-xs text-muted-foreground">也可以在时间轴上拖出片段</p>
                 </div>
               ) : (
@@ -792,9 +867,13 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
                     {clipOf(s) && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Check className="mt-0.5 size-3.5 shrink-0 text-success" />
+                          {clipOf(s)?.outdated ? (
+                            <RefreshCw className="mt-0.5 size-3.5 shrink-0 text-warning" />
+                          ) : (
+                            <Check className="mt-0.5 size-3.5 shrink-0 text-success" />
+                          )}
                         </TooltipTrigger>
-                        <TooltipContent>已切出场景片段</TooltipContent>
+                        <TooltipContent>{clipOf(s)?.outdated ? '场景片段还是按旧字幕生成的' : '已切出场景片段'}</TooltipContent>
                       </Tooltip>
                     )}
                     {allIssues[i].length > 0 && (
@@ -868,13 +947,14 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
                   offsetMs={detail.video.subtitleOffsetMs}
                   cues={cues}
                   playheadMs={playhead}
-                  hasClips={detail.clips.length > 0}
                   // 还没有字幕时视频上方的卡片就是入口，这里不重复
                   disabled={locked || recognizeJob !== undefined || cues.length === 0}
                   onChange={changeOffset}
                   subtitleName={detail.video.subtitleName}
                   onReplaceFile={() => void pickSubtitleFile()}
                   onRecognize={() => requestRecognize()}
+                  onReorganize={() => void reorganize()}
+                  organizing={translateJobs.length > 0 || refreshJob !== undefined}
                 />
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1043,6 +1123,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
         onOpenChange={setNewPlanOpen}
         defaultName={`规划 ${detail.plans.length + 1}`}
         canCopy={segments.length > 0}
+        canWhole={wholeOk}
         onConfirm={createPlan}
       />
       <AlertDialog open={confirmReplace !== null} onOpenChange={(open) => !open && setConfirmReplace(null)}>
@@ -1050,7 +1131,7 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
           <AlertDialogHeader>
             <AlertDialogTitle>{confirmReplace?.kind === 'recognize' ? '重新识别字幕？' : '换成这个字幕文件？'}</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmReplace?.kind === 'recognize' ? '识别完会换掉现在的字幕' : '现在的字幕会被换掉'}，已切出的场景片段不受影响。
+              {confirmReplace?.kind === 'recognize' ? '识别完会换掉现在的字幕。' : '现在的字幕会被换掉。'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1091,6 +1172,9 @@ export const VideoEditorPage: React.FC<VideoEditorPageProps> = ({ videoId, clipI
     </TooltipProvider>
   );
 };
+
+/** 整段不切分只用于这么长以内的视频：场景片段要逐句精听、跟说，太长一次练不完（AI 规划的片段一般一到三分钟） */
+const WHOLE_MAX_MS = 5 * 60 * 1000;
 
 const ToolButton: React.FC<{ label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }> = ({ label, onClick, disabled, children }) => (
   <Tooltip>

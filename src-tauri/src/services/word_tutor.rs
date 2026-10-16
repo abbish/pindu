@@ -57,6 +57,9 @@ impl WordTutorService {
         if let Some(sentence) = &request.sentence {
             return self.ask_sentence(request, sentence, paths, on_delta).await;
         }
+        if let Some(passage_id) = request.passage_id {
+            return self.ask_passage(request, passage_id, paths, on_delta).await;
+        }
         let word = crate::services::word_cards::learning_word(
             &self.pool,
             &self.logger,
@@ -90,9 +93,21 @@ impl WordTutorService {
             &request.history,
             &request.question,
         );
+        self.answer(request, &model, &message, paths, on_delta)
+            .await
+    }
+
+    /// 发给 AI 老师并整理回答（单词、句子、整篇共用）；已经问过的问题不再推荐
+    async fn answer(
+        &self,
+        request: &WordTutorRequest,
+        model: &crate::types::ai_model::AIModelConfig,
+        message: &str,
+        paths: &AgentPaths,
+        on_delta: impl FnMut(&str),
+    ) -> AppResult<TutorReply> {
         let profile =
             crate::services::prompt_profile::PromptProfileService::load(&self.pool).await?;
-        // 已经问过的问题不再推荐
         let asked: Vec<&str> = request
             .history
             .iter()
@@ -102,9 +117,9 @@ impl WordTutorService {
             .collect();
         let reply = tasks::ask_tutor(
             paths,
-            &model,
+            model,
             &profile,
-            &message,
+            message,
             &self.logger,
             &asked,
             on_delta,
@@ -159,29 +174,61 @@ impl WordTutorService {
             request.model_id,
         )
         .await?;
-        let profile =
-            crate::services::prompt_profile::PromptProfileService::load(&self.pool).await?;
-        let asked: Vec<&str> = request
-            .history
+        self.answer(request, &model, &message, paths, on_delta)
+            .await
+    }
+
+    /// 围绕整篇短文 / 场景片段答疑：带上标题、逐句台词（英文 + 中文）、词汇，片段已有的内容讲解也带上
+    async fn ask_passage(
+        &self,
+        request: &WordTutorRequest,
+        passage_id: crate::types::common::Id,
+        paths: &AgentPaths,
+        on_delta: impl FnMut(&str),
+    ) -> AppResult<TutorReply> {
+        let passage =
+            crate::repositories::passage_repository::PassageRepository::new(self.pool.clone())
+                .find(passage_id)
+                .await?
+                .ok_or_else(|| {
+                    crate::error::AppError::NotFound("短文不存在，可能已被删除".to_string())
+                })?;
+        let lines: Vec<(String, String)> = passage
+            .sentences
             .iter()
-            .filter(|t| t.role == "student")
-            .map(|t| t.content.as_str())
-            .chain(std::iter::once(request.question.as_str()))
+            .map(|s| (s.en.clone(), s.zh.clone()))
             .collect();
-        let reply = tasks::ask_tutor(
-            paths,
-            &model,
-            &profile,
-            &message,
-            &self.logger,
-            &asked,
-            on_delta,
+        let targets: Vec<String> = passage
+            .target_words
+            .iter()
+            .map(|t| t.word.clone())
+            .collect();
+        let guide: Option<String> = crate::services::clip_guide::ClipGuideService::new(
+            self.pool.clone(),
+            self.logger.clone(),
+        )
+        .cached(passage_id)
+        .await?
+        .map(|g| g.content.chars().take(MAX_EXPLANATION_CHARS).collect());
+        let message = tasks::passage_tutor_message(
+            &passage.title,
+            &lines,
+            &targets,
+            guide.as_deref().unwrap_or(""),
+            &request.history,
+            &request.question,
+        );
+        let model = crate::services::agent_settings::AgentSettingsService::new(
+            self.pool.clone(),
+            self.logger.clone(),
+        )
+        .model_for(
+            crate::services::agent_settings::AgentTaskKind::Tutor,
+            request.model_id,
         )
         .await?;
-        Ok(TutorReply {
-            content: reply.content,
-            follow_ups: reply.follow_ups,
-        })
+        self.answer(request, &model, &message, paths, on_delta)
+            .await
     }
 }
 
@@ -200,6 +247,7 @@ mod tests {
             explanation: None,
             card_word: None,
             sentence: None,
+            passage_id: None,
         }
     }
 

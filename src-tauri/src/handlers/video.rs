@@ -185,7 +185,7 @@ async fn auto_translate(app: &AppHandle, video_id: i64, title: &str) {
         }
         Ok(_) => {}
     }
-    if let Err(e) = spawn_translate(app, video_id, title, None).await {
+    if let Err(e) = spawn_translate(app, video_id, title, None, false).await {
         logger.warn(
             "VIDEO",
             &format!("视频 {video_id} 没有开始翻译字幕"),
@@ -304,9 +304,14 @@ fn check_subtitle_free(app: &AppHandle, video_id: i64) -> AppResult<()> {
     } else if running(
         app,
         video_id,
-        &["video_import", "video_plan", "video_process"],
+        &[
+            "video_import",
+            "video_plan",
+            "video_process",
+            "video_refresh",
+        ],
     ) {
-        Some("这个视频正在导入、规划或切分，完成后再换")
+        Some("这个视频正在导入、规划、生成或更新场景片段，完成后再换")
     } else {
         None
     };
@@ -618,11 +623,14 @@ pub async fn get_video(app: AppHandle, video_id: i64) -> AppResult<VideoDetail> 
                 .await?;
             plans = VideoRepository::plans(pool.inner(), video_id).await?;
         }
+        let outdated =
+            crate::services::video_processing::outdated_clips(pool.inner(), &row, &clips).await?;
         Ok(video_service::to_detail(
             &row,
             &plans,
             &data,
             &clips,
+            &outdated,
             &url_of(&app),
         ))
     }
@@ -895,7 +903,7 @@ pub async fn start_video_plan(app: AppHandle, request: StartVideoPlanRequest) ->
                 &["video_translate", "video_recognize"],
             )
         {
-            if let Err(e) = spawn_translate(&app, request.video_id, &row.title, None).await {
+            if let Err(e) = spawn_translate(&app, request.video_id, &row.title, None, false).await {
                 logger.warn(
                     "VIDEO",
                     &format!("视频 {} 没有开始整理字幕", request.video_id),
@@ -937,23 +945,6 @@ pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<S
         }
         let pool_arc = Arc::new(pool.inner().clone());
         let logger_arc = Arc::new(logger.inner().clone());
-        // 切完一并生成单词卡：与打开片段时补生成同一个任务模型（拼读分析）与每批词数；取不到就不生成
-        let settings = crate::services::agent_settings::AgentSettingsService::new(
-            pool_arc.clone(),
-            logger_arc.clone(),
-        );
-        let cards = match (
-            settings
-                .model_for(
-                    crate::services::agent_settings::AgentTaskKind::Phonics,
-                    None,
-                )
-                .await,
-            settings.get().await,
-        ) {
-            (Ok(model), Ok(s)) => Some((model, s.batch_size.max(1) as usize)),
-            _ => None,
-        };
         let job = crate::services::video_processing::VideoProcessJob {
             tools: require_tools(&app).await?,
             model: crate::services::agent_settings::AgentSettingsService::new(
@@ -969,10 +960,11 @@ pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<S
             pool: pool_arc,
             logger: logger_arc,
             video_id,
-            skip_prepare: running(&app, video_id, &["video_translate"]),
+            wait_for: running_ids(&app, video_id, &["video_translate"]),
             plan_id,
-            cards,
         };
+        let title = row.title.clone();
+        let app2 = app.clone();
         Ok(app.state::<Jobs>().spawn(
             JobSpec {
                 kind: "video_process",
@@ -985,11 +977,179 @@ pub async fn start_video_processing(app: AppHandle, plan_id: i64) -> AppResult<S
                     serde_json::json!({ "videoId": video_id, "planId": plan_id }),
                 )),
             },
-            move |ctx| job.run(ctx),
+            move |ctx| async move {
+                let cancelled = ctx.clone();
+                let result = job.run(ctx).await;
+                // 片段存好这个任务就结束，片段里词汇的单词卡另起任务生成，不挡编辑器
+                if let Ok(value) = &result {
+                    if !cancelled.is_cancelled() {
+                        spawn_clip_word_cards(&app2, video_id, plan_id, &title, value).await;
+                    }
+                }
+                result
+            },
         ))
     }
     .await;
     super::finish(&logger, "start_video_processing", result)
+}
+
+/// 给刚切出的片段里还没有单词卡的词汇（不在词汇本里的）生成单词卡（后台任务）。
+/// 没有要生成的、取不到模型时不提交；失败只记警告（打开片段时还会按需补）
+async fn spawn_clip_word_cards(
+    app: &AppHandle,
+    video_id: i64,
+    plan_id: i64,
+    title: &str,
+    result: &serde_json::Value,
+) {
+    let ids: Vec<i64> = result
+        .get("passageIds")
+        .and_then(serde_json::Value::as_array)
+        .map(|a| a.iter().filter_map(serde_json::Value::as_i64).collect())
+        .unwrap_or_default();
+    if ids.is_empty() {
+        return;
+    }
+    let pool = Arc::new(app.state::<SqlitePool>().inner().clone());
+    let logger = Arc::new(app.state::<Logger>().inner().clone());
+    let prepared = async {
+        let (words, meanings) =
+            crate::services::word_cards::WordCardService::new(pool.clone(), logger.clone())
+                .missing_for(&ids)
+                .await?;
+        if words.is_empty() {
+            return Ok(None);
+        }
+        let settings = crate::services::agent_settings::AgentSettingsService::new(
+            pool.clone(),
+            logger.clone(),
+        );
+        let model = settings
+            .model_for(
+                crate::services::agent_settings::AgentTaskKind::Phonics,
+                None,
+            )
+            .await?;
+        let batch_size = settings.get().await?.batch_size.max(1) as usize;
+        let profile = crate::services::prompt_profile::PromptProfileService::load(&pool).await?;
+        AppResult::Ok(Some(crate::services::video_processing::ClipWordCardsJob {
+            pool: pool.clone(),
+            logger: logger.clone(),
+            data_dir: crate::app_paths::dirs(app).data,
+            model,
+            profile,
+            batch_size,
+            title: title.to_string(),
+            words,
+            meanings,
+        }))
+    }
+    .await;
+    match prepared {
+        Ok(Some(job)) => {
+            app.state::<Jobs>().spawn(
+                JobSpec {
+                    kind: "word_cards",
+                    module: Some(JobModule::Videos),
+                    title: format!("生成单词卡 · {title}"),
+                    lane: Lane::Agent,
+                    detached: true,
+                    // passageIds：打开其中的片段时认出这个任务，不再另起一个
+                    link: Some(JobLink::new(
+                        "video-editor",
+                        serde_json::json!({ "videoId": video_id, "planId": plan_id, "passageIds": ids }),
+                    )),
+                },
+                move |ctx| job.run(ctx),
+            );
+        }
+        Ok(None) => {}
+        Err(e) => logger.warn(
+            "VIDEO",
+            "切分后没能开始生成单词卡（打开片段时会再补）",
+            Some(&e.to_string()),
+        ),
+    }
+}
+
+/// 重新整理字幕：去掉断句判断（英文与已有的中文保留），AI 按现在的规则对整部重新断句、补上缺的中文（后台任务）
+#[tauri::command]
+pub async fn start_video_reorganize(app: AppHandle, video_id: i64) -> AppResult<String> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "start_video_reorganize",
+        Some(&format!("video_id: {video_id}")),
+    );
+    let result = async {
+        let pool = app.state::<SqlitePool>();
+        let row = VideoRepository::get(pool.inner(), video_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
+        if row.cues().is_empty() {
+            return Err(AppError::ValidationError("这个视频还没有字幕".to_string()));
+        }
+        check_subtitle_free(&app, video_id)?;
+        spawn_translate(&app, video_id, &row.title, None, true).await
+    }
+    .await;
+    super::finish(&logger, "start_video_reorganize", result)
+}
+
+/// 按现在的字幕更新句子跟不上的场景片段（后台任务）；字幕还在整理时先等它做完
+#[tauri::command]
+pub async fn start_clip_refresh(app: AppHandle, video_id: i64) -> AppResult<String> {
+    let logger = app.state::<Logger>();
+    logger.api_request("start_clip_refresh", Some(&format!("video_id: {video_id}")));
+    let result = async {
+        let pool = app.state::<SqlitePool>();
+        let row = VideoRepository::get(pool.inner(), video_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
+        if running(&app, video_id, &["video_recognize"]) {
+            return Err(AppError::ValidationError(
+                "正在识别字幕，识别完再更新".to_string(),
+            ));
+        }
+        if busy(&app, video_id) {
+            return Err(AppError::ValidationError(
+                "这个视频正在导入、规划、生成或更新场景片段，完成后再更新".to_string(),
+            ));
+        }
+        let pool_arc = Arc::new(pool.inner().clone());
+        let logger_arc = Arc::new(logger.inner().clone());
+        let job = crate::services::video_processing::ClipRefreshJob {
+            model: crate::services::agent_settings::AgentSettingsService::new(
+                pool_arc.clone(),
+                logger_arc.clone(),
+            )
+            .model_for(crate::services::agent_settings::AgentTaskKind::Video, None)
+            .await?,
+            profile: crate::services::prompt_profile::PromptProfileService::load(pool.inner())
+                .await?,
+            paths: super::agent_paths(&app)?,
+            pool: pool_arc,
+            logger: logger_arc,
+            video_id,
+            wait_for: running_ids(&app, video_id, &["video_translate"]),
+        };
+        Ok(app.state::<Jobs>().spawn(
+            JobSpec {
+                kind: "video_refresh",
+                module: Some(JobModule::Videos),
+                title: format!("更新场景片段 · {}", row.title),
+                lane: Lane::Agent,
+                detached: true,
+                link: Some(JobLink::new(
+                    "video-editor",
+                    serde_json::json!({ "videoId": video_id }),
+                )),
+            },
+            move |ctx| job.run(ctx),
+        ))
+    }
+    .await;
+    super::finish(&logger, "start_clip_refresh", result)
 }
 
 /// 短文对应的视频短片；不是视频短片时返回 null
@@ -1170,14 +1330,24 @@ pub async fn get_clips(app: AppHandle) -> AppResult<Vec<crate::types::video::Cli
 
 /// 这个视频有没有指定种类的任务在跑
 fn running(app: &AppHandle, video_id: i64, kinds: &[&str]) -> bool {
-    app.state::<Jobs>().list().iter().any(|job| {
-        job.status.is_active()
-            && kinds.contains(&job.kind.as_str())
-            && job
-                .link
-                .as_ref()
-                .is_some_and(|l| l.params["videoId"] == video_id)
-    })
+    !running_ids(app, video_id, kinds).is_empty()
+}
+
+/// 这个视频正在进行的这几类任务的编号
+fn running_ids(app: &AppHandle, video_id: i64, kinds: &[&str]) -> Vec<String> {
+    app.state::<Jobs>()
+        .list()
+        .into_iter()
+        .filter(|job| {
+            job.status.is_active()
+                && kinds.contains(&job.kind.as_str())
+                && job
+                    .link
+                    .as_ref()
+                    .is_some_and(|l| l.params["videoId"] == video_id)
+        })
+        .map(|job| job.id)
+        .collect()
 }
 
 /// 有后台任务正在导入 / 规划 / 切分这个视频：这期间规划与字幕时间不能改（翻译字幕不算，它只补中文）
@@ -1185,7 +1355,12 @@ fn busy(app: &AppHandle, video_id: i64) -> bool {
     running(
         app,
         video_id,
-        &["video_import", "video_plan", "video_process"],
+        &[
+            "video_import",
+            "video_plan",
+            "video_process",
+            "video_refresh",
+        ],
     )
 }
 
@@ -1239,11 +1414,13 @@ pub async fn set_video_subtitle_offset(
 }
 
 /// 提交整理字幕的后台任务（导入时对整部字幕：断句、补中文）
+/// `reset`：重新整理——先去掉已有的断句判断再整理；放在模型、路径都准备好之后，任务起不来时字幕不会停在改了一半的状态
 async fn spawn_translate(
     app: &AppHandle,
     video_id: i64,
     title: &str,
     range: Option<(i64, i64)>,
+    reset: bool,
 ) -> AppResult<String> {
     let pool = app.state::<SqlitePool>();
     let logger = app.state::<Logger>();
@@ -1263,6 +1440,9 @@ async fn spawn_translate(
         video_id,
         range,
     };
+    if reset {
+        crate::services::video_translate::reset_sentences(pool.inner(), video_id).await?;
+    }
     Ok(app.state::<Jobs>().spawn(
         JobSpec {
             kind: "video_translate",

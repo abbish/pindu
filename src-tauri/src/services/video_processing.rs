@@ -39,15 +39,23 @@ pub struct VideoProcessJob {
     pub video_id: i64,
     /// 按哪个规划切
     pub plan_id: i64,
-    /// 已经有整理字幕的任务在跑：切分前不再整理（避免同一批字幕重复交给模型；缺的中文切分时逐段补）
-    pub skip_prepare: bool,
-    /// 切完后给片段里的词汇生成单词卡用的拼读分析模型与每批词数（没有时不生成，打开片段时再按需补）
-    pub cards: Option<(AIModelConfig, usize)>,
+    /// 正在整理这个视频字幕的任务：切分前先等它们做完（句子要用 AI 的断句），再补整理还没整理的
+    pub wait_for: Vec<String>,
 }
 
 /// 片段里的字幕 → 短文句子：被断行拆开的一句合并回完整的句子（`sentences::group_cues`），
 /// 时间相对片段开头、夹在片段内
 pub fn clip_sentences(cues: &[Cue], seg: &VideoSegment) -> Vec<PassageSentence> {
+    sentences_in(cues, seg.start_ms, seg.end_ms)
+}
+
+/// 一段时间（毫秒）里的字幕 → 短文句子，见 `clip_sentences`
+pub fn sentences_in(cues: &[Cue], start_ms: i64, end_ms: i64) -> Vec<PassageSentence> {
+    let seg = VideoSegment {
+        start_ms,
+        end_ms,
+        ..Default::default()
+    };
     let inside: Vec<Cue> = cues
         .iter()
         .filter(|c| {
@@ -75,6 +83,37 @@ pub fn clip_sentences(cues: &[Cue], seg: &VideoSegment) -> Vec<PassageSentence> 
         .collect()
 }
 
+/// 场景片段的句子跟不上现在的字幕（重新整理、重新识别、换了字幕文件或调了字幕时间之后）：
+/// 按现在的字幕组出的句子与存着的英文或起止不同。中文不比（译文可能是切分时补的或用户改过）；
+/// 现在的字幕在这段里没有句子时不算（没有可以换成的内容）
+pub fn outdated(stored: &[PassageSentence], fresh: &[PassageSentence]) -> bool {
+    !fresh.is_empty()
+        && (stored.len() != fresh.len()
+            || stored.iter().zip(fresh).any(|(a, b)| {
+                a.en.trim() != b.en.trim() || a.start_ms != b.start_ms || a.end_ms != b.end_ms
+            }))
+}
+
+/// 这个视频里句子跟不上现在字幕的场景片段（短文 id）
+pub async fn outdated_clips(
+    pool: &SqlitePool,
+    row: &VideoRow,
+    clips: &[crate::repositories::video_repository::ClipRow],
+) -> AppResult<Vec<i64>> {
+    let cues = row.cues();
+    let repo = PassageRepository::new(Arc::new(pool.clone()));
+    let mut out = Vec::new();
+    for clip in clips {
+        let Some(stored) = repo.sentences(clip.passage_id).await? else {
+            continue;
+        };
+        if outdated(&stored, &sentences_in(&cues, clip.start_ms, clip.end_ms)) {
+            out.push(clip.passage_id);
+        }
+    }
+    Ok(out)
+}
+
 /// 规划里还没切出来的片段（起止与已有短片完全相同的算已完成）
 pub fn pending_segments<'a>(
     segments: &'a [VideoSegment],
@@ -85,6 +124,62 @@ pub fn pending_segments<'a>(
         .enumerate()
         .filter(|(_, s)| !done.contains(&(s.start_ms, s.end_ms)))
         .collect()
+}
+
+/// 存片段这一步显示什么：要 AI 补的（中文、标题、词汇）；只缺难度时说「估计难度」，什么都不缺时只是保存
+fn save_stage(zh: bool, title: bool, words: bool, needs_ai: bool) -> String {
+    let parts: Vec<&str> = [(zh, "中文"), (title, "标题"), (words, "词汇")]
+        .into_iter()
+        .filter_map(|(missing, name)| missing.then_some(name))
+        .collect();
+    match parts.as_slice() {
+        [] if needs_ai => "估计难度".to_string(),
+        [] => "保存".to_string(),
+        [one] => format!("补全{one}"),
+        [rest @ .., last] => format!("补全{}和{last}", rest.join("、")),
+    }
+}
+
+/// 切好的片段里还没有单词卡的词汇（不在词汇本里的）生成单词卡：切分结束后另起的后台任务，不挡编辑器；
+/// 失败时打开片段还会按需补
+pub struct ClipWordCardsJob {
+    pub pool: Arc<SqlitePool>,
+    pub logger: Arc<Logger>,
+    pub data_dir: PathBuf,
+    pub model: AIModelConfig,
+    pub profile: crate::prompts::PromptProfile,
+    pub batch_size: usize,
+    /// 视频标题，当作拼读分析的场景
+    pub title: String,
+    pub words: Vec<String>,
+    pub meanings: std::collections::HashMap<String, String>,
+}
+
+impl ClipWordCardsJob {
+    pub async fn run(self, ctx: JobCtx) -> AppResult<Value> {
+        ctx.stage_with_total("生成单词卡", self.words.len() as u64);
+        let analyzer = PhonicsBatchAnalyzer::new(
+            self.logger.clone(),
+            &self.data_dir,
+            self.model,
+            self.profile,
+            PhonicsContext {
+                scene: crate::prompts::topic_scene(&self.title),
+                meanings: self.meanings.clone(),
+            },
+        )?;
+        let saved = WordCardService::new(self.pool.clone(), self.logger.clone())
+            .generate(
+                &analyzer,
+                &self.words,
+                &self.meanings,
+                self.batch_size,
+                &ctx,
+                |done, total| ctx.progress(done, total),
+            )
+            .await?;
+        Ok(serde_json::json!({ "saved": saved }))
+    }
 }
 
 impl VideoProcessJob {
@@ -105,29 +200,27 @@ impl VideoProcessJob {
                     (a.min(s.start_ms), b.max(s.end_ms))
                 }))
             });
-        if !self.skip_prepare {
-            if let Some(span) = span {
-                crate::services::video_translate::prepare_before(
-                    &self.pool,
-                    &self.logger,
-                    &self.paths,
-                    &self.model,
-                    &self.profile,
-                    self.video_id,
-                    Some(span),
-                    &ctx,
-                )
-                .await;
-            }
+        if !self.wait_for.is_empty() {
+            ctx.stage("正在等字幕整理完成");
+            ctx.wait_for(&self.wait_for).await;
+        }
+        if let Some(span) = span {
+            crate::services::video_translate::prepare_before(
+                &self.pool,
+                &self.logger,
+                &self.paths,
+                &self.model,
+                &self.profile,
+                self.video_id,
+                Some(span),
+                &ctx,
+            )
+            .await;
         }
         let row = VideoRepository::get(&self.pool, self.video_id)
             .await?
             .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
         let result = self.process(&ctx, &row).await;
-        // 切好的片段里的词汇：一并生成单词卡，学的时候不用再等。失败只记警告（打开片段时还会按需补）
-        if let Ok(value) = &result {
-            self.word_cards(&ctx, &row.title, value).await;
-        }
         // 结束后：所有片段都切好了算完成；否则回到可以继续编辑与处理的状态
         let all_done = self.all_done(&row).await.unwrap_or(false);
         let status = if all_done || before == "done" {
@@ -141,63 +234,6 @@ impl VideoProcessJob {
         };
         VideoRepository::set_status(&self.pool, self.video_id, status, error.as_deref()).await?;
         result
-    }
-
-    /// 给这次切出的片段里还没有单词卡的词汇生成单词卡（去重、已有的跳过）；取消或片段已删除时直接结束
-    async fn word_cards(&self, ctx: &JobCtx, title: &str, result: &Value) {
-        let Some((model, batch_size)) = self.cards.clone() else {
-            return;
-        };
-        let ids: Vec<i64> = result
-            .get("passageIds")
-            .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(Value::as_i64).collect())
-            .unwrap_or_default();
-        if ids.is_empty() || ctx.is_cancelled() {
-            return;
-        }
-        let service = WordCardService::new(self.pool.clone(), self.logger.clone());
-        let outcome = async {
-            let (words, meanings) = service.missing_for(&ids).await?;
-            if words.is_empty() {
-                return Ok(0);
-            }
-            ctx.stage_with_total("生成单词卡", words.len() as u64);
-            let analyzer = PhonicsBatchAnalyzer::new(
-                self.logger.clone(),
-                &self.data_dir,
-                model,
-                self.profile.clone(),
-                PhonicsContext {
-                    scene: crate::prompts::topic_scene(title),
-                    meanings: meanings.clone(),
-                },
-            )?;
-            service
-                .generate(
-                    &analyzer,
-                    &words,
-                    &meanings,
-                    batch_size,
-                    ctx,
-                    |done, total| ctx.progress(done, total),
-                )
-                .await
-        }
-        .await;
-        match outcome {
-            Ok(saved) if saved > 0 => self.logger.info(
-                "VIDEO",
-                &format!("视频 {} 切分后生成单词卡 {saved} 张", self.video_id),
-            ),
-            Ok(_) => {}
-            Err(_) if ctx.is_cancelled() => {}
-            Err(e) => self.logger.warn(
-                "VIDEO",
-                "切分后生成单词卡失败（打开片段时会再补）",
-                Some(&e.to_string()),
-            ),
-        }
     }
 
     async fn all_done(&self, row: &VideoRow) -> AppResult<bool> {
@@ -287,11 +323,19 @@ impl VideoProcessJob {
                     None
                 }
             };
-            ctx.stage(format!("{label} · 翻译与整理"));
             ctx.progress(step + 75, total * 100);
             seq += 1;
             let passage_id = self
-                .save(ctx, row, seg, sentences, seq, &file, poster.as_deref())
+                .save(
+                    ctx,
+                    &label,
+                    row,
+                    seg,
+                    sentences,
+                    seq,
+                    &file,
+                    poster.as_deref(),
+                )
                 .await
                 .inspect_err(|_| {
                     let _ = std::fs::remove_file(dir.join(&file));
@@ -321,6 +365,7 @@ impl VideoProcessJob {
     async fn save(
         &self,
         ctx: &JobCtx,
+        label: &str,
         row: &VideoRow,
         seg: &VideoSegment,
         mut sentences: Vec<PassageSentence>,
@@ -328,10 +373,20 @@ impl VideoProcessJob {
         file: &str,
         poster: Option<&str>,
     ) -> AppResult<i64> {
-        let needs_ai = sentences.iter().any(|s| s.zh.trim().is_empty())
+        let missing_zh = sentences.iter().any(|s| s.zh.trim().is_empty());
+        let needs_ai = missing_zh
             || seg.title.trim().is_empty()
             || seg.level.is_empty()
             || seg.key_words.is_empty();
+        ctx.stage(format!(
+            "{label} · {}",
+            save_stage(
+                missing_zh,
+                seg.title.trim().is_empty(),
+                seg.key_words.is_empty(),
+                needs_ai
+            )
+        ));
         let mut title = seg.title.trim().to_string();
         let mut level = seg.level.clone();
         // （词, 释义, 词组在字幕里的写法）
@@ -463,6 +518,170 @@ impl VideoProcessJob {
     }
 }
 
+/// 英文没变的句子沿用原来的中文（切分时补的或用户改过的译文）
+pub fn carry_over_zh(old: &[PassageSentence], fresh: &mut [PassageSentence]) {
+    for s in fresh.iter_mut() {
+        if let Some(o) = old
+            .iter()
+            .find(|o| o.en.trim() == s.en.trim() && !o.zh.trim().is_empty())
+        {
+            s.zh = o.zh.clone();
+        }
+    }
+}
+
+/// 词汇只留新原文里还出现的（重新识别后原文可能改了几个词）
+pub fn targets_still_used(
+    targets: Vec<PassageTargetWord>,
+    sentences: &[PassageSentence],
+) -> Vec<PassageTargetWord> {
+    let text = sentences
+        .iter()
+        .map(|s| s.en.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    targets
+        .into_iter()
+        .filter(|w| crate::services::word_forms::occurs(&w.word, &w.forms, &text))
+        .collect()
+}
+
+/// 按现在的字幕更新场景片段（后台任务，agent 队列）：只换逐句的英文、中文与时间，片段、标题、标签、题组、
+/// 计划里的任务与练习记录都保留。句子没变的中文沿用原来的，新句子先用字幕的中文、没有的交给 AI 翻译；
+/// 词汇只留原文里还出现的
+pub struct ClipRefreshJob {
+    pub pool: Arc<SqlitePool>,
+    pub logger: Arc<Logger>,
+    pub paths: AgentPaths,
+    pub model: AIModelConfig,
+    pub profile: crate::prompts::PromptProfile,
+    pub video_id: i64,
+    /// 正在整理这个视频字幕的任务：先等它们做完
+    pub wait_for: Vec<String>,
+}
+
+impl ClipRefreshJob {
+    pub async fn run(self, ctx: JobCtx) -> AppResult<Value> {
+        if !self.wait_for.is_empty() {
+            ctx.stage("正在等字幕整理完成");
+            ctx.wait_for(&self.wait_for).await;
+        }
+        let clips = VideoRepository::clips(&self.pool, self.video_id).await?;
+        let span = clips.iter().fold(None, |acc: Option<(i64, i64)>, c| {
+            Some(acc.map_or((c.start_ms, c.end_ms), |(a, b)| {
+                (a.min(c.start_ms), b.max(c.end_ms))
+            }))
+        });
+        if let Some(span) = span {
+            crate::services::video_translate::prepare_before(
+                &self.pool,
+                &self.logger,
+                &self.paths,
+                &self.model,
+                &self.profile,
+                self.video_id,
+                Some(span),
+                &ctx,
+            )
+            .await;
+        }
+        let row = VideoRepository::get(&self.pool, self.video_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
+        let targets = outdated_clips(&self.pool, &row, &clips).await?;
+        let cues = row.cues();
+        let total = targets.len() as u64;
+        let mut updated = Vec::new();
+        let mut failed = 0usize;
+        for (n, clip) in clips
+            .iter()
+            .filter(|c| targets.contains(&c.passage_id))
+            .enumerate()
+        {
+            if ctx.is_cancelled() {
+                break;
+            }
+            ctx.stage(format!("第 {}/{} 个", n + 1, total));
+            ctx.progress(n as u64, total);
+            let fresh = sentences_in(&cues, clip.start_ms, clip.end_ms);
+            // 一个片段没更新成（AI 补中文失败、片段刚被删）只记下来，接着更新其他片段
+            match self.update(&ctx, clip.passage_id, fresh).await {
+                Ok(()) => updated.push(clip.passage_id),
+                Err(e) if ctx.is_cancelled() => return Err(e),
+                Err(e) => {
+                    failed += 1;
+                    self.logger.warn(
+                        "VIDEO",
+                        &format!("场景片段 {} 没能按新字幕更新，跳过", clip.passage_id),
+                        Some(&e.to_string()),
+                    );
+                }
+            }
+        }
+        if updated.is_empty() && failed > 0 {
+            return Err(AppError::ExternalServiceError(format!(
+                "{failed} 个场景片段都没能更新，请稍后再试"
+            )));
+        }
+        ctx.progress(updated.len() as u64, total);
+        self.logger.info(
+            "VIDEO",
+            &format!(
+                "视频 {} 按新字幕更新了 {} 个场景片段",
+                self.video_id,
+                updated.len()
+            ),
+        );
+        Ok(serde_json::json!({
+            "videoId": self.video_id,
+            "updated": updated.len(),
+            "failed": failed,
+            "passageIds": updated,
+        }))
+    }
+
+    async fn update(
+        &self,
+        ctx: &JobCtx,
+        passage_id: i64,
+        mut sentences: Vec<PassageSentence>,
+    ) -> AppResult<()> {
+        let repo = PassageRepository::new(self.pool.clone());
+        let Some(passage) = repo.find(passage_id).await? else {
+            return Ok(());
+        };
+        carry_over_zh(&passage.sentences, &mut sentences);
+        if sentences.iter().any(|s| s.zh.trim().is_empty()) {
+            let english: Vec<String> = sentences.iter().map(|s| s.en.clone()).collect();
+            let translation = tasks::translate_passage(
+                &self.paths,
+                &self.model,
+                &self.profile,
+                &TranslateSpec {
+                    title: Some(passage.title.as_str()),
+                    sentences: &english,
+                    key_words: false,
+                    tags: &[],
+                },
+                &self.logger,
+                || ctx.is_cancelled(),
+            )
+            .await?;
+            for (s, zh) in sentences.iter_mut().zip(translation.zh) {
+                if s.zh.trim().is_empty() {
+                    s.zh = zh;
+                }
+            }
+        }
+        let target_words = targets_still_used(passage.target_words, &sentences);
+        let mut tx = self.pool.begin().await?;
+        PassageRepository::replace_body_conn(&mut tx, passage_id, &sentences, &target_words)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+}
+
 /// 短片文件的绝对路径
 pub fn clip_path(data_dir: &Path, video_id: i64, file: &str) -> PathBuf {
     video_dir(data_dir, video_id).join(file)
@@ -475,6 +694,15 @@ fn io_error(e: std::io::Error) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn save_stage_says_what_is_being_filled_in() {
+        assert_eq!(save_stage(false, false, false, false), "保存");
+        assert_eq!(save_stage(false, false, false, true), "估计难度");
+        assert_eq!(save_stage(false, true, false, true), "补全标题");
+        assert_eq!(save_stage(false, true, true, true), "补全标题和词汇");
+        assert_eq!(save_stage(true, true, true, true), "补全中文、标题和词汇");
+    }
 
     fn cue(start: i64, end: i64, en: &str, zh: &str) -> Cue {
         Cue {
@@ -522,6 +750,174 @@ mod tests {
         assert_eq!(pending[0].0, 1);
         // 边界改过的片段要重新切
         assert_eq!(pending_segments(&segments, &[(0, 4900)]).len(), 3);
+    }
+
+    fn target(word: &str) -> PassageTargetWord {
+        PassageTargetWord {
+            word_id: None,
+            word: word.into(),
+            required: false,
+            meaning: None,
+            forms: vec![],
+        }
+    }
+
+    #[test]
+    fn clips_are_outdated_when_sentences_or_times_change() {
+        let mut cues = vec![
+            cue(0, 2000, "The first was a researcher", "第一位是研究员"),
+            cue(2000, 4000, "who used to work there.", "曾在那里工作。"),
+        ];
+        let stored = sentences_in(&cues, 0, 5000);
+        assert!(!outdated(&stored, &sentences_in(&cues, 0, 5000)));
+        // 中文不同不算（切分时补的、用户改过的）
+        let mut edited = stored.clone();
+        edited[0].zh = "改过的译文".into();
+        assert!(!outdated(&edited, &sentences_in(&cues, 0, 5000)));
+        // AI 重新判断成两句、原文改了、时间变了：都算
+        cues[1].join = Some(false);
+        cues[0].join = Some(false);
+        assert!(outdated(&stored, &sentences_in(&cues, 0, 5000)));
+        cues[1].join = None;
+        cues[0].join = None;
+        cues[1].en = "who used to work here.".into();
+        assert!(outdated(&stored, &sentences_in(&cues, 0, 5000)));
+        cues[1].en = "who used to work there.".into();
+        cues[0].start_ms = 300;
+        assert!(outdated(&stored, &sentences_in(&cues, 0, 5000)));
+        // 这段里已经没有字幕：没有可以换成的内容，不算
+        assert!(!outdated(&stored, &[]));
+    }
+
+    #[test]
+    fn refresh_keeps_translations_of_unchanged_sentences_and_used_words() {
+        let old = vec![
+            PassageSentence {
+                en: "Hello there.".into(),
+                zh: "你好（改过的）".into(),
+                paragraph: true,
+                start_ms: Some(0),
+                end_ms: Some(900),
+            },
+            PassageSentence {
+                en: "It was more resting.".into(),
+                zh: "旧译文".into(),
+                paragraph: false,
+                start_ms: Some(1000),
+                end_ms: Some(2000),
+            },
+        ];
+        let mut fresh = sentences_in(
+            &[
+                cue(0, 1000, "Hello there.", "你好"),
+                cue(1000, 2000, "It was more arresting.", ""),
+            ],
+            0,
+            3000,
+        );
+        carry_over_zh(&old, &mut fresh);
+        assert_eq!(fresh[0].zh, "你好（改过的）");
+        // 英文变了的句子不沿用旧译文（之后交给 AI 补）
+        assert_eq!(fresh[1].zh, "");
+        let kept = targets_still_used(
+            vec![target("hello"), target("resting"), target("arrest")],
+            &fresh,
+        );
+        let words: Vec<&str> = kept.iter().map(|w| w.word.as_str()).collect();
+        // resting 不在新原文里了；arresting 是 arrest 的变形，留下
+        assert_eq!(words, vec!["hello", "arrest"]);
+    }
+
+    #[tokio::test]
+    async fn replacing_the_body_updates_word_count_and_index() {
+        let pool = crate::test_support::memory_pool().await;
+        let mut tx = pool.begin().await.unwrap();
+        let passage = PassageRepository::insert_passage_conn(
+            &mut tx,
+            &NewPassage {
+                origin: "imported",
+                source_label: Some("v"),
+                scene: None,
+                level: "a2",
+                sources: &[],
+                model_name: None,
+                prompt_fingerprint: None,
+            },
+            &GeneratedPassage {
+                title: "T".into(),
+                sentences: clip_sentences(&[cue(0, 1000, "Hi", "嗨")], &seg(0, 2000)),
+                target_words: vec![],
+                word_count: 1,
+                tags: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        // 已有讲解与一道填空题（空在第 3 句，答案 morning）
+        let now = crate::time::now_utc();
+        sqlx::query("INSERT INTO passage_guides (passage_id, content, created_at, updated_at) VALUES (?, '旧讲解', ?, ?)")
+            .bind(passage)
+            .bind(&now)
+            .bind(&now)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        let set: i64 = sqlx::query_scalar("INSERT INTO passage_question_sets (passage_id, name, spec, created_at) VALUES (?, 's', '{}', ?) RETURNING id")
+            .bind(passage)
+            .bind(&now)
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO passage_questions (set_id, sort_order, kind, stem, answer, sentence_index) VALUES (?, 0, 'cloze', 'Good ____', 'morning', 2)")
+            .bind(set)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        let sentences = sentences_in(
+            &[cue(0, 1000, "Good morning, everyone.", "大家早上好。")],
+            0,
+            2000,
+        );
+        let mut tx = pool.begin().await.unwrap();
+        PassageRepository::replace_body_conn(&mut tx, passage, &sentences, &[target("morning")])
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        // 旧讲解删掉；填空题按答案词重新找到第 1 句
+        let guides: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM passage_guides")
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        let at: Option<i64> = sqlx::query_scalar("SELECT sentence_index FROM passage_questions")
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        assert_eq!((guides, at), (0, Some(0)));
+        // 片段已经删了：报错，不留下孤立的词索引
+        let mut tx = pool.begin().await.unwrap();
+        assert!(
+            PassageRepository::replace_body_conn(&mut tx, passage + 100, &sentences, &[])
+                .await
+                .is_err()
+        );
+        drop(tx);
+        crate::time::assert_instants_canonical(&pool).await;
+        let found = PassageRepository::new(pool.clone())
+            .find(passage)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.sentences[0].en, "Good morning, everyone.");
+        assert_eq!((found.word_count, found.target_words.len()), (3, 1));
+        let key: i64 = sqlx::query_scalar(
+            "SELECT key FROM passage_words WHERE passage_id = ? AND word = 'morning'",
+        )
+        .bind(passage)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        assert_eq!(key, 1);
     }
 
     #[tokio::test]
@@ -693,8 +1089,7 @@ mod real_tests {
         let make = || {
             VideoProcessJob {
             plan_id,
-            skip_prepare: false,
-            cards: None,
+            wait_for: Vec::new(),
             pool: pool.clone(),
             logger: logger.clone(),
             tools: tools.clone(),

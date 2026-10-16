@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { JobPanel, STOPPING_STAGE } from '@/components/Jobs';
+import { JobPanel, STOPPING_STAGE, jobPercent } from '@/components/Jobs';
 import type { Job } from '@/types/job';
 
 export interface EditorBusyDialogProps {
@@ -14,8 +14,11 @@ export interface EditorBusyDialogProps {
 
 const TITLE: Record<string, string> = {
   video_plan: '正在规划',
-  video_process: '正在切分',
+  video_process: '正在生成场景片段',
 };
+
+/** 生成场景片段的进度按每段 100 计，显示成百分比（第几段已经写在阶段里） */
+const countOf = (job: Job) => (job.kind === 'video_process' && job.total > 0 ? `${Math.round(jobPercent(job))}%` : undefined);
 
 /**
  * AI 规划 / 切分进行中：模态进度，编辑器不可操作（任务结束会写入规划或按规划切分，中途编辑会不一致）。
@@ -30,7 +33,7 @@ export const EditorBusyDialog: React.FC<EditorBusyDialogProps> = ({ job, onStop,
             <DialogTitle>{TITLE[job.kind] ?? job.title}</DialogTitle>
             <DialogDescription>{job.stage ?? ''}</DialogDescription>
           </DialogHeader>
-          <JobPanel job={job} title={TITLE[job.kind] ?? job.title} />
+          <JobPanel job={job} title={TITLE[job.kind] ?? job.title} count={countOf(job)} />
           <DialogFooter>
             <Button variant="outline" onClick={() => onStop(job)} disabled={job.stage === STOPPING_STAGE}>
               停止

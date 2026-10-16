@@ -84,11 +84,95 @@ pub fn assess(model_path: &Path, text: &str, samples: &[f32]) -> AppResult<Asses
     Ok(assess_log_probs(&lp, &words))
 }
 
+/// 同步跟读 / 影子跟读一段录音里的一句：这句在录音里说出来的位置（毫秒，相对录音开头；没对上为 None）与每个词说没说出来
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShadowSentence {
+    pub start_ms: Option<i64>,
+    pub end_ms: Option<i64>,
+    pub words: Vec<ShadowWord>,
+}
+
+/// 跟读录音里的一个词（`words_of` 的顺序；数字等不在里面）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShadowWord {
+    pub word: String,
+    /// 说出来了（对上的音足够像）
+    pub said: bool,
+    /// 说出来时在录音里的起点（毫秒），给「落后多少」用
+    pub start_ms: Option<i64>,
+}
+
+/// 词对上的音平均比那一帧最像的音差多少以内算说出来了（对数概率，见 align::WordHit::fit）。
+/// 按真实片段校准（原声延后当作跟读、部分句子换成底噪）：说出来的词几乎都在 -2 以上，换成底噪的在 -3 到 -6；
+/// 没说话主要靠音量判断，这里放宽些，少把说了的词判成没说
+pub const SAID_FIT: f64 = -4.0;
+
+/// 评估一段跟着原声说的录音（同步跟读、影子跟读：原声一直在放，学习者边听边说，录下整段）：
+/// 把台词对到录音上（`windows` 是每句大概在录音里的位置，即原声的位置；学习者会晚一点），
+/// 得到每句说的起止与每个词说没说出来。不逐音打分（逐音评分是复述的事，整段做太慢）
+pub fn assess_shadowing(
+    model_path: &Path,
+    samples: &[f32],
+    texts: &[String],
+    windows: &[Option<(i64, i64)>],
+) -> AppResult<Vec<ShadowSentence>> {
+    let aligned = align::align_audio(model_path, samples, texts, windows)?;
+    let voiced = voiced_windows(samples);
+    // 这个词说出来了：对上的音足够像，而且那段录音里有说话的声音（没说时麦克风只录到底噪，词会被硬塞进去）
+    let said = |h: &align::AlignedWord| {
+        let a = (h.start_ms.max(0) / 20) as usize;
+        let b = ((h.end_ms.max(0) + 19) / 20) as usize;
+        let span = voiced.get(a..b.min(voiced.len())).unwrap_or(&[]);
+        let loud = span.iter().filter(|&&v| v).count();
+        h.fit >= SAID_FIT && loud * 3 >= span.len().max(1)
+    };
+    Ok(texts
+        .iter()
+        .zip(aligned)
+        .map(|(text, a)| {
+            let hits = a.map(|a| a.words).unwrap_or_default();
+            // words_of 只有字母词，spoken_words 还有数字：按顺序往后找对上的那个（句子里重复的词各对各的）
+            let mut next = 0;
+            let words: Vec<ShadowWord> = words_of(text)
+                .into_iter()
+                .map(|word| {
+                    let found = hits[next.min(hits.len())..]
+                        .iter()
+                        .position(|h| h.word == word)
+                        .map(|k| next + k);
+                    if let Some(k) = found {
+                        next = k + 1;
+                    }
+                    let hit = found.map(|k| &hits[k]);
+                    ShadowWord {
+                        said: hit.is_some_and(said),
+                        start_ms: hit.filter(|h| said(h)).map(|h| h.start_ms),
+                        word,
+                    }
+                })
+                .collect();
+            let spoken: Vec<&align::AlignedWord> = hits.iter().filter(|h| said(h)).collect();
+            ShadowSentence {
+                start_ms: spoken.iter().map(|h| h.start_ms).min(),
+                end_ms: spoken.iter().map(|h| h.end_ms).max(),
+                words,
+            }
+        })
+        .collect())
+}
+
 /// 比底噪大这么多倍（约 10dB）才算有声音：录音前会放大（麦克风增益，默认 ×4），底噪也跟着变大，固定门槛会把它当成声音
 const VOICE_OVER_FLOOR: f32 = 3.0;
 
 /// 录音里有声音的时长（毫秒，20ms 一段按音量算）：门槛是 VOICE_RMS 与底噪（最安静的一成）× VOICE_OVER_FLOOR 中较大的
 fn voiced_ms(samples: &[f32]) -> usize {
+    voiced_windows(samples).iter().filter(|&&v| v).count() * 20
+}
+
+/// 每 20ms 一段有没有声音（门槛见 voiced_ms）
+fn voiced_windows(samples: &[f32]) -> Vec<bool> {
     const WINDOW: usize = fbank::SAMPLE_RATE / 50;
     let rms: Vec<f32> = samples
         .chunks(WINDOW)
@@ -99,7 +183,7 @@ fn voiced_ms(samples: &[f32]) -> usize {
     sorted.sort_by(f32::total_cmp);
     let floor = sorted.get(sorted.len() / 10).copied().unwrap_or(0.0);
     let threshold = VOICE_RMS.max(floor * VOICE_OVER_FLOOR);
-    rms.iter().filter(|&&r| r >= threshold).count() * 20
+    rms.iter().map(|&r| r >= threshold).collect()
 }
 
 /// 没听到在读：不评分

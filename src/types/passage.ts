@@ -686,3 +686,18 @@ export interface PassageSceneSuggestRequest {
   exclude: string[];
 }
 
+
+/** 场景片段的内容讲解（AI 生成的 Markdown） */
+export interface ClipGuide {
+  passageId: number;
+  content: string;
+  modelName: string | null;
+  generatedAt: string;
+}
+
+/** 生成讲解时的流式增量（后端事件 `clip-guide-delta`） */
+export interface ClipGuideDelta {
+  requestId: string;
+  passageId: number;
+  delta: string;
+}

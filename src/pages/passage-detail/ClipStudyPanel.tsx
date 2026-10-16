@@ -1,92 +1,46 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Ear, Eye, Languages, Mic, Pause, Play, Settings2 } from 'lucide-react';
-import { IconToggle } from '@/components/IconToggle';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Button } from '@/components/ui/button';
+import { BookOpen, Ear, EyeOff, Mic, PenLine } from 'lucide-react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Card } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { PassageReader, type TranslationMode } from '@/components/PassageReader';
-import { TargetWord } from '@/components/PassageReader/WordCard';
 import { SelectionAction } from '@/components/SelectionAction';
-import { useAudioPlayer } from '@/hooks/useAudioPlayer';
-import { useClipTimes } from '@/hooks/useClipTimes';
+import { useClipTiming, waitForClipTimes } from '@/hooks/useClipTimes';
 import { seekMedia } from '@/utils/mediaSeek';
 import { trackPlayback } from '@/utils/playbackTail';
 import { canAddTarget, formsOf } from '@/utils/passage';
+import { TargetWord } from '@/components/PassageReader/WordCard';
+import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { useTargetWordInfo } from './useTargetWordInfo';
+import { ClipSentences } from './clip/ClipSentences';
 import { cn } from '@/lib/utils';
 import { SentenceAnalysisPanel } from '@/components/SentenceAnalysis';
 import type { Passage, PassageSentence } from '@/types/passage';
 import type { PassageVideo } from '@/types/video';
-import { ListenBuildPanel } from './ListenBuildPanel';
 import type { PronunciationContext } from '@/types/pronunciation';
 import { useSentenceSay } from '@/components/SayText';
+import { type CoverMode, ModelNotice, PrefsPopover, endOf, loadPrefs, PREFS_KEY, startOf, type ClipPrefs, type SpeakMode, type Subtitles } from './clip/ClipControls';
+import { useShadowing } from './clip/useShadowing';
+import { ShadowLine } from './clip/ShadowLine';
+import { pickBlanks } from '@/utils/dictation';
+import { DictationPanel, type DictationResult } from './clip/DictationPanel';
+import { ClipGuide } from './clip/ClipGuide';
+import { AiTeacherPanel } from '@/components/AiTeacher';
+import { passageChatId } from '@/services/wordExplanationService';
+import { SpeakCard } from './clip/SpeakCard';
+import { ShadowCard } from './clip/ShadowCard';
+import { PlayerBar } from './clip/PlayerBar';
 
-/** 观看 / 跟读 / 听力 */
-type Mode = 'watch' | 'shadow' | 'listen';
-type Subtitles = 'both' | 'en' | 'zh' | 'none';
-
-const RATES = [0.5, 0.75, 1, 1.25];
+/** 练习模式（页签） */
+type Mode = 'understand' | 'blind' | 'speak' | 'dictate';
+const MODES: { key: Mode; label: string; icon: React.ElementType }[] = [
+  { key: 'understand', label: '理解', icon: BookOpen },
+  { key: 'blind', label: '盲听', icon: Ear },
+  { key: 'speak', label: '跟读', icon: Mic },
+  { key: 'dictate', label: '精听', icon: PenLine },
+];
 const SLOW_RATE = 0.75;
-
-/** 练习条件（记在本机，下次打开沿用） */
-interface ClipPrefs {
-  /** 画面上的字幕 */
-  subtitles: Subtitles;
-  /** 右侧台词：显示 / 隐藏（只看画面） */
-  showText: boolean;
-  /** 右侧台词的翻译 */
-  translation: TranslationMode;
-  /** 译文打开时显示哪些：当前句 / 全部（关掉再打开时沿用） */
-  translationMode: 'current' | 'all';
-  /** 聚焦：当前句放大，上下文渐隐 */
-  focusBlur: boolean;
-  /** 观看：每句播完自动暂停 */
-  pauseEach: boolean;
-  /** 跟读：每句原声播几遍再跟读 */
-  shadowRepeat: number;
-}
-
-const PREFS_KEY = 'passage.clipStudy.v1';
-const DEFAULT_PREFS: ClipPrefs = { subtitles: 'both', showText: true, translation: 'all', translationMode: 'all', focusBlur: true, pauseEach: false, shadowRepeat: 1 };
-
-function loadPrefs(): ClipPrefs {
-  try {
-    const raw = localStorage.getItem(PREFS_KEY);
-    if (!raw) return DEFAULT_PREFS;
-    const saved = { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<ClipPrefs>) };
-    // 以前只有 translation：开着时它就是显示方式
-    if (!(JSON.parse(raw) as Partial<ClipPrefs>).translationMode && saved.translation !== 'off') saved.translationMode = saved.translation;
-    return saved;
-  } catch {
-    return DEFAULT_PREFS;
-  }
-}
-
-export interface ClipStudyPanelProps {
-  video: PassageVideo;
-  sentences: PassageSentence[];
-  /** 短文（片段）：目标词的点词卡片与选词加入目标词用 */
-  passage: Pick<Passage, 'id' | 'targetWords'>;
-  /** 台词里选中一个词，加成目标词 */
-  onAddTarget?: (word: string, stay?: boolean, form?: string) => void;
-  /** 打开这个目标词的完整单词卡 */
-  onOpenWord?: (word: string) => void;
-  /** 句子分析里改译文；失败时返回原因 */
-  onEditTranslation?: (index: number, zh: string) => Promise<string | null>;
-  /** 有阅读理解题时「做听力题」 */
-  onPractice?: () => void;
-  /** 学习计划里跟读时带上：发音结果保存进计划的统计 */
-  pronunciationContext?: PronunciationContext;
-}
-
-/** 句子在短片里的时间（没有时间的句子按 0） */
-const startOf = (s: PassageSentence | undefined) => s?.startMs ?? 0;
-const endOf = (s: PassageSentence | undefined) => s?.endMs ?? startOf(s);
+/** 影子跟读一次练多长（毫秒）：太长练完才看得到结果，停下又白录 */
+const SHADOW_UNIT_MS = 30_000;
 
 /** 单句播放提前一点停：暂停生效要一小会儿，不提前会漏出下一句的开头 */
 const STOP_LEAD_MS = 40;
@@ -94,43 +48,79 @@ const STOP_LEAD_MS = 40;
 /** 跟读里两步之间稍停一下（看清结果、换气） */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * 视频短片的学习面板：
- * - 观看：视频 + 右侧台词（与朗读一样：当前句放大、上下文渐隐、重点词标出），点台词跳过去；可每句后暂停；每句后面可以跟读这一句；
- * - 跟读：和原文的「读完一句自动跟读」一样，只是原声来自视频：播这一句（可播几遍）→ 自动开麦跟读 → 本机评分，
- *   结果留在这句下面（可听自己的录音），接着下一句；点台词从那句开始；
- * - 听力：每句只听不看，用单词卡拼出听到的句子，拼对后画面才显示这句字幕（见 ListenBuildPanel）。
- * 「练习设置」里调画面字幕、台词显示、翻译、聚焦、自动暂停与原声遍数。
- */
+export interface ClipStudyPanelProps {
+  video: PassageVideo;
+  sentences: PassageSentence[];
+  /** 短文（片段）：词汇（挖空、选词加入）与讲解用 */
+  passage: Pick<Passage, 'id' | 'title' | 'targetWords'>;
+  /** 台词里选中一个词，加成目标词 */
+  onAddTarget?: (word: string, stay?: boolean, form?: string) => void;
+  /** 打开这个词汇的完整单词卡 */
+  onOpenWord?: (word: string) => void;
+  /** 句子分析里改译文；失败时返回原因 */
+  onEditTranslation?: (index: number, zh: string) => Promise<string | null>;
+  /** 学习计划里跟读时带上：发音结果保存进计划的统计 */
+  pronunciationContext?: PronunciationContext;
+}
 
-export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences: rawSentences, passage, onAddTarget, onOpenWord, onEditTranslation, onPractice, pronunciationContext }) => {
+/**
+ * 场景片段的练习，四个模式（页签），切换时都不自动播放：
+ * - 理解：视频占满宽度（字幕按设置），下面是 AI 的内容精讲（逐段讲清内容，背景、句式、词汇穿插在讲到的地方）；
+ * - 盲听：不看字幕听，可以遮住画面只听声音（画面里本身有字的视频，默认遮住）；
+ * - 跟读：逐句跟读——一次练一句（SpeakCard）：播这一句原声（可播几遍）→ 开麦 → 本机评分，可以「读完自动下一句」；
+ *   影子跟读——台词列表，看着台词和原声同时说一段（约 30 秒，要戴耳机），放完逐句看每个词说没说出来、比原声慢多少（见 useShadowing）；
+ * - 精听：逐句听，只填挖掉的几个词（见 DictationPanel），画面默认遮住（常印着台词）；
+ * 视频下面是标准的控制条（PlayerBar）：播放、上一句 / 重听这句 / 下一句、进度、速度、字幕、音量、全屏，带快捷键。
+ */
+export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences: rawSentences, passage, onAddTarget, onOpenWord, onEditTranslation, pronunciationContext }) => {
   // 句子起止按声音校准（字幕交界常常紧挨着下一句开口，单句播放会带出下一句的开头），波形读不到时用字幕时间
-  const sentences = useClipTimes(video, rawSentences, passage.id);
+  const { sentences, ready: timesReady, words: wordSpans } = useClipTiming(video, rawSentences, passage.id);
+  const wordsRef = useRef(wordSpans);
+  wordsRef.current = wordSpans;
+  // 单句播放与跟读流程读最新的时间：对齐结果在流程开始后才到时，后面的句子也按它播
+  const sentencesRef = useRef(sentences);
+  sentencesRef.current = sentences;
+  const timesReadyRef = useRef(timesReady);
+  timesReadyRef.current = timesReady;
+  /** 单句播放在等片段时间就绪（台词对齐还没做完） */
+  const [preparing, setPreparing] = useState(false);
   const targetWords = useMemo(() => passage.targetWords.map((w) => w.word), [passage.targetWords]);
-  /** 目标词组在台词里的写法 */
+  /** 词汇（词组）在台词里的写法 */
   const forms = useMemo(() => formsOf(passage.targetWords), [passage.targetWords]);
+  const wordInfo = useTargetWordInfo(passage);
+  const wordAudio = useAudioPlayer();
   // 台词每句后面的跟读：开始前暂停视频
   const texts = useMemo(() => rawSentences.map((s) => s.en), [rawSentences]);
   const sentenceSay = useSentenceSay(texts, pronunciationContext, () => videoRef.current?.pause());
   const say = sentenceSay.say;
   /** 正在看分析的台词 */
   const [analyzing, setAnalyzing] = useState<number | null>(null);
-  const wordInfo = useTargetWordInfo(passage);
-  const wordAudio = useAudioPlayer();
+  /** 围绕这个片段的 AI 老师对话（和句子分析占同一个位置，开一个关另一个） */
+  const [teacherOpen, setTeacherOpen] = useState(false);
+  /** 讲解标题栏的 AI 老师开关（稳定的函数：讲解组件不随播放进度每帧重画） */
+  const toggleGuideTeacher = useCallback((on: boolean) => {
+    setTeacherOpen(on);
+    if (on) setAnalyzing(null);
+  }, []);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const textBox = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<Mode>('watch');
   const [prefs, setPrefs] = useState<ClipPrefs>(loadPrefs);
-  // 听句拼句、隐藏台词时不看句子分析（分析里有整句台词）
-  useEffect(() => {
-    if (mode === 'listen' || (mode === 'watch' && !prefs.showText)) setAnalyzing(null);
-  }, [mode, prefs.showText]);
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
+  const [mode, setMode] = useState<Mode>('understand');
   const [now, setNow] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
   const [current, setCurrent] = useState(0);
-  /** 听力里拼好的句子：画面上可以显示它的字幕 */
-  const [solved, setSolved] = useState<Set<number>>(new Set());
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  /** 全屏：视频与控制条铺满窗口，窗口进入系统全屏 */
+  const [fullscreen, setFullscreen] = useState(false);
+  /** 精听：能挖空的句子与每句的结果（只在这次打开期间保留） */
+  const clozeOrder = useMemo(() => rawSentences.flatMap((s, i) => (pickBlanks(s.en, targetWords, prefs.blankLevel).length > 0 ? [i] : [])), [rawSentences, targetWords, prefs.blankLevel]);
+  const [dictation, setDictation] = useState<Map<number, DictationResult>>(new Map());
+
   /** 跟读：正在自动一句一句跟读；flowToken 每次开始 / 停下加 1，旧流程据此退出 */
   const [flowing, setFlowing] = useState(false);
   const flowToken = useRef(0);
@@ -138,13 +128,13 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   const originalDone = useRef<((finished: boolean) => void) | null>(null);
   /** 播到这里自动停（单句播放 / 每句后暂停） */
   const stopAt = useRef<number | null>(null);
-  /** 这次播放是单句原声（跟读、听力用） */
+  /** 这次播放是单句原声（跟读、精听用） */
   const sentencePlay = useRef(false);
-  /** 单句播放是不是慢速（听句拼句的「再听」「慢速」按钮据此显示哪个在播） */
+  /** 单句播放是不是慢速（精听的「播放」「慢速」按钮据此显示哪个在播） */
   const [sentenceSlow, setSentenceSlow] = useState(false);
   /** 每句后暂停：正在播的那句（播过它的结尾就停）；播放中改开关也立刻生效 */
   const pauseEachRef = useRef(false);
-  pauseEachRef.current = mode === 'watch' && prefs.pauseEach;
+  pauseEachRef.current = mode === 'understand' && prefs.pauseEach;
   const playingSentence = useRef<number | null>(null);
   const [durationMs, setDurationMs] = useState(0);
 
@@ -161,8 +151,8 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
 
   const active = sentences.findIndex((s) => startOf(s) <= now && now < endOf(s));
   const line = active >= 0 ? sentences[active] : null;
-  // 听力：没拼好的句子不显示字幕；跟读 / 观看按设置
-  const shown: Subtitles = mode === 'listen' ? (active >= 0 && solved.has(active) ? 'both' : 'none') : prefs.subtitles;
+  // 盲听不显示字幕；精听只显示做完的句子；理解、跟读按设置
+  const shown: Subtitles = mode === 'blind' ? 'none' : mode === 'dictate' ? (active >= 0 && dictation.has(active) ? 'both' : 'none') : prefs.subtitles;
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = rate;
@@ -216,33 +206,70 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
     setNow(ms);
   };
 
-  /** 只播一句（跟读原声、听力）；slow 时这一句用慢速。播完返回 true，被打断返回 false */
-  const playSentence = useCallback(
-    (index: number, slow = false) =>
+  /** 连着播第 from 到第 to 句（跟读原声、精听、影子跟读）；slow 时用慢速；真正开始放时调用 onStart。播完返回 true，被打断返回 false */
+  const playRange = useCallback(
+    (from: number, to: number, slow = false, onStart?: () => void) =>
       new Promise<boolean>((resolve) => {
-      const s = sentences[index];
-      const v = videoRef.current;
-      if (!s || !v) return resolve(false);
-      originalDone.current?.(false);
-      originalDone.current = resolve;
-      setCurrent(index);
-      v.pause();
-      v.playbackRate = slow ? SLOW_RATE : rate;
-      setSentenceSlow(slow);
-      stopAt.current = null;
-      sentencePlay.current = true;
-      // 跳好了再播（跳转中就播，句首会卡一下）；等跳转期间被打断（originalDone 已换）就不播了
-      void seekMedia(v, startOf(s) / 1000).then(() => {
-        if (originalDone.current !== resolve) return;
-        stopAt.current = Math.max(startOf(s), endOf(s) - STOP_LEAD_MS);
-        void v.play();
-      });
+        const v = videoRef.current;
+        if (!sentencesRef.current[from] || !sentencesRef.current[to] || !v) return resolve(false);
+        const index = from;
+        originalDone.current?.(false);
+        originalDone.current = resolve;
+        const isCurrent = () => originalDone.current === resolve;
+        setCurrent(index);
+        v.pause();
+        v.playbackRate = slow ? SLOW_RATE : rateRef.current;
+        setSentenceSlow(slow);
+        stopAt.current = null;
+        sentencePlay.current = true;
+        void (async () => {
+          // 台词对齐还没做完时先等（字幕时间常常早停半秒，切掉最后一个词）
+          if (!timesReadyRef.current) {
+            setPreparing(true);
+            await waitForClipTimes(() => timesReadyRef.current, isCurrent);
+            // 被后一次播放打断时，「准备中」交给后一次去收
+            if (isCurrent()) setPreparing(false);
+          }
+          const s = sentencesRef.current[index];
+          if (!isCurrent() || !s) return;
+          // 跳好了再播（跳转中就播，句首会卡一下）；等跳转期间被打断（originalDone 已换）就不播了
+          await seekMedia(v, startOf(s) / 1000);
+          if (!isCurrent()) return;
+          const latest = sentencesRef.current[index] ?? s;
+          const last = sentencesRef.current[to] ?? latest;
+          stopAt.current = Math.max(startOf(latest), endOf(last) - STOP_LEAD_MS);
+          try {
+            await v.play();
+          } catch {
+            // 播放还没开始就被暂停打断：这一句算没播完
+            if (isCurrent()) {
+              originalDone.current = null;
+              resolve(false);
+            }
+            return;
+          }
+          if (isCurrent()) onStart?.();
+        })();
       }),
-    [sentences, rate]
+    []
   );
+  const playSentence = useCallback((index: number, slow = false) => playRange(index, index, slow), [playRange]);
 
+  const shadow = useShadowing({
+    texts,
+    resetKey: passage.id,
+    timesRef: sentencesRef,
+    wordsRef,
+    rateRef,
+    playRange: (from, to, onStart) => playRange(from, to, false, onStart),
+  });
+  const speakMode: SpeakMode = prefs.speakMode;
+
+  /** 停下（慢速播到一半被打断时，倍速回到控制条上选的） */
   const pause = () => {
-    videoRef.current?.pause();
+    const v = videoRef.current;
+    v?.pause();
+    if (v) v.playbackRate = rateRef.current;
     stopAt.current = null;
     sentencePlay.current = false;
     const done = originalDone.current;
@@ -250,30 +277,58 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
     done?.(false);
   };
 
-  /** 停下跟读流程（录到一半的照常收尾、评分） */
+  /** 停下跟读流程（逐句跟读录到一半的照常收尾、评分；影子跟读录到的丢掉） */
   const stopFlow = () => {
     flowToken.current += 1;
     setFlowing(false);
     sentenceSay.stop();
+    shadow.stop();
     pause();
   };
 
-  /** 跟读：从第 from 句开始，播原声（设定的遍数）→ 跟读 → 评分，一句接一句；麦克风打不开时停下，原因写在那句下面 */
-  const runFlow = async (from: number) => {
+  /** 影子跟读的分段：从第一句起，连着的几句合起来不超过约 30 秒（每段至少一句），固定不变 */
+  const shadowUnits = useMemo(() => {
+    const units: number[][] = [];
+    for (let i = 0; i < sentences.length; ) {
+      const unit = [i];
+      while (i + unit.length < sentences.length && endOf(sentences[i + unit.length]) - startOf(sentences[i]) <= SHADOW_UNIT_MS) unit.push(i + unit.length);
+      units.push(unit);
+      i += unit.length;
+    }
+    return units;
+  }, [sentences]);
+  /** 当前句所在的那段 */
+  const unitIndex = Math.max(0, shadowUnits.findIndex((u) => u.includes(current)));
+
+  /** 影子跟读第 k 段：连着放、整段录，放完评估 */
+  const runShadow = async (k: number) => {
+    const unit = shadowUnits[k];
+    if (!unit) return;
     const token = ++flowToken.current;
     const alive = () => token === flowToken.current;
     sentenceSay.stop();
     setFlowing(true);
-    if (from === 0) sentenceSay.clear();
-    for (let i = from; i < sentences.length; i++) {
+    setCurrent(unit[0]);
+    await shadow.runUnit(unit, alive);
+    if (alive()) setFlowing(false);
+  };
+
+  /** 逐句跟读：从第 from 句开始，播原声（设定的遍数）→ 跟读 → 评分；开着「读完自动下一句」时一句接一句；麦克风打不开时停下，原因写在那句下面 */
+  const runFlow = async (from: number) => {
+    const token = ++flowToken.current;
+    // 遍数、读完自动下一句按最新的设置（跟读中途改了也生效）
+    const alive = () => token === flowToken.current;
+    sentenceSay.stop();
+    setFlowing(true);
+    for (let i = from; i < sentencesRef.current.length; i++) {
       setCurrent(i);
-      for (let r = 0; r < prefs.shadowRepeat; r++) {
+      for (let r = 0; r < prefsRef.current.shadowRepeat; r++) {
         if (r > 0) await sleep(400);
         if (!alive() || !(await playSentence(i)) || !alive()) return;
       }
       const outcome = await sentenceSay.run(i);
       if (!alive()) return;
-      if (outcome === 'mic') break;
+      if (outcome === 'mic' || !prefsRef.current.autoNext || i + 1 >= sentencesRef.current.length) break;
       await sleep(outcome === 'scored' ? 1200 : 500);
       if (!alive()) return;
     }
@@ -284,397 +339,503 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
   // 离开页面：跟读流程不再往下走
   useEffect(() => () => void (flowToken.current += 1), []);
 
-  const togglePlay = () => {
+  /** 连续播放（理解、盲听） */
+  const playOn = () => {
     const v = videoRef.current;
     if (!v) return;
-    if (mode === 'shadow') return flowing ? stopFlow() : void runFlow(current);
-    if (!v.paused) return pause();
     // 句子后面的跟读还在录：先停（不然原声会被录进去）
     sentenceSay.stop();
-    if (mode === 'listen') return void playSentence(current);
-    // 观看：每句后暂停由播放头跟踪（见上面的 tick）
     stopAt.current = null;
     playingSentence.current = null;
     sentencePlay.current = false;
-    void v.play();
+    // 播完了再点：从头看
+    if (v.duration && v.currentTime >= v.duration - 0.2) v.currentTime = 0;
+    v.playbackRate = rateRef.current;
+    void v.play().catch(() => {});
   };
 
-  const changeMode = (next: Mode) => {
+  /** 从第 i 句开始连续播放（台词列表里点一句） */
+  const playFrom = (i: number) => {
+    sentenceSay.stop();
+    seek(startOf(sentences[i]));
+    stopAt.current = null;
+    playingSentence.current = i;
+    sentencePlay.current = false;
+    const v = videoRef.current;
+    if (!v) return;
+    v.playbackRate = rateRef.current;
+    void v.play().catch(() => {});
+  };
+
+  /** 精听的当前句 */
+  const clozeIndex = clozeOrder.includes(current) ? current : (clozeOrder[0] ?? 0);
+
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (flowing) return stopFlow();
+    if (!v.paused) return pause();
+    if (mode === 'dictate') return void playSentence(clozeIndex);
+    playOn();
+  };
+
+  /** 连续播放时「这一句」：正在播的那句，在两句之间时是刚播过的那句 */
+  const sentenceAtNow = () => {
+    if (active >= 0) return active;
+    let i = 0;
+    sentences.forEach((s, k) => {
+      if (startOf(s) <= now) i = k;
+    });
+    return i;
+  };
+
+  /** 上一句 / 下一句（step = -1 / 1）：跟读、精听换当前句（影子跟读换段）；其余跳到那句开头接着播 */
+  const stepSentence = (step: number) => {
+    if (mode === 'dictate') {
+      const k = clozeOrder.indexOf(clozeIndex) + step;
+      if (k < 0 || k >= clozeOrder.length) return;
+      setCurrent(clozeOrder[k]);
+      seek(startOf(sentences[clozeOrder[k]]));
+      return void playSentence(clozeOrder[k]);
+    }
+    if (mode === 'speak' && speakMode === 'shadow') {
+      const unit = shadowUnits[unitIndex + step];
+      return unit && pickSpeak(unit[0]);
+    }
+    if (mode === 'speak') return pickSpeak(Math.min(sentences.length - 1, Math.max(0, current + step)));
+    const i = Math.min(sentences.length - 1, Math.max(0, sentenceAtNow() + step));
+    playFrom(i);
+  };
+
+  /** 跟读换到第 i 句（不自动播放：「跟读」本身会先播原声） */
+  const pickSpeak = (i: number) => {
     if (flowing) stopFlow();
+    setCurrent(i);
+    seek(startOf(sentences[i]));
+  };
+
+  /** 重听这句：只播这一句，播完停下 */
+  const replaySentence = () => {
+    if (mode === 'speak' && flowing) stopFlow();
+    void playSentence(mode === 'dictate' ? clozeIndex : mode === 'speak' ? current : sentenceAtNow());
+  };
+
+  /** 进入全屏前窗口是不是已经是系统全屏（退出时恢复成原来的样子，不把用户自己开的全屏也关掉）；null 为没进过 */
+  const windowWasFull = useRef<boolean | null>(null);
+  const toggleFullscreen = () => {
+    const next = !fullscreen;
+    setFullscreen(next);
+    const win = getCurrentWindow();
+    if (next) {
+      void win
+        .isFullscreen()
+        .then((was) => {
+          windowWasFull.current = was;
+          if (!was) return win.setFullscreen(true);
+        })
+        .catch(() => {
+          // 系统全屏不可用时只铺满窗口
+        });
+    } else {
+      if (windowWasFull.current === false) void win.setFullscreen(false).catch(() => {});
+      windowWasFull.current = null;
+    }
+  };
+  // 用系统的方式退出全屏（绿色按钮）时跟着退出；离开页面时，自己打开的全屏退出
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onResize = () =>
+      void getCurrentWindow()
+        .isFullscreen()
+        .then((on) => {
+          // 进全屏的动画过程中也会触发：只在确实是我们开的、现在又不是全屏时跟着退出
+          if (!on && windowWasFull.current === false) {
+            windowWasFull.current = null;
+            setFullscreen(false);
+          }
+        })
+        .catch(() => {});
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [fullscreen]);
+  useEffect(
+    () => () => {
+      if (windowWasFull.current === false) void getCurrentWindow().setFullscreen(false).catch(() => {});
+    },
+    []
+  );
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.volume = volume;
+    v.muted = muted;
+  }, [volume, muted]);
+
+  // 快捷键：空格播放 / 暂停，← → 上一句 / 下一句，R 重听这句，M 静音，F 全屏，Esc 退出全屏（在输入框里不响应）
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  /** 面板根节点：快捷键只在焦点在页面空白处或面板里时响应（浮动面板、弹出列表都挂在 body 下，不在里面） */
+  const rootRef = useRef<HTMLDivElement>(null);
+  /** 这次按下的空格当成了播放 / 暂停：松开时拦下按钮的「点击」 */
+  const spaceHandled = useRef(false);
+  keys.current = (e) => {
+    const t = e.target as HTMLElement | null;
+    if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+    if (t && t !== document.body && !rootRef.current?.contains(t)) return;
+    if (t && (t.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], [role="listbox"]') || t.isContentEditable)) return;
+    const k = e.key.toLowerCase();
+    // 方向键在页签组、滑块、菜单里时是它们自己的操作
+    if (k.startsWith('arrow') && t?.closest('[role="radio"], [role="tab"], [role="slider"], [role="menuitem"]')) return;
+    // Esc 只在全屏时用来退出（不然句子分析等面板收不到 Esc）
+    if (k === 'escape' && !fullscreen) return;
+    const run = { ' ': togglePlay, arrowleft: () => stepSentence(-1), arrowright: () => stepSentence(1), r: replaySentence, m: () => setMuted((m) => !m), f: () => !sidePanel && toggleFullscreen(), escape: toggleFullscreen }[k];
+    if (!run) return;
+    e.preventDefault();
+    if (k === ' ') spaceHandled.current = true;
+    run();
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keys.current(e);
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key !== ' ' || !spaceHandled.current) return;
+      spaceHandled.current = false;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
+
+  /** 换模式：停下正在播的、正在跟读的，不自动播放 */
+  const changeMode = (next: Mode) => {
+    if (next === mode) return;
+    if (flowing) stopFlow();
+    sentenceSay.stop();
+    shadow.stopReplay();
     pause();
+    setAnalyzing(null);
+    setTeacherOpen(false);
     setMode(next);
-    if (next === 'shadow' || next === 'listen') {
-      const i = next === 'listen' ? 0 : Math.max(0, active);
+    if (next === 'blind') {
+      setCurrent(0);
+      seek(0);
+    } else if (next === 'dictate') {
+      setCurrent(clozeIndex);
+      seek(startOf(sentences[clozeIndex]));
+    } else if (next === 'speak') {
+      const i = Math.max(0, active);
       setCurrent(i);
       seek(startOf(sentences[i]));
     }
-    if (next === 'listen') setSolved(new Set());
   };
 
-  /** 跟读进行到哪一步 */
-  const flowStatus = !flowing ? '' : sentenceSay.listening ? '请跟读' : sentenceSay.recording ? '准备…' : say.assessing ? '正在评分…' : `第 ${current + 1}/${sentences.length} 句`;
-  /** 右侧台词当前句：跟读时是正在练的那句 */
-  const readerCurrent = mode === 'shadow' ? (flowing ? current : active >= 0 ? active : current) : active >= 0 ? active : null;
+  const sidePanel = mode === 'speak' || mode === 'dictate';
+  /** 能遮住画面的模式（盲听、精听）与现在遮没遮 */
+  const coverMode: CoverMode | null = mode === 'blind' || mode === 'dictate' ? mode : null;
+  const covered = coverMode !== null && prefs.cover[coverMode];
 
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)_380px] items-stretch gap-6">
-      <div className="flex flex-col gap-3">
-        <div className="relative aspect-video overflow-hidden rounded-xl bg-black">
-          <video
-            ref={videoRef}
-            src={video.clipUrl}
-            poster={video.posterUrl ?? undefined}
-            className="size-full object-contain"
-            onPlay={() => setPlaying(true)}
-            onPause={() => {
-              setPlaying(false);
-              // 单句播放被别处暂停（如朗读目标词）：这一句算没播完，等着的跟读流程不会卡住
-              if (stopAt.current !== null && sentencePlay.current) {
-                stopAt.current = null;
-                sentencePlay.current = false;
-                const done = originalDone.current;
-                originalDone.current = null;
-                done?.(false);
-              }
-            }}
-            onSeeked={() => videoRef.current && setNow(videoRef.current.currentTime * 1000)}
-            onLoadedMetadata={(e) => {
-              trackPlayback(e.currentTarget);
-              setDurationMs(e.currentTarget.duration * 1000);
-            }}
-            onClick={togglePlay}
-            preload="auto"
-          />
-          {line && shown !== 'none' && (
-            <div className="pointer-events-none absolute inset-x-6 bottom-5 text-center">
-              <span className="inline-block rounded bg-black/70 px-3 py-1 text-lg leading-snug text-white">
-                {shown !== 'zh' && line.en}
-                {shown !== 'en' && line.zh && <span className={cn('block', shown === 'both' && 'text-sm text-white/80')}>{line.zh}</span>}
-              </span>
-            </div>
-          )}
-        </div>
+  /** 实时播放位置（逐词高亮用；没在播时为 null） */
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+  const timeNowMs = useCallback(() => (playingRef.current && videoRef.current ? videoRef.current.currentTime * 1000 : null), []);
 
-        <ClipTimeline
-          durationMs={durationMs || endOf(sentences[sentences.length - 1])}
-          nowMs={now}
-          sentences={sentences}
-          active={active}
-          onSeek={(ms) => {
-            if (flowing) stopFlow();
-            seek(ms);
-            if (mode !== 'watch') {
+  /** 跟读卡片里的台词：和原文页签同一个组件（当前句放大、逐词高亮、聚焦、词汇与单词卡片） */
+  const sentencesView = (indices: number[], focusBlur: boolean, withBelow: boolean) => (
+    <ClipSentences
+      sentences={sentences}
+      indices={indices}
+      current={playing && active >= 0 ? active : indices.length === 1 ? indices[0] : null}
+      words={prefs.wordFocus && playing && active >= 0 ? (wordSpans[active] ?? null) : null}
+      timeNowMs={timeNowMs}
+      translation={prefs.translation === 'off' ? 'off' : 'all'}
+      focusBlur={focusBlur}
+      targets={targetWords}
+      forms={forms}
+      renderTarget={(text, target, on) => (
+        <TargetWord
+          text={text}
+          target={target}
+          active={on}
+          word={wordInfo.get(target.toLowerCase())}
+          speak={(w, slow) => wordAudio.speak(w, { slow, before: () => videoRef.current?.pause() })}
+          onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined}
+        />
+      )}
+      below={withBelow ? below : undefined}
+      onAnalyze={(i) => {
+        setTeacherOpen(false);
+        setAnalyzing(i);
+      }}
+      analyzing={analyzing}
+    />
+  );
+
+  /** 影子跟读每句下面的结果 */
+  const below = (i: number) => {
+    const r = shadow.results.get(i);
+    return r ? <ShadowLine text={sentences[i]?.en ?? ''} result={r} replaying={shadow.replaying === i} onReplay={() => shadow.replay(i)} /> : null;
+  };
+
+  const playLabel = flowing ? '停止跟读' : playing ? '暂停' : mode === 'dictate' ? '播放这一句' : '播放';
+
+  const player = (
+    <div className={cn('overflow-hidden rounded-xl bg-black', fullscreen && 'fixed inset-0 z-50 flex flex-col rounded-none')}>
+      {/* 宽度不变，高度最多半屏多（画面在里面等比缩放、两边留黑），下面的内容第一眼看得到 */}
+      <div className={cn('relative', fullscreen ? 'min-h-0 flex-1' : 'h-[min(56vh,56.25cqw)]')}>
+        <video
+          ref={videoRef}
+          src={video.clipUrl}
+          poster={video.posterUrl ?? undefined}
+          className="size-full object-contain"
+          onPlay={() => setPlaying(true)}
+          onPause={() => {
+            setPlaying(false);
+            // 单句播放被别处暂停（如朗读目标词）：这一句算没播完，等着的跟读流程不会卡住
+            if (stopAt.current !== null && sentencePlay.current) {
+              if (videoRef.current) videoRef.current.playbackRate = rateRef.current;
               stopAt.current = null;
               sentencePlay.current = false;
-              const i = sentences.findIndex((x) => startOf(x) <= ms && ms < endOf(x));
-              if (mode === 'shadow' && i >= 0) setCurrent(i);
+              const done = originalDone.current;
+              originalDone.current = null;
+              done?.(false);
             }
           }}
+          onSeeked={() => videoRef.current && setNow(videoRef.current.currentTime * 1000)}
+          onLoadedMetadata={(e) => {
+            trackPlayback(e.currentTarget);
+            setDurationMs(e.currentTarget.duration * 1000);
+          }}
+          onClick={togglePlay}
+          preload="auto"
         />
-
-        <div className="flex flex-wrap items-center gap-2">
-          <ToggleGroup type="single" value={mode} onValueChange={(v) => v && changeMode(v as Mode)} variant="outline">
-            <ToggleGroupItem value="watch" className="px-3">
-              <Eye />
-              观看
-            </ToggleGroupItem>
-            <ToggleGroupItem value="shadow" className="px-3">
-              <Mic />
-              跟读
-            </ToggleGroupItem>
-            <ToggleGroupItem value="listen" className="px-3">
-              <Ear />
-              听力
-            </ToggleGroupItem>
-          </ToggleGroup>
-          <div className="ml-auto flex items-center gap-1">
-            {flowStatus && (
-              <span className="mr-1 text-sm text-muted-foreground" aria-live="polite">
-                {flowStatus}
-              </span>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={togglePlay} aria-label={mode === 'shadow' ? (flowing ? '停止跟读' : '开始跟读') : playing ? '暂停' : '播放'}>
-                  {(mode === 'shadow' ? flowing : playing) ? <Pause /> : <Play />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{mode === 'shadow' ? (flowing ? '停止跟读' : '开始跟读') : playing ? '暂停' : '播放'}</TooltipContent>
-            </Tooltip>
-            <Select value={String(rate)} onValueChange={(v) => setRate(Number(v))}>
-              <SelectTrigger size="sm" className="w-20" aria-label="播放速度">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {RATES.map((r) => (
-                  <SelectItem key={r} value={String(r)}>
-                    {r}x
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {/* 译文常开常关，放在外面；其余设一次就不动的在 ⚙ 里 */}
-            {mode !== 'listen' && (
-              <IconToggle
-                label="译文"
-                pressed={prefs.translation !== 'off'}
-                onPressedChange={(on) => updatePrefs({ translation: on ? prefs.translationMode : 'off' })}
-                disabled={mode === 'watch' && !prefs.showText}
-              >
-                <Languages />
-              </IconToggle>
-            )}
-            {mode !== 'listen' && <PrefsPopover mode={mode} prefs={prefs} onChange={updatePrefs} />}
+        {line && shown !== 'none' && !covered && (
+          <div className="pointer-events-none absolute inset-x-6 bottom-5 text-center">
+            <span className="inline-block rounded bg-black/70 px-3 py-1 text-lg leading-snug text-white">
+              {shown !== 'zh' && line.en}
+              {shown !== 'en' && line.zh && <span className={cn('block', shown === 'both' && 'text-sm text-white/80')}>{line.zh}</span>}
+            </span>
           </div>
+        )}
+        {covered && (
+          <button type="button" onClick={togglePlay} className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black text-white/60">
+            <EyeOff className="size-8" />
+            <span className="text-sm">画面已遮住，只听声音</span>
+          </button>
+        )}
+      </div>
+      <PlayerBar
+        playing={flowing || playing}
+        playLabel={playLabel}
+        onToggle={togglePlay}
+        onPrev={() => stepSentence(-1)}
+        onReplay={replaySentence}
+        onNext={() => stepSentence(1)}
+        durationMs={durationMs || endOf(sentences[sentences.length - 1])}
+        nowMs={now}
+        sentences={sentences}
+        active={active}
+        onSeek={(ms) => {
+          if (flowing) stopFlow();
+          // 精听、跟读里是单句播放：拖进度条先停下，不然停句点被清掉后会一直往下播
+          if (mode === 'dictate' || mode === 'speak') pause();
+          seek(ms);
+          if (mode === 'dictate' || mode === 'speak') {
+            const i = sentences.findIndex((x) => startOf(x) <= ms && ms < endOf(x));
+            if (i >= 0) setCurrent(i);
+          }
+        }}
+        rate={rate}
+        onRate={setRate}
+        volume={volume}
+        muted={muted}
+        onVolume={setVolume}
+        onMute={setMuted}
+        subtitles={mode === 'understand' || mode === 'speak' ? prefs.subtitles : undefined}
+        onSubtitles={(subtitles) => updatePrefs({ subtitles })}
+        pauseEach={mode === 'understand' ? prefs.pauseEach : undefined}
+        onPauseEach={(pauseEach) => updatePrefs({ pauseEach })}
+        cover={coverMode ? prefs.cover[coverMode] : undefined}
+        onCover={(on) => coverMode && updatePrefs({ cover: { ...prefs.cover, [coverMode]: on } })}
+        fullscreen={fullscreen}
+        onFullscreen={sidePanel ? undefined : toggleFullscreen}
+      />
+    </div>
+  );
+
+  /** 跟读：逐句（一次一句的卡片）/ 影子（台词列表，一段一段练） */
+  const speakPanel =
+    speakMode === 'repeat' ? (
+      <SpeakCard
+        sentence={sentencesView([current], false, false)}
+        index={current}
+        total={sentences.length}
+        strip={sentences.map((_, i) => {
+          const b = sentenceSay.band(i);
+          return { index: i, status: b === 'recorded' ? 'done' : b, label: b ? { good: '读得很好', close: '还差一点', retry: '再试试', recorded: '已录' }[b] : undefined };
+        })}
+        onPick={pickSpeak}
+        controls={{
+          playing: playing && !flowing ? (sentenceSlow ? 'slow' : 'normal') : null,
+          onPlay: (slow) => void playSentence(current, slow),
+          onStopPlay: pause,
+          flowing,
+          assessing: Boolean(say.assessing),
+          // 录音时「停止」就是读完了：结束录音去评分（开着读完自动下一句时接着下一句）
+          onStop: () => (sentenceSay.listening ? sentenceSay.stop() : stopFlow()),
+          onSay: () => void runFlow(current),
+          sayTip: '先放原声，再录你读的并评分',
+          showZh: prefs.translation !== 'off',
+          onShowZh: (on) => updatePrefs({ translation: on ? 'all' : 'off' }),
+          settings: <PrefsPopover prefs={prefs} onChange={updatePrefs} />,
+        }}
+        status={!flowing || sentenceSay.listening || say.assessing ? undefined : preparing || sentenceSay.recording ? '准备…' : '正在播原声'}
+        result={sentenceSay.below(current, { stopButton: false })}
+        notice={say.enabled && say.ready === false ? <ModelNotice downloading={Boolean(say.downloading)} onDownload={() => void say.download()} /> : undefined}
+      />
+    ) : (
+      <ShadowCard
+        sentences={sentencesView(shadowUnits[unitIndex] ?? [], prefs.sentenceFocus, true)}
+        unitStart={shadowUnits[unitIndex]?.[0] ?? 0}
+        unitIndex={unitIndex}
+        unitCount={shadowUnits.length}
+        strip={sentences.map((_, i) => {
+          const r = shadow.results.get(i);
+          if (!r) return { index: i, status: null };
+          if (r.words.length === 0) return { index: i, status: 'done', label: '已录' };
+          const said = r.words.filter((w) => w.said).length / r.words.length;
+          return { index: i, status: said >= 0.9 ? 'good' : said >= 0.6 ? 'close' : 'retry', label: `跟上 ${Math.round(said * 100)}% 的词` };
+        })}
+        onPick={pickSpeak}
+        onUnit={(k) => pickSpeak(shadowUnits[k][0])}
+        controls={{
+          playing: playing && !flowing ? (sentenceSlow ? 'slow' : 'normal') : null,
+          onPlay: (slow) => {
+            const unit = shadowUnits[unitIndex];
+            if (unit) void playRange(unit[0], unit[unit.length - 1], slow);
+          },
+          onStopPlay: pause,
+          flowing,
+          assessing: shadow.phase === 'assessing',
+          onStop: stopFlow,
+          onSay: () => void runShadow(unitIndex),
+          sayTip: '原声连着放，你同时跟着说',
+          showZh: prefs.translation !== 'off',
+          onShowZh: (on) => updatePrefs({ translation: on ? 'all' : 'off' }),
+          settings: <PrefsPopover prefs={prefs} onChange={updatePrefs} />,
+        }}
+        status={!flowing ? undefined : shadow.phase === 'assessing' ? '正在评估…' : preparing || shadow.phase === 'arming' ? '准备…' : '跟着原声说'}
+        notice={shadow.unscored ? <ModelNotice downloading={Boolean(say.downloading)} onDownload={() => void say.download()} /> : undefined}
+        error={shadow.error}
+      />
+    );
+
+  const tabs = (
+    <div className="flex flex-wrap items-center gap-2">
+      <ToggleGroup type="single" value={mode} onValueChange={(v) => v && changeMode(v as Mode)} variant="outline">
+        {MODES.map(({ key, label, icon: Icon }) => (
+          <ToggleGroupItem key={key} value={key} className="px-3">
+            <Icon />
+            {label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
+  );
+
+  return (
+    <div ref={rootRef} className="space-y-6">
+      <div className={cn('grid items-stretch gap-6', sidePanel && 'grid-cols-[minmax(0,1fr)_380px]')}>
+        <div className="@container flex flex-col gap-3">
+          {player}
+          {tabs}
         </div>
-      </div>
 
-      {/* 右侧与左侧（视频 + 时间轴 + 控制栏）同高，内容多时在里面滚动 */}
-      <div className="relative min-h-[360px]">
-      <Card className="absolute inset-0 flex flex-col gap-0 overflow-hidden p-0">
-        {mode !== 'listen' && (
-          <div ref={textBox} className="min-h-0 flex-1 overflow-y-auto p-3">
-            {mode === 'shadow' && say.enabled && say.ready === false && <ModelNotice downloading={Boolean(say.downloading)} onDownload={() => void say.download()} />}
-            <SelectionAction
-              label="加入词汇"
-              accept={(text) => Boolean(onAddTarget) && canAddTarget(text, targetWords)}
-              onAction={(text) => onAddTarget?.(text)}
-            >
-            <PassageReader
-              onAnalyzeSentence={setAnalyzing}
-              sentenceAction={sentenceSay.action}
-              below={sentenceSay.below}
-              analyzing={analyzing}
-              scrollContainer={textBox}
-              sentences={sentences}
-              current={readerCurrent}
-              translation={prefs.translation}
-              highlight={targetWords}
-              highlightForms={forms}
-              focusBlur={prefs.focusBlur}
-              hidden={mode === 'watch' && !prefs.showText}
-              playState={mode === 'shadow' ? (flowing ? { index: current, playing: true } : null) : active >= 0 ? { index: active, playing } : null}
-              onPlaySentence={(i) => {
-                // 跟读：从这句开始（正在跟读这句时是停下）
-                if (mode === 'shadow') {
-                  if (flowing && current === i) return stopFlow();
-                  return void runFlow(i);
-                }
-                // 正在播这句：暂停
-                if (playing && active === i) return pause();
-                sentenceSay.stop();
-                seek(startOf(sentences[i]));
-                stopAt.current = null;
-                playingSentence.current = i;
-                sentencePlay.current = false;
-                void videoRef.current?.play();
-              }}
-              renderTarget={(text, target, active) => (
-                <TargetWord
-                  text={text}
-                  target={target}
-                  active={active}
-                  word={wordInfo.get(target.toLowerCase())}
-                  speak={(w, slow) => wordAudio.speak(w, { slow, before: () => videoRef.current?.pause() })}
-                  onOpenCard={onOpenWord ? () => onOpenWord(target) : undefined}
-                />
+        {/* 右侧与左侧（视频 + 控制条 + 页签）同高，内容多时在里面滚动 */}
+        {sidePanel && (
+          <div className="relative min-h-[420px]">
+            <Card className="absolute inset-0 flex flex-col gap-0 overflow-hidden p-0">
+              {mode === 'speak' && (
+                <div className="border-b px-3 py-2">
+                  <ToggleGroup
+                    type="single"
+                    size="sm"
+                    variant="outline"
+                    value={speakMode}
+                    onValueChange={(v) => {
+                      if (!v) return;
+                      if (flowing) stopFlow();
+                      updatePrefs({ speakMode: v as SpeakMode });
+                    }}
+                  >
+                    <ToggleGroupItem value="repeat" className="px-2.5">
+                      逐句跟读
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="shadow" className="px-2.5">
+                      影子跟读
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
               )}
-            />
-            </SelectionAction>
+              {/* 里面各自滚动：底部的换句导航固定 */}
+              <div className="flex min-h-0 flex-1 flex-col">
+                {mode === 'dictate' ? (
+                  <DictationPanel
+                    sentences={sentences}
+                    order={clozeOrder}
+                    index={clozeIndex}
+                    onIndexChange={(i, play) => {
+                      pause();
+                      setCurrent(i);
+                      seek(startOf(sentences[i]));
+                      if (play) void playSentence(i);
+                    }}
+                    onPlay={(i, slow) => void playSentence(i, slow)}
+                    onStop={pause}
+                    playing={playing ? (sentenceSlow ? 'slow' : 'normal') : null}
+                    vocab={targetWords}
+                    level={prefs.blankLevel}
+                    onLevel={(blankLevel) => {
+                      updatePrefs({ blankLevel });
+                      setDictation(new Map());
+                    }}
+                    results={dictation}
+                    onResult={(i, r) => setDictation((m) => new Map(m).set(i, r))}
+                    onReset={(indices) =>
+                      setDictation((m) => {
+                        const next = new Map(m);
+                        indices.forEach((i) => next.delete(i));
+                        return next;
+                      })
+                    }
+                    onAddWord={onAddTarget && ((w) => onAddTarget(w, true))}
+                    canAddWord={(w) => canAddTarget(w, targetWords)}
+                  />
+                ) : (
+                  // 选中台词里的词可以加入词汇
+                  <SelectionAction label="加入词汇" accept={(text) => Boolean(onAddTarget) && canAddTarget(text, targetWords)} onAction={(text) => onAddTarget?.(text)} className="flex min-h-0 flex-1 flex-col">
+                    {speakPanel}
+                  </SelectionAction>
+                )}
+              </div>
+            </Card>
           </div>
         )}
-        {mode === 'listen' && (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-          <ListenBuildPanel
-            sentences={sentences}
-            index={current}
-            onIndexChange={(i) => {
-              pause();
-              setCurrent(i);
-              seek(startOf(sentences[i]));
-            }}
-            onPlay={(i, slow) => void playSentence(i, slow)}
-            onStop={pause}
-            playing={playing ? (sentenceSlow ? 'slow' : 'normal') : null}
-            onSolved={(i) => setSolved((s) => new Set(s).add(i))}
-            onPractice={onPractice}
-          />
-          </div>
-        )}
-      </Card>
       </div>
+      {teacherOpen && <AiTeacherPanel word={passage.title} wordId={passageChatId(passage.id)} passage onClose={() => setTeacherOpen(false)} />}
       {analyzing !== null && (
         <SentenceAnalysisPanel passageId={passage.id} sentences={sentences} index={analyzing} onIndexChange={setAnalyzing} targets={targetWords} onAddTarget={onAddTarget && ((w, form) => onAddTarget(w, true, form))} onEditTranslation={onEditTranslation} onClose={() => setAnalyzing(null)} />
       )}
-    </div>
-  );
-};
-
-const clock = (ms: number) => {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-};
-
-/**
- * 视频下方的时间轴：进度、当前 / 总时长；每句台词一小段（当前句高亮），点击或拖动跳转。
- */
-const ClipTimeline: React.FC<{
-  durationMs: number;
-  nowMs: number;
-  sentences: PassageSentence[];
-  active: number;
-  onSeek: (ms: number) => void;
-}> = ({ durationMs, nowMs, sentences, active, onSeek }) => {
-  const track = useRef<HTMLDivElement>(null);
-  const total = Math.max(1, durationMs);
-  const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / total) * 100))}%`;
-  const at = (clientX: number) => {
-    const r = track.current?.getBoundingClientRect();
-    if (!r) return 0;
-    return Math.min(1, Math.max(0, (clientX - r.left) / r.width)) * total;
-  };
-  return (
-    <div className="flex items-center gap-3 select-none">
-      <span className="w-10 text-right text-xs text-muted-foreground tabular-nums">{clock(nowMs)}</span>
-      <div
-        ref={track}
-        role="slider"
-        tabIndex={0}
-        aria-label="播放进度"
-        aria-valuemin={0}
-        aria-valuemax={Math.round(total / 1000)}
-        aria-valuenow={Math.round(nowMs / 1000)}
-        className="group relative h-5 flex-1 cursor-pointer outline-none"
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          onSeek(at(e.clientX));
-        }}
-        onPointerMove={(e) => e.buttons === 1 && onSeek(at(e.clientX))}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowLeft') onSeek(Math.max(0, nowMs - 5000));
-          if (e.key === 'ArrowRight') onSeek(Math.min(total, nowMs + 5000));
-        }}
-      >
-        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-muted">
-          {sentences.map((s, i) => (
-            <span
-              key={i}
-              className={cn('absolute inset-y-0 bg-foreground/15', i === active && 'bg-primary/40')}
-              style={{ left: pct(startOf(s)), width: `calc(${pct(endOf(s) - startOf(s))} - 1px)` }}
-            />
-          ))}
-          <span className="absolute inset-y-0 left-0 bg-primary" style={{ width: pct(nowMs) }} />
-        </div>
-        <span
-          className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-primary shadow transition-transform group-hover:scale-125 group-focus-visible:ring-[3px] group-focus-visible:ring-ring/50"
-          style={{ left: pct(nowMs) }}
+      {/* 讲解一直挂着（切到别的模式时隐藏），生成中切走也不中断 */}
+      <div className={cn(mode !== 'understand' && 'hidden')}>
+        <ClipGuide
+          passageId={passage.id}
+          teacherOpen={teacherOpen}
+          onTeacher={toggleGuideTeacher}
         />
       </div>
-      <span className="w-10 text-xs text-muted-foreground tabular-nums">{clock(total)}</span>
     </div>
   );
 };
-
-/** 练习设置：画面字幕；观看另有台词显示、每句后暂停；观看与跟读有译文显示、聚焦；跟读有原声遍数 */
-const PrefsPopover: React.FC<{ mode: Mode; prefs: ClipPrefs; onChange: (patch: Partial<ClipPrefs>) => void }> = ({ mode, prefs, onChange }) => (
-  <Popover>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon" className="size-8" aria-label="练习设置">
-            <Settings2 />
-          </Button>
-        </PopoverTrigger>
-      </TooltipTrigger>
-      <TooltipContent>练习设置</TooltipContent>
-    </Tooltip>
-    <PopoverContent align="end" className="w-72 space-y-4">
-      <Row label="画面字幕">
-        <Select value={prefs.subtitles} onValueChange={(v) => onChange({ subtitles: v as Subtitles })}>
-          <SelectTrigger size="sm" className="w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="both">双语</SelectItem>
-            <SelectItem value="en">英文</SelectItem>
-            <SelectItem value="zh">中文</SelectItem>
-            <SelectItem value="none">关闭</SelectItem>
-          </SelectContent>
-        </Select>
-      </Row>
-      {mode === 'watch' && (
-        <Row label="显示台词列表" htmlFor="cs-text">
-          <Switch id="cs-text" checked={prefs.showText} onCheckedChange={(showText) => onChange({ showText })} />
-        </Row>
-      )}
-      {mode === 'shadow' && (
-        <Row label="每句原声播放">
-          <Select value={String(prefs.shadowRepeat)} onValueChange={(v) => onChange({ shadowRepeat: Number(v) })}>
-            <SelectTrigger size="sm" className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[1, 2, 3].map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n} 遍
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Row>
-      )}
-      {mode !== 'listen' && (
-        <>
-          <Row label="译文显示">
-            <Select
-              value={prefs.translationMode}
-              onValueChange={(v) => {
-                const mode = v as ClipPrefs['translationMode'];
-                onChange({ translationMode: mode, translation: prefs.translation === 'off' ? 'off' : mode });
-              }}
-              disabled={mode === 'watch' && !prefs.showText}
-            >
-              <SelectTrigger size="sm" className="w-28">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部</SelectItem>
-                <SelectItem value="current">当前句</SelectItem>
-              </SelectContent>
-            </Select>
-          </Row>
-          <Row label="聚焦当前句" htmlFor="cs-focus">
-            <Switch id="cs-focus" checked={prefs.focusBlur} onCheckedChange={(focusBlur) => onChange({ focusBlur })} disabled={mode === 'watch' && !prefs.showText} />
-          </Row>
-        </>
-      )}
-      {mode === 'watch' && (
-        <Row label="每句后暂停" htmlFor="cs-pause">
-          <Switch id="cs-pause" checked={prefs.pauseEach} onCheckedChange={(pauseEach) => onChange({ pauseEach })} />
-        </Row>
-      )}
-    </PopoverContent>
-  </Popover>
-);
-
-const Row: React.FC<{ label: string; htmlFor?: string; children: React.ReactNode }> = ({ label, htmlFor, children }) => (
-  <div className="flex items-center justify-between gap-3">
-    <Label htmlFor={htmlFor} className="font-normal">
-      {label}
-    </Label>
-    {children}
-  </div>
-);
-
-/** 跟读要先下载评估模型（没下载时也能跟读、听自己的录音，只是没有评分） */
-const ModelNotice: React.FC<{ downloading: boolean; onDownload: () => void }> = ({ downloading, onDownload }) => (
-  <div className="mb-3 flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-    <span className="min-w-0 flex-1">{downloading ? '正在下载评估模型…' : '跟读评分要先下载评估模型'}</span>
-    {!downloading && (
-      <Button variant="outline" size="sm" className="h-7" onClick={onDownload}>
-        <Download />
-        下载
-      </Button>
-    )}
-  </div>
-);

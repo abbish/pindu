@@ -22,11 +22,14 @@ export interface WordExplanationViewProps {
   fill?: boolean;
   /** 围绕一句话聊（wordId 为 sentenceChatId）：没有「讲讲这个词」，打招呼与建议问题换成句子的 */
   sentence?: boolean;
+  /** 围绕整篇短文 / 场景片段聊（wordId 为 passageChatId）：同上，换成整篇的 */
+  passage?: boolean;
 }
 
 /** AI 没给出推荐追问时的固定建议 */
 const FALLBACK_SUGGESTIONS = ['为什么这样拼？', '怎么记住它？', '有哪些易混淆词？'];
 const SENTENCE_SUGGESTIONS = ['这句话的结构怎么理解？', '为什么用这个时态？', '还能怎么说？'];
+const PASSAGE_SUGGESTIONS = ['这段主要在讲什么？', '哪些地方最难听懂？', '有哪些表达值得学？'];
 /** 让老师系统地讲一讲这个词（讲解任务） */
 const EXPLAIN = '讲讲这个词';
 /** 讲解出现在对话里的位置（第几条消息之后）：本次打开应用期间按单词记 */
@@ -58,6 +61,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
   active,
   fill = false,
   sentence = false,
+  passage = false,
 }) => {
   const [state, setState] = useState<ViewState>({ wordId: null, status: 'idle', content: '' });
   const chat = useTutorChat(wordId);
@@ -137,9 +141,9 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
   // 推荐追问：有对话时用最近一次回答的，否则用讲解的；AI 没给时用固定建议（去掉问过的）
   const explained = state.status === 'ready' || state.status === 'generating' || state.status === 'error';
   const dynamicFollowUps = chat.messages.length > 0 ? chat.followUps : state.status === 'ready' ? (state.meta?.follow_ups ?? []) : [];
-  const base = dynamicFollowUps.length > 0 ? dynamicFollowUps : (sentence ? SENTENCE_SUGGESTIONS : FALLBACK_SUGGESTIONS).filter(q => !chat.asked.includes(q));
+  const base = dynamicFollowUps.length > 0 ? dynamicFollowUps : (passage ? PASSAGE_SUGGESTIONS : sentence ? SENTENCE_SUGGESTIONS : FALLBACK_SUGGESTIONS).filter(q => !chat.asked.includes(q));
   // 还没讲过：第一条是「讲讲这个词」；讲过之后可以让老师换个讲法（都是对话里的一句，不是重新生成）
-  const suggestions = sentence ? base : !explained ? [EXPLAIN, ...base.filter((q) => q !== EXPLAIN)] : state.status === 'ready' && !base.includes(REPHRASE) ? [...base, REPHRASE] : base;
+  const suggestions = sentence || passage ? base : !explained ? [EXPLAIN, ...base.filter((q) => q !== EXPLAIN)] : state.status === 'ready' && !base.includes(REPHRASE) ? [...base, REPHRASE] : base;
 
   // 有新的对话内容时滚到底部
   useEffect(() => {
@@ -150,7 +154,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
 
   const ask = (text: string) => {
     if (!text.trim() || chat.busy) return;
-    if (!sentence && text === EXPLAIN && !explained) {
+    if (!sentence && !passage && text === EXPLAIN && !explained) {
       explainAt.set(wordId, chat.messages.length);
       void generate(wordId);
       return;
@@ -223,7 +227,7 @@ export const WordExplanationView: React.FC<WordExplanationViewProps> = ({
       {/* 面板里滚动区域占满宽度、内容两侧留白：滚动条落在留白里，不压在消息上 */}
       <div className={cn('flex min-h-40 flex-col gap-3 overflow-y-auto', fill ? 'min-h-0 flex-1 px-4' : 'max-h-[56vh] pr-2')} ref={bodyRef}>
         {/* 老师先打个招呼，等学生提问；「讲讲这个词」的讲解按提出的位置插在对话里 */}
-        {teacher(sentence ? '这句话哪里想多了解一点？可以直接问我。' : `我们来聊聊 **${word}**。想从哪里开始？`, 'greeting')}
+        {teacher(passage ? '这段内容哪里想多了解一点？可以直接问我。' : sentence ? '这句话哪里想多了解一点？可以直接问我。' : `我们来聊聊 **${word}**。想从哪里开始？`, 'greeting')}
         {thread()}
         {chat.pendingText !== null && teacher(chat.pendingText || <span className="text-muted-foreground">正在回答…</span>, 'pending', Boolean(chat.pendingText))}
       </div>

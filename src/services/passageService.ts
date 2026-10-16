@@ -1,6 +1,9 @@
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { BaseService } from './baseService';
 import type { ApiResult, Word } from '../types';
 import type {
+  ClipGuide,
+  ClipGuideDelta,
   AnalyzeSentenceRequest,
   PassageSceneSuggestRequest,
   SentenceAnalysis,
@@ -121,6 +124,21 @@ class PassageService extends BaseService {
   /** 分析短文里的一句（已分析过且不要求重新分析时直接返回保存的结果） */
   async analyzeSentence(request: AnalyzeSentenceRequest): Promise<ApiResult<SentenceAnalysis>> {
     return this.executeWithLoading(() => this.client.invoke<SentenceAnalysis>('analyze_sentence', { request }));
+  }
+
+  /** 场景片段已有的内容讲解（还没生成过为 null） */
+  async getClipGuide(passageId: number): Promise<ApiResult<ClipGuide | null>> {
+    return this.executeWithLoading(() => this.client.invoke<ClipGuide | null>('get_clip_guide', { passageId }));
+  }
+
+  /** 生成场景片段的内容讲解（覆盖已有的）；生成过程中的增量见 onClipGuideDelta */
+  async generateClipGuide(passageId: number, requestId: string): Promise<ApiResult<ClipGuide>> {
+    return this.executeWithLoading(() => this.client.invoke<ClipGuide>('generate_clip_guide', { passageId, requestId }));
+  }
+
+  /** 订阅讲解的流式增量；返回取消订阅函数 */
+  onClipGuideDelta(handler: (delta: ClipGuideDelta) => void): Promise<UnlistenFn> {
+    return listen<ClipGuideDelta>('clip-guide-delta', (event) => handler(event.payload));
   }
 
   /** 给还没有单词卡的未收录目标词生成单词卡（后台任务）；都有了返回 null */

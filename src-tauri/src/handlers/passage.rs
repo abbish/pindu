@@ -657,11 +657,14 @@ fn running_word_cards(jobs: &crate::jobs::Jobs, passage_id: i64) -> Option<Strin
         .find(|j| {
             j.kind == "word_cards"
                 && j.status.is_active()
-                && j.link
-                    .as_ref()
-                    .and_then(|l| l.params.get("passageId"))
-                    .and_then(|v| v.as_i64())
-                    == Some(passage_id)
+                && j.link.as_ref().is_some_and(|l| {
+                    // 一篇短文的任务记 passageId；切分后给一批片段生成的记 passageIds
+                    l.params.get("passageId").and_then(|v| v.as_i64()) == Some(passage_id)
+                        || l.params
+                            .get("passageIds")
+                            .and_then(|v| v.as_array())
+                            .is_some_and(|a| a.iter().any(|v| v.as_i64() == Some(passage_id)))
+                })
         })
         .map(|j| j.id)
 }
@@ -760,6 +763,67 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
 }
 
 // ==================== 句子分析 ====================
+
+/// 片段讲解的流式增量：前端按 requestId 过滤（重新生成后旧请求的增量被忽略）
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipGuideDelta {
+    request_id: String,
+    passage_id: i64,
+    delta: String,
+}
+
+fn clip_guide_service(app: &AppHandle) -> crate::services::clip_guide::ClipGuideService {
+    crate::services::clip_guide::ClipGuideService::new(
+        Arc::new(app.state::<SqlitePool>().inner().clone()),
+        Arc::new(app.state::<Logger>().inner().clone()),
+    )
+}
+
+/// 场景片段已有的内容讲解（还没生成过为 null）
+#[tauri::command]
+pub async fn get_clip_guide(
+    app: AppHandle,
+    passage_id: i64,
+) -> AppResult<Option<crate::types::passage::ClipGuide>> {
+    let logger = app.state::<Logger>();
+    logger.api_request("get_clip_guide", Some(&format!("passage {}", passage_id)));
+    let result = clip_guide_service(&app).cached(passage_id).await;
+    finish(&logger, "get_clip_guide", result)
+}
+
+/// 生成场景片段的内容讲解并保存（覆盖已有的）；生成过程中推送 `clip-guide-delta` 事件
+#[tauri::command]
+pub async fn generate_clip_guide(
+    app: AppHandle,
+    passage_id: i64,
+    request_id: String,
+) -> AppResult<crate::types::passage::ClipGuide> {
+    let logger = app.state::<Logger>();
+    logger.api_request(
+        "generate_clip_guide",
+        Some(&format!("passage {}", passage_id)),
+    );
+    let result = async {
+        let paths = agent_paths(&app)?;
+        let emitter = app.clone();
+        clip_guide_service(&app)
+            .generate(passage_id, &paths, |delta| {
+                let _ = tauri::Emitter::emit(
+                    &emitter,
+                    "clip-guide-delta",
+                    ClipGuideDelta {
+                        request_id: request_id.clone(),
+                        passage_id,
+                        delta: delta.to_string(),
+                    },
+                );
+            })
+            .await
+    }
+    .await;
+    finish(&logger, "generate_clip_guide", result)
+}
 
 /// 分析短文 / 视频片段里的一句（句式、成分、语法点、交际功能、词组、发音要点）。
 /// 这句已经分析过且不要求重新分析时直接返回保存的结果

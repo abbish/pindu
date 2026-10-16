@@ -98,6 +98,20 @@ pub async fn prepare_before(
     }
 }
 
+/// 重新整理前：去掉每条字幕的断句判断（英文与已有的中文保留），之后整理任务按现在的规则重新判断。返回字幕条数
+pub async fn reset_sentences(pool: &SqlitePool, video_id: i64) -> AppResult<usize> {
+    let _guard = WRITE_LOCK.lock().await;
+    let row = VideoRepository::get(pool, video_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("视频不存在，可能已被删除".to_string()))?;
+    let mut cues = row.raw_cues();
+    for c in cues.iter_mut() {
+        c.join = None;
+    }
+    VideoRepository::update_cues(pool, video_id, &cues).await?;
+    Ok(cues.len())
+}
+
 impl VideoTranslateJob {
     pub async fn run(self, ctx: JobCtx) -> AppResult<Value> {
         self.prepare(&ctx, "正在整理字幕").await

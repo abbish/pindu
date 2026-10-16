@@ -1010,6 +1010,44 @@ pub fn sentence_tutor_message(
     )
 }
 
+/// 围绕整篇短文 / 场景片段的答疑消息：标题、逐句台词（英文 + 中文，太长时截断）、词汇、片段的内容讲解、最近对话
+pub fn passage_tutor_message(
+    title: &str,
+    lines: &[(String, String)],
+    targets: &[String],
+    guide: &str,
+    history: &[ChatTurn],
+    question: &str,
+) -> String {
+    let mut text = String::new();
+    for (i, (en, zh)) in lines.iter().enumerate() {
+        let line = if zh.trim().is_empty() {
+            format!("{}. {}\n", i + 1, en.trim())
+        } else {
+            format!("{}. {}（{}）\n", i + 1, en.trim(), zh.trim())
+        };
+        if text.chars().count() + line.chars().count() > MAX_PASSAGE_TUTOR_CHARS {
+            text.push_str("……（后面还有，略）\n");
+            break;
+        }
+        text.push_str(&line);
+    }
+    prompts::message(
+        MessageTemplate::PassageTutor,
+        &[
+            ("title", title.trim()),
+            ("lines", text.trim_end()),
+            ("targets", &targets.join(", ")),
+            ("guide", guide.trim()),
+            ("history", &tutor_history(history)),
+            ("question", question.trim()),
+        ],
+    )
+}
+
+/// 整篇答疑时台词最多带这么多字（太长的视频片段截断，免得上下文过长）
+const MAX_PASSAGE_TUTOR_CHARS: usize = 12_000;
+
 pub fn word_tutor_message(
     word: &Word,
     scene: &str,
@@ -2212,6 +2250,87 @@ pub async fn analyze_sentence(
     Ok(submission.details.clone())
 }
 
+// ==================== 场景片段讲解 ====================
+
+pub fn clip_guide_task(profile: &PromptProfile) -> AgentTask {
+    AgentTask {
+        name: "clip-guide",
+        system_prompt: prompts::system_prompt(PromptTask::ClipGuide, profile, &[]),
+        tools: &[],
+        // 要先理清内容结构再逐段讲，讲解较长；流式显示，生成后保存，不必为速度压低思考
+        default_thinking: "medium",
+    }
+}
+
+/// 讲解请求：片段标题、逐句台词（英文 + 中文）、正在学的词汇
+pub fn clip_guide_message(title: &str, lines: &[(String, String)], targets: &[String]) -> String {
+    let lines = lines
+        .iter()
+        .enumerate()
+        .map(|(i, (en, zh))| {
+            if zh.trim().is_empty() {
+                format!("{}. {}", i + 1, en.trim())
+            } else {
+                format!("{}. {}（{}）", i + 1, en.trim(), zh.trim())
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    prompts::message(
+        MessageTemplate::ClipGuide,
+        &[
+            ("title", title.trim()),
+            ("lines", &lines),
+            ("targets", &targets.join(", ")),
+        ],
+    )
+}
+
+/// 生成片段讲解（Markdown）；`on_delta` 收到流式文本增量
+pub async fn clip_guide(
+    paths: &AgentPaths,
+    model: &AIModelConfig,
+    profile: &PromptProfile,
+    message: &str,
+    logger: &Logger,
+    mut on_delta: impl FnMut(&str),
+) -> AppResult<String> {
+    let run = run_task(
+        paths,
+        &clip_guide_task(profile),
+        model,
+        message,
+        logger,
+        |event| {
+            if let AgentEvent::TextDelta(delta) = event {
+                on_delta(delta);
+            }
+        },
+    )
+    .await?;
+    let content = clean_markdown(&run.outcome.text);
+    // 只有一两句台词的片段讲解也短：门槛不能太高，不然总是失败
+    if content.chars().count() < 120 {
+        logger.warn(
+            "CLIP_GUIDE",
+            "片段讲解太短，没有采用",
+            Some(&format!("正文 {} 字", content.chars().count())),
+        );
+        return Err(AppError::ExternalServiceError(
+            "老师没有讲出来，请再试一次".to_string(),
+        ));
+    }
+    logger.info(
+        "CLIP_GUIDE",
+        &format!(
+            "片段讲解已生成：{} 字，用时 {:.1}s",
+            content.chars().count(),
+            run.elapsed.as_secs_f64()
+        ),
+    );
+    Ok(content)
+}
+
 /// 素材阅读（多模态素材 B2）：pi 在素材的工作目录里自主读取（文字层 / 页面图片 / 图片 / 文本），交回 `submit_material`
 pub fn material_read_task(profile: &PromptProfile) -> AgentTask {
     AgentTask {
@@ -2306,6 +2425,37 @@ mod tests {
         assert_eq!(got, vec!["climate", "climate change", "eco-friendly"]);
         assert!(words.iter().all(|w| w.frequency == 1));
         assert_eq!(words[0].meaning.as_deref(), Some("气候"));
+    }
+
+    #[test]
+    fn passage_tutor_message_carries_lines_guide_and_question() {
+        let lines = vec![
+            ("Hello there.".to_string(), "你好。".to_string()),
+            ("Bye.".to_string(), String::new()),
+        ];
+        let text = passage_tutor_message(
+            "Greeting",
+            &lines,
+            &["hello".to_string()],
+            "## 讲了什么\n打招呼",
+            &[],
+            "这段讲什么？",
+        );
+        assert!(text.contains("1. Hello there.（你好。）") && text.contains("2. Bye."));
+        assert!(
+            text.contains("学习者正在学的词汇：hello")
+                && text.contains("打招呼")
+                && text.contains("这段讲什么？")
+        );
+        assert!(!text.contains("{{"));
+        // 没有讲解时整段省略
+        assert!(!passage_tutor_message("", &lines, &[], "", &[], "q").contains("内容讲解"));
+        // 太长的台词截断
+        let long: Vec<(String, String)> = (0..2000)
+            .map(|i| (format!("Sentence number {} is here.", i), String::new()))
+            .collect();
+        let text = passage_tutor_message("", &long, &[], "", &[], "q");
+        assert!(text.contains("后面还有") && text.chars().count() < MAX_PASSAGE_TUTOR_CHARS + 500);
     }
 
     use super::*;
