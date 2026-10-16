@@ -44,7 +44,7 @@ Create separate reading and listening question sets for each passage, with cloze
 
 ### Video learning
 
-Import local videos with automatically detected external or embedded subtitles. If English subtitles are missing, speech can be transcribed on your computer. Create bilingual dialogue and scene clips, with previews, clip range adjustments and subtitle timing corrections in the editor.
+Import local videos with automatically detected external or embedded subtitles. If English subtitles are missing, speech can be transcribed on your computer. Create bilingual dialogue and scene clips, with previews, clip range adjustments, subtitle reorganization and timing corrections in the editor. Videos up to five minutes long can become a single scene clip.
 
 ![Video clip editor](docs/screenshots/editor.png)
 
@@ -68,7 +68,7 @@ Learning statistics show words studied and mastered, first-attempt accuracy, stu
 
 ### AI tutor
 
-Get explanations of words, usage and sentences based on your materials and progress. The tutor can also create vocabulary books, passages, question sets and study plans on request. Search or pin conversations, continue asking questions, or start a new conversation from one of your earlier messages. Voice input is supported.
+Get explanations of words, usage and sentences based on your materials and progress. The tutor can also create vocabulary books, passages, question sets and study plans on request. Ask about a whole passage or clip directly from the reader or clip guide. Search or pin conversations, continue asking questions, or start a new conversation from one of your earlier messages. Voice input is supported.
 
 ![AI tutor creates study materials and plans](docs/screenshots/tutor-materials.png)
 
