@@ -1048,6 +1048,7 @@ async fn spawn_clip_word_cards(
     .await;
     match prepared {
         Ok(Some(job)) => {
+            let covered: Vec<String> = job.words.iter().map(|w| w.to_lowercase()).collect();
             app.state::<Jobs>().spawn(
                 JobSpec {
                     kind: "word_cards",
@@ -1055,10 +1056,10 @@ async fn spawn_clip_word_cards(
                     title: format!("生成单词卡 · {title}"),
                     lane: Lane::Agent,
                     detached: true,
-                    // passageIds：打开其中的片段时认出这个任务，不再另起一个
+                    // passageIds：打开其中的片段时认出这个任务；words：它负责哪些词（后加的词另起任务）
                     link: Some(JobLink::new(
                         "video-editor",
-                        serde_json::json!({ "videoId": video_id, "planId": plan_id, "passageIds": ids }),
+                        serde_json::json!({ "videoId": video_id, "planId": plan_id, "passageIds": ids, "words": covered }),
                     )),
                 },
                 move |ctx| job.run(ctx),

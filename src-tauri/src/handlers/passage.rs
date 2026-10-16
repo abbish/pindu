@@ -651,10 +651,14 @@ pub async fn update_passage_translation(
 static WORD_CARD_SPAWN: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// 这篇短文正在跑的单词卡任务
-fn running_word_cards(jobs: &crate::jobs::Jobs, passage_id: i64) -> Option<String> {
+/// 这篇短文正在跑的单词卡任务：任务编号与它负责的词（小写；没记的是旧任务，当作全都负责）
+fn word_card_jobs(
+    jobs: &crate::jobs::Jobs,
+    passage_id: i64,
+) -> Vec<(String, Option<std::collections::HashSet<String>>)> {
     jobs.list()
         .into_iter()
-        .find(|j| {
+        .filter(|j| {
             j.kind == "word_cards"
                 && j.status.is_active()
                 && j.link.as_ref().is_some_and(|l| {
@@ -666,7 +670,41 @@ fn running_word_cards(jobs: &crate::jobs::Jobs, passage_id: i64) -> Option<Strin
                             .is_some_and(|a| a.iter().any(|v| v.as_i64() == Some(passage_id)))
                 })
         })
-        .map(|j| j.id)
+        .map(|j| {
+            let words = j
+                .link
+                .as_ref()
+                .and_then(|l| l.params.get("words"))
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|w| w.as_str().map(str::to_lowercase))
+                        .collect()
+                });
+            (j.id, words)
+        })
+        .collect()
+}
+
+/// 缺单词卡的词里，还没有任务在做的那些（新加的词不能交给一个早已开始、不负责它的任务）
+fn uncovered_words(
+    running: &[(String, Option<std::collections::HashSet<String>>)],
+    missing: &[String],
+) -> Vec<String> {
+    if running.iter().any(|(_, w)| w.is_none()) {
+        return Vec::new();
+    }
+    missing
+        .iter()
+        .filter(|w| {
+            !running.iter().any(|(_, covered)| {
+                covered
+                    .as_ref()
+                    .is_some_and(|c| c.contains(&w.to_lowercase()))
+            })
+        })
+        .cloned()
+        .collect()
 }
 
 /// 短文任务归哪个模块：视频切出的场景片段在视频库里看，任务也记在视频库，「打开」带上 clip（面包屑与侧边栏在视频库下）
@@ -697,14 +735,19 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
     let logger = app.state::<Logger>();
     logger.api_request("start_word_cards", Some(&format!("passage {passage_id}")));
     let result = async {
-        if let Some(id) = running_word_cards(&app.state::<Jobs>(), passage_id) {
-            return Ok(Some(id));
-        }
         let service = word_cards(&app);
         let (passage, missing) = service.missing(passage_id).await?;
-        if missing.is_empty() {
-            return Ok(None);
+        let running = word_card_jobs(&app.state::<Jobs>(), passage_id);
+        let all: Vec<String> = missing.iter().map(|t| t.word.clone()).collect();
+        // 缺的词都已经有任务在做：给界面那个任务看进度；都不缺了也一样（任务还在收尾）
+        let todo = uncovered_words(&running, &all);
+        if todo.is_empty() {
+            return Ok(running.first().map(|(id, _)| id.clone()));
         }
+        let missing: Vec<_> = missing
+            .into_iter()
+            .filter(|t| todo.contains(&t.word))
+            .collect();
         let pool = Arc::new(app.state::<SqlitePool>().inner().clone());
         let logger_arc = Arc::new(logger.inner().clone());
         let settings = AgentSettingsService::new(pool.clone(), logger_arc.clone());
@@ -733,16 +776,18 @@ pub async fn start_word_cards(app: AppHandle, passage_id: i64) -> AppResult<Opti
             title: format!("生成单词卡 · {}", passage.title),
             lane: Lane::Agent,
             detached: true,
+            // words：这个任务负责哪些词（后加的词另起任务）
             link: Some(JobLink::new(
                 "passage-detail",
-                serde_json::json!({ "passageId": passage_id, "clip": clip }),
+                serde_json::json!({ "passageId": passage_id, "clip": clip, "words": words.iter().map(|w| w.to_lowercase()).collect::<Vec<_>>() }),
             )),
         };
         // 检查与提交之间不能有 await：几乎同时的两次请求（如页面重复挂载）只提交一个任务
         let _guard = WORD_CARD_SPAWN.lock().unwrap_or_else(|e| e.into_inner());
         let jobs = app.state::<Jobs>();
-        if let Some(id) = running_word_cards(&jobs, passage_id) {
-            return Ok(Some(id));
+        let running = word_card_jobs(&jobs, passage_id);
+        if uncovered_words(&running, &words).is_empty() {
+            return Ok(running.first().map(|(id, _)| id.clone()));
         }
         Ok(Some(jobs.spawn(spec, move |ctx| async move {
             let saved = service
@@ -850,4 +895,34 @@ pub async fn analyze_sentence(
     }
     .await;
     finish(&logger, "analyze_sentence", result)
+}
+
+#[cfg(test)]
+mod word_card_job_tests {
+    use super::uncovered_words;
+    use std::collections::HashSet;
+
+    #[test]
+    fn new_words_are_not_handed_to_a_job_that_does_not_cover_them() {
+        let set = |w: &[&str]| Some(w.iter().map(|s| s.to_string()).collect::<HashSet<_>>());
+        let missing = vec!["father".to_string(), "Your".to_string()];
+        // 正在跑的任务只负责 father：后加的 your 要另起任务
+        assert_eq!(
+            uncovered_words(&[("j1".into(), set(&["father"]))], &missing),
+            ["Your"]
+        );
+        // 都有任务在做（大小写不论）：复用
+        assert!(uncovered_words(
+            &[
+                ("j1".into(), set(&["father"])),
+                ("j2".into(), set(&["your"]))
+            ],
+            &missing
+        )
+        .is_empty());
+        // 没有任务：全都要做
+        assert_eq!(uncovered_words(&[], &missing), missing);
+        // 没记负责哪些词的旧任务：当作全都负责
+        assert!(uncovered_words(&[("old".into(), None)], &missing).is_empty());
+    }
 }

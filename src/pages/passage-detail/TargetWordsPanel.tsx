@@ -182,6 +182,16 @@ export const TargetWordsPanel: React.FC<TargetWordsPanelProps> = ({ passage, foo
               >
                 {cardError}
               </InlineError>
+            ) : current.wordId === null && !card && cardJob !== undefined && !isJobActive(cardJob) ? (
+              // 任务做完了这个词却没生成出来（AI 漏了它）：说清楚，可以再生成
+              <InlineError
+                title="这个词没有生成出单词卡"
+                actions={
+                  <Button variant="outline" size="sm" className="h-7" onClick={() => void startCards()}>
+                    再生成一次
+                  </Button>
+                }
+              />
             ) : undefined
           }
           aiWordId={info ? aiWordId : null}
