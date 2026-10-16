@@ -48,7 +48,7 @@ Import local videos with automatically detected external or embedded subtitles. 
 
 ![Video clip editor](docs/screenshots/editor.png)
 
-Scene clips offer watching, shadowing and listening modes, with sentence-by-sentence speaking practice, pronunciation scoring, recording playback and listen-and-spell exercises. Passage playback and listening questions can use the original video audio or AI-generated speech.
+Scene clips offer four practice modes: understand (an AI teacher walks through the clip section by section), blind listening (optionally with the picture hidden), speaking (sentence-by-sentence with pronunciation scoring, or shadowing along with the original audio) and intensive listening (fill in key words sentence by sentence). Passage playback and listening questions can use the original video audio or AI-generated speech.
 
 ![Scene clip study](docs/screenshots/clip-study.png)
 
