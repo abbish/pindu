@@ -583,8 +583,9 @@ export const ClipStudyPanel: React.FC<ClipStudyPanelProps> = ({ video, sentences
 
   const player = (
     <div className={cn('overflow-hidden rounded-xl bg-black', fullscreen && 'fixed inset-0 z-50 flex flex-col rounded-none')}>
-      {/* 宽度不变，高度最多半屏多（画面在里面等比缩放、两边留黑），下面的内容第一眼看得到 */}
-      <div className={cn('relative', fullscreen ? 'min-h-0 flex-1' : 'h-[min(56vh,56.25cqw)]')}>
+      {/* 宽度不变，高度最多半屏多，并且给上面的标题页签、下面的控制条与模式页签和讲解的开头留出地方（约 480px）：
+          800 高的窗口里首屏也看得到讲解的标题和头几行；画面在里面等比缩放、两边留黑；最矮 240px */}
+      <div className={cn('relative', fullscreen ? 'min-h-0 flex-1' : 'h-[max(240px,min(56vh,calc(100vh-480px),56.25cqw))]')}>
         <video
           ref={videoRef}
           src={video.clipUrl}
